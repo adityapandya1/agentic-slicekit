@@ -4,7 +4,7 @@ name: Check: references and style ratchets
 repo: .
 group: B
 runbook: no
-requirements: [REQ-3.7, REQ-3.10]
+requirements: [REQ-3.7, REQ-3.10, REQ-5.4]
 decisions: [D-25]
 ---
 

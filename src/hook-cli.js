@@ -1,27 +1,14 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { which } from './which.js';
 
 const LOCAL = 'node_modules/slicekit/bin/slicekit.js';
 const CHECK_TIMEOUT_MS = 10_000;
 
-function runnable(file) {
-  try {
-    if (!fs.statSync(file).isFile()) return false;
-    if (process.platform !== 'win32') fs.accessSync(file, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // True when `name` resolves on env's PATH (with PATHEXT on Windows).
 export function onPath(name, env) {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH');
-  const dirs = (key ? env[key] : '').split(path.delimiter).filter(Boolean);
-  const extKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATHEXT');
-  const exts = process.platform === 'win32' ? (extKey ? env[extKey] : '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
-  return dirs.some((dir) => exts.some((ext) => runnable(path.join(dir, `${name}${ext}`))));
+  return which(name, env) !== null;
 }
 
 export const NOT_INSTALLED =

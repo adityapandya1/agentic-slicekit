@@ -2,7 +2,7 @@
 slice: P1/S-02
 name: Claude Code renderer and update
 repo: .
-group: A
+group: A2
 runbook: no
 requirements: [REQ-1.10, REQ-3.12, REQ-5.6]
 decisions: [D-05, D-14]
@@ -30,7 +30,7 @@ decisions: [D-05, D-14]
 
 ## Expected changes
 
-`templates/claude-code/`, `src/render/`, `src/cli/update.js`, `test/render-all.test.js`, `test/render/`, `test/update.test.js`, `test/fixtures/golden/`.
+`templates/claude-code/`, `src/render/`, `src/cli/update.js`, `src/cli/init.js`, `src/cli/hook.js`, `test/render-all.test.js`, `test/render/`, `test/update.test.js`, `test/fixtures/golden/`.
 
 ## Tasks
 

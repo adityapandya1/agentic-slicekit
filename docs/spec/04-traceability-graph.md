@@ -1,7 +1,7 @@
 # 04 — Traceability and the graph
 
 A deterministic graph built from the kit's own IDs and git, the questions it answers from the CLI,
-the multi-repo workspace, and the local visualize page. Decisions cited: D-13, D-15, D-23.
+the multi-repo workspace, and the local visualize page.
 
 ## REQ-4.1 Nodes and edges
 
@@ -11,6 +11,11 @@ requirement), `implements` (slice → requirement), `touched` (commit → file),
 slice → phase, file → repo), `reviewed-by` (pull-request → verdict), `released-in` (pull-request →
 release), `produces` and `consumes` (slice → contract). Every node carries the path or ID it came
 from; every edge carries the file and line, or the commit SHA, that produced it.
+
+Scenario: GIVEN a slice file that names REQ-1.3 WHEN `slicekit graph` runs THEN an `implements` edge
+runs from that slice to REQ-1.3 and carries the slice file's path and line.
+
+Cites: D-13.
 
 Enforced by: `slicekit graph` (schema validation on write).
 
@@ -25,6 +30,8 @@ cache and mark pull-request nodes `stale`.
 Scenario: GIVEN `gh` is not installed WHEN graph runs THEN it builds every node except pull requests
 and prints "pull requests skipped: gh not found".
 
+Cites: D-13.
+
 Enforced by: `slicekit graph`.
 
 ## REQ-4.3 Tests link to requirements by ID
@@ -36,6 +43,8 @@ contain no REQ ID (the `citations` rule).
 Scenario: GIVEN `BillingTest.java` with `@DisplayName("REQ-2.3 refuses negative amount")` WHEN graph
 runs THEN a `covers` edge exists from that test to REQ-2.3 with the file and line.
 
+Cites: D-11, D-13.
+
 Enforced by: `slicekit graph`; `slicekit check`.
 
 ## REQ-4.4 Build and storage
@@ -44,6 +53,11 @@ Enforced by: `slicekit graph`; `slicekit check`.
 default-branch SHA it was built from, nodes and edges. It SHALL be incremental: a second run walks
 only commits after the recorded SHA and files whose hash changed. `.slicekit/graph/` SHALL be in `.gitignore` <!-- slicekit:example -->
 (D-23). CI SHALL build it and upload it as an artefact on every pull request.
+
+Scenario: GIVEN a built graph and one new commit on the default branch WHEN `slicekit graph` runs
+again THEN it walks only that commit, and `git status` lists nothing under the graph directory.
+
+Cites: D-13, D-23.
 
 Enforced by: `slicekit graph`; init writes the ignore rule; the workflow uploads.
 
@@ -66,6 +80,8 @@ Scenario: GIVEN a failing test in `src/billing/` WHEN `slicekit history src/bill
 output lists P1/S-03 (PR 14, APPROVE, released P1) above P1/S-07 (PR 21, APPROVE, unreleased), and
 nothing else.
 
+Cites: D-13.
+
 Enforced by: `slicekit <query>`; performance tested in the kit's own suite against a generated
 10,000-commit fixture.
 
@@ -82,6 +98,8 @@ Scenario: GIVEN contract C-2 "order.created topic" produced by P1/S-04 in repo `
 by P1/S-09 in repo `billing` WHEN `slicekit impact C-2` runs THEN both slices and both repos are <!-- slicekit:example -->
 listed.
 
+Cites: D-15.
+
 Enforced by: `slicekit graph`; `slicekit check` (slice `repo:` names a workspace entry; a contract
 names at least one producer and one consumer).
 
@@ -96,6 +114,8 @@ external resource and SHALL work with the file opened directly from disk, with t
 
 Scenario: GIVEN a laptop with no network WHEN visualize runs THEN every view renders.
 
+Cites: D-04, `../intake/2026-10-24-founding-requirement.md`.
+
 Enforced by: the kit's own end-to-end test (05) using a headless browser only if one is present,
 otherwise an HTML and script lint.
 
@@ -104,5 +124,10 @@ otherwise an HTML and script lint.
 The graph SHALL NOT parse source code, infer calls or imports, or classify anything. Where a team
 wants a code graph, graphify or a similar tool sits alongside; the kit's documentation says so and
 gives the one-line way to run both.
+
+Scenario: GIVEN a repository of Java sources WHEN `slicekit graph` runs THEN no node or edge in the
+graph comes from parsing source code.
+
+Cites: D-13.
 
 Enforced by: advisory; a scope line in the README.

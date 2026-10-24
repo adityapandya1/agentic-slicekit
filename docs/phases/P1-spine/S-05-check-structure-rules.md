@@ -4,7 +4,7 @@ name: Check: citations, coverage, queue, commands, layout, managed
 repo: .
 group: B
 runbook: no
-requirements: [REQ-3.7, REQ-1.3, REQ-1.5, REQ-1.6, REQ-1.1, REQ-3.12, REQ-2.5]
+requirements: [REQ-3.7, REQ-1.3, REQ-1.4, REQ-1.5, REQ-1.6, REQ-1.1, REQ-3.12, REQ-2.5, REQ-1.10]
 decisions: [D-11, D-14]
 ---
 
@@ -34,7 +34,7 @@ decisions: [D-11, D-14]
 
 ## Expected changes
 
-`src/check/rules/{citations,coverage,queue,commands,layout,managed}.js`, `test/check/`, fixtures.
+`src/check/rules/{citations,coverage,queue,commands,layout,managed}.js`, `src/which.js`, `src/hook-cli.js`, `src/render/update.js`, `src/slicefile.js`, `test/check/`, fixtures.
 
 ## Tasks
 

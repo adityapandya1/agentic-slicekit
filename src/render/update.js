@@ -104,6 +104,11 @@ export function planUpdate(root, cfg, { version, entries = entriesForShape(cfg.s
   return items;
 }
 
+// How a plan item is reported: its status, except that a drifted item with no reference copy is
+// `noReference`, because the verdict was then taken against the kit's current templates and cannot
+// tell a kit change from an edit. The managed check rule reports with the same choice.
+export const reportKind = (item) => (item.status === 'drifted' && item.noReference ? 'noReference' : item.status);
+
 const WARNING = {
   drifted: (dest) => `${dest} was edited since slicekit wrote it; left untouched (slicekit update --force overwrites)`,
   noReference: (dest) => `no reference copy for ${dest}; cannot tell a kit change from an edit; slicekit update --force overwrites`,
@@ -134,8 +139,7 @@ export function applyUpdate(root, cfg, plan, { version, force = false, prune = p
     } else if (item.status === 'same') {
       copies.push([item.dest, item.dest === SETTINGS ? item.refText : item.current]);
     } else {
-      const kind = item.status === 'drifted' && item.noReference ? 'noReference' : item.status;
-      skipped.push({ dest: item.dest, status: item.status, warning: WARNING[kind](item.dest) });
+      skipped.push({ dest: item.dest, status: item.status, warning: WARNING[reportKind(item)](item.dest) });
       // Carry the old reference forward so the edit is still seen next time.
       if (item.status === 'drifted' && item.reference !== null) copies.push([item.dest, item.reference]);
     }

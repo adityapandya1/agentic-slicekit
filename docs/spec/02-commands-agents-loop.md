@@ -1,7 +1,7 @@
 # 02 — Commands, agents, and the build loop
 
 The commands a human runs, the agents those commands spawn, and the loop that turns a slice into a
-merged pull request. Decisions cited: D-06, D-07, D-09, D-10, D-18, D-19, D-25.
+merged pull request.
 
 ## REQ-2.1 Commands own git; agents never do
 
@@ -12,6 +12,8 @@ push` and `gh pr` from a subagent's tool calls.
 
 Scenario: GIVEN the developer agent WHEN it runs `git commit` THEN the guard denies it with "agents
 do not run git; report and let the command commit".
+
+Cites: D-19.
 
 Enforced by: PreToolUse guard (03 REQ-3.2) using the subagent marker from SubagentStart.
 
@@ -26,6 +28,8 @@ write any spec text. It ends by printing the open questions it could not get ans
 Scenario: GIVEN a Word document WHEN intake runs THEN `intake/<date>-<slug>.docx` and its sidecar
 exist, `decisions.md` has one row per answered question, and no file under `<docsRoot>/spec/` was created.
 
+Cites: D-08, D-17, D-20, `../intake/2026-10-24-founding-requirement.md`.
+
 Enforced by: the command brief; `slicekit check` (no spec files at stage intake).
 
 ## REQ-2.3 `/slicekit specify`
@@ -38,6 +42,8 @@ intake sentence or decision supports; each REQ's `Cites:` line is checked.
 
 Scenario: GIVEN a REQ whose `Cites:` names nothing WHEN `slicekit check` runs THEN it fails naming
 the REQ.
+
+Cites: D-07, D-15, D-17, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (citation rule); the reviewer's brief for the spec pull request.
 
@@ -52,6 +58,8 @@ ask the human and close the row with a new D-NN or a REQ change, then open a pul
 Scenario: GIVEN intake names a Kafka topic that no contract file mentions WHEN gaps runs THEN a
 `missing` row names the intake line and the topic.
 
+Cites: D-17, `../intake/2026-10-24-founding-requirement.md`.
+
 Enforced by: the auditor's brief; `slicekit check` (every G row closed before plan).
 
 ## REQ-2.5 `/slicekit plan`
@@ -61,10 +69,15 @@ absent (taking the stack from intake when given, otherwise asking), then phases 
 in intake or decisions, then slice files (REQ-1.5) such that every REQ is named by at least one slice,
 no two slices in the same parallel group expect to change the same file or package, and each slice's
 evaluation set has at least one `happy` and one `negative` test. It SHALL regenerate `BUILD.md` and
-open a pull request titled `[plan] <program name>`.
+open a pull request titled `[plan] <program name>`. Shared roots are exempt from the overlap test:
+`.` (the repository root), anything under `test/` (a slice may always add tests), `src/cli/index.js`
+(the command table every slice registers in) and `<docsRoot>/runbook.md` (the runbook, which every
+operational slice appends a section to).
 
 Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the plan <!-- slicekit:example -->
 branch THEN it fails naming both slices.
+
+Cites: D-10, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
 
@@ -104,6 +117,8 @@ Scenario: GIVEN round two's verdict still holds blocker B-1 WHEN step 7 complete
 `changes-requested`, no third reviewer is spawned, and the pull request body's "Reviewer blocked"
 line names B-1.
 
+Cites: D-09, D-10, D-18, D-19.
+
 Enforced by: the command; `slicekit state set` preconditions (REQ-1.8).
 
 ## REQ-2.7 `/slicekit build --parallel P<n>`
@@ -112,6 +127,12 @@ SHALL run step 1 to step 5 of REQ-2.6 for every `todo` slice in one parallel gro
 its own worktree, then run steps 6 to 9 for each in turn (D-06). State files are per slice so the
 runs never write the same file. If two runs modify the same path despite the plan, the second to
 push SHALL stop and report the overlap as a plan defect.
+
+Scenario: GIVEN two slices in one parallel group that both change `src/billing/` WHEN <!-- slicekit:example -->
+`/slicekit build --parallel P1` pushes the second THEN that run stops and reports the overlap as a
+plan defect.
+
+Cites: D-06, D-22.
 
 Enforced by: the command; per-slice state files (D-22).
 
@@ -125,6 +146,8 @@ then commits and pushes to the slice branch. This round does not count against R
 Scenario: GIVEN `review.independent: required` and no independent verdict WHEN CI evaluates the
 `ready` label THEN the label is withheld with "independent review missing".
 
+Cites: D-18.
+
 Enforced by: CI label rule (03 REQ-3.11).
 
 ## REQ-2.9 `/slicekit release P<n>`
@@ -133,6 +156,11 @@ SHALL refuse unless every slice in the phase is `merged` and the runbook rule (0
 for each. It writes `releases/P<n>.md` listing every REQ delivered, every pull request, every decision
 taken in those pull requests, the commit SHA of the default branch at that moment, and the rollback
 note from the runbook. It sets each slice `released`. It does not deploy (D-12).
+
+Scenario: GIVEN a phase with one slice at `ready` WHEN `/slicekit release P1` runs THEN it refuses,
+names that slice, and writes no release record.
+
+Cites: D-12, D-21.
 
 Enforced by: the command; `slicekit state set`.
 
@@ -153,6 +181,11 @@ Every pull request the kit opens SHALL carry exactly these sections, in this ord
 **Skipped / not checked:** <what the agents did not verify>
 ```
 
+Scenario: GIVEN a pull request body with no `**Runbook:**` line WHEN CI runs THEN the body rule
+fails naming the missing section.
+
+Cites: D-09, D-21, `../intake/2026-10-24-founding-requirement.md`.
+
 Enforced by: CI (body rule), `slicekit check --ci`.
 
 ## REQ-2.11 The verdict file
@@ -162,6 +195,11 @@ verdict line `BLOCK | CHANGES | APPROVE`, a table of findings each with ID `B-<n
 `H-<n>` (should-have), file and line, what is wrong, why it matters, and how it was verified (a
 command run and its output, or "read only"), then the list of checklists run, then "Not checked".
 A finding without a "how verified" entry SHALL fail the SubagentStop shape check.
+
+Scenario: GIVEN a verdict file with a finding whose "how verified" entry is empty WHEN the reviewer
+stops THEN the SubagentStop shape check fails naming that finding.
+
+Cites: D-18, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: SubagentStop hook (03 REQ-3.5).
 
@@ -181,6 +219,11 @@ so the rules have one home.
 
 Every agent's reply SHALL end with "Skipped:" and "Not checked:" lines (ponytail's footer).
 
+Scenario: GIVEN a reviewer reply that ends without a "Not checked:" line WHEN the reviewer stops
+THEN the SubagentStop shape check re-prompts it for the missing line.
+
+Cites: D-14, D-19, D-21.
+
 Enforced by: SubagentStop shape check; SubagentStart injection.
 
 ## REQ-2.13 `/slicekit ops <symptom>`
@@ -190,6 +233,12 @@ files or services named in the symptom, and the last release record. It returns 
 and pull requests, the first checks from the runbook, and proposed actions marked by who may take
 them. It never executes an action.
 
+Scenario: GIVEN the symptom "billing returns 500 after the release" WHEN `/slicekit ops` runs THEN
+the report lists the slices and pull requests that touched the billing files with the runbook's
+first checks, and no file outside the report changed.
+
+Cites: D-20, D-21, `../intake/2026-10-24-founding-requirement.md`.
+
 Enforced by: the agent's tool list (read only).
 
 ## REQ-2.14 `/slicekit audit [area]`
@@ -198,5 +247,10 @@ SHALL spawn **auditor** with the spec and runbook as claims and the code, tests 
 evidence, and write a report listing each claim as `holds`, `drifted` (with the commit that broke it,
 from `slicekit history`) or `unverifiable`. It is the code-to-spec direction of drift checking. It
 changes nothing.
+
+Scenario: GIVEN a runbook claim that a later commit made false WHEN `/slicekit audit` runs THEN the
+report lists that claim as `drifted` with the commit, and no other file changed.
+
+Cites: D-13, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: advisory, by design; its findings become slices or decisions.
