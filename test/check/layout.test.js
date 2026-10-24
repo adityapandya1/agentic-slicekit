@@ -40,6 +40,17 @@ test('missing path and shape-foreign file are findings', () => {
   });
 });
 
+test('a missing gaps or stack file is a finding', () => {
+  withInstall('backend', ({ root, run }) => {
+    fs.rmSync(path.join(root, 'docs', 'spec', 'gaps.md'));
+    fs.rmSync(path.join(root, 'docs', 'spec', 'stack.md'));
+    assert.deepEqual(run().map((f) => [f.file, f.line, f.message]).sort(), [
+      ['.slicekit/config.json', 1, 'docs/spec/gaps.md is missing; run slicekit init'],
+      ['.slicekit/config.json', 1, 'docs/spec/stack.md is missing; run slicekit init'],
+    ]);
+  });
+});
+
 test('a path of the wrong kind is missing', () => {
   withInstall('backend', ({ root, run }) => {
     fs.rmSync(path.join(root, 'docs', 'intake'), { recursive: true, force: true });

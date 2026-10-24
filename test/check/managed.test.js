@@ -41,6 +41,34 @@ test('edited managed block is a finding', () => {
   });
 });
 
+test('an edit with no reference copy says it cannot tell a kit change from an edit', () => {
+  withInstall(({ root, run, file }) => {
+    fs.rmSync(path.join(root, '.slicekit', 'rendered', kitVersion(), ...DEST.split('/')));
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('follow it.', 'follow it, by hand.'));
+    assert.deepEqual(run(), [
+      { file: DEST, line: 1, message: `${DEST}: no reference copy; cannot tell a kit change from an edit; slicekit update --force overwrites` },
+    ]);
+  });
+});
+
+test('an edited timeout on a slicekit hook in settings.json is a finding', () => {
+  withInstall(({ root, run }) => {
+    const settings = path.join(root, '.claude', 'settings.json');
+    const parsed = JSON.parse(fs.readFileSync(settings, 'utf8'));
+    const ours = parsed.hooks.SessionStart[0].hooks[0];
+    assert.match(ours.command, /hook session-start$/);
+    ours.timeout = 999;
+    fs.writeFileSync(settings, `${JSON.stringify(parsed, null, 2)}\n`);
+    assert.deepEqual(run(), [
+      {
+        file: '.claude/settings.json',
+        line: 1,
+        message: '.claude/settings.json: managed block edited since slicekit wrote it; run slicekit update --force or revert',
+      },
+    ]);
+  });
+});
+
 test('missing managed file is a finding', () => {
   withInstall(({ run, file }) => {
     fs.rmSync(file);
@@ -81,6 +109,9 @@ test('a planning failure is one blocking finding', () => {
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), '{ not json');
     const found = managed.run(buildContext(root, loadConfig(root)));
     assert.equal(found.length, 1);
+    // No file and no line: the finding is about the plan, not about one file in it.
+    assert.equal(found[0].file, '-');
+    assert.equal(found[0].line, 0);
     assert.match(found[0].message, /^managed: cannot plan an update: /);
   });
 });

@@ -258,7 +258,11 @@ test("status --write regenerates the kit's own BUILD.md", () => {
   assert.ok(text.includes('## Phase 1 — Spine'), text);
   assert.match(text, /^\| S-01 \|.*\| Done \|$/m);
   assert.ok(text.includes(MARKER), text);
-  assert.ok(text.indexOf('## Phase 2 — Loop') > text.indexOf(MARKER), text);
+  // Every phase has slice files now, so every phase is generated and nothing below the marker is a phase.
+  for (const phase of ['## Phase 2 — Loop', '## Phase 3 — Trace', '## Phase 4 — Ops']) {
+    assert.ok(text.includes(phase) && text.indexOf(phase) < text.indexOf(MARKER), phase);
+  }
+  assert.doesNotMatch(text.slice(text.indexOf(MARKER)), /^## Phase /m);
 });
 
 test('a done-when example marker does not reach the rendered row', () => {
