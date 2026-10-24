@@ -9,9 +9,9 @@
   },
   "files": ["bin", "src", "templates"],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test \"test/**/*.test.js\""
   }
 }
