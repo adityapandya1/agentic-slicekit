@@ -9,11 +9,11 @@ export const CONFIG_PATH = path.join('.slicekit', 'config.json');
 const COMMAND_KEYS = ['test', 'lint', 'build', 'e2e'];
 
 const DESTRUCTIVE = [
-  '\brm\s+-rf\s+(/|~|\.\.)',
-  '\bDROP\s+(TABLE|DATABASE|SCHEMA)\b',
-  '\bTRUNCATE\b',
-  'git\s+push\s+.*--force',
-  'git\s+reset\s+--hard\s+origin/',
+  '\\brm\\s+-rf\\s+(/|~|\\.\\.)',
+  '\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b',
+  '\\bTRUNCATE\\b',
+  'git\\s+push\\s+.*--force',
+  'git\\s+reset\\s+--hard\\s+origin/',
 ];
 
 export class ConfigError extends Error {

@@ -43,10 +43,25 @@ test('defaultConfig seeds banned phrases from templates/style.json', () => {
   assert.ok(base().style.banned.includes('minting at the gate'));
 });
 
-test('default destructive patterns each compile as a regex', () => {
-  const { destructive } = base();
-  assert.equal(destructive.length, 5);
-  for (const src of destructive) assert.doesNotThrow(() => new RegExp(src), src);
+test('default destructive patterns match their commands and spare benign ones', () => {
+  const patterns = base().destructive.map((p) => new RegExp(p));
+  assert.equal(patterns.length, 5);
+  const blocked = [
+    'rm -rf /',
+    'rm -rf ~',
+    'rm -rf ..',
+    'DROP TABLE x',
+    'DROP DATABASE y',
+    'TRUNCATE users',
+    'git push origin main --force',
+    'git reset --hard origin/main',
+  ];
+  for (const cmd of blocked) assert.ok(patterns.some((re) => re.test(cmd)), `should match: ${cmd}`);
+  // The patterns carry no i flag, so SQL keywords match upper case only.
+  assert.ok(!patterns.some((re) => re.test('drop database y')));
+  for (const cmd of ['rm -rf ./build', 'git push origin slice/x', 'git reset --soft HEAD~1']) {
+    assert.ok(!patterns.some((re) => re.test(cmd)), `should not match: ${cmd}`);
+  }
 });
 
 test('loadConfig throws ConfigError when file missing', () => {
