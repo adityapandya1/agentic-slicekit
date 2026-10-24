@@ -86,6 +86,17 @@ export function tables(text) {
   return out;
 }
 
+// A link target: one level of balanced parentheses (`a(b).md`), then an optional title.
+const LINK = /\[[^\]]*\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+const CODE_SPAN = /`[^`]*`/g;
+
+// A target the reader cannot resolve to one file: a URL, a `<placeholder>` or a glob.
+export function isPathLike(target) {
+  return !/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.includes('://') && !/[<>*?{}]/.test(target);
+}
+
+// Paths, anchors and ids outside fenced code. A link written inside a code span is not a link; a
+// reference-style link (`[t][ref]`) is not followed. An anchor carries the file it points into.
 export function refs(text) {
   const out = [];
   const idRe = new RegExp(
@@ -93,16 +104,19 @@ export function refs(text) {
     'g',
   );
   for (const [line, n] of prose(text)) {
-    for (const m of line.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)) {
+    const outsideCode = line.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+    for (const m of outsideCode.matchAll(LINK)) {
       const target = m[1];
-      if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#')) continue;
-      const [file, anchor] = target.split('#');
+      if (target.startsWith('#') || !isPathLike(target)) continue;
+      const hash = target.indexOf('#');
+      const file = hash === -1 ? target : target.slice(0, hash);
+      const anchor = hash === -1 ? '' : target.slice(hash + 1);
       if (file) out.push({ kind: 'path', value: file, line: n });
-      if (anchor) out.push({ kind: 'anchor', value: anchor, line: n });
+      if (file && anchor) out.push({ kind: 'anchor', value: anchor, file, line: n });
     }
     for (const m of line.matchAll(/`([^`\s]+)`/g)) {
       const token = m[1];
-      if (token.includes('/') && (token.endsWith('/') || /\.[A-Za-z0-9]+$/.test(token))) {
+      if (token.includes('/') && (token.endsWith('/') || /\.[A-Za-z0-9]+$/.test(token)) && isPathLike(token)) {
         out.push({ kind: 'path', value: token, line: n });
       }
     }

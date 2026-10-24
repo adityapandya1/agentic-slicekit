@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { init } from '../../src/init.js';
 import { loadConfig } from '../../src/config.js';
-import { check, loadRules } from '../../src/check/index.js';
+import { ALL_RULES, check, loadRules } from '../../src/check/index.js';
 import { buildContext } from '../../src/check/context.js';
 import os from 'node:os';
 import { makeRepo } from '../helpers/tmp-repo.js';
@@ -124,10 +124,17 @@ test('check on an empty init\'d repo exits 0', () => {
   try {
     const r = runCli(['check'], { cwd: repo.root });
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'check: 0 findings, 0 over baseline, 0 blocking, 0 rules\n');
+    // Counted against the registered rules, so a slice that adds a rule does not edit this test.
+    const n = ALL_RULES.length;
+    assert.ok(n >= 1);
+    assert.equal(r.stdout, `check: 0 findings, 0 over baseline, 0 blocking, ${n} rules\n`);
     const j = runCli(['check', '--json', '--ci'], { cwd: repo.root });
     assert.equal(j.code, 0, j.stderr);
-    assert.deepEqual(JSON.parse(j.stdout), { findings: [], counts: {}, exitCode: 0, rules: 0 });
+    const out = JSON.parse(j.stdout);
+    assert.deepEqual(out.findings, []);
+    assert.equal(out.exitCode, 0);
+    assert.equal(out.rules, n);
+    assert.deepEqual(out.counts, Object.fromEntries(ALL_RULES.map((rule) => [rule.id, {}])));
   } finally {
     repo.cleanup();
   }

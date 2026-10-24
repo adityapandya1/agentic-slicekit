@@ -37,12 +37,15 @@ test('update refuses to raise a count', () => {
 test('baseline update through the CLI touches only ratchet rules and exits 0 with nothing to refuse', () => {
   const repo = initRepo();
   try {
-    // No ratchet rule is registered yet, so the CLI has no counts and leaves every file as it is.
+    // The references rule counts zero for a.md, so its bucket is lowered; a file for a rule that is
+    // not registered is left as it is.
     fs.writeFileSync(baselineFile(repo.root, 'references'), '{"a.md":2}');
+    fs.writeFileSync(baselineFile(repo.root, 'unregistered'), '{"b.md":3}');
     const r = runCli(['baseline', 'update'], { cwd: repo.root });
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '');
-    assert.deepEqual(readBaselines(repo.root).references, { 'a.md': 2 });
+    assert.equal(r.stdout, 'baseline references a.md: 2 → 0\n');
+    assert.equal(readBaselines(repo.root).references?.['a.md'], undefined);
+    assert.deepEqual(readBaselines(repo.root).unregistered, { 'b.md': 3 });
     assert.equal(runCli(['baseline'], { cwd: repo.root }).code, 2);
   } finally {
     repo.cleanup();

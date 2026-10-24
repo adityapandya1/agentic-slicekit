@@ -38,6 +38,21 @@ test('markdown » tables', () => {
   assert.deepEqual(t, [{ line: 3, header: ['A', 'B'], rows: [['1', '2'], ['3', '4']] }]);
 });
 
+test('markdown » refs handles titles, parentheses, URLs, placeholders and reference links', () => {
+  const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
+  assert.deepEqual(paths('[t](x.md "title")'), ['x.md']);
+  assert.deepEqual(paths("[t](x.md 'title')"), ['x.md']);
+  assert.deepEqual(paths('[t](a(b).md)'), ['a(b).md']);
+  assert.deepEqual(paths('`https://x.io/a.md`'), []);
+  assert.deepEqual(paths('`src/cli/<cmd>.js`'), []);
+  assert.deepEqual(paths('[t](src/cli/<cmd>.js)'), []);
+  assert.deepEqual(paths('`docs/**/*.md` [g](docs/*.md)'), []);
+  assert.deepEqual(paths('[t][ref] and [ref]: x/y.md'), []);
+  assert.deepEqual(paths('`[t](inline/code.md)`'), [], 'a link written inside a code span is not a link');
+  const anchor = refs('[t](a.md#sec "title")').find((r) => r.kind === 'anchor');
+  assert.deepEqual(anchor, { kind: 'anchor', value: 'sec', file: 'a.md', line: 1 });
+});
+
 test('markdown » refs finds paths, ids and links', () => {
   const text = [
     'See [spec](docs/spec/01.md) and [part](02.md#intro).',
