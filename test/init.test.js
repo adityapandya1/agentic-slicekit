@@ -115,7 +115,7 @@ test('second run skips everything and overwrites nothing', () => {
   });
 });
 
-test('init on a repo with no commits leaves core.hooksPath alone', () => {
+test('init on a repo with no commits', () => {
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'fullstack' });
     assert.ok(result.created.includes('.slicekit/config.json'));

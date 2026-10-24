@@ -1,7 +1,7 @@
 # Stack
 
 The kit is written in **Node (JavaScript, ES modules), with zero runtime dependencies** (D-04).
-Minimum Node 20. Tests use `node:test`. The visualize page is one static HTML file with inline
+Minimum Node 22 (D-29). Tests use `node:test`. The visualize page is one static HTML file with inline
 script; nothing is fetched from a CDN, so it works on an air-gapped laptop.
 
 The repositories the kit is installed into can be in any language. The kit learns four commands at

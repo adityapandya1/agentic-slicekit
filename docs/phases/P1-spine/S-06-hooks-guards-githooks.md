@@ -94,7 +94,7 @@ decisions: [D-10, D-19]
 
 ### Task 5: Git hooks, `hooks` and `trailer` rules
 
-**Files:** Create `templates/githooks/prepare-commit-msg`, `templates/githooks/pre-commit`, `src/check/rules/hooks.js`, `src/check/rules/trailer.js`, `test/githooks.test.js`, `test/check/hooks.test.js`, `test/check/trailer.test.js`. Modify `src/init.js` to copy the two files with mode 0o755 and set `core.hooksPath`.
+**Files:** Create `templates/githooks/prepare-commit-msg`, `templates/githooks/pre-commit`, `src/check/rules/hooks.js`, `src/check/rules/trailer.js`, `test/githooks.test.js`, `test/check/hooks.test.js`, `test/check/trailer.test.js`. Modify `src/init.js` to copy the two files with mode 0o755 and set `core.hooksPath` (S-01 deliberately left it unset). Guards: when `core.hooksPath` already holds a value other than `.githooks`, leave it alone and push a warning naming the value; when `.git/hooks/` holds any hook that is not a `.sample` file, warn that those hooks stop running once `core.hooksPath` is set.
 
 **Interfaces:**
 - `prepare-commit-msg` (POSIX sh, `#!/bin/sh`): reads branch, derives `P<n>/S-<nn>` from `slice/P<n>-S-<nn>-*`, appends `Slice: P<n>/S-<nn>` to the message file if no `Slice:` line exists; no-op on other branches and on merge/squash sources.

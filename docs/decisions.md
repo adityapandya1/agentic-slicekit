@@ -35,11 +35,12 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | D-23 | Decision | Is the graph committed? | No. Rebuilt in seconds, published as a CI artefact. | author (by recommendation, unopposed), 2026-10-24 |
 | D-24 | Decision | Where do documents go? | A docs root, default `docs/`, configurable at init, because teams document differently. | author, 2026-10-24 |
 | D-25 | Decision | How is filler language kept out? | A banned-phrase list in config, seeded by the kit, extended by the team, enforced as a ratchet in `slicekit check`. Seed examples from the author: "minting at the gate", "at the boundary of". | author, 2026-10-24 |
+| D-29 | Decision | Which Node versions, and which files are tests? | Node 22 or later: Node 20 reached end of life on 2026-04-30. The test script is `node --test "test/**/*.test.js"`, so helpers and fixtures under `test/` never run as tests. | author (by review ruling), 2026-10-24 |
 
 ## Open
 
 | # | Type | Question | Why it matters | Recommendation |
 |---|---|---|---|---|
-| D-26 | Action | Reserve the npm name `slicekit` now? It is free today and this space moves fast. | Losing it forces a rename after the README is public. | Publish a 0.0.1 placeholder from this repository once the CLI skeleton exists (Phase 1, S-01). |
+| D-26 | Action | Reserve the npm name `slicekit` now? It is free today and this space moves fast. | Losing it forces a rename after the README is public. | Publish a 0.0.1 placeholder from this repository once the CLI skeleton exists (Phase 1, S-01). `npm view slicekit` returns 404 "Unpublished on 2026-07-29": a previous holder withdrew the name. The author tries `npm publish`; if npm refuses a withdrawn name, the fallback is `@adityapandya1/slicekit`. |
 | D-27 | Information | More seed phrases for the filler list, from the author's reading of agent output. | The ratchet is only as good as its seed. | Author adds phrases to `templates/style.json` as they meet them; the kit ships with those given so far. |
 | D-28 | Decision | Public from the first commit, or private until 0.1 is installable? | Public early invites eyes and stars; private avoids a half-built first impression. | Private until Phase 1 passes its own `check` and the README's ten-minute walkthrough works; then public. |
