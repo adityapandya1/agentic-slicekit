@@ -13,6 +13,8 @@ never pull, merge, or block, and SHALL exit 0 on every failure path saying why.
 Scenario: GIVEN no network WHEN a session starts THEN the hook prints "could not fetch origin" and
 the session continues.
 
+Cites: D-05, intake/2026-10-24-founding-requirement.md.
+
 Enforced by: `slicekit hook session-start`.
 
 ## REQ-3.2 PreToolUse on Bash — fail closed
@@ -26,6 +28,8 @@ branches). Each denial SHALL state the rule and the file or command.
 Scenario: GIVEN the current branch is `main` WHEN `git commit` is attempted THEN the hook returns a
 deny decision with "commit on protected branch main; create a slice branch".
 
+Cites: D-05, D-08, D-19.
+
 Enforced by: `slicekit hook pre-bash`.
 
 ## REQ-3.3 PreToolUse on Edit and Write — fail closed
@@ -38,6 +42,8 @@ an edit to `journal.log`, `baselines/` or any `state/` file by anything other th
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
 
+Cites: D-05, D-10, D-22.
+
 Enforced by: `slicekit hook pre-edit`.
 
 ## REQ-3.4 SubagentStart — fail open
@@ -45,6 +51,12 @@ Enforced by: `slicekit hook pre-edit`.
 SHALL set the subagent marker for the session and inject the role's brief from
 `slicekit instructions <role>`, the writing rules, and the sentence "You never run git; report and
 the command commits."
+
+Scenario: GIVEN the build command spawns the developer WHEN SubagentStart fires THEN the subagent
+marker is set and the injected context ends with "You never run git; report and the command
+commits."
+
+Cites: D-05, D-19.
 
 Enforced by: `slicekit hook subagent-start`.
 
@@ -56,12 +68,22 @@ with its summary line and ended with "Skipped:" and "Not checked:"; fixer named 
 answered. A wrong shape SHALL re-prompt once with the missing parts; a second failure SHALL stop the
 loop and report.
 
+Scenario: GIVEN a developer reply with no "Skipped:" line WHEN SubagentStop fires THEN the agent is
+re-prompted once with the missing line, and a second reply without it stops the loop with a report.
+
+Cites: D-05, intake/2026-10-24-founding-requirement.md.
+
 Enforced by: `slicekit hook subagent-stop`.
 
 ## REQ-3.6 PreCompact — fail open
 
 SHALL write into the active slice's state file: stage, open findings by ID, the last command run and
 its result, and the next step, so that REQ-3.1 can restore the loop after compaction.
+
+Scenario: GIVEN an active slice at `building` with open finding B-1 WHEN PreCompact fires THEN the
+slice's state file holds the stage, B-1, the last command and its result, and the next step.
+
+Cites: D-05, D-22.
 
 Enforced by: `slicekit hook pre-compact`.
 
@@ -91,6 +113,8 @@ Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends TH
 fails with the file, the line and the missing target, and the agent must fix it before the turn is
 accepted.
 
+Cites: D-21, D-25, intake/2026-10-24-founding-requirement.md.
+
 Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
 ## REQ-3.8 SessionEnd — fail open: the journal
@@ -103,6 +127,8 @@ The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is app
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n>".
 
+Cites: intake/2026-10-24-founding-requirement.md.
+
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 
 ## REQ-3.9 Git hooks — two layers
@@ -112,6 +138,11 @@ Init SHALL write `.githooks/prepare-commit-msg` (adds the `Slice:` trailer from 
 and `slicekit check` SHALL fail when the hooks path is not set, because git hooks do not survive a
 clone. The Claude Code PreToolUse guard covers tool-issued commands; the git hooks cover plain git.
 Each alone fails silently.
+
+Scenario: GIVEN a fresh clone in which `core.hooksPath` is not set WHEN `slicekit check` runs THEN the
+hooks rule fails and says the hooks path is not `.githooks`.
+
+Cites: intake/2026-10-24-founding-requirement.md.
 
 Enforced by: `slicekit init`, `slicekit check` (hooks rule).
 
@@ -124,6 +155,11 @@ and pull request body, counted per file against `baselines/style.json`. The team
 config; a removal from the list SHALL be a decision row. The files that define the list (config, the
 seed template, and this requirement) are exempt, and the check SHALL verify that they still contain
 it, so the catalogue cannot be emptied by accident.
+
+Scenario: GIVEN a doc that holds one more banned phrase than its style baseline allows WHEN
+`slicekit check` runs THEN the style rule fails naming the file and the line.
+
+Cites: D-25.
 
 Enforced by: `slicekit check` (style rule).
 
@@ -141,6 +177,8 @@ Actions SHALL be pinned by SHA.
 Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must begin
 with [P<n>/S-<nn>]".
 
+Cites: D-12, D-18, D-20.
+
 Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
@@ -153,5 +191,11 @@ line 1, so no marker may come before it. Any other file SHALL sit between
 comment syntax of the file type), and `slicekit update` SHALL replace only the content between the
 markers and leave everything outside untouched. `slicekit update` SHALL show the diff for both forms. `slicekit check` SHALL fail when a managed
 block's content differs from the installed version's template (drift of the kit's own files).
+
+Scenario: GIVEN a rendered file with markers and a line the team added outside them WHEN
+`slicekit update` runs THEN the added line is kept and only the content between the markers is
+replaced.
+
+Cites: D-05.
 
 Enforced by: the renderer; `slicekit check` (managed rule).
