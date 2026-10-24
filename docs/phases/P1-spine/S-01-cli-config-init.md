@@ -5,15 +5,15 @@ repo: .
 group: A
 runbook: no
 requirements: [REQ-1.1, REQ-1.11, REQ-1.10, REQ-5.1, REQ-5.3]
-decisions: [D-04, D-11, D-14, D-24, D-26]
+decisions: [D-04, D-11, D-14, D-24, D-26, D-29]
 ---
 
 ## Done when
 
-1. `node bin/slicekit.js init --shape backend --name demo` in an empty git repo creates every path of REQ-1.1 except `workspace.json`, `graph/`, `phases/*`, `releases/*`, and prints each created path.
+1. `node bin/slicekit.js init --shape backend --name demo` in an empty git repo creates every path of REQ-1.1 except `workspace.json`, `graph/`, `phases/*`, `releases/*` and the adapter files (`.claude/` from S-02, the `.githooks/*` files from S-06, `.github/workflows/slicekit.yml` from S-08), and prints each created path.
 2. Running it again creates nothing and prints each skipped path; a pre-existing `docs/README.md` is untouched.
 3. `config.json` validates; an unknown shape or a non-string command is reported with the field name and exit 2.
-4. `package.json` has no `dependencies`; `node --test test/` passes.
+4. `package.json` has no `dependencies`; `npm test` (`node --test "test/**/*.test.js"`) passes.
 
 ## Evaluation set
 
@@ -54,11 +54,11 @@ test('unknown subcommand exits 2 with usage', async () => {
 });
 test('--version prints package version', ...)  // exit 0, stdout matches /^0\.0\.1/
 // test/package.test.js
-test('no dependencies', () => { assert.equal(pkg.dependencies, undefined); assert.equal(pkg.type, 'module'); assert.equal(pkg.engines.node, '>=20'); });
+test('no dependencies', () => { assert.equal(pkg.dependencies, undefined); assert.equal(pkg.type, 'module'); assert.equal(pkg.engines.node, '>=22'); });
 ```
 
-- [ ] **Step 2: Run `node --test test/` — expect FAIL (no bin, no package)**
-- [ ] **Step 3: Write `package.json`** — `name: slicekit`, `version: 0.0.1`, `bin: {slicekit: bin/slicekit.js}`, `type: module`, `engines`, `files: [bin, src, templates]`, `scripts: {test: "node --test test/"}`, `license: MIT`. Write `bin/slicekit.js` calling `main(process.argv.slice(2), io)` and `process.exit(code)`. Write `main` with the dispatch table, `--version`, `--help`, usage on stderr with exit 2.
+- [ ] **Step 2: Run `npm test` — expect FAIL (no bin, no package)**
+- [ ] **Step 3: Write `package.json`** — `name: slicekit`, `version: 0.0.1`, `bin: {slicekit: bin/slicekit.js}`, `type: module`, `engines: {node: ">=22"}`, `files: [bin, src, templates]`, `scripts: {test: "node --test \"test/**/*.test.js\""}`, `license: MIT`. Write `bin/slicekit.js` calling `main(process.argv.slice(2), io)` and `process.exit(code)`. Write `main` with the dispatch table, `--version`, `--help`, usage on stderr with exit 2.
 - [ ] **Step 4: Run tests — expect PASS**
 - [ ] **Step 5: Commit** `feat(cli): package and dispatch` with trailer `Slice: P1/S-01`.
 
@@ -67,7 +67,7 @@ test('no dependencies', () => { assert.equal(pkg.dependencies, undefined); asser
 **Files:** Create `src/config.js`, `test/config.test.js`.
 
 **Interfaces:**
-- Produces `CONFIG_VERSION = 1`; `SHAPES = ['backend','fullstack','data']`; `defaultConfig({name, shape, docsRoot='docs', commands={}}) → cfg`; `validateConfig(cfg) → string[]` (empty = valid; each error `"<field>: <problem>"`); `loadConfig(root) → cfg` (throws `ConfigError` with the errors joined if invalid or missing).
+- Produces `CONFIG_VERSION = 1`; `SHAPES = ['backend','fullstack','data']`; `defaultConfig({name, shape, docsRoot='docs', commands={}}) → cfg`; `validateConfig(cfg) → string[]` (empty = valid; each error `"<field>: <problem>"`); `loadConfig(root) → cfg` (throws `ConfigError` with the errors joined if invalid or missing); `compileDestructive(cfg) → RegExp[]` (every pattern with the `i` flag).
 - The config shape (every key present after `defaultConfig`): `configVersion, name, shape, docsRoot, defaultBranch:'main', protectedBranches:['main'], commands:{test,lint,build,e2e} (strings, '' allowed), repos:[], gitHost:{kind:'github'}, tracker:{kind:'github-issues'}, review:{independent:'required'}, freezeTests:true, style:{banned:[…from templates/style.json]}, destructive:[regex strings], ci:{observabilitySteps:[]}`.
 
 - [ ] **Step 1: Write failing tests** — `rejects unknown shape with the field name` (`validateConfig({...defaultConfig(...), shape:'mobile'})` includes `'shape: must be one of backend, fullstack, data'`); `empty command strings are valid`; `rejects non-string command` (`commands.test: 3` → `'commands.test: must be a string'`); `loadConfig throws ConfigError when file missing`; `defaultConfig seeds banned phrases from templates/style.json` (includes `'minting at the gate'`).
@@ -82,7 +82,7 @@ test('no dependencies', () => { assert.equal(pkg.dependencies, undefined); asser
 
 **Interfaces:**
 - `src/fs.js`: `readText(p) → string` (normalises CRLF to LF), `writeText(p, s)` (mkdir -p, write to `p + '.tmp-' + pid`, rename), `exists(p)`, `listFiles(dir, {ext?, ignore=['node_modules','.git']}) → string[]` (recursive, POSIX-separated relative paths).
-- `src/paths.js`: `kitPaths(root, cfg) → {kit, config, state, baselines, journal, graph, workspace, docs, intake, decisions, spec, contracts, gaps, stack, platform, observability, runbook, phases, releases, build, claude, githooks, workflow}` all absolute.
+- `src/paths.js`: `kitPaths(root, cfg) → {kit, config, state, baselines, journal, graph, workspace, docs, intake, decisions, spec, contracts, gaps, stack, platform, observability, runbook, phases, releases, build, claude, githooks, workflow, gitignore}` all absolute.
 - `src/ids.js`: `ID = {req, decision, gap, contract, phase, slice, sliceAddr}` regexes (global, source strings reusable); `parseSliceAddr('P1/S-03') → {phase:1, slice:3, id:'P1/S-03'}`; `sliceFromBranch('slice/P1-S-03-x') → 'P1/S-03' | null`; `stateFileName('P1/S-03') → 'P1-S-03.json'`.
 - `src/git.js`: `git(root, args: string[]) → string` (execFileSync, trims; throws `GitError` with stderr), `isRepo(root)`, `hasCommits(root)`, `currentBranch(root)`, `headSha(root)`, `changedFiles(root, base) → string[]`, `commitsOnBranch(root, base) → [{sha, subject, body, trailers:{}}]` using `git log --format=%H%x1f%s%x1f%b%x1e base..HEAD`.
 - `src/markdown.js`: `lines(text) → string[]`, `headings(text) → [{level, text, line}]`, `frontMatter(text) → {data, body}` (key: value, `[a, b]` lists, `- item` lists, strings only), `tables(text) → [{line, header:[], rows:[[]]}]`, `refs(text) → [{kind:'path'|'id'|'anchor', value, line}]` (relative `.md` links, backticked paths containing `/`, every ID regex).
@@ -99,11 +99,11 @@ test('no dependencies', () => { assert.equal(pkg.dependencies, undefined); asser
 **Files:** Create `templates/docs/{decisions.md, platform.md, observability.md, runbook.md, BUILD.md, spec/00-overview.md, spec/gaps.md, spec/stack.md, intake/.keep, spec/contracts/.keep, phases/.keep, releases/.keep}`, `src/init.js`, `src/cli/init.js`, `test/init.test.js`.
 
 **Interfaces:**
-- Produces `init(root, {name, shape, docsRoot='docs', commands={}, force=false}) → {created: string[], skipped: string[]}`; never overwrites; writes `.slicekit/config.json`, `.slicekit/baselines/references.json` and `style.json` as `{}` placeholders, empty `.slicekit/state/`, `.slicekit/journal.log` absent until first session; adds `.slicekit/graph/` to `.gitignore` (append if missing); runs `git config core.hooksPath .githooks` only when `isRepo(root)` (the hook files themselves arrive in S-06; init creates the empty `.githooks/` dir now).
-- CLI: `slicekit init --shape <s> [--name <n>] [--docs <dir>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]`; prompts for nothing when flags are given; with no `--shape` exits 2 with usage.
+- Produces `init(root, {name, shape, docsRoot='docs', commands={}}) → {created: string[], updated: string[], skipped: string[], warnings: string[]}`; never overwrites; writes `.slicekit/config.json`, `.slicekit/baselines/references.json` and `style.json` as `{}` placeholders, empty `.slicekit/state/`, `.slicekit/journal.log` absent until first session; adds `.slicekit/graph/` to `.gitignore` (append if missing); creates the empty `.githooks/` dir and does not touch `core.hooksPath` (S-06 sets it, with its guards). When `config.json` exists its `shape` and `docsRoot` are the truth; a disagreeing flag is a `ConfigError`. `warnings` is always present; outside a repo it holds `not a git repository`.
+- CLI: `slicekit init --shape <s> [--name <n>] [--docs <dir>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]`; prompts for nothing when flags are given; with no `--shape` and no `config.json` exits 2 with usage; run from a subdirectory of a repository exits 2 naming the root; `--docs` is normalised to forward slashes without a trailing slash.
 - Template placeholders: `{{name}}`, `{{docsRoot}}`, `{{date}}`; sections of REQ-1.11 each containing the single line `Not yet known`.
 
-- [ ] **Step 1: Write failing tests** — `creates the layout for shape backend` (asserts every path from REQ-1.1 that P1 owns exists; `config.json` parses and `validateConfig` is empty); `creates platform, observability and runbook with "Not yet known" sections` (section headings from REQ-1.11 present, each followed by `Not yet known`); `second run skips everything and overwrites nothing` (pre-create `docs/README.md` with content X; after two runs content is X; second result `created` is empty and `skipped` lists the first run's files); `init on a repo with no commits` (fresh `git init`, no commits: succeeds, `git config core.hooksPath` is `.githooks`); `init outside a git repo` (succeeds, prints a warning line to stderr, no git config call); `writes gitignore rule once`.
+- [ ] **Step 1: Write failing tests** — `creates the layout for shape backend` (asserts every path from REQ-1.1 that P1 owns exists; `config.json` parses and `validateConfig` is empty); `creates platform, observability and runbook with "Not yet known" sections` (section headings from REQ-1.11 present, each followed by `Not yet known`); `second run skips everything and overwrites nothing` (pre-create `docs/README.md` with content X; after two runs content is X; second result `created` is empty and `skipped` lists the first run's files); `init on a repo with no commits` (fresh `git init`, no commits: succeeds, `core.hooksPath` is not set); `init outside a git repo` (succeeds, prints `not a git repository` to stderr); `writes gitignore rule once`.
 - [ ] **Step 2: Run — FAIL**
 - [ ] **Step 3: Write the templates and implement `init` and the CLI command.**
 - [ ] **Step 4: Run — PASS**

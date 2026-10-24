@@ -13,7 +13,7 @@ its own rules on itself.
 
 | Slice | Name | Done when | Group | Status |
 |---|---|---|---|---|
-| S-01 | CLI skeleton, config, init | `npx slicekit init --shape backend` writes the layout of REQ-1.1 and REQ-1.11 into an empty repo; `config.json` validates; existing files are never overwritten; `package.json` has no dependencies; npm name reserved (D-26). | A | Todo |
+| S-01 | CLI skeleton, config, init | `npx slicekit init --shape backend` writes the layout of REQ-1.1 and REQ-1.11 into an empty repo; `config.json` validates; existing files are never overwritten; `package.json` has no dependencies; npm name reserved (D-26). | A | PR #1 |
 | S-02 | Claude Code renderer and update | Commands, agents, skills and hook registrations render per shape inside managed blocks (REQ-1.10, REQ-3.12); `slicekit update` changes only inside markers and shows a diff; golden files per shape. | A | Todo |
 | S-03 | State files, status, BUILD.md | `slicekit state set` is the only writer and refuses a transition whose precondition fails (REQ-1.8); `slicekit status --write` regenerates BUILD.md; `--sync` reads merged pull requests through the stubbed git host (C-1). | A | Todo |
 | S-04 | Check: references and style ratchets | The references and style rules of REQ-3.7 with baselines that only go down; `baseline update` refuses to raise a count; the seed filler list (REQ-3.10). | B | Todo |

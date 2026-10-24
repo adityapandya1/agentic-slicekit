@@ -80,7 +80,7 @@ Enforced by: `slicekit update`; a test per config migration.
 ## REQ-5.7 Distribution
 
 The package SHALL be published to npm as `slicekit` (D-02, D-26), runnable as `npx slicekit init`
-with Node 20 or later. The repository is `github.com/adityapandya1/agentic-slicekit` under MIT
+with Node 22 or later (D-29). The repository is `github.com/adityapandya1/agentic-slicekit` under MIT
 (D-03). The README SHALL open with what the kit is in two sentences, then a ten-minute walkthrough on
 `examples/backend`, then the scope line from 04 REQ-4.8. The repository stays private until Phase 1
 passes its own check and the walkthrough works (D-28).
