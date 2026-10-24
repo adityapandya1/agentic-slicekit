@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { GitHostError, GitHostNotFound } from './errors.js';
-import { assertDate, assertPrNumber, assertSha, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import { assertDate, assertSha } from '../../evidence.js';
+import { assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
 //   pr-<n>.json          what `gh pr view <n> --json ...` prints

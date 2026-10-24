@@ -5,7 +5,7 @@ import { kitPaths } from '../paths.js';
 import { SliceFileError, findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { programStage } from '../stage.js';
 import { renderBuild } from '../state/build.js';
-import { readSlice } from '../state/index.js';
+import { LockError, readSlice } from '../state/index.js';
 import { syncFromHost } from '../state/sync.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
@@ -26,6 +26,14 @@ function slices(root, cfg) {
   });
 }
 
+// The errors status reports and exits 2 on: a bad config or slice file, the host saying no, a held lock.
+const expected = (e) =>
+  e instanceof ConfigError || e instanceof SliceFileError || e instanceof GitHostError || e instanceof LockError;
+
+// Under --json, stdout carries exactly one JSON document on every path:
+//   success  { stage, slices, synced (with --sync), warnings, build (with --write) }
+//   failure  { error, synced, warnings }, exit 2
+// Without --json, changes go to stdout and warnings and errors to stderr.
 async function run(args, io) {
   let values;
   try {
@@ -35,40 +43,48 @@ async function run(args, io) {
     return 2;
   }
   const root = io.cwd;
+  const warnings = [];
+  const synced = [];
+  const warn = (w) => {
+    warnings.push(w);
+    if (!values.json) io.stderr(`slicekit: ${w}\n`);
+  };
+  const record = ({ changes, warnings: ws }) => {
+    for (const c of changes) {
+      synced.push(c);
+      if (!values.json) io.stdout(`synced ${c.id} → ${c.to} (PR #${c.pr})\n`);
+    }
+    for (const w of ws) warn(w);
+  };
   try {
     const cfg = loadConfig(root);
-    let synced;
     if (values.sync) {
-      const report = ({ changes, warnings }, plain) => {
-        for (const c of plain ? changes : []) io.stdout(`synced ${c.id} → ${c.to} (PR #${c.pr})\n`);
-        for (const w of warnings) io.stderr(`slicekit: ${w}\n`);
-      };
       let result;
       try {
-        result = syncFromHost(root, cfg, getHost(cfg, io.env ?? process.env));
+        result = syncFromHost(root, cfg, getHost(cfg, io.env ?? process.env, root));
       } catch (e) {
         // Whatever stopped the sync, every change already on disk is reported first.
-        if (e?.partial) report(e.partial, true);
-        if (!(e instanceof GitHostError)) throw e;
-        // The host is outside the kit: gh missing, unauthenticated, unreachable.
-        io.stderr(`slicekit: ${e.message}\n`);
-        return 2;
+        if (e?.partial) record(e.partial);
+        throw e;
       }
-      // With --json, stdout stays one JSON document; the changes ride in it as `synced`.
-      report(result, !values.json);
-      synced = result.changes;
+      record(result);
     }
     let build;
     if (values.write) {
       const file = kitPaths(root, cfg).build;
       const before = exists(file) ? readText(file) : '';
-      const after = renderBuild(root, cfg, before);
+      const after = renderBuild(root, cfg, before, { onWarning: warn });
       build = after === before ? 'unchanged' : 'updated';
       if (build === 'updated') writeText(file, after);
     }
     if (values.json) {
-      // With --write the result rides in the JSON as `build`, so stdout stays one JSON document.
-      const out = { stage: programStage(root, cfg), slices: slices(root, cfg), ...(build ? { build } : {}), ...(synced ? { synced } : {}) };
+      const out = {
+        stage: programStage(root, cfg),
+        slices: slices(root, cfg),
+        ...(values.sync ? { synced } : {}),
+        warnings,
+        ...(build ? { build } : {}),
+      };
       io.stdout(`${JSON.stringify(out, null, 2)}\n`);
       return 0;
     }
@@ -80,7 +96,8 @@ async function run(args, io) {
     for (const s of list) io.stdout(`${s.id}  ${s.state}  PR ${s.pr === null ? '-' : `#${s.pr}`}  ${s.name}\n`);
     return 0;
   } catch (e) {
-    if (e instanceof ConfigError || e instanceof SliceFileError) {
+    if (values.json) io.stdout(`${JSON.stringify({ error: e.message, synced, warnings }, null, 2)}\n`);
+    if (expected(e)) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }

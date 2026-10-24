@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { STATES } from '../state/transitions.js';
-import { TransitionError, readSlice, setState, unfreeze } from '../state/index.js';
+import { LockError, TransitionError, readSlice, setState, unfreeze } from '../state/index.js';
 
 const USAGE =
   'state set <id> <to> [--commit sha] [--test-exit n] [--check-exit n] [--tests a,b] [--pr-number n --pr-title t --pr-url u --pr-sha s] [--verdict path --round n --blockers n [--independent]] [--ci-status s --ci-sha s] [--merged-at iso] [--release path] [--backfill]\n' +
@@ -86,7 +86,8 @@ async function run(args, io) {
       io.stdout(`${id}  unfroze ${arg}\n`);
     } else {
       const s = readSlice(root, cfg, id);
-      io.stdout(values.json ? `${JSON.stringify(s, null, 2)}\n` : `${id}  ${s.state}  PR ${s.pr?.number ?? '-'}\n`);
+      const pr = s.pr?.number != null ? `#${s.pr.number}` : '-';
+      io.stdout(values.json ? `${JSON.stringify(s, null, 2)}\n` : `${id}  ${s.state}  PR ${pr}\n`);
     }
     return 0;
   } catch (e) {
@@ -94,7 +95,7 @@ async function run(args, io) {
       io.stderr(`refused: ${e.reason}\n`);
       return 1;
     }
-    if (e instanceof ConfigError || /^unknown slice /.test(e.message)) {
+    if (e instanceof ConfigError || e instanceof LockError || /^unknown slice /.test(e.message)) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }

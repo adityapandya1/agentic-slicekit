@@ -8,20 +8,6 @@ export function assertPrNumber(n) {
   return n;
 }
 
-export function assertSha(sha) {
-  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) {
-    throw new Error(`commit sha must be 7 to 40 lowercase hex characters, got '${sha}'`);
-  }
-  return sha;
-}
-
-export function assertDate(isoDate) {
-  if (typeof isoDate !== 'string' || Number.isNaN(Date.parse(isoDate))) {
-    throw new Error(`listMergedSince needs an ISO date, got '${isoDate}'`);
-  }
-  return Date.parse(isoDate);
-}
-
 export function mapPullRequest(raw) {
   return {
     number: raw.number,

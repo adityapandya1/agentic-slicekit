@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { assertDate, assertSha } from '../../evidence.js';
 import { GitHostError, GitHostNotFound } from './errors.js';
-import { assertDate, assertPrNumber, assertSha, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import { assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
 
 // C-1 for GitHub through the `gh` CLI. This file owns only the spawn; the JSON mapping is gh-json.js.
 
@@ -18,9 +19,9 @@ export function ghExitError(args, stderr) {
   return new GitHostError(`gh ${args.slice(0, 2).join(' ')} failed: ${stderr}`, { stderr });
 }
 
-function gh(args, env) {
+function gh(exec, args, opts) {
   try {
-    return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env });
+    return exec('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
   } catch (e) {
     if (e.code === 'ENOENT') throw new GitHostError(GH_NOT_FOUND);
     if (typeof e.status !== 'number') throw new GitHostError(`gh could not be run: ${e.message}`);
@@ -28,32 +29,34 @@ function gh(args, env) {
   }
 }
 
-function ghJson(args, env) {
-  const out = gh(args, env);
-  try {
-    return JSON.parse(out);
-  } catch (e) {
-    throw new GitHostError(`gh ${args.slice(0, 2).join(' ')} printed something that is not JSON: ${e.message}`);
-  }
-}
-
-export function githubHost(env = process.env) {
+// gh picks the repository from its working directory, so every call runs in the project root.
+// `exec` is the test seam; it defaults to execFileSync.
+export function githubHost(env = process.env, root = process.cwd(), exec = execFileSync) {
+  const ghJson = (args) => {
+    const out = gh(exec, args, { env, cwd: root });
+    try {
+      return JSON.parse(out);
+    } catch (e) {
+      throw new GitHostError(`gh ${args.slice(0, 2).join(' ')} printed something that is not JSON: ${e.message}`);
+    }
+  };
   return {
     kind: 'github',
     getPullRequest(n) {
       assertPrNumber(n);
-      return mapPullRequest(ghJson(['pr', 'view', String(n), '--json', PR_FIELDS], env));
+      return mapPullRequest(ghJson(['pr', 'view', String(n), '--json', PR_FIELDS]));
     },
-    // `gh pr list` orders by creation, newest first, so the 200 window is the 200 most recently
-    // created merged pull requests; one created earlier but merged after isoDate can fall outside it.
+    // The search narrows to pull requests merged on or after the instant's UTC day; the client-side
+    // filter then keeps those merged at or after the instant itself.
     listMergedSince(isoDate) {
       const since = assertDate(isoDate);
-      const list = ghJson(['pr', 'list', '--state', 'merged', '--limit', '200', '--json', LIST_FIELDS], env);
-      return filterMergedSince(list, since);
+      const day = new Date(since).toISOString().slice(0, 10);
+      const args = ['pr', 'list', '--state', 'merged', '--search', `merged:>=${day}`, '--limit', '200', '--json', LIST_FIELDS];
+      return filterMergedSince(ghJson(args), since);
     },
     ciStatus(sha) {
       assertSha(sha);
-      return reduceRuns(ghJson(['run', 'list', '--commit', sha, '--limit', '20', '--json', RUN_FIELDS], env));
+      return reduceRuns(ghJson(['run', 'list', '--commit', sha, '--limit', '20', '--json', RUN_FIELDS]));
     },
   };
 }

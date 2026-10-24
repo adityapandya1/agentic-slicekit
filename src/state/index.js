@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { exists, readText, writeText } from '../fs.js';
+import { commitExists, hasCommits, isRepo, resolveCommit } from '../git.js';
 import { parseSliceAddr, stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
@@ -8,7 +9,16 @@ import { TRANSITIONS, TransitionError, nextStates, validateEvidence } from './tr
 
 export { TransitionError };
 
-const LOCK_TRIES = 50;
+// Another slicekit holds the slice's lock for longer than the wait budget.
+export class LockError extends Error {
+  constructor(id) {
+    super(`could not lock ${id}: another slicekit is writing it`);
+    this.name = 'LockError';
+    this.slice = id;
+  }
+}
+
+const LOCK_BUDGET_MS = 5_000;
 const LOCK_WAIT_MS = 10;
 const LOCK_STALE_MS = 30_000;
 
@@ -23,8 +33,9 @@ const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 
 function withLock(root, cfg, id, fn) {
   const lock = `${stateFile(root, cfg, id)}.lock`;
   fs.mkdirSync(path.dirname(lock), { recursive: true });
+  const deadline = Date.now() + LOCK_BUDGET_MS;
   let fd;
-  for (let i = 0; i < LOCK_TRIES; i++) {
+  for (;;) {
     try {
       fd = fs.openSync(lock, 'wx');
       break;
@@ -35,10 +46,10 @@ function withLock(root, cfg, id, fn) {
       } catch {
         // the holder released it between our attempt and the stat; try again
       }
+      if (Date.now() >= deadline) throw new LockError(id);
       sleep(LOCK_WAIT_MS);
     }
   }
-  if (fd === undefined) throw new Error(`could not lock ${id}: another slicekit is writing it`);
   try {
     return fn();
   } finally {
@@ -58,6 +69,7 @@ function defaultState(id) {
     unfrozen: [],
     verdicts: [],
     ci: null,
+    mergedAt: null,
     handoff: null,
     history: [],
   };
@@ -75,7 +87,15 @@ function sliceExists(root, cfg, id) {
 
 export function readSlice(root, cfg, id) {
   const file = stateFile(root, cfg, id);
-  if (exists(file)) return { ...defaultState(id), ...JSON.parse(readText(file)) };
+  if (exists(file)) {
+    let stored;
+    try {
+      stored = JSON.parse(readText(file));
+    } catch {
+      throw new Error(`${file}: not valid JSON`);
+    }
+    return { ...defaultState(id), ...stored };
+  }
   if (sliceExists(root, cfg, id)) return defaultState(id);
   throw new Error(`unknown slice ${id}`);
 }
@@ -97,14 +117,37 @@ function entry(from, to, by, evidence) {
   return { from, to, at: new Date().toISOString(), by, evidence };
 }
 
+// In a repository with commits, the red commit must be one of them, and every SHA the repository
+// can resolve is stored as its full 40-hex form. A head or CI SHA the repository has not fetched
+// is kept as given; comparisons then match by prefix.
+function resolveShas(root, ev) {
+  const given = [ev.commit, ev.pr?.headSha, ev.ci?.sha].some((s) => s !== undefined);
+  if (!given || !isRepo(root) || !hasCommits(root)) return ev;
+  const out = { ...ev };
+  if (ev.commit !== undefined) {
+    if (!commitExists(root, ev.commit)) throw new TransitionError(`commit ${ev.commit} is not a commit in this repository`);
+    out.commit = resolveCommit(root, ev.commit) ?? ev.commit;
+  }
+  if (ev.pr?.headSha !== undefined) {
+    const full = resolveCommit(root, ev.pr.headSha);
+    if (full) out.pr = { ...ev.pr, headSha: full };
+  }
+  if (ev.ci?.sha !== undefined) {
+    const full = resolveCommit(root, ev.ci.sha);
+    if (full) out.ci = { ...ev.ci, sha: full };
+  }
+  return out;
+}
+
 export function setState(root, cfg, id, to, evidence = {}) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
-    const { backfill, ...ev } = evidence;
+    const { backfill, ...given } = evidence;
     const rule = TRANSITIONS[to];
     if (!rule) throw new TransitionError(`${current.state} cannot move to ${to}`);
-    const typeError = validateEvidence(ev);
+    const typeError = validateEvidence(given);
     if (typeError) throw new TransitionError(typeError);
+    const ev = resolveShas(root, given);
     if (backfill) {
       if (current.state !== 'todo') throw new TransitionError('backfill is only allowed from todo');
       const missing = rule.required.filter((k) => ev[k] === undefined);
@@ -139,9 +182,13 @@ export function setState(root, cfg, id, to, evidence = {}) {
   });
 }
 
+// Only a test frozen at tests-red can be unfrozen; any other path has nothing to release.
 export function unfreeze(root, cfg, id, file) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
+    if (!current.frozenTests.includes(file)) {
+      throw new TransitionError(`${file} is not a frozen test of ${id}`);
+    }
     const next = {
       ...current,
       unfrozen: [...current.unfrozen, file],

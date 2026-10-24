@@ -1,6 +1,7 @@
 {
   "configVersion": 1,
   "name": "slicekit",
+  "cli": "node bin/slicekit.js",
   "shape": "backend",
   "docsRoot": "docs",
   "defaultBranch": "main",

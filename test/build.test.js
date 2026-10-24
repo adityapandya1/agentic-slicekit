@@ -38,7 +38,7 @@ function withKit(fn, { slices = 3 } = {}) {
   }
 }
 
-const PR = { number: 14, url: 'http://x/14', headSha: 'abc', title: '[P1/S-02] x' };
+const PR = { number: 14, url: 'http://x/14', headSha: 'abc1234', title: '[P1/S-02] x' };
 
 test('renderBuild lists phases and slices from files and state', () => {
   withKit((root, cfg, ids) => {
@@ -65,7 +65,7 @@ test('renderBuild shows an in-progress slice and joins Done when items', () => {
     const text = fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works.\n2. It has a | pipe.');
     fs.writeFileSync(file, text);
     fs.writeFileSync(path.join(root, 'a.test.js'), '');
-    setState(root, cfg, ids[0], 'tests-red', { commit: 'c1', testExit: 1, tests: ['a.test.js'] });
+    setState(root, cfg, ids[0], 'tests-red', { commit: 'c1c1c1c', testExit: 1, tests: ['a.test.js'] });
     const out = renderBuild(root, cfg, '');
     assert.ok(out.includes('| S-01 | Fixture 1 | It works; It has a \\| pipe | B | Todo (in progress) |'), out);
   }, { slices: 1 });
@@ -199,6 +199,44 @@ test('a bare ## Phase 2 heading in the tail is pruned once phase 2 is generated'
     assert.ok(!out.includes('Hand-written loop.'), out);
     assert.ok(out.endsWith(`${MARKER}\n\n## Notes\n\nKept.\n`), out);
   }, { slices: 1 });
+});
+
+test('a phase directory with slices but no phase file renders from the directory name, with a warning', () => {
+  withKit((root, cfg) => {
+    writeSliceFixture(root, { phase: 2, n: 9 });
+    const warnings = [];
+    const out = renderBuild(root, cfg, '', { onWarning: (w) => warnings.push(w) });
+    assert.ok(out.includes('## Phase 2 — x\n'), out);
+    assert.ok(out.includes('| S-09 | Fixture 9 |'), out);
+    assert.ok(out.indexOf('## Phase 1 — Spine') < out.indexOf('## Phase 2 — x'), out);
+    assert.ok(out.indexOf('## Phase 2 — x') < out.indexOf(MARKER), out);
+    assert.deepEqual(warnings, ['phase P2 has no phase file; heading taken from the directory']);
+    const r = runCli(['status', '--write'], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, 'BUILD.md updated\n');
+    assert.equal(r.stderr, 'slicekit: phase P2 has no phase file; heading taken from the directory\n');
+    const json = JSON.parse(runCli(['status', '--write', '--json'], { cwd: root }).stdout);
+    assert.deepEqual(json.warnings, ['phase P2 has no phase file; heading taken from the directory']);
+  }, { slices: 1 });
+});
+
+test('a zero-padded phase directory keeps its slices under its phase', () => {
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend' });
+    writeSliceFixture(repo.root, { n: 1 });
+    const from = path.join(repo.root, 'docs', 'phases', 'P1-x');
+    const to = path.join(repo.root, 'docs', 'phases', 'P01-spine');
+    fs.renameSync(from, to);
+    fs.writeFileSync(path.join(to, 'P1.md'), PHASE_FILE);
+    const warnings = [];
+    const out = renderBuild(repo.root, loadConfig(repo.root), '', { onWarning: (w) => warnings.push(w) });
+    assert.ok(out.includes('## Phase 1 — Spine\n'), out);
+    assert.ok(out.includes('| S-01 | Fixture 1 |'), out);
+    assert.deepEqual(warnings, []);
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('status without a config exits 2', () => {

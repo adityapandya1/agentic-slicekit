@@ -12,7 +12,7 @@ import { readSlice, writeSlice } from '../src/state/index.js';
 import { syncFromHost } from '../src/state/sync.js';
 import { getHost } from '../src/adapters/githost/index.js';
 import { reduceRuns } from '../src/adapters/githost/gh-json.js';
-import { ghExitError } from '../src/adapters/githost/github.js';
+import { ghExitError, githubHost } from '../src/adapters/githost/github.js';
 import { GitHostError, GitHostNotFound } from '../src/adapters/githost/errors.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
@@ -243,6 +243,70 @@ test('status --sync lets a non-host error through', async () => {
     const statePath = path.join(root, '.slicekit', 'state');
     fs.mkdirSync(statePath, { recursive: true });
     fs.writeFileSync(path.join(statePath, 'P1-S-01.json'), '{ broken');
-    await assert.rejects(statusCommand.run(['--sync'], io), SyntaxError);
+    await assert.rejects(statusCommand.run(['--sync'], io), { message: /P1-S-01\.json: not valid JSON$/ });
   }, { slices: 1 });
+});
+
+test('status --sync --json prints one JSON document on success', () => {
+  withKit((root, cfg, ids) => {
+    park(root, cfg, ids[0], pr14);
+    park(root, cfg, ids[1], null);
+    const r = runCli(['status', '--sync', '--json'], { cwd: root, env: { ...process.env, ...fixtureEnv } });
+    assert.equal(r.code, 0, r.stderr);
+    const data = JSON.parse(r.stdout);
+    assert.deepEqual(Object.keys(data).sort(), ['slices', 'stage', 'synced', 'warnings']);
+    assert.deepEqual(data.synced, [{ id: ids[0], from: 'ready', to: 'merged', pr: 14 }]);
+    assert.equal(data.warnings.length, 1);
+    assert.match(data.warnings[0], /has no valid pull request number/);
+    assert.equal(data.slices[0].state, 'merged');
+    const both = JSON.parse(runCli(['status', '--sync', '--write', '--json'], { cwd: root, env: { ...process.env, ...fixtureEnv } }).stdout);
+    assert.equal(both.build, 'updated');
+    assert.deepEqual(both.synced, []);
+  });
+});
+
+test('status --sync --json prints one JSON document and exits 2 on a host failure', () => {
+  withKit((root, cfg, ids) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-ghfix-'));
+    try {
+      fs.copyFileSync(path.join(FIXTURE, 'pr-14.json'), path.join(dir, 'pr-14.json'));
+      fs.writeFileSync(path.join(dir, 'pr-17.json'), '{ not json');
+      park(root, cfg, ids[0], pr14);
+      park(root, cfg, ids[1], { number: 17 });
+      park(root, cfg, ids[2], null);
+      const r = runCli(['status', '--sync', '--json'], { cwd: root, env: { ...process.env, SLICEKIT_GITHOST_FIXTURE: dir } });
+      assert.equal(r.code, 2);
+      const data = JSON.parse(r.stdout);
+      assert.deepEqual(Object.keys(data).sort(), ['error', 'synced', 'warnings']);
+      assert.match(data.error, /^git host fixture .*pr-17\.json/);
+      assert.deepEqual(data.synced, [{ id: ids[0], from: 'ready', to: 'merged', pr: 14 }]);
+      assert.deepEqual(data.warnings, []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, { slices: 3 });
+});
+
+test('the GitHub host runs gh in the project root and searches by merge date', () => {
+  const calls = [];
+  const list = [
+    { number: 30, mergedAt: '2026-10-20T08:00:00Z', headRefOid: 'aaaaaaa', title: 'before the instant' },
+    { number: 31, mergedAt: '2026-10-20T10:00:00Z', headRefOid: 'bbbbbbb', title: 'after the instant' },
+  ];
+  const exec = (cmd, args, opts) => {
+    calls.push({ cmd, args, opts });
+    return args[1] === 'list' ? JSON.stringify(list) : '[]';
+  };
+  const host = githubHost({ X: '1' }, '/the/project', exec);
+  assert.deepEqual(host.listMergedSince('2026-10-20T09:30:00Z').map((p) => p.number), [31]);
+  assert.equal(calls[0].cmd, 'gh');
+  assert.equal(calls[0].opts.cwd, '/the/project');
+  assert.deepEqual(calls[0].opts.env, { X: '1' });
+  const args = calls[0].args;
+  assert.equal(args[args.indexOf('--search') + 1], 'merged:>=2026-10-20');
+  assert.equal(args[args.indexOf('--limit') + 1], '200');
+  host.listMergedSince('2026-10-20T01:00:00+05:30');
+  assert.equal(calls[1].args[calls[1].args.indexOf('--search') + 1], 'merged:>=2026-10-19');
+  host.ciStatus('abcdef0');
+  assert.equal(calls[2].opts.cwd, '/the/project');
 });

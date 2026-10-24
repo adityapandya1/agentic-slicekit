@@ -29,6 +29,19 @@ function section(body, title) {
 
 const asList = (v) => (Array.isArray(v) ? v : v === '' || v == null ? [] : [String(v)]);
 
+const PHASE_DIR = /^P(\d+)(?:\b|[-_])/;
+
+// The one place a phase directory's name becomes a phase: `P01-spine` and `P1-spine` are both P1.
+// Returns { n, id, name } or null; `name` is the text after the first dash or underscore, or the
+// whole directory name when there is none.
+export function phaseOfDir(dirName) {
+  const m = PHASE_DIR.exec(dirName);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const rest = dirName.slice(m[0].length).replace(/^[-_]/, '');
+  return { n, id: `P${n}`, name: rest === '' ? dirName : rest };
+}
+
 export function parseSliceFile(text, file) {
   const fail = (message, field) => {
     throw new SliceFileError(message, { path: file, field });
@@ -38,7 +51,12 @@ export function parseSliceFile(text, file) {
     if (!(key in data)) fail(`missing front-matter field "${key}"`, key);
   }
   const id = String(data.slice);
-  if (!parseSliceAddr(id)) fail(`front-matter field "slice" is not a slice address: ${id}`, 'slice');
+  const addr = parseSliceAddr(id);
+  if (!addr) fail(`front-matter field "slice" is not a slice address: ${id}`, 'slice');
+  const dirPhase = file ? phaseOfDir(path.basename(path.dirname(file))) : null;
+  if (dirPhase && dirPhase.n !== addr.phase) {
+    fail(`front-matter field "slice" is ${id}, but ${id} is in the directory of phase ${dirPhase.id}`, 'slice');
+  }
   const rb = String(data.runbook).toLowerCase();
   if (!['yes', 'true', 'no', 'false'].includes(rb)) {
     fail(`front-matter field "runbook" must be yes or no, got "${data.runbook}"`, 'runbook');
@@ -94,8 +112,8 @@ export function findSliceFiles(root, cfg) {
   if (!fs.existsSync(phases)) return [];
   const out = [];
   for (const dir of fs.readdirSync(phases, { withFileTypes: true })) {
-    const pm = /^P(\d+)(?:\b|[-_])/.exec(dir.name);
-    if (!dir.isDirectory() || !pm) continue;
+    const phase = phaseOfDir(dir.name);
+    if (!dir.isDirectory() || !phase) continue;
     const phaseDir = path.join(phases, dir.name);
     for (const f of fs.readdirSync(phaseDir)) {
       const sm = /^S-(\d+).*\.md$/.exec(f);
@@ -103,8 +121,8 @@ export function findSliceFiles(root, cfg) {
         out.push({
           path: path.join(phaseDir, f),
           phaseDir,
-          phaseId: `P${pm[1]}`,
-          key: [Number(pm[1]), Number(sm[1])],
+          phaseId: phase.id,
+          key: [phase.n, Number(sm[1])],
         });
       }
     }

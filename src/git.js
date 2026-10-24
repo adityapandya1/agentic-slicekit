@@ -40,6 +40,24 @@ export function currentBranch(root) {
 
 export const headSha = (root) => git(root, ['rev-parse', 'HEAD']);
 
+// Whether `sha` names a commit object in the repository at root.
+export function commitExists(root, sha) {
+  assertRef(sha);
+  return succeeds(root, ['cat-file', '-e', `${sha}^{commit}`]);
+}
+
+// The full 40-hex SHA of the commit `sha` names, or null when the repository cannot resolve it
+// (unknown, ambiguous, or not a commit).
+export function resolveCommit(root, sha) {
+  assertRef(sha);
+  try {
+    return git(root, ['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
 // A ref from user input or config: never an option, never a range, never two words.
 export function assertRef(name) {
   if (typeof name !== 'string' || name === '' || name.startsWith('-') || /\s/.test(name) || name.includes('..')) {

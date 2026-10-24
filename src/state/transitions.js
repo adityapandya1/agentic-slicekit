@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDate, isSha, sameSha } from '../evidence.js';
 
 export const STATES = [
   'todo',
@@ -26,13 +27,22 @@ const last = (list) => list[list.length - 1];
 const isInt = (n) => Number.isInteger(n) && n >= 0;
 const isStr = (s) => typeof s === 'string' && s !== '';
 const present = (root, rel) => fs.existsSync(path.resolve(root, rel));
+const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The verdicts given on the pull request head as it stands now. A verdict on an earlier head
+// reviewed code that a fix push has since replaced.
+const onHead = (current) => current.verdicts.filter((v) => current.pr && v.headSha === current.pr.headSha);
+
+const SHA_SHAPE = '7 to 40 lowercase hex characters';
 
 // Every evidence value that is given must have the right type, whatever the target state.
 export function validateEvidence(ev) {
   const bad = (name, want) => `${name} must be ${want}`;
-  for (const k of ['commit', 'mergedAt', 'release']) {
+  for (const k of ['commit', 'release']) {
     if (ev[k] !== undefined && !isStr(ev[k])) return bad(k, 'a non-empty string');
   }
+  if (ev.commit !== undefined && !isSha(ev.commit)) return bad('commit', SHA_SHAPE);
+  if (ev.mergedAt !== undefined && !isDate(ev.mergedAt)) return bad('mergedAt', 'an ISO date');
   for (const k of ['testExit', 'checkExit']) {
     if (ev[k] !== undefined && !isInt(ev[k])) return bad(k, 'a non-negative integer');
   }
@@ -42,10 +52,13 @@ export function validateEvidence(ev) {
   const pr = ev.pr;
   if (pr !== undefined) {
     if (pr === null || typeof pr !== 'object') return bad('pr', 'an object');
-    if (pr.number !== undefined && !isInt(pr.number)) return bad('pr.number', 'a non-negative integer');
+    if (pr.number !== undefined && !(Number.isInteger(pr.number) && pr.number >= 1)) {
+      return bad('pr.number', 'a positive integer');
+    }
     for (const k of ['url', 'headSha', 'title']) {
       if (pr[k] !== undefined && !isStr(pr[k])) return bad(`pr.${k}`, 'a non-empty string');
     }
+    if (pr.headSha !== undefined && !isSha(pr.headSha)) return bad('pr.headSha', SHA_SHAPE);
   }
   const v = ev.verdict;
   if (v !== undefined) {
@@ -61,6 +74,7 @@ export function validateEvidence(ev) {
     for (const k of ['sha', 'status']) {
       if (ci[k] !== undefined && !isStr(ci[k])) return bad(`ci.${k}`, 'a non-empty string');
     }
+    if (ci.sha !== undefined && !isSha(ci.sha)) return bad('ci.sha', SHA_SHAPE);
   }
   return null;
 }
@@ -102,12 +116,11 @@ export const TRANSITIONS = {
       if (ev.checkExit !== 0) return 'draft-pr needs slicekit check to exit 0 (--check-exit 0)';
       const prefix = `[${ctx.id}]`;
       const pr = ev.pr;
-      if (!pr || typeof pr.title !== 'string' || !pr.title.startsWith(prefix)) {
-        return `draft-pr needs a pull request whose title begins ${prefix}`;
-      }
+      const titled = pr && typeof pr.title === 'string' && (pr.title === prefix || pr.title.startsWith(`${prefix} `));
+      if (!titled) return `draft-pr needs a pull request whose title begins ${prefix} followed by a space`;
       if (!isInt(pr.number)) return 'draft-pr needs the pull request number (pr.number)';
       if (!isStr(pr.headSha)) return 'draft-pr needs the pull request head sha (pr.headSha)';
-      if (current.state !== 'building' && current.pr && pr.headSha === current.pr.headSha) {
+      if (current.state !== 'building' && current.pr && sameSha(pr.headSha, current.pr.headSha)) {
         return 'a return to draft-pr needs a new head sha (a fix push)';
       }
       return null;
@@ -126,11 +139,13 @@ export const TRANSITIONS = {
       if (!isInt(v.blockers)) return 'in-review needs the verdict blocker count';
       if (!isStr(v.path)) return 'in-review needs the verdict file path (verdict.path)';
       if (!present(ctx.root, v.path)) return `verdict file not found: ${v.path}`;
+      if (!current.pr?.headSha) return 'in-review needs a recorded pull request head sha';
       const prev = last(current.verdicts);
       if (!prev && v.round !== 1) return `the first verdict must be round 1, got round ${v.round}`;
       if (prev && v.round <= prev.round) return `verdict round ${v.round} is not after round ${prev.round}`;
       return null;
     },
+    // Each verdict is stamped with the head it was given on; `ready` trusts only those on the current head.
     apply: (current, ev) => ({
       verdicts: [
         ...current.verdicts,
@@ -139,6 +154,7 @@ export const TRANSITIONS = {
           path: ev.verdict.path,
           blockers: ev.verdict.blockers,
           independent: Boolean(ev.verdict.independent),
+          headSha: current.pr.headSha,
         },
       ],
     }),
@@ -147,8 +163,8 @@ export const TRANSITIONS = {
     from: ['in-review'],
     required: [],
     check(current) {
-      const v = last(current.verdicts);
-      return v && v.blockers > 0 ? null : 'changes-requested needs a latest verdict with open blockers';
+      const v = last(onHead(current));
+      return v && v.blockers > 0 ? null : 'changes-requested needs a latest verdict on the current head sha with open blockers';
     },
     apply: () => ({}),
   },
@@ -156,11 +172,11 @@ export const TRANSITIONS = {
     from: ['in-review'],
     required: ['ci'],
     check(current, ev) {
-      const v = last(current.verdicts);
-      if (!v || v.blockers !== 0) return 'ci-green needs a latest verdict with no blockers';
+      const v = last(onHead(current));
+      if (!v || v.blockers !== 0) return 'ci-green needs a latest verdict on the current head sha with no blockers';
       if (!ev.ci || ev.ci.status !== 'success') return 'ci-green needs the CI status to be success (--ci-status)';
       if (!isStr(ev.ci.sha)) return 'ci-green needs the CI sha (--ci-sha)';
-      if (!current.pr || ev.ci.sha !== current.pr.headSha) {
+      if (!current.pr || !sameSha(ev.ci.sha, current.pr.headSha)) {
         return 'ci-green needs the CI sha to equal the pull request head sha';
       }
       return null;
@@ -172,9 +188,9 @@ export const TRANSITIONS = {
     required: [],
     check(current, _ev, ctx) {
       if (ctx.cfg.review.independent === 'optional') return null;
-      return current.verdicts.some((v) => v.independent && v.blockers === 0)
+      return onHead(current).some((v) => v.independent && v.blockers === 0)
         ? null
-        : 'ready needs an independent review verdict with no blockers';
+        : 'ready needs an independent review verdict with no blockers on the current head sha';
     },
     apply: () => ({}),
   },
@@ -182,7 +198,10 @@ export const TRANSITIONS = {
     from: ['ready'],
     required: ['mergedAt'],
     check: (_current, ev) => (ev.mergedAt ? null : 'merged needs mergedAt (--merged-at)'),
-    apply: (current, ev) => (ev.pr ? { pr: { ...(current.pr ?? {}), ...ev.pr } } : {}),
+    apply: (current, ev) => ({
+      mergedAt: ev.mergedAt,
+      ...(ev.pr ? { pr: { ...(current.pr ?? {}), ...ev.pr } } : {}),
+    }),
   },
   released: {
     from: ['merged'],
@@ -193,8 +212,10 @@ export const TRANSITIONS = {
       const pr = current.pr;
       if (!pr) return 'released needs a recorded pull request to look for in the release record';
       const text = fs.readFileSync(path.resolve(ctx.root, ev.release), 'utf8');
-      const named = (pr.number !== undefined && text.includes(`#${pr.number}`)) || (pr.url && text.includes(pr.url));
-      return named ? null : `the release record does not name the pull request (#${pr.number})`;
+      // `#7` is not `#70`, and the url of pull request 7 is not the url of pull request 70.
+      const byNumber = pr.number !== undefined && new RegExp(`#${pr.number}(?![0-9A-Za-z_])`).test(text);
+      const byUrl = isStr(pr.url) && new RegExp(`${escape(pr.url)}(?![0-9A-Za-z_])`).test(text);
+      return byNumber || byUrl ? null : `the release record does not name the pull request (#${pr.number})`;
     },
     apply: () => ({}),
   },

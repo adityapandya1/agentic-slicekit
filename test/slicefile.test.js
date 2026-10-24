@@ -126,6 +126,27 @@ test('findSliceFiles orders by phase then slice', () => {
   }
 });
 
+test('findSliceFiles normalises a zero-padded phase directory to its phase id', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicefile-'));
+  try {
+    fs.mkdirSync(path.join(root, 'docs', 'phases', 'P01-x'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'phases', 'P01-x', 'S-01-a.md'), 'x');
+    assert.deepEqual(findSliceFiles(root, { docsRoot: 'docs' }).map((f) => f.phaseId), ['P1']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a slice whose address names another phase than its directory is a SliceFileError', () => {
+  const inDir = (dir) => path.join('docs', 'phases', dir, 'S-07-sample.md');
+  assert.equal(parseSliceFile(sample, inDir('P1-spine')).id, 'P1/S-07');
+  assert.equal(parseSliceFile(sample, inDir('P01-spine')).id, 'P1/S-07');
+  assert.throws(
+    () => parseSliceFile(sample, inDir('P2-loop')),
+    (e) => e instanceof SliceFileError && e.field === 'slice' && /P1\/S-07 is in the directory of phase P2/.test(e.message),
+  );
+});
+
 test('findSliceFiles returns nothing when there is no phases directory', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicefile-'));
   try {

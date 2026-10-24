@@ -5,13 +5,14 @@
   "pr": {
     "number": 1,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/1",
-    "headSha": "84d1f89"
+    "headSha": "84d1f898d9e0209c94f5550f26cd1de0acd5511c"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
+  "mergedAt": "2026-10-24T09:12:06Z",
   "handoff": null,
   "history": [
     {

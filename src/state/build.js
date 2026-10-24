@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { readText } from '../fs.js';
 import { headings, lines } from '../markdown.js';
 import { kitPaths } from '../paths.js';
-import { findSliceFiles, parsePhaseFile, parseSliceFile } from '../slicefile.js';
+import { findSliceFiles, parsePhaseFile, parseSliceFile, phaseOfDir } from '../slicefile.js';
 import { readSlice } from './index.js';
 
 export const MARKER = '<!-- slicekit:generated:end -->';
@@ -42,23 +42,37 @@ function phases(root, cfg) {
   if (!fs.existsSync(dir)) return [];
   const out = [];
   for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
-    const m = /^P(\d+)(?:\b|[-_])/.exec(d.name);
-    if (!d.isDirectory() || !m) continue;
+    const phase = phaseOfDir(d.name);
+    if (!d.isDirectory() || !phase) continue;
     const phaseDir = path.join(dir, d.name);
+    const own = `${phase.id}.md`;
     const candidates = fs
       .readdirSync(phaseDir)
       .filter((f) => f.endsWith('.md') && !/^S-\d+/.test(f))
-      .sort((a, b) => (a === `P${m[1]}.md` ? -1 : b === `P${m[1]}.md` ? 1 : a.localeCompare(b)));
+      .sort((a, b) => (a === own ? -1 : b === own ? 1 : a.localeCompare(b)));
     for (const f of candidates) {
       const text = readText(path.join(phaseDir, f));
       const parsed = parsePhaseFile(text);
-      if (parsed && parsed.id === `P${Number(m[1])}`) {
-        out.push({ n: Number(m[1]), id: parsed.id, name: parsed.name, dir: phaseDir, order: section(text, 'Order') });
+      if (parsed && parsed.id === phase.id) {
+        out.push({ n: phase.n, id: parsed.id, name: parsed.name, dir: phaseDir, order: section(text, 'Order') });
         break;
       }
     }
   }
   return out.sort((a, b) => a.n - b.n);
+}
+
+// Every phase that has a phase file or a slice file. A phase with slices and no phase file takes
+// its heading from the directory name, so its slices still reach BUILD.md, and is warned.
+function allPhases(root, cfg, sliceFiles, onWarning) {
+  const byId = new Map(phases(root, cfg).map((p) => [p.id, p]));
+  for (const f of sliceFiles) {
+    if (byId.has(f.phaseId)) continue;
+    const dirPhase = phaseOfDir(path.basename(f.phaseDir));
+    byId.set(f.phaseId, { n: dirPhase.n, id: dirPhase.id, name: dirPhase.name, dir: f.phaseDir, order: null });
+    onWarning(`phase ${f.phaseId} has no phase file; heading taken from the directory`);
+  }
+  return [...byId.values()].sort((a, b) => a.n - b.n);
 }
 
 function preamble(cfg) {
@@ -108,10 +122,12 @@ function prunedTail(text, generatedPhases) {
   return kept.join('\n');
 }
 
-export function renderBuild(root, cfg, existingText = '') {
-  const found = phases(root, cfg);
+// `onWarning` receives each problem that does not stop the render, such as a phase without a phase file.
+export function renderBuild(root, cfg, existingText = '', { onWarning = () => {} } = {}) {
+  const sliceFiles = findSliceFiles(root, cfg);
+  const found = allPhases(root, cfg, sliceFiles, onWarning);
   const slicesByPhase = new Map();
-  for (const f of findSliceFiles(root, cfg)) {
+  for (const f of sliceFiles) {
     const slice = parseSliceFile(readText(f.path), f.path);
     const list = slicesByPhase.get(f.phaseId) ?? [];
     list.push({ slice, state: readSlice(root, cfg, slice.id) });
