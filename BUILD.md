@@ -17,7 +17,7 @@ its own rules on itself.
 | S-02 | Claude Code renderer and update | Commands, agents, skills and hook registrations render per shape inside managed blocks (REQ-1.10, REQ-3.12); `slicekit update` changes only inside markers and shows a diff; golden files per shape. | A | Todo |
 | S-03 | State files, status, BUILD.md | `slicekit state set` is the only writer and refuses a transition whose precondition fails (REQ-1.8); `slicekit status --write` regenerates BUILD.md; `--sync` reads merged pull requests through the stubbed git host (C-1). | A | Todo |
 | S-04 | Check: references and style ratchets | The references and style rules of REQ-3.7 with baselines that only go down; `baseline update` refuses to raise a count; the seed filler list (REQ-3.10). | B | Todo |
-| S-05 | Check: citations, coverage, queue, commands, layout | The remaining rules of REQ-3.7 except trailer, runbook, hooks and journal; each with a passing and a failing fixture. | B | Todo |
+| S-05 | Check: citations, coverage, queue, commands, layout, managed | The remaining rules of REQ-3.7 except trailer, runbook, hooks and journal, plus the managed-block rule of REQ-3.12; each with a passing and a failing fixture. | B | Todo |
 | S-06 | Hooks: session, bash and edit guards, git hooks | REQ-3.1, REQ-3.2, REQ-3.3, REQ-3.9; tested by piping Claude Code's JSON; the hooks and trailer rules join `check`. | C | Todo |
 | S-07 | Hooks: subagent shape, compaction handoff, journal | REQ-3.4, REQ-3.5, REQ-3.6, REQ-3.8; the journal rule joins `check`; a hand-edited line breaks the chain in the test. | C | Todo |
 | S-08 | CI workflow generator | `slicekit.yml` per REQ-3.11 with SHA-pinned actions, title and body rules, label gate, merge sync; `check --ci` mode. | C | Todo |
