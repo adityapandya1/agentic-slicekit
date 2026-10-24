@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { init } from '../../src/init.js';
 import { check } from '../../src/check/index.js';
-import style from '../../src/check/rules/style.js';
+import style, { findStyle } from '../../src/check/rules/style.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 
 const MARKER = '<!-- slicekit:style-catalogue -->';
@@ -61,11 +61,95 @@ test('the catalogue files are exempt and must contain the list', () => {
   const short = catalogue.filter((l) => l !== '- delve');
   const r = run({ 'docs/filler.md': short.join('\n') });
   assert.deepEqual(r.lines, [
-    'style docs/filler.md:0 catalogue missing "delve"',
+    'style docs/filler.md:3 catalogue missing "delve"',
     'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
-  assert.equal(r.findings[0].bucket, 'catalogue');
+  assert.equal(r.findings[0].bucket, 'catalogue:docs/filler.md');
   assert.equal(r.exitCode, 1);
+});
+
+test('the catalogue exemption covers only the marked section', () => {
+  const doc = [
+    '# Doc', // 1
+    '', // 2
+    'Robust intro.', // 3
+    '', // 4
+    '## Filler', // 5
+    MARKER, // 6
+    ...SEED.map((p) => `- ${p}`), // 7-13
+    '### Sub', // 14
+    'still delve, still listed', // 15
+    '## Other', // 16
+    '', // 17
+    'This is robust.', // 18
+  ];
+  const r = run({ 'docs/mixed.md': doc.join('\n') });
+  assert.deepEqual(r.lines, [
+    'style docs/mixed.md:3 banned phrase "robust"',
+    'style docs/mixed.md:18 banned phrase "robust"',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
+  ]);
+  // The seed phrases must sit inside the section, not elsewhere in the file.
+  const moved = [...doc.slice(0, 6), ...doc.slice(13, 15), '## Other', ...SEED.map((p) => `- ${p}`)];
+  const m = run({ 'docs/moved.md': moved.join('\n') });
+  assert.equal(m.findings.filter((f) => f.message.startsWith('catalogue missing')).length, SEED.length - 1);
+});
+
+test('an empty seed list is a finding', () => {
+  assert.deepEqual(findStyle([], ['robust'], []), [
+    { file: 'templates/style.json', line: 0, message: 'catalogue seed list is empty', bucket: 'catalogue' },
+  ]);
+});
+
+test('a phrase wrapped across a line break is one finding on its first line', () => {
+  const r = run({
+    'docs/wrap.md': ['# Wrap', '', 'We sit at the boundary', 'of the system.', '', 'Also at the boundary', '', 'of nothing.'].join('\n'),
+  });
+  assert.deepEqual(r.lines, [
+    'style docs/wrap.md:3 banned phrase "at the boundary of"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('an example line is not matched', () => {
+  const r = run({
+    'docs/ex.md': ['# Ex', '', 'The author wrote "minting at the gate". <!-- slicekit:example -->', 'Then robust.'].join('\n'),
+  });
+  assert.deepEqual(r.lines, [
+    'style docs/ex.md:4 banned phrase "robust"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('link targets and bare URLs are not matched', () => {
+  const r = run({
+    'docs/links.md': ['# Links', '', 'See [the guide](docs/robust-guide.md), https://x.io/leverage and <https://x.io/delve>.', '[robust](a.md)'].join('\n'),
+  });
+  assert.deepEqual(r.lines, [
+    'style docs/links.md:4 banned phrase "robust"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('config phrases are deduplicated and a curly apostrophe is normalised', () => {
+  const r = run(
+    { 'docs/dup.md': ['# Dup', '', 'It’s worth noting this is robust.'].join('\n') },
+    { banned: [' Robust ', 'IT’S  worth noting'] },
+  );
+  assert.deepEqual(r.lines, [
+    'style docs/dup.md:3 banned phrase "it\'s worth noting"',
+    'style docs/dup.md:3 banned phrase "robust"',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('CRLF line endings give the same lines', () => {
+  const r = run({ 'docs/crlf.md': ['# Notes', '', 'The parser is Robust.', '', 'at the boundary', 'of it'].join('\r\n') });
+  assert.deepEqual(r.lines, [
+    'style docs/crlf.md:3 banned phrase "robust"',
+    'style docs/crlf.md:5 banned phrase "at the boundary of"',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
+  ]);
 });
 
 test('a marker quoted in a code span or fence does not make a catalogue', () => {

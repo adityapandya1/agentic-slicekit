@@ -122,9 +122,10 @@ Enforced by: `slicekit init`, `slicekit check` (hooks rule).
 short list of agent fillers ("it's worth noting", "robust", "seamlessly", "at the boundary of",
 "minting at the gate", "leverage", "delve"), case-insensitive, matched in every markdown file, verdict
 and pull request body, counted per file against `baselines/style.json`. The team extends the list in
-config; a removal from the list SHALL be a decision row. The files that define the list (config, the
-seed template, and this requirement) are exempt, and the check SHALL verify that they still contain
-it, so the catalogue cannot be emptied by accident.
+config; a removal from the list SHALL be a decision row. The files that define the list (config and
+the seed template) are exempt; a document that carries `<!-- slicekit:style-catalogue -->` is exempt
+from the ratchet within the marked section and SHALL contain every seed phrase, so the catalogue
+cannot be emptied by accident.
 
 Enforced by: `slicekit check` (style rule).
 
