@@ -5,6 +5,7 @@ import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } f
 import { exists, listFiles, readText, writeText } from './fs.js';
 import { isRepo } from './git.js';
 import { kitPaths } from './paths.js';
+import { kitVersion, renderAll } from './render/index.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GRAPH_RULE = '.slicekit/graph/';
@@ -92,11 +93,17 @@ export function init(root, { name, shape, docsRoot, commands = {} }) {
   }
   lists[ensureGitignore(paths.gitignore)].push(rel(paths.gitignore));
 
+  const warnings = isRepo(root) ? [] : [NOT_A_REPO];
+  for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
+    lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);
+    if (warning) warnings.push(warning);
+  }
+
   // core.hooksPath is S-06's to set, with its own guards; S-01 only creates .githooks/.
   return {
     created: lists.created.sort(),
     updated: lists.updated.sort(),
     skipped: lists.skipped.sort(),
-    warnings: isRepo(root) ? [] : [NOT_A_REPO],
+    warnings,
   };
 }
