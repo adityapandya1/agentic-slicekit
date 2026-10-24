@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
 import { isRepo } from './git.js';
+import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
@@ -61,25 +62,32 @@ function ensureGitignore(file) {
   return 'updated';
 }
 
-// An existing config.json is the truth: a flag may repeat its shape or docsRoot, never change them.
-function resolveConfig(root, { name, shape, docsRoot, commands }) {
+// An existing config.json is the truth: a flag may repeat its shape, docsRoot or cli, never change them.
+// A new config takes cli from --cli, else from the probe (D-30).
+function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
   if (exists(path.join(root, CONFIG_PATH))) {
     const cfg = loadConfig(root);
-    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot]]) {
+    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot], ['cli', cli]]) {
       if (value !== undefined && value !== cfg[field]) {
         throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
       }
     }
     return cfg;
   }
-  const cfg = defaultConfig({ name, shape, docsRoot: docsRoot ?? 'docs', commands });
+  const cfg = defaultConfig({
+    name,
+    shape,
+    docsRoot: docsRoot ?? 'docs',
+    commands,
+    cli: cli ?? probeCli(root, { version: kitVersion(), env }),
+  });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
 }
 
-export function init(root, { name, shape, docsRoot, commands = {} }) {
-  const cfg = resolveConfig(root, { name, shape, docsRoot, commands });
+export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
+  const cfg = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
@@ -107,5 +115,6 @@ export function init(root, { name, shape, docsRoot, commands = {} }) {
     updated: lists.updated.sort(),
     skipped: lists.skipped.sort(),
     warnings,
+    cli: cfg.cli,
   };
 }

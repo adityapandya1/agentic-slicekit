@@ -8,7 +8,7 @@ import { ConfigError, validateConfig } from '../src/config.js';
 import { git, GitError } from '../src/git.js';
 import { kitPaths } from '../src/paths.js';
 import { makeRepo } from './helpers/tmp-repo.js';
-import { runCli } from './helpers/run-cli.js';
+import { binPath, runCli } from './helpers/run-cli.js';
 
 const read = (root, rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const isDir = (root, rel) => fs.statSync(path.join(root, rel)).isDirectory();
@@ -284,4 +284,41 @@ test('cli: a corrupt .claude/settings.json exits 2 and nothing else is created',
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+const HOOK_WARNING = (cli) =>
+  `slicekit: hook command "${cli}" did not answer; hooks will report errors on every tool call until .slicekit/config.json cli is fixed\n`;
+
+test('cli: init prints the hook command it chose and checks that it answers', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    const cli = JSON.parse(read(root, '.slicekit/config.json')).cli;
+    assert.equal(r.stdout.split('\n').filter((l) => l === `hooks run: ${cli}`).length, 1);
+    assert.equal(r.stderr, '');
+  });
+});
+
+test('cli: --cli overrides the probe and lands in config and settings', () => {
+  withRepo((root) => {
+    const cli = `node "${binPath}"`;
+    const r = runCli(['init', '--shape', 'backend', '--cli', cli], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, '');
+    assert.match(r.stdout, new RegExp(`^hooks run: ${cli.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`, 'm'));
+    assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, cli);
+    assert.ok(JSON.parse(read(root, '.claude/settings.json')).hooks.Stop[0].hooks[0].command.startsWith(`${cli} hook `));
+  });
+});
+
+test('cli: a hook command that does not answer warns on init and on update', () => {
+  withRepo((root) => {
+    const cli = 'node -e "process.exit(3)"';
+    const r = runCli(['init', '--shape', 'backend', '--cli', cli], { cwd: root });
+    assert.equal(r.code, 0);
+    assert.equal(r.stderr, HOOK_WARNING(cli));
+    const u = runCli(['update', '--yes'], { cwd: root });
+    assert.equal(u.code, 0);
+    assert.equal(u.stderr, HOOK_WARNING(cli));
+  });
 });

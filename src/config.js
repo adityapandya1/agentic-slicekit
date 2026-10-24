@@ -32,14 +32,15 @@ function seedBanned() {
   return JSON.parse(fs.readFileSync(file, 'utf8')).banned;
 }
 
-export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {} }) {
+// init always passes cli (from --cli or the D-30 probe); the default serves callers that do not.
+export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'npx --no-install slicekit' }) {
   return {
     configVersion: CONFIG_VERSION,
     name,
     shape,
     docsRoot,
     defaultBranch: 'main',
-    cli: 'npx --no-install slicekit',
+    cli,
     protectedBranches: ['main'],
     commands: { test: '', lint: '', build: '', e2e: '', ...commands },
     repos: [],

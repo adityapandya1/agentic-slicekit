@@ -4,13 +4,16 @@ import { parseArgs } from 'node:util';
 import { CONFIG_PATH, ConfigError } from '../config.js';
 import { exists } from '../fs.js';
 import { git, GitError, isRepo } from '../git.js';
+import { checkCli } from '../hook-cli.js';
 import { init } from '../init.js';
+import { kitVersion } from '../render/index.js';
 
 const USAGE =
-  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]';
+  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]';
 
 const OPTIONS = {
   shape: { type: 'string' },
+  cli: { type: 'string' },
   name: { type: 'string' },
   docs: { type: 'string' },
   test: { type: 'string' },
@@ -68,6 +71,8 @@ async function run(args, io) {
       shape: values.shape,
       docsRoot: normaliseDocs(values.docs),
       commands,
+      cli: values.cli,
+      env: io.env ?? process.env,
     });
   } catch (e) {
     if (!(e instanceof ConfigError)) throw e;
@@ -77,7 +82,10 @@ async function run(args, io) {
   for (const rel of result.created) io.stdout(`created ${rel}\n`);
   for (const rel of result.updated) io.stdout(`updated ${rel}\n`);
   for (const rel of result.skipped) io.stdout(`skipped ${rel}\n`);
+  io.stdout(`hooks run: ${result.cli}\n`);
   for (const warning of result.warnings) io.stderr(`slicekit: ${warning}\n`);
+  const unanswered = checkCli(result.cli, { version: kitVersion(), cwd: root });
+  if (unanswered) io.stderr(`slicekit: ${unanswered}\n`);
   return 0;
 }
 

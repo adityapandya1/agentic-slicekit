@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { exists } from '../fs.js';
+import { checkCli } from '../hook-cli.js';
 import { kitVersion, RENDERED } from '../render/index.js';
 import { applyUpdate, planUpdate } from '../render/update.js';
 
@@ -52,6 +53,8 @@ async function run(args, io) {
   const { written, skipped } = applyUpdate(root, cfg, plan, { version, force });
   for (const dest of written) io.stdout(`wrote ${dest}\n`);
   for (const { warning } of skipped) io.stderr(`slicekit: ${warning}\n`);
+  const unanswered = checkCli(cfg.cli, { version, cwd: root });
+  if (unanswered) io.stderr(`slicekit: ${unanswered}\n`);
   // Drift left in place is not success.
   return skipped.some((s) => s.status === 'drifted') ? 1 : 0;
 }
