@@ -1,0 +1,17 @@
+{
+  "name": "slicekit",
+  "version": "0.0.1",
+  "description": "Spec-driven agentic workflow kit",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "slicekit": "bin/slicekit.js"
+  },
+  "files": ["bin", "src", "templates"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
