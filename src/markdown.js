@@ -113,9 +113,13 @@ function looksLikePath(token) {
   return p.endsWith('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(p.split('/').at(-1).replace(/^\./, ''));
 }
 
+// A reference-style link definition, `[ref]: target "title"`, its target optionally in `<>`. A
+// footnote (`[^1]: text`) is not one.
+const DEFINITION = /^\s{0,3}\[(?!\^)[^\]]+\]:\s*(?:<([^>\s]+)>|(\S+))/;
+
 // Paths, anchors and ids outside fenced code. A link written inside a code span is not a link; a
-// reference-style link (`[t][ref]`) is not followed. A path says whether it came from a link or a
-// code span (`via`); an anchor carries the file it points into.
+// reference-style link (`[t][ref]`) is checked at its definition line. A path says whether it came
+// from a link or a code span (`via`); an anchor carries the file it points into.
 export function refs(text) {
   const out = [];
   const idRe = new RegExp(
@@ -124,8 +128,10 @@ export function refs(text) {
   );
   for (const [line, n] of prose(text)) {
     const outsideCode = blankCodeSpans(line);
-    for (const m of outsideCode.matchAll(LINK)) {
-      const target = m[1];
+    const def = DEFINITION.exec(outsideCode);
+    const targets = [...outsideCode.matchAll(LINK)].map((m) => m[1]);
+    if (def) targets.push(def[1] ?? def[2]);
+    for (const target of targets) {
       if (target.startsWith('#') || !isPathLike(target)) continue;
       const hash = target.indexOf('#');
       const file = hash === -1 ? target : target.slice(0, hash);

@@ -5,7 +5,7 @@ import { frontMatter, headings, isPathLike, refs, toSlashes } from '../../markdo
 import { findSliceFiles } from '../../slicefile.js';
 import { readSlice } from '../../state/index.js';
 import { MARKER as BUILD_MARKER } from '../../state/build.js';
-import { isIntake } from '../context.js';
+import { intakeStatus } from '../context.js';
 
 export const id = 'references';
 export const blocking = true;
@@ -143,14 +143,18 @@ export function run(ctx) {
     return true;
   };
 
-  // The absolute path a target names, tried against the doc's directory and then the root; a
-  // leading `/` is the root only. A trailing separator must name a directory. Null when none fits.
-  const resolve = (doc, target) => {
+  // The absolute path a target names. A link resolves as a reader's click does: against the doc's
+  // directory, or the root when it starts with `/`. A backticked path names a repo path, so it is
+  // also tried against the root. A trailing separator must name a directory. Null when none fits.
+  const resolve = (doc, target, via) => {
     const rel = toSlashes(decode(target));
     const wantDir = rel.endsWith('/');
+    const here = path.resolve(path.dirname(doc.path), rel);
     const tries = rel.startsWith('/')
       ? [path.join(root, rel)]
-      : [path.resolve(path.dirname(doc.path), rel), path.resolve(root, rel)];
+      : via === 'code'
+        ? [here, path.resolve(root, rel)]
+        : [here];
     return tries.find((p) => existsExact(p) && (!wantDir || fs.statSync(p).isDirectory())) ?? null;
   };
 
@@ -164,7 +168,8 @@ export function run(ctx) {
 
   const buildFile = path.resolve(ctx.paths.build);
   for (const doc of ctx.docs) {
-    if (isIntake(ctx, doc)) continue;
+    const intake = intakeStatus(ctx, doc);
+    if (intake === 'frozen') continue;
     // BUILD.md's generated region is a view of the slice files, which are checked themselves: its
     // paths are skipped there (a marker in a slice file must not be needed twice), its ids are not.
     // Without the marker the whole file is generated, as `generatedRegion` reads it.
@@ -180,16 +185,19 @@ export function run(ctx) {
       seen.add(key);
       findings.push({ rule: id, file: doc.rel, line, message, bucket: doc.rel });
     };
+    // An intake file earns its exemption through its sidecar; without a valid one it is checked
+    // like any doc and is itself a finding (REQ-1.2).
+    if (intake === 'unpinned') add(0, 'intake file has no valid sidecar');
     const promises = promiseLines(ctx, doc, sliceIds, (message) => add(0, message));
     for (const ref of refs(doc.text)) {
       if ((doc.lines[ref.line - 1] ?? '').includes(EXAMPLE)) continue;
       if (ref.kind === 'path') {
         if (ref.line <= viewEnd) continue;
         if (ref.via === 'code' && promises?.has(ref.line)) continue;
-        if (isPathLike(ref.value) && !resolve(doc, ref.value)) add(ref.line, `missing file ${ref.value}`);
+        if (isPathLike(ref.value) && !resolve(doc, ref.value, ref.via)) add(ref.line, `missing file ${ref.value}`);
       } else if (ref.kind === 'anchor') {
         if (!/\.md$/i.test(ref.file)) continue;
-        const abs = resolve(doc, ref.file);
+        const abs = resolve(doc, ref.file, 'link');
         if (!abs || !fs.statSync(abs).isFile()) continue;
         if (!slugsOf(path.resolve(abs)).has(decode(ref.value).toLowerCase())) {
           add(ref.line, `missing anchor #${ref.value} in ${ref.file}`);

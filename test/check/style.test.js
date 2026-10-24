@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { init } from '../../src/init.js';
@@ -199,13 +200,17 @@ test('a team phrase added in config is enforced', () => {
   ]);
 });
 
-test('intake files are frozen and exempt', () => {
+test('an intake file pinned by its sidecar is exempt; an unpinned one is matched', () => {
+  const req = '# Req\n\nWe delve into it.\n';
   const r = run({
-    'docs/intake/req.md': '# Req\n\nWe delve into it.\n',
+    'docs/intake/req.md': req,
+    'docs/intake/req.md.meta.json': JSON.stringify({ sha256: crypto.createHash('sha256').update(req).digest('hex') }),
+    'docs/intake/extra.md': '# Extra\n\nWe delve into it.\n',
     'docs/notes.md': '# Notes\n\nWe delve into it.\n',
   });
   assert.deepEqual(r.lines, [
+    'style docs/intake/extra.md:3 banned phrase "delve"',
     'style docs/notes.md:3 banned phrase "delve"',
-    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
   ]);
 });

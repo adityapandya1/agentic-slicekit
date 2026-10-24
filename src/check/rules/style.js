@@ -1,6 +1,6 @@
 import { seedBanned } from '../../config.js';
 import { blankCodeSpans, prose } from '../../markdown.js';
-import { isIntake } from '../context.js';
+import { intakeStatus } from '../context.js';
 
 export const id = 'style';
 export const blocking = true;
@@ -153,8 +153,9 @@ export function findStyle(docs, banned, seed) {
 }
 
 export function run(ctx) {
-  // Intake files are frozen (REQ-1.2): a quoted phrase there is the author's words, never rewritten.
-  const docs = ctx.docs.filter((d) => !isIntake(ctx, d));
+  // A pinned intake file is frozen (REQ-1.2): a quoted phrase there is the author's words, never
+  // rewritten. An unpinned one is matched like any doc.
+  const docs = ctx.docs.filter((d) => intakeStatus(ctx, d) !== 'frozen');
   return findStyle(docs, ctx.cfg.style?.banned ?? [], seedBanned());
 }
 

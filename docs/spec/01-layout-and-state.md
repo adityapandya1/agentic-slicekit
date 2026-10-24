@@ -49,10 +49,15 @@ Enforced by: `slicekit init`, `slicekit check` (layout rule).
 Every source document SHALL be copied into `<docsRoot>/intake/` as `YYYY-MM-DD-<slug>.<ext>` with a
 sidecar `.meta.json` carrying origin (URL or path), the SHA-256 of the content, who brought it in and
 when (D-08). The kit SHALL refuse a commit that modifies an existing intake file; a changed source is
-a new snapshot.
+a new snapshot. A file is frozen only while its sidecar's SHA-256 matches its bytes: a file under
+`<docsRoot>/intake/` without such a sidecar SHALL be reported by `slicekit check`, checked like any
+other doc, and SHALL keep the intake stage from being done.
 
 Scenario: GIVEN an intake file WHEN a commit changes its bytes THEN the PreToolUse guard refuses the
 commit and names the file.
+
+Scenario: GIVEN a file dropped into `<docsRoot>/intake/` with no sidecar WHEN `slicekit check` runs
+THEN it reports "intake file has no valid sidecar" for that file and checks its references and style.
 
 Enforced by: PreToolUse guard on Bash (03 REQ-3.2), `slicekit check` (hash matches sidecar).
 

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,14 +142,72 @@ test('a promise in a merged slice file is checked', () => {
   ]);
 });
 
-test('intake files are frozen and exempt', () => {
+// Writes an intake file and, unless `sha` is false, its sidecar (`sha` overrides the true hash).
+function intakeFile(root, name, text, { sha, sidecar = `${name}.meta.json` } = {}) {
+  const dir = path.join(root, 'docs', 'intake');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), text);
+  if (sha === false) return;
+  const sum = sha ?? crypto.createHash('sha256').update(text).digest('hex');
+  fs.writeFileSync(path.join(dir, sidecar), JSON.stringify({ origin: 'test', sha256: sum }));
+}
+
+test('an intake file pinned by its sidecar is frozen and exempt', () => {
   const r = run('base', (root) => {
-    fs.mkdirSync(path.join(root, 'docs', 'intake'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'docs', 'intake', 'req.md'), '# Req\n\nSee `src/gone.js`, [x](gone.md) and REQ-9.9.\n');
+    intakeFile(root, 'req.md', '# Req\n\nSee `src/gone.js`, [x](gone.md) and REQ-9.9.\n');
+    intakeFile(root, 'by-stem.md', '# Stem\n\nSee `src/gone.js`.\n', { sidecar: 'by-stem.meta.json' });
     fs.writeFileSync(path.join(root, 'docs', 'notes.md'), '# Notes\n\nSee `src/gone.js`.\n');
   });
   assert.deepEqual(r.lines, [
     'references docs/notes.md:3 missing file src/gone.js',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('an intake file without a valid sidecar is checked and is itself a finding', () => {
+  const r = run('base', (root) => {
+    intakeFile(root, 'req.md', '# Req\n\nThe founding text.\n');
+    intakeFile(root, 'extra.md', '# Extra\n\nWe delve into [x](gone.md).\n', { sha: false });
+    intakeFile(root, 'stale.md', '# Stale\n\nSee `src/gone.js`.\n', { sha: '0'.repeat(64) });
+  });
+  assert.deepEqual(r.lines, [
+    'references docs/intake/extra.md:0 intake file has no valid sidecar',
+    'references docs/intake/extra.md:3 missing file gone.md',
+    'references docs/intake/stale.md:0 intake file has no valid sidecar',
+    'references docs/intake/stale.md:3 missing file src/gone.js',
+    'check: 4 findings, 4 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('a link resolves against its own directory; a backticked path may also resolve from the root', () => {
+  const r = run('base', (root) => {
+    fs.writeFileSync(
+      path.join(root, 'docs', 'spec', '02-links.md'),
+      [
+        '# Links', // 1
+        '', // 2
+        'See [the queue](BUILD.md) and [decisions](decisions.md#x).', // 3
+        'Rooted [queue](/BUILD.md) and [up](../decisions.md).', // 4
+        'Backticked `docs/decisions.md` resolves from the root.', // 5
+      ].join('\n'),
+    );
+  });
+  assert.deepEqual(r.lines, [
+    'references docs/spec/02-links.md:3 missing file BUILD.md',
+    'references docs/spec/02-links.md:3 missing file decisions.md',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('a reference-style link definition to a missing file is a finding', () => {
+  const r = run('base', (root) => {
+    fs.writeFileSync(
+      path.join(root, 'docs', 'spec', '02-defs.md'),
+      ['# Defs', '', 'Read [core][c] and [gone][g].', '', '[c]: 01-core.md', '[g]: gone.md', '[w]: https://example.com/x.md'].join('\n'),
+    );
+  });
+  assert.deepEqual(r.lines, [
+    'references docs/spec/02-defs.md:6 missing file gone.md',
     'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
 });

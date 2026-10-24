@@ -76,6 +76,13 @@ test('intake needs a sidecar whose hash matches', () => {
     fs.rmSync(path.join(root, 'docs/intake/2026-01-01-brief.md.meta.json'));
     assert.equal(programStage(root, cfg).stage, 'intake');
   });
+  // One valid snapshot does not excuse another: every intake file must be pinned.
+  withPoint(['after-intake'], (root) => {
+    fs.writeFileSync(path.join(root, 'docs/intake/extra.md'), 'Dropped in.');
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'intake');
+    assert.deepEqual(r.blockers, ['docs/intake/extra.md has no sidecar .meta.json']);
+  });
 });
 
 test('clarify blocks on an Open decision that the spec cites', () => {

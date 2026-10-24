@@ -57,6 +57,15 @@ test('markdown » refs handles titles, parentheses, URLs, placeholders and refer
   assert.deepEqual(anchor, { kind: 'anchor', value: 'sec', file: 'a.md', line: 1 });
 });
 
+test('markdown » a reference-style link definition is a link path', () => {
+  const text = ['Read [the spec][s].', '', '[s]: docs/spec.md', '  [a]: <other.md#sec> "Title"', '[u]: https://x.io/a.md', '[h]: #local', '`[c]: in/code.md`'].join('\n');
+  assert.deepEqual(refs(text), [
+    { kind: 'path', value: 'docs/spec.md', via: 'link', line: 3 },
+    { kind: 'path', value: 'other.md', via: 'link', line: 4 },
+    { kind: 'anchor', value: 'sec', file: 'other.md', line: 4 },
+  ]);
+});
+
 test('markdown » a dot-leading name with a further dot is a path with an extension', () => {
   const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
   assert.deepEqual(paths('`config/.eslintrc.cjs` `scripts/.bin` `a/.env.local`'), ['config/.eslintrc.cjs', 'a/.env.local']);
