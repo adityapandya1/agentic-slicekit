@@ -7,7 +7,10 @@ export const SHAPES = ['backend', 'fullstack', 'data'];
 export const CONFIG_PATH = path.join('.slicekit', 'config.json');
 
 const COMMAND_KEYS = ['test', 'lint', 'build', 'e2e'];
+const REVIEW_MODES = ['required', 'optional'];
+const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
+// Matched case-insensitively: compileDestructive adds the i flag, so `drop table` is caught too.
 const DESTRUCTIVE = [
   '\\brm\\s+-rf\\s+(/|~|\\.\\.)',
   '\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b',
@@ -52,6 +55,15 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {} })
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
 
+// One message per docsRoot; a hand-edited config must already be clean (the CLI normalises --docs).
+function docsRootError(d) {
+  if (d.includes('\\')) return 'docsRoot: use forward slashes';
+  if (d.startsWith('/') || /^[A-Za-z]:/.test(d)) return 'docsRoot: must be relative';
+  if (d.split('/').includes('..')) return 'docsRoot: no .. segment';
+  if (d.endsWith('/')) return 'docsRoot: no trailing slash';
+  return null;
+}
+
 export function validateConfig(cfg) {
   if (!isObject(cfg)) return ['config: must be an object'];
   const errors = [];
@@ -59,20 +71,38 @@ export function validateConfig(cfg) {
   for (const key of ['name', 'docsRoot', 'defaultBranch']) {
     if (typeof cfg[key] !== 'string' || cfg[key] === '') errors.push(`${key}: must be a non-empty string`);
   }
+  if (typeof cfg.docsRoot === 'string' && cfg.docsRoot !== '') {
+    const error = docsRootError(cfg.docsRoot);
+    if (error) errors.push(error);
+  }
+  if (typeof cfg.defaultBranch === 'string' && cfg.defaultBranch !== '' && !BRANCH.test(cfg.defaultBranch)) {
+    errors.push('defaultBranch: must be a branch name');
+  }
   if (!SHAPES.includes(cfg.shape)) errors.push(`shape: must be one of ${SHAPES.join(', ')}`);
-  if (!isStringArray(cfg.protectedBranches)) errors.push('protectedBranches: must be an array of strings');
+  if (!isStringArray(cfg.protectedBranches)) {
+    errors.push('protectedBranches: must be an array of strings');
+  } else {
+    cfg.protectedBranches.forEach((b, i) => {
+      if (!BRANCH.test(b)) errors.push(`protectedBranches[${i}]: must be a branch name`);
+    });
+  }
   if (!isObject(cfg.commands)) {
     errors.push('commands: must be an object');
   } else {
     for (const key of COMMAND_KEYS) {
       if (typeof cfg.commands[key] !== 'string') errors.push(`commands.${key}: must be a string`);
     }
+    for (const key of Object.keys(cfg.commands)) {
+      if (!COMMAND_KEYS.includes(key)) errors.push(`commands.${key}: unknown command; use ${COMMAND_KEYS.join(', ')}`);
+    }
   }
   if (!Array.isArray(cfg.repos)) errors.push('repos: must be an array');
   for (const key of ['gitHost', 'tracker']) {
     if (!isObject(cfg[key]) || typeof cfg[key].kind !== 'string') errors.push(`${key}.kind: must be a string`);
   }
-  if (!isObject(cfg.review) || typeof cfg.review.independent !== 'string') errors.push('review.independent: must be a string');
+  if (!isObject(cfg.review) || !REVIEW_MODES.includes(cfg.review.independent)) {
+    errors.push(`review.independent: must be ${REVIEW_MODES.join(' or ')}`);
+  }
   if (typeof cfg.freezeTests !== 'boolean') errors.push('freezeTests: must be a boolean');
   if (!isObject(cfg.style) || !isStringArray(cfg.style.banned)) errors.push('style.banned: must be an array of strings');
   if (!isStringArray(cfg.destructive)) {
@@ -80,7 +110,7 @@ export function validateConfig(cfg) {
   } else {
     cfg.destructive.forEach((src, i) => {
       try {
-        new RegExp(src);
+        new RegExp(src, 'i');
       } catch {
         errors.push(`destructive[${i}]: must be a valid regular expression`);
       }
@@ -88,6 +118,10 @@ export function validateConfig(cfg) {
   }
   if (!isObject(cfg.ci) || !isStringArray(cfg.ci.observabilitySteps)) errors.push('ci.observabilitySteps: must be an array of strings');
   return errors;
+}
+
+export function compileDestructive(cfg) {
+  return cfg.destructive.map((src) => new RegExp(src, 'i'));
 }
 
 export function loadConfig(root) {

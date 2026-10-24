@@ -7,6 +7,7 @@ import {
   CONFIG_VERSION,
   SHAPES,
   ConfigError,
+  compileDestructive,
   defaultConfig,
   validateConfig,
   loadConfig,
@@ -57,11 +58,54 @@ test('default destructive patterns match their commands and spare benign ones', 
     'git reset --hard origin/main',
   ];
   for (const cmd of blocked) assert.ok(patterns.some((re) => re.test(cmd)), `should match: ${cmd}`);
-  // The patterns carry no i flag, so SQL keywords match upper case only.
-  assert.ok(!patterns.some((re) => re.test('drop database y')));
   for (const cmd of ['rm -rf ./build', 'git push origin slice/x', 'git reset --soft HEAD~1']) {
     assert.ok(!patterns.some((re) => re.test(cmd)), `should not match: ${cmd}`);
   }
+});
+
+test('compileDestructive matches case-insensitively', () => {
+  const patterns = compileDestructive(base());
+  assert.equal(patterns.length, 5);
+  assert.ok(patterns.every((re) => re instanceof RegExp && re.flags.includes('i')));
+  assert.ok(patterns.some((re) => re.test('drop database y')));
+  assert.ok(patterns.some((re) => re.test('Truncate users')));
+  assert.ok(!patterns.some((re) => re.test('git push origin slice/x')));
+});
+
+test('docsRoot must be a clean relative path', () => {
+  const rejected = {
+    '../outside': 'docsRoot: no .. segment',
+    'a/../b': 'docsRoot: no .. segment',
+    'C:/Temp/x': 'docsRoot: must be relative',
+    '/abs': 'docsRoot: must be relative',
+    'docs/': 'docsRoot: no trailing slash',
+    'a\\b': 'docsRoot: use forward slashes',
+    '': 'docsRoot: must be a non-empty string',
+  };
+  for (const [docsRoot, message] of Object.entries(rejected)) {
+    assert.ok(validateConfig({ ...base(), docsRoot }).includes(message), `${docsRoot}: ${message}`);
+  }
+  for (const docsRoot of ['docs', 'handbook/specs']) assert.deepEqual(validateConfig({ ...base(), docsRoot }), [], docsRoot);
+  assert.equal(defaultConfig({ name: 'demo', shape: 'backend', docsRoot: 'docs/' }).docsRoot, 'docs/');
+});
+
+test('branch names must not look like options', () => {
+  assert.ok(validateConfig({ ...base(), defaultBranch: '-x' }).includes('defaultBranch: must be a branch name'));
+  assert.ok(validateConfig({ ...base(), protectedBranches: ['main', '--force'] }).includes('protectedBranches[1]: must be a branch name'));
+  assert.ok(validateConfig({ ...base(), defaultBranch: 'a b' }).includes('defaultBranch: must be a branch name'));
+  const ok = { ...base(), defaultBranch: 'release/1.x', protectedBranches: ['main', 'release/1.x', 'dev_2'] };
+  assert.deepEqual(validateConfig(ok), []);
+});
+
+test('rejects unknown command keys', () => {
+  const cfg = { ...base(), commands: { ...base().commands, tests: 'npm test' } };
+  assert.ok(validateConfig(cfg).includes('commands.tests: unknown command; use test, lint, build, e2e'));
+});
+
+test('review.independent is required or optional', () => {
+  assert.deepEqual(validateConfig({ ...base(), review: { independent: 'optional' } }), []);
+  assert.ok(validateConfig({ ...base(), review: { independent: 'sometimes' } }).includes('review.independent: must be required or optional'));
+  assert.ok(validateConfig({ ...base(), review: {} }).includes('review.independent: must be required or optional'));
 });
 
 test('loadConfig throws ConfigError when file missing', () => {
