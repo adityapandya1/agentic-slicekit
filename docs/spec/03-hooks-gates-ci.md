@@ -145,10 +145,13 @@ Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
 
-Every file the kit renders into `.claude/`, `.githooks/` and `.github/workflows/` SHALL sit between
+Every file the kit renders into `.claude/`, `.githooks/` and `.github/workflows/` SHALL carry the
+kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
+that front matter and is managed whole, because Claude Code reads front matter only when it starts on
+line 1, so no marker may come before it. Any other file SHALL sit between
 `<!-- slicekit:managed:start v<version> -->` and `<!-- slicekit:managed:end -->` markers (or the
-comment syntax of the file type). `slicekit update` SHALL replace only the content between markers,
-show the diff, and leave everything outside untouched. `slicekit check` SHALL fail when a managed
+comment syntax of the file type), and `slicekit update` SHALL replace only the content between the
+markers and leave everything outside untouched. `slicekit update` SHALL show the diff for both forms. `slicekit check` SHALL fail when a managed
 block's content differs from the installed version's template (drift of the kit's own files).
 
 Enforced by: the renderer; `slicekit check` (managed rule).
