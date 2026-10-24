@@ -30,12 +30,30 @@ function withoutOurs(entry, prefixes) {
   return rest.length === 0 ? [] : [{ ...entry, hooks: rest }];
 }
 
-export function mergeSettings(existing, hooks, { version, cli } = {}) {
-  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+// Every command prefix that marks a hook entry as slicekit's: the legacy one, the current cli, the recorded cli.
+export function ourPrefixes(existing, cli) {
   const prefixes = [LEGACY];
   if (cli) prefixes.push(`${cli} hook `);
-  const recorded = base._slicekit?.cli;
+  const recorded = existing?._slicekit?.cli;
   if (typeof recorded === 'string' && recorded !== '') prefixes.push(`${recorded} hook `);
+  return prefixes;
+}
+
+// { event: [sorted slicekit commands] } for a settings-shaped object (or a bare hooks object via {hooks}).
+export function ourCommands(settings, prefixes) {
+  const out = {};
+  const hooks = settings && typeof settings.hooks === 'object' && settings.hooks !== null ? settings.hooks : {};
+  for (const event of Object.keys(hooks).sort()) {
+    const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const cmds = entries.flatMap((e) => (Array.isArray(e?.hooks) ? e.hooks : [])).filter((h) => isOurs(h, prefixes)).map((h) => h.command);
+    if (cmds.length > 0) out[event] = cmds.sort();
+  }
+  return out;
+}
+
+export function mergeSettings(existing, hooks, { version, cli } = {}) {
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const prefixes = ourPrefixes(base, cli);
   const merged = { ...(base.hooks ?? {}) };
   for (const [event, entries] of Object.entries(hooks)) {
     const kept = Array.isArray(merged[event]) ? merged[event].flatMap((e) => withoutOurs(e, prefixes)) : [];

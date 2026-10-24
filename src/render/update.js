@@ -1,17 +1,25 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import { exists, readText } from '../fs.js';
+import { exists, readText, writeText } from '../fs.js';
 import { entriesForShape } from './manifest.js';
-import { compareManaged, managedPart } from './compare.js';
-import { markerStyle, wrapManaged } from './managed.js';
-import { loadReference, renderAll, substitute, TEMPLATES } from './index.js';
+import { managedPart } from './compare.js';
+import { RENDERED, SETTINGS, TEMPLATES, renderEntry, loadReference, substitute, varsFor } from './entry.js';
+import { mergeSettings, ourCommands, ourPrefixes, readSettings } from './settings.js';
 
 const CONTEXT = 3;
+const NO_EOL = '\\ No newline at end of file';
 
 // Minimal unified-style diff by line LCS: '-' removed, '+' added, ' ' context, '@@' between far hunks.
 export function diffLines(a, b) {
+  if (a === b) return '';
   const split = (s) => (s === '' ? [] : s.replace(/\n$/, '').split('\n'));
   const x = split(a);
   const y = split(b);
+  if (x.join('\n') === y.join('\n')) {
+    // Only the trailing newline differs.
+    const last = x[x.length - 1];
+    return `-${last}\n${a.endsWith('\n') ? '' : `${NO_EOL}\n`}+${last}\n${b.endsWith('\n') ? '' : `${NO_EOL}\n`}`;
+  }
   const lcs = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
   for (let i = x.length - 1; i >= 0; i--) {
     for (let j = y.length - 1; j >= 0; j--) {
@@ -26,7 +34,7 @@ export function diffLines(a, b) {
       ops.push([' ', x[i]]);
       i++;
       j++;
-    } else if (j < y.length && (i === x.length || lcs[i][j + 1] >= lcs[i + 1][j])) ops.push(['+', y[j++]]);
+    } else if (j < y.length && (i === x.length || lcs[i][j + 1] > lcs[i + 1][j])) ops.push(['+', y[j++]]);
     else ops.push(['-', x[i++]]);
   }
   const keep = ops.map(() => false);
@@ -48,32 +56,80 @@ export function diffLines(a, b) {
   return out.length === 0 ? '' : `${out.join('\n')}\n`;
 }
 
-// opts.entries and opts.templates render from another manifest (tests, future renderers).
-export function planUpdate(root, cfg, { version, entries = entriesForShape(cfg.shape), templates = TEMPLATES }) {
-  const vars = { version, name: cfg.name, docsRoot: cfg.docsRoot, cli: cfg.cli };
-  return entries.map(({ src, dest }) => {
-    const rendered = substitute(readText(path.join(templates, src)), vars);
-    const style = markerStyle(dest, rendered);
-    const fresh = wrapManaged(rendered, { version, style });
-    const file = path.join(root, dest);
-    const current = exists(file) ? readText(file) : null;
-    const verdict = compareManaged({ dest, current, reference: loadReference(root, dest), style });
-    if (verdict === 'missing' || verdict === 'unmanaged') return { dest, status: verdict, diff: '' };
-    const have = managedPart(current, style);
-    const want = managedPart(fresh, style);
-    if (verdict === 'drifted') return { dest, status: 'drifted', diff: diffLines(have, want) };
-    if (have === want) return { dest, status: 'same', diff: '' };
-    return { dest, status: 'changed', diff: diffLines(have, want) };
-  });
+function fileItem(root, cfg, entry, opts) {
+  const { dest, current, reference, verdict, next, fresh, style } = renderEntry(root, cfg, entry, opts);
+  const base = { dest, next, current, reference, refText: next };
+  if (verdict === 'missing' || verdict === 'unmanaged') return { ...base, status: verdict, diff: '' };
+  const diff = diffLines(managedPart(current, style), managedPart(fresh, style));
+  if (verdict === 'drifted') return { ...base, status: 'drifted', diff };
+  return { ...base, status: next === current ? 'same' : 'changed', diff };
 }
 
-// Writes changed and missing files; drifted ones only with force; never an unmanaged one.
-// The plan says what to expect; renderAll applies the same comparison and refreshes the reference copies and settings.json.
-export function applyUpdate(root, cfg, _plan, { version, force = false, entries, templates }) {
-  const options = { version, force };
-  if (entries) options.entries = entries;
-  if (templates) options.templates = templates;
-  return renderAll(root, cfg, options)
-    .filter((r) => r.action === 'created' || r.action === 'updated')
-    .map((r) => r.dest);
+// settings.json is judged by its slicekit hook entries: those are the gate, so a removed or altered
+// one is drift. A version bump or a newly added event is an ordinary change. The reference copy is
+// the hooks slicekit last wrote.
+function settingsItem(root, cfg, { version, templates }) {
+  const hooks = JSON.parse(substitute(readText(path.join(templates, 'hooks.json')), varsFor(cfg, version)));
+  const existing = readSettings(root);
+  const next = `${JSON.stringify(mergeSettings(existing, hooks, { version, cli: cfg.cli }), null, 2)}\n`;
+  const file = path.join(root, SETTINGS);
+  const current = exists(file) ? readText(file) : null;
+  const refText = `${JSON.stringify({ hooks }, null, 2)}\n`;
+  const reference = loadReference(root, SETTINGS);
+  const base = { dest: SETTINGS, next, current, reference, refText };
+  if (current === null) return { ...base, status: 'missing', diff: '' };
+  if (current === next) return { ...base, status: 'same', diff: '' };
+  const diff = diffLines(current, next);
+  if (!existing?._slicekit) return { ...base, status: 'changed', diff };
+  const prefixes = ourPrefixes(existing, cfg.cli);
+  let baseline;
+  try {
+    baseline = reference === null ? { hooks } : JSON.parse(reference);
+  } catch {
+    baseline = { hooks };
+  }
+  const drifted = JSON.stringify(ourCommands(existing, prefixes)) !== JSON.stringify(ourCommands(baseline, prefixes));
+  return { ...base, status: drifted ? 'drifted' : 'changed', diff };
+}
+
+// opts.entries and opts.templates render from another manifest (tests, future renderers).
+// Each item carries { dest, status, diff } plus what applyUpdate needs to write it.
+export function planUpdate(root, cfg, { version, entries = entriesForShape(cfg.shape), templates = TEMPLATES }) {
+  const opts = { version, templates };
+  return [...entries.map((entry) => fileItem(root, cfg, entry, opts)), settingsItem(root, cfg, opts)];
+}
+
+const WARNING = {
+  drifted: (dest) => `${dest} was edited since slicekit wrote it; left untouched (slicekit update --force overwrites)`,
+  unmanaged: (dest) => `${dest} exists and is not managed by slicekit; left untouched`,
+};
+
+// Writes exactly the entries the plan marked changed or missing, and drifted ones only with force.
+// Then refreshes the reference copies. Returns { written: [dest], skipped: [{dest, status, warning}] }.
+export function applyUpdate(root, cfg, plan, { version, force = false }) {
+  const written = [];
+  const skipped = [];
+  const copies = [];
+  for (const item of plan) {
+    const writable = item.status === 'changed' || item.status === 'missing' || (item.status === 'drifted' && force);
+    if (writable) {
+      writeText(path.join(root, item.dest), item.next);
+      written.push(item.dest);
+      copies.push([item.dest, item.refText]);
+    } else if (item.status === 'same') {
+      copies.push([item.dest, item.dest === SETTINGS ? item.refText : item.current]);
+    } else {
+      skipped.push({ dest: item.dest, status: item.status, warning: WARNING[item.status](item.dest) });
+      // Carry the old reference forward so the edit is still seen next time.
+      if (item.status === 'drifted' && item.reference !== null) copies.push([item.dest, item.reference]);
+    }
+  }
+  const renderedRoot = path.join(root, RENDERED);
+  if (exists(renderedRoot)) {
+    for (const entry of fs.readdirSync(renderedRoot)) {
+      if (entry !== version) fs.rmSync(path.join(renderedRoot, entry), { recursive: true, force: true });
+    }
+  }
+  for (const [dest, text] of copies) writeText(path.join(renderedRoot, version, dest), text);
+  return { written, skipped };
 }

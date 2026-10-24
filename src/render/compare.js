@@ -9,13 +9,15 @@ export function managedPart(text, style) {
   return extractManaged(text, style)?.block ?? null;
 }
 
-// 'missing' no file, 'unmanaged' a file with no slicekit marker, 'drifted' differs from the
-// reference copy slicekit wrote, 'same' otherwise (including when there is no reference to judge by).
-export function compareManaged({ current, reference, style }) {
+// 'missing' no file, 'unmanaged' a file with no slicekit marker, 'drifted' differs from what slicekit
+// wrote (the reference copy, or with none the fresh render: an unprovable edit is kept, never overwritten),
+// 'same' otherwise. With neither a reference nor a fresh render there is nothing to judge by: 'same'.
+export function compareManaged({ current, reference, fresh, style }) {
   if (current === null || current === undefined) return 'missing';
   if (!extractManaged(current, style)) return 'unmanaged';
-  if (reference === null || reference === undefined) return 'same';
-  const was = managedPart(reference, style);
+  const basis = reference ?? fresh;
+  if (basis === null || basis === undefined) return 'same';
+  const was = managedPart(basis, style);
   if (was === null) return 'same';
   return managedPart(current, style) === was ? 'same' : 'drifted';
 }

@@ -7,6 +7,7 @@ import { renderAll } from '../src/render/index.js';
 import { compareManaged } from '../src/render/compare.js';
 import { applyUpdate, diffLines, planUpdate } from '../src/render/update.js';
 import { wrapManaged } from '../src/render/managed.js';
+import { TEMPLATES, installedVersion } from '../src/render/entry.js';
 import { runCli } from './helpers/run-cli.js';
 
 const cfg = { name: 'demo', shape: 'backend', docsRoot: 'docs', cli: 'npx --no-install slicekit' };
@@ -19,6 +20,7 @@ function tmp(prefix = 'slicekit-update-') {
 function htmlKit(body) {
   const templates = tmp('slicekit-tpl-');
   fs.writeFileSync(path.join(templates, 'note.md'), body);
+  fs.copyFileSync(path.join(TEMPLATES, 'hooks.json'), path.join(templates, 'hooks.json'));
   return { templates, entries: [{ src: 'note.md', dest: 'docs/note.md', shapes: ['backend'] }] };
 }
 
@@ -33,7 +35,7 @@ test('update rewrites only inside markers', () => {
 
   const plan = planUpdate(root, cfg, { version: '1.1.0', ...kit });
   assert.equal(plan.find((p) => p.dest === 'docs/note.md').status, 'changed');
-  const written = applyUpdate(root, cfg, plan, { version: '1.1.0', ...kit });
+  const { written } = applyUpdate(root, cfg, plan, { version: '1.1.0' });
   assert.ok(written.includes('docs/note.md'));
   assert.equal(
     fs.readFileSync(file, 'utf8'),
@@ -167,7 +169,8 @@ test('--force overwrites a drifted file and refreshes its reference', () => {
   const pristine = fs.readFileSync(file, 'utf8');
   fs.appendFileSync(file, 'hand written line\n');
   const plain = runCli(['update', '--yes'], { cwd: root });
-  assert.equal(plain.code, 0);
+  assert.equal(plain.code, 1);
+  assert.match(plain.stderr, /was edited since slicekit wrote it/);
   assert.match(fs.readFileSync(file, 'utf8'), /hand written line/);
   const forced = runCli(['update', '--yes', '--force'], { cwd: root });
   assert.equal(forced.code, 0, forced.stderr);
@@ -181,4 +184,120 @@ test('--force overwrites a drifted file and refreshes its reference', () => {
 test('update usage errors exit 2', () => {
   const root = initRepo();
   assert.equal(runCli(['update', '--bogus'], { cwd: root }).code, 2);
+});
+
+const SETTINGS = '.claude/settings.json';
+
+test('settings.json is in the plan: a removed slicekit hook is drifted, --force restores it', () => {
+  const root = initRepo();
+  const file = path.join(root, SETTINGS);
+  const pristine = fs.readFileSync(file, 'utf8');
+  const obj = JSON.parse(pristine);
+  delete obj.hooks.SessionStart;
+  fs.writeFileSync(file, `${JSON.stringify(obj, null, 2)}\n`);
+  const r = runCli(['update', '--check'], { cwd: root });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /^drifted \.claude\/settings\.json$/m);
+  assert.match(r.stdout, /^\+.*SessionStart/m);
+  const plain = runCli(['update', '--yes'], { cwd: root });
+  assert.equal(plain.code, 1);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.SessionStart, undefined);
+  const forced = runCli(['update', '--yes', '--force'], { cwd: root });
+  assert.equal(forced.code, 0, forced.stderr);
+  // The restored event lands last, so compare the hook, not the byte order.
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.SessionStart, JSON.parse(pristine).hooks.SessionStart);
+  assert.equal(runCli(['update', '--check'], { cwd: root }).code, 0);
+});
+
+test('a settings.json that only lacks a hook event slicekit never wrote is changed, not drifted', () => {
+  const root = initRepo();
+  const refFile = path.join(root, '.slicekit/rendered', fs.readdirSync(path.join(root, '.slicekit/rendered'))[0], SETTINGS);
+  const ref = JSON.parse(fs.readFileSync(refFile, 'utf8'));
+  delete ref.hooks.SessionStart;
+  fs.writeFileSync(refFile, JSON.stringify(ref));
+  const file = path.join(root, SETTINGS);
+  const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete obj.hooks.SessionStart;
+  fs.writeFileSync(file, `${JSON.stringify(obj, null, 2)}\n`);
+  const r = runCli(['update', '--check'], { cwd: root });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^changed \.claude\/settings\.json$/m);
+});
+
+test('with no reference copy an edited file is drifted and kept', () => {
+  const root = initRepo();
+  const file = path.join(root, DEV);
+  const pristine = fs.readFileSync(file, 'utf8');
+  fs.rmSync(path.join(root, '.slicekit/rendered'), { recursive: true, force: true });
+  fs.appendFileSync(file, 'team edit\n');
+  const check = runCli(['update', '--check'], { cwd: root });
+  assert.equal(check.code, 1);
+  assert.match(check.stdout, /^drifted \.claude\/agents\/developer\.md$/m);
+  const kept = runCli(['update', '--yes'], { cwd: root });
+  assert.equal(kept.code, 1);
+  assert.match(fs.readFileSync(file, 'utf8'), /team edit/);
+  const forced = runCli(['update', '--yes', '--force'], { cwd: root });
+  assert.equal(forced.code, 0, forced.stderr);
+  assert.equal(fs.readFileSync(file, 'utf8'), pristine);
+});
+
+test('update --yes reports every drifted file it skipped and exits 1', () => {
+  const root = initRepo();
+  fs.appendFileSync(path.join(root, DEV), 'edit\n');
+  const r = runCli(['update', '--yes'], { cwd: root });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /developer\.md was edited since slicekit wrote it/);
+  const clean = initRepo();
+  assert.equal(runCli(['update', '--yes'], { cwd: clean }).code, 0);
+});
+
+test('applyUpdate returns what it wrote and what it skipped', () => {
+  const root = tmp();
+  const kit = htmlKit('body\n');
+  renderAll(root, cfg, { version: '1.0.0', ...kit });
+  const file = path.join(root, 'docs/note.md');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('body', 'mine'));
+  const plan = planUpdate(root, cfg, { version: '1.0.0', ...kit });
+  const res = applyUpdate(root, cfg, plan, { version: '1.0.0' });
+  assert.deepEqual(res.written, []);
+  assert.equal(res.skipped.length, 1);
+  assert.equal(res.skipped[0].dest, 'docs/note.md');
+  assert.match(res.skipped[0].warning, /edited since slicekit wrote it/);
+});
+
+test('the hint to run with --yes appears only when something would be written', () => {
+  const clean = initRepo();
+  assert.doesNotMatch(runCli(['update'], { cwd: clean }).stdout, /run again/);
+  const root = initRepo();
+  fs.appendFileSync(path.join(root, DEV), 'edit\n');
+  assert.doesNotMatch(runCli(['update'], { cwd: root }).stdout, /run again/);
+  assert.match(runCli(['update', '--force'], { cwd: root }).stdout, /run again with --yes to apply/);
+});
+
+test('diffLines prints - before + for a replaced line and marks a missing final newline', () => {
+  assert.equal(diffLines('a\nb\n', 'a\nx\n'), ' a\n-b\n+x\n');
+  const note = '\\ No newline at end of file\n';
+  assert.equal(diffLines('a\nb', 'a\nb\n'), `-b\n${note}+b\n`);
+  assert.equal(diffLines('a\nb\n', 'a\nb'), `-b\n+b\n${note}`);
+});
+
+test('compareManaged with no reference judges against the fresh render', () => {
+  const html = (body) => wrapManaged(body, { version: '1', style: 'html' });
+  assert.equal(compareManaged({ style: 'html', current: html('x'), fresh: html('x') }), 'same');
+  assert.equal(compareManaged({ style: 'html', current: html('y'), fresh: html('x') }), 'drifted');
+});
+
+test('an invalid recorded version is no installed version', () => {
+  assert.equal(installedVersion('/nonexistent', { _slicekit: { version: '../../x' } }), null);
+  assert.equal(installedVersion('/nonexistent', { _slicekit: { version: '1.2.3-rc.1' } }), '1.2.3-rc.1');
+});
+
+test('renderAll reads hooks.json from the injected templates directory', () => {
+  const root = tmp();
+  const kit = htmlKit('body\n');
+  fs.writeFileSync(path.join(kit.templates, 'hooks.json'), '{"Stop":[{"hooks":[{"type":"command","command":"{{cli}} hook custom-stop"}]}]}');
+  renderAll(root, cfg, { version: '1.0.0', ...kit });
+  const s = JSON.parse(fs.readFileSync(path.join(root, SETTINGS), 'utf8'));
+  assert.deepEqual(Object.keys(s.hooks), ['Stop']);
+  assert.match(s.hooks.Stop[0].hooks[0].command, /hook custom-stop$/);
 });
