@@ -2,7 +2,7 @@
 slice: P1/S-01
 name: CLI skeleton, config, init
 repo: .
-group: A
+group: A1
 runbook: no
 requirements: [REQ-1.1, REQ-1.11, REQ-1.10, REQ-5.1, REQ-5.3]
 decisions: [D-04, D-11, D-14, D-24, D-26, D-29]

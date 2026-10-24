@@ -2,7 +2,7 @@
 slice: P1/S-03
 name: State files, status, BUILD.md
 repo: .
-group: A
+group: A2
 runbook: no
 requirements: [REQ-1.5, REQ-1.6, REQ-1.8, REQ-1.7]
 decisions: [D-22, D-09]
