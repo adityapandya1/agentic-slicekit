@@ -7,7 +7,7 @@ export function lines(text) {
 const FENCE = /^\s*(```|~~~)/;
 
 // Yields [line, number] for every line outside fenced code blocks (1-based).
-function* prose(text) {
+export function* prose(text) {
   let inFence = false;
   const all = lines(text);
   for (let i = 0; i < all.length; i++) {
@@ -90,6 +90,9 @@ export function tables(text) {
 const LINK = /\[[^\]]*\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 const CODE_SPAN = /`[^`]*`/g;
 
+// The line with every inline code span blanked to spaces, so columns are unchanged.
+export const blankCodeSpans = (line) => line.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+
 // A path written on Windows reads the same as one written anywhere else.
 export const toSlashes = (p) => p.replace(/\\/g, '/');
 
@@ -102,11 +105,12 @@ export function isPathLike(target) {
 }
 
 // A backticked token that names a repo path: a separator, a letter, and either a trailing
-// separator or a final segment with an extension (`.bin` alone is a name, not an extension).
+// separator or a final segment with an extension. One leading dot is part of the name, so `.bin`
+// has no extension while `.eslintrc.cjs` has `cjs`.
 function looksLikePath(token) {
   const p = toSlashes(token);
   if (!p.includes('/') || !/[A-Za-z]/.test(p) || !isPathLike(p)) return false;
-  return p.endsWith('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(p.split('/').at(-1));
+  return p.endsWith('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(p.split('/').at(-1).replace(/^\./, ''));
 }
 
 // Paths, anchors and ids outside fenced code. A link written inside a code span is not a link; a
@@ -119,7 +123,7 @@ export function refs(text) {
     'g',
   );
   for (const [line, n] of prose(text)) {
-    const outsideCode = line.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+    const outsideCode = blankCodeSpans(line);
     for (const m of outsideCode.matchAll(LINK)) {
       const target = m[1];
       if (target.startsWith('#') || !isPathLike(target)) continue;

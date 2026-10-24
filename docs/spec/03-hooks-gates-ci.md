@@ -116,6 +116,7 @@ Each alone fails silently.
 Enforced by: `slicekit init`, `slicekit check` (hooks rule).
 
 ## REQ-3.10 The filler list
+<!-- slicekit:style-catalogue -->
 
 `config.style.banned` SHALL be a list of phrases, seeded by the kit with the author's examples and a
 short list of agent fillers ("it's worth noting", "robust", "seamlessly", "at the boundary of",

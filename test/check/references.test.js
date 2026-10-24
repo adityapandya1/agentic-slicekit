@@ -108,6 +108,23 @@ test('a pointer in an unmerged slice file is checked', () => {
   ]);
 });
 
+test('an unparseable state file is a finding and every path in its slice file is checked', () => {
+  const r = run('slice-promises', (root) => {
+    fs.mkdirSync(path.join(root, '.slicekit', 'state'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'state', 'P1-S-01.json'), '{ not json');
+  });
+  const f = 'references docs/phases/P1-x/S-01-promises.md';
+  assert.deepEqual(r.lines, [
+    `${f}:0 state file .slicekit/state/P1-S-01.json is not valid JSON`,
+    `${f}:23 missing file src/promised.js`,
+    `${f}:23 missing file test/promised.test.js`,
+    `${f}:29 missing file src/also-promised.js`,
+    `${f}:29 missing file docs/spec/promised.md`,
+    'check: 5 findings, 5 over baseline, 0 blocking, 1 rules',
+  ]);
+  assert.equal(r.findings[0].bucket, 'docs/phases/P1-x/S-01-promises.md');
+});
+
 test('a promise in a merged slice file is checked', () => {
   const r = run('slice-promises', (root) => {
     const cfg = loadConfig(root);

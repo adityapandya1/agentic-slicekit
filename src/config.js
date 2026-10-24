@@ -27,7 +27,8 @@ export class ConfigError extends Error {
   }
 }
 
-function seedBanned() {
+// The kit's own filler list, before any team extends it.
+export function seedBanned() {
   const file = fileURLToPath(new URL('../templates/style.json', import.meta.url));
   return JSON.parse(fs.readFileSync(file, 'utf8')).banned;
 }

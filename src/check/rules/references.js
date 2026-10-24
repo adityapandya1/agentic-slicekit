@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseSliceAddr } from '../../ids.js';
+import { parseSliceAddr, stateFileName } from '../../ids.js';
 import { frontMatter, headings, isPathLike, refs, toSlashes } from '../../markdown.js';
 import { findSliceFiles } from '../../slicefile.js';
 import { readSlice } from '../../state/index.js';
@@ -49,15 +49,23 @@ function slugs(text) {
 
 // The lines of an unmerged slice file whose code-span paths are promises: a `**Files:**` line, and
 // every line under `## Expected changes` up to the next heading of level 1 or 2. Null for any
-// other doc, and for a slice that is merged or released (its promises are due).
-function promiseLines(ctx, doc, sliceIds) {
+// other doc, and for a slice that is merged or released (its promises are due). A state file that
+// exists but does not parse is reported through `broken` and defers nothing: an unknown state must
+// not read as `todo`.
+function promiseLines(ctx, doc, sliceIds, broken) {
   const sliceId = sliceIds.get(doc.rel);
   if (!sliceId) return null;
   let state = 'todo';
   try {
     state = readSlice(ctx.root, ctx.cfg, sliceId).state;
   } catch {
-    // An unreadable state file is another rule's finding; the slice is not merged.
+    // readSlice throws for a present file only when it is not valid JSON; an absent one with no
+    // matching slice is `todo`.
+    const file = path.join(ctx.paths.state, stateFileName(sliceId));
+    if (fs.existsSync(file)) {
+      broken(`state file ${toSlashes(path.relative(ctx.root, file))} is not valid JSON`);
+      return null;
+    }
   }
   if (DONE.has(state)) return null;
   const out = new Set();
@@ -154,13 +162,13 @@ export function run(ctx) {
 
   for (const doc of ctx.docs) {
     const seen = new Set();
-    const promises = promiseLines(ctx, doc, sliceIds);
     const add = (line, message) => {
       const key = `${line} ${message}`;
       if (seen.has(key)) return;
       seen.add(key);
       findings.push({ rule: id, file: doc.rel, line, message, bucket: doc.rel });
     };
+    const promises = promiseLines(ctx, doc, sliceIds, (message) => add(0, message));
     for (const ref of refs(doc.text)) {
       if ((doc.lines[ref.line - 1] ?? '').includes(EXAMPLE)) continue;
       if (ref.kind === 'path') {

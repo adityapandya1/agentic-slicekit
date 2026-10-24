@@ -57,6 +57,11 @@ test('markdown » refs handles titles, parentheses, URLs, placeholders and refer
   assert.deepEqual(anchor, { kind: 'anchor', value: 'sec', file: 'a.md', line: 1 });
 });
 
+test('markdown » a dot-leading name with a further dot is a path with an extension', () => {
+  const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
+  assert.deepEqual(paths('`config/.eslintrc.cjs` `scripts/.bin` `a/.env.local`'), ['config/.eslintrc.cjs', 'a/.env.local']);
+});
+
 test('markdown » refs finds paths, ids and links', () => {
   const text = [
     'See [spec](docs/spec/01.md) and [part](02.md#intro).',
