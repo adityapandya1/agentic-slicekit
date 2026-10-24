@@ -90,7 +90,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
     blocking += 1;
   };
 
-  for (const problem of ctx.baselineProblems ?? []) block({ rule: 'baseline', file: '-', line: 0, message: problem, bucket: '-' });
+  for (const p of ctx.baselineProblems ?? []) block({ rule: 'baseline', file: `.slicekit/baselines/${p.file}`, line: 0, message: p.problem, bucket: '-' });
 
   for (const rule of rules) {
     if (seen.has(rule.id)) {

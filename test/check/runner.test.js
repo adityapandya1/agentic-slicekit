@@ -250,14 +250,15 @@ test('an over-baseline bucket prints every finding without the baseline prefix',
   }
 });
 
-test('a fractional baseline counts as zero', () => {
+test('a fractional baseline counts as zero and is reported', () => {
   const repo = initRepo();
   try {
     fs.writeFileSync(path.join(repo.root, '.slicekit', 'baselines', 'stubratchet.json'), JSON.stringify({ 'a.md': 1.5 }));
     const result = check(repo.root, {
       rules: [ratchetRule([{ file: 'a.md', line: 1, message: 'one' }, { file: 'a.md', line: 2, message: 'two' }])],
     });
-    assert.equal(result.lines.at(-1), 'check: 2 findings, 2 over baseline, 0 blocking, 1 rules');
+    assert.equal(result.lines.at(-1), 'check: 3 findings, 2 over baseline, 1 blocking, 1 rules');
+    assert.ok(result.lines.includes('baseline .slicekit/baselines/stubratchet.json:0 a.md is not a non-negative integer (read as 0)'));
     assert.equal(result.exitCode, 1);
   } finally {
     repo.cleanup();

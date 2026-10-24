@@ -83,7 +83,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | journal | the hash chain in `journal.log` is broken |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 
-Baselines SHALL only go down: `slicekit baseline update` refuses to raise any count. Fixing a
+Baselines SHALL only go down: `slicekit baseline update` refuses to raise any count. The one exception is a first adoption: `slicekit baseline update --adopt` records higher counts, prints each one with its previous value, is refused in CI, and a reviewer treats an adopted raise like any other finding. Fixing a
 finding by weakening a rule, raising a baseline or deleting a reference target SHALL be a reviewer
 blocker.
 

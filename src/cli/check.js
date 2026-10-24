@@ -21,7 +21,7 @@ async function run(args, io) {
   }
   let result;
   try {
-    result = check(io.cwd, { ci: Boolean(values.ci), env: io.env ?? process.env });
+    result = check(io.cwd, { ci: Boolean(values.ci), env: io.env ?? process.env, ...(io.rules ? { rules: io.rules } : {}) });
   } catch (e) {
     if (!(e instanceof ConfigError)) throw e;
     if (values.json) io.stdout(`${JSON.stringify({ error: e.message }, null, 2)}\n`);
