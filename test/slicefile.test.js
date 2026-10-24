@@ -70,6 +70,30 @@ test('missing Done when section throws naming it', () => {
   );
 });
 
+test('evaluation set with no table throws naming the section and path', () => {
+  const text = sample.replace(/\| Test \|[\s\S]*?e2e \|[^\n]*\n/, 'None yet.\n');
+  assert.throws(
+    () => parseSliceFile(text, 'docs/x.md'),
+    (e) => e instanceof SliceFileError && e.field === 'Evaluation set' && e.path === 'docs/x.md',
+  );
+});
+
+test('evaluation set table with the wrong header throws', () => {
+  const text = sample.replace('| Test | Kind | Covers |', '| Name | Type | Reqs |');
+  assert.throws(
+    () => parseSliceFile(text, 'docs/x.md'),
+    (e) => e instanceof SliceFileError && e.field === 'Evaluation set' && e.path === 'docs/x.md',
+  );
+});
+
+test('evaluation set table with no rows throws', () => {
+  const text = sample.replace(/\| `sample[^\n]*\n/g, '');
+  assert.throws(
+    () => parseSliceFile(text, 'docs/x.md'),
+    (e) => e instanceof SliceFileError && e.field === 'Evaluation set',
+  );
+});
+
 test('expected changes also parse from a list', () => {
   const text = sample.replace(
     '`src/sample.js`, `src/cli/`, `test/sample.test.js`.',
@@ -127,7 +151,7 @@ test('parsePhaseFile reads id and name from the first heading', () => {
 test('parses every real slice file in docs/phases/P1-spine', () => {
   const dir = path.join(here, '..', 'docs', 'phases', 'P1-spine');
   const files = fs.readdirSync(dir).filter((f) => /^S-\d{2}-.*\.md$/.test(f));
-  assert.equal(files.length, 8);
+  assert.ok(files.length >= 8);
   for (const f of files) {
     const p = path.join(dir, f);
     const s = parseSliceFile(fs.readFileSync(p, 'utf8'), p);

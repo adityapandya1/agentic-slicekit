@@ -54,7 +54,12 @@ export function parseSliceFile(text, file) {
   const evalText = section(body, 'Evaluation set');
   if (evalText === null) fail('missing section "## Evaluation set"', 'Evaluation set');
   const table = tables(evalText)[0];
-  const evaluation = (table ? table.rows : []).map((row) => {
+  const header = table ? table.header.map((h) => h.toLowerCase()) : [];
+  if (!table || header[0] !== 'test' || header[1] !== 'kind' || header[2] !== 'covers') {
+    fail('"## Evaluation set" has no table with the columns Test, Kind, Covers', 'Evaluation set');
+  }
+  if (table.rows.length === 0) fail('"## Evaluation set" table has no rows', 'Evaluation set');
+  const evaluation = table.rows.map((row) => {
     const [test = '', kind = '', covers = ''] = row;
     if (!KINDS.includes(kind)) {
       fail(`evaluation row "${test}" has kind "${kind}", expected happy, negative or e2e`, 'Evaluation set');
