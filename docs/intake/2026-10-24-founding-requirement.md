@@ -26,7 +26,7 @@ agents, commands and whatever other utilities exist.
    technology stack (Java and Spring Boot in the example), and the existing systems it must
    integrate with.
 2. Given to an agent, it must first understand the requirement and then ask questions until no
-   assumption remains. No filler language such as "minting at the gate" or "at the boundary of".
+   assumption remains. No filler language such as "minting at the gate" or "at the boundary of". <!-- slicekit:example -->
 3. From the documents and the answers, the agent writes specifications as markdown files in the
    repository's docs folder. Companies document differently; the kit adapts.
 4. The spec goes for human review and is confirmed or updated.
