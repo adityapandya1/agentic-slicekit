@@ -1,7 +1,5 @@
 # 05 — How the kit tests itself and ships
 
-Decisions cited: D-02, D-03, D-04, D-05, D-16, D-26, D-28.
-
 ## REQ-5.1 Repository layout of the kit
 
 The kit's own repository SHALL have this layout:
@@ -32,12 +30,12 @@ docs/                    this spec, the decisions, the kit's own runbook, the us
 BUILD.md                 the kit's own queue
 ```
 
-Scenario: GIVEN the kit's own repository WHEN `slicekit check` runs on it THEN every directory in the
-layout above exists.
+Scenario: GIVEN a slice in the kit's `BUILD.md` WHEN it adds a module THEN the module sits in the
+directory above that names its job.
 
-Cites: D-04, D-05.
+Cites: D-04, D-05, D-16, D-29.
 
-Enforced by: `slicekit check` running on the kit's own repository (REQ-5.4).
+Enforced by: advisory; no script checks the kit's own layout yet.
 
 ## REQ-5.2 Tests
 
@@ -49,8 +47,8 @@ performance case of 04 REQ-4.5. The end-to-end test SHALL run on each `examples/
 green, a scripted slice through `tests-red → building → draft-pr` with a stubbed `gh`, graph, and
 every query. The suite SHALL pass on Windows, macOS and Linux in CI.
 
-Scenario: GIVEN the PreToolUse handler WHEN its test pipes the JSON Claude Code sends for `git commit`
-on `main` THEN stdout carries a deny decision.
+Scenario: GIVEN the PreToolUse handler WHEN its test pipes the JSON Claude Code sends for
+`git commit` on `main` THEN stdout carries a deny decision.
 
 Cites: D-16, D-29.
 
@@ -105,7 +103,7 @@ to skip the prompt in CI.
 Scenario: GIVEN a config with an older `configVersion` WHEN the CLI first runs THEN it migrates the
 config forward and prints each change.
 
-Cites: intake/2026-10-24-founding-requirement.md.
+Cites: `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit update`; a test per config migration.
 
@@ -131,8 +129,8 @@ npm, how to debug a hook on Windows), a user guide with one page per command and
 rule stating the failure that justifies it, and `docs/adapters.md` describing the contracts in
 `spec/contracts/` for anyone adding a git host, tracker or agent tool.
 
-Scenario: GIVEN `docs/runbook.md` naming a file that no longer exists WHEN `slicekit check` runs on the
-kit THEN the references rule fails naming the line.
+Scenario: GIVEN `docs/runbook.md` naming a file that no longer exists WHEN `slicekit check` runs on
+the kit THEN the references rule fails naming the line.
 
 Cites: D-09, D-21.
 

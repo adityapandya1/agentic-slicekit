@@ -1,7 +1,7 @@
 # 02 — Commands, agents, and the build loop
 
 The commands a human runs, the agents those commands spawn, and the loop that turns a slice into a
-merged pull request. Decisions cited: D-06, D-07, D-09, D-10, D-18, D-19, D-25.
+merged pull request.
 
 ## REQ-2.1 Commands own git; agents never do
 
@@ -28,7 +28,7 @@ write any spec text. It ends by printing the open questions it could not get ans
 Scenario: GIVEN a Word document WHEN intake runs THEN `intake/<date>-<slug>.docx` and its sidecar
 exist, `decisions.md` has one row per answered question, and no file under `spec/` was created.
 
-Cites: D-08, D-17, D-20, intake/2026-10-24-founding-requirement.md.
+Cites: D-08, D-17, D-20, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: the command brief; `slicekit check` (no spec files at stage intake).
 
@@ -43,7 +43,7 @@ intake sentence or decision supports; each REQ's `Cites:` line is checked.
 Scenario: GIVEN a REQ whose `Cites:` names nothing WHEN `slicekit check` runs THEN it fails naming
 the REQ.
 
-Cites: D-07, D-17, intake/2026-10-24-founding-requirement.md.
+Cites: D-07, D-15, D-17, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (citation rule); the reviewer's brief for the spec pull request.
 
@@ -58,7 +58,7 @@ ask the human and close the row with a new D-NN or a REQ change, then open a pul
 Scenario: GIVEN intake names a Kafka topic that no contract file mentions WHEN gaps runs THEN a
 `missing` row names the intake line and the topic.
 
-Cites: D-17, intake/2026-10-24-founding-requirement.md.
+Cites: D-17, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: the auditor's brief; `slicekit check` (every G row closed before plan).
 
@@ -71,10 +71,10 @@ no two slices in the same parallel group expect to change the same file or packa
 evaluation set has at least one `happy` and one `negative` test. It SHALL regenerate `BUILD.md` and
 open a pull request titled `[plan] <program name>`.
 
-Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the plan
-branch THEN it fails naming both slices.
+Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the
+plan branch THEN it fails naming both slices.
 
-Cites: D-10, intake/2026-10-24-founding-requirement.md.
+Cites: D-10, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
 
@@ -178,10 +178,10 @@ Every pull request the kit opens SHALL carry exactly these sections, in this ord
 **Skipped / not checked:** <what the agents did not verify>
 ```
 
-Scenario: GIVEN a pull request body with no `**Runbook:**` line WHEN CI runs THEN the body rule fails
-naming the missing section.
+Scenario: GIVEN a pull request body with no `**Runbook:**` line WHEN CI runs THEN the body rule
+fails naming the missing section.
 
-Cites: D-09, D-21, intake/2026-10-24-founding-requirement.md.
+Cites: D-09, D-21, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: CI (body rule), `slicekit check --ci`.
 
@@ -196,7 +196,7 @@ A finding without a "how verified" entry SHALL fail the SubagentStop shape check
 Scenario: GIVEN a verdict file with a finding whose "how verified" entry is empty WHEN the reviewer
 stops THEN the SubagentStop shape check fails naming that finding.
 
-Cites: D-18, intake/2026-10-24-founding-requirement.md.
+Cites: D-18, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: SubagentStop hook (03 REQ-3.5).
 
@@ -216,8 +216,8 @@ so the rules have one home.
 
 Every agent's reply SHALL end with "Skipped:" and "Not checked:" lines (ponytail's footer).
 
-Scenario: GIVEN a reviewer reply that ends without a "Not checked:" line WHEN the reviewer stops THEN
-the SubagentStop shape check re-prompts it for the missing line.
+Scenario: GIVEN a reviewer reply that ends without a "Not checked:" line WHEN the reviewer stops
+THEN the SubagentStop shape check re-prompts it for the missing line.
 
 Cites: D-14, D-19, D-21.
 
@@ -230,11 +230,11 @@ files or services named in the symptom, and the last release record. It returns 
 and pull requests, the first checks from the runbook, and proposed actions marked by who may take
 them. It never executes an action.
 
-Scenario: GIVEN the symptom "billing returns 500 after the release" WHEN `/slicekit ops` runs THEN the
-report lists the slices and pull requests that touched the billing files with the runbook's first
-checks, and no file outside the report changed.
+Scenario: GIVEN the symptom "billing returns 500 after the release" WHEN `/slicekit ops` runs THEN
+the report lists the slices and pull requests that touched the billing files with the runbook's
+first checks, and no file outside the report changed.
 
-Cites: D-20, D-21, intake/2026-10-24-founding-requirement.md.
+Cites: D-20, D-21, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: the agent's tool list (read only).
 
@@ -248,6 +248,6 @@ changes nothing.
 Scenario: GIVEN a runbook claim that a later commit made false WHEN `/slicekit audit` runs THEN the
 report lists that claim as `drifted` with the commit, and no other file changed.
 
-Cites: D-13, intake/2026-10-24-founding-requirement.md.
+Cites: D-13, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: advisory, by design; its findings become slices or decisions.

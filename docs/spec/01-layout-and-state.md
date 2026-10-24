@@ -1,7 +1,7 @@
 # 01 — Layout and state
 
 What `slicekit init` writes into a team's repository, the IDs everything carries, and the states a
-phase and a slice move through. Decisions cited: D-08, D-10, D-14, D-15, D-17, D-20, D-21, D-22, D-24.
+phase and a slice move through.
 
 ## REQ-1.1 The install layout
 
@@ -64,17 +64,17 @@ Enforced by: PreToolUse guard on Bash (03 REQ-3.2), `slicekit check` (hash match
 
 A requirement SHALL be a `## REQ-<section>.<n> <title>` or `### REQ-<section>.<n> <title>` heading
 followed by one or more SHALL sentences, at least one `Scenario:` in GIVEN / WHEN / THEN form, a
-`Cites:` line naming intake files and D-NN rows, and an `Enforced by:` line naming a script, a hook,
+`Cites:` line naming intake files or D-NN rows, and an `Enforced by:` line naming a script, a hook,
 a reviewer check, or the word `advisory`. Unresolved points SHALL be written as
 `[NEEDS CLARIFICATION: <question>]` and never as a guess.
 
 Scenario: GIVEN a spec file with a REQ whose `Cites:` line names a decision row that does not exist
 WHEN `slicekit check` runs THEN it fails naming the file, the REQ and the missing ID.
 
-Scenario: GIVEN a spec file containing `[NEEDS CLARIFICATION` WHEN `slicekit plan` is invoked THEN it
-refuses to start and lists the markers.
+Scenario: GIVEN a spec file containing `[NEEDS CLARIFICATION` WHEN `slicekit plan` is invoked THEN
+it refuses to start and lists the markers.
 
-Cites: D-08, D-17, intake/2026-10-24-founding-requirement.md.
+Cites: D-08, D-17, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (citations rule), `slicekit plan` precondition.
 
@@ -84,8 +84,8 @@ Enforced by: `slicekit check` (citations rule), `slicekit plan` precondition.
 Information, Counsel, Open), the question in plain words, the answer, who answered and when. A settled
 row is never edited; a reversal is a new row naming the one it replaces (D-17).
 
-Scenario: GIVEN a spec sentence that rests on an Open row WHEN `slicekit gaps` runs THEN the gap scan
-lists it as an open dependency.
+Scenario: GIVEN a spec sentence that rests on an Open row WHEN `slicekit gaps` runs THEN the gap
+scan lists it as an open dependency.
 
 Cites: D-17.
 
@@ -100,10 +100,10 @@ or `e2e`, each naming the REQ it covers; the files or packages expected to chang
 touches configuration, infrastructure, migrations, alerts, queues or integrations (the runbook flag,
 D-21); and the parallel group within its phase.
 
-Scenario: GIVEN a slice file whose evaluation set has a test naming no REQ WHEN `slicekit check` runs
-THEN it fails naming the slice and the test.
+Scenario: GIVEN a slice file whose evaluation set has a test naming no REQ WHEN `slicekit check`
+runs THEN it fails naming the slice and the test.
 
-Cites: D-10, D-15, D-21, intake/2026-10-24-founding-requirement.md.
+Cites: D-10, D-15, D-21, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (citations rule).
 
@@ -141,7 +141,7 @@ previous stage is complete:
 Scenario: GIVEN no `gaps.md` WHEN `/slicekit plan` is invoked THEN it stops with "gap scan not done"
 and the command that does it.
 
-Cites: D-07, intake/2026-10-24-founding-requirement.md.
+Cites: D-07, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: each stage command's precondition, read through `slicekit status --json`.
 
@@ -181,7 +181,7 @@ branch carries the trailer `Slice: P<n>/S-<nn>`; every pull request title begins
 Scenario: GIVEN a branch `slice/P1-S-03-config-schema` WHEN any commit is made THEN the
 `prepare-commit-msg` hook appends `Slice: P1/S-03` if absent.
 
-Cites: D-13, D-17, intake/2026-10-24-founding-requirement.md.
+Cites: D-13, D-17, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `.githooks/prepare-commit-msg`, `slicekit check` (trailer rule on the slice branch), CI
 (title rule).

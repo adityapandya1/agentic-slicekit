@@ -1,7 +1,7 @@
 # 04 — Traceability and the graph
 
 A deterministic graph built from the kit's own IDs and git, the questions it answers from the CLI,
-the multi-repo workspace, and the local visualize page. Decisions cited: D-13, D-15, D-23.
+the multi-repo workspace, and the local visualize page.
 
 ## REQ-4.1 Nodes and edges
 
@@ -43,7 +43,7 @@ contain no REQ ID (the `citations` rule).
 Scenario: GIVEN `BillingTest.java` with `@DisplayName("REQ-2.3 refuses negative amount")` WHEN graph
 runs THEN a `covers` edge exists from that test to REQ-2.3 with the file and line.
 
-Cites: D-13.
+Cites: D-11, D-13.
 
 Enforced by: `slicekit graph`; `slicekit check`.
 
@@ -114,7 +114,7 @@ external resource and SHALL work with the file opened directly from disk, with t
 
 Scenario: GIVEN a laptop with no network WHEN visualize runs THEN every view renders.
 
-Cites: D-04, intake/2026-10-24-founding-requirement.md.
+Cites: D-04, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: the kit's own end-to-end test (05) using a headless browser only if one is present,
 otherwise an HTML and script lint.

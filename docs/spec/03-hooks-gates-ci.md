@@ -1,8 +1,7 @@
 # 03 — Hooks, gates, and CI
 
 Every hook is one line that calls the CLI, so the logic is tested in one place. Each hook states
-whether it fails open (reports, never blocks) or closed (blocks, with a one-line reason). Decisions
-cited: D-05, D-10, D-12, D-19, D-21, D-25.
+whether it fails open (reports, never blocks) or closed (blocks, with a one-line reason).
 
 ## REQ-3.1 SessionStart (startup, resume, clear, compact) — fail open
 
@@ -13,7 +12,7 @@ never pull, merge, or block, and SHALL exit 0 on every failure path saying why.
 Scenario: GIVEN no network WHEN a session starts THEN the hook prints "could not fetch origin" and
 the session continues.
 
-Cites: D-05, intake/2026-10-24-founding-requirement.md.
+Cites: D-05, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-start`.
 
@@ -71,7 +70,7 @@ loop and report.
 Scenario: GIVEN a developer reply with no "Skipped:" line WHEN SubagentStop fires THEN the agent is
 re-prompted once with the missing line, and a second reply without it stops the loop with a report.
 
-Cites: D-05, intake/2026-10-24-founding-requirement.md.
+Cites: D-05, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook subagent-stop`.
 
@@ -113,7 +112,7 @@ Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends TH
 fails with the file, the line and the missing target, and the agent must fix it before the turn is
 accepted.
 
-Cites: D-21, D-25, intake/2026-10-24-founding-requirement.md.
+Cites: D-21, D-25, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
@@ -127,7 +126,7 @@ The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is app
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n>".
 
-Cites: intake/2026-10-24-founding-requirement.md.
+Cites: `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 
@@ -139,10 +138,10 @@ and `slicekit check` SHALL fail when the hooks path is not set, because git hook
 clone. The Claude Code PreToolUse guard covers tool-issued commands; the git hooks cover plain git.
 Each alone fails silently.
 
-Scenario: GIVEN a fresh clone in which `core.hooksPath` is not set WHEN `slicekit check` runs THEN the
-hooks rule fails and says the hooks path is not `.githooks`.
+Scenario: GIVEN a fresh clone in which `core.hooksPath` is not set WHEN `slicekit check` runs THEN
+the hooks rule fails and says the hooks path is not `.githooks`.
 
-Cites: intake/2026-10-24-founding-requirement.md.
+Cites: D-05, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit init`, `slicekit check` (hooks rule).
 
@@ -174,8 +173,8 @@ independent verdict exists (REQ-2.8). On merge to the default branch it SHALL ru
 `slicekit status --sync --write` and commit the state and `BUILD.md` change as a bot commit (D-12).
 Actions SHALL be pinned by SHA.
 
-Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must begin
-with [P<n>/S-<nn>]".
+Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must
+begin with [P<n>/S-<nn>]".
 
 Cites: D-12, D-18, D-20.
 
