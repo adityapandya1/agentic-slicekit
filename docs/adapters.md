@@ -20,7 +20,7 @@ answers from that directory, so tests never reach the network.
 
 ## Tracker (C-2)
 
-Not built yet. S-15 adds `src/adapters/tracker/` with the three operations of C-2 behind one entry <!-- slicekit:example -->
+Not built yet. S-15 adds `src/adapters/tracker/` with the three operations of C-2 behind one entry <!-- slicekit:pending P2/S-15 -->
 point chosen by `cfg.tracker.kind`, the same pattern as the git host.
 
 ## Agent tool (C-3)

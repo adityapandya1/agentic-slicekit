@@ -10,10 +10,13 @@ decisions: [D-04, D-11, D-14, D-24, D-26, D-29]
 
 ## Done when
 
-1. `node bin/slicekit.js init --shape backend --name demo` in an empty git repo creates every path of REQ-1.1 except `.slicekit/workspace.json`, `.slicekit/graph/`, `docs/phases/*`, `docs/releases/*` and the adapter files (`.claude/` from S-02, the `.githooks/*` files from S-06, `.github/workflows/slicekit.yml` from S-08), and prints each created path. <!-- slicekit:example -->
-2. Running it again creates nothing and prints each skipped path; a pre-existing `docs/README.md` is untouched. <!-- slicekit:example -->
-3. `config.json` validates; an unknown shape or a non-string command is reported with the field name and exit 2.
-4. `package.json` has no `dependencies`; `npm test` (`node --test "test/**/*.test.js"`) passes.
+1. `node bin/slicekit.js init --shape backend --name demo` in an empty git repo creates every path of REQ-1.1 except `docs/phases/*`, `docs/releases/*`, the optional workspace file and the graph cache, and the adapter files (`.claude/` from S-02, the `.githooks/*` files from S-06, the CI workflow from S-08), and prints each created path.
+2. The optional workspace file is `.slicekit/workspace.json`, which a program repository writes by hand. <!-- slicekit:example -->
+3. The graph cache is `.slicekit/graph/`, written by the graph builder. <!-- slicekit:pending P3/S-17 -->
+4. The CI workflow is `.github/workflows/slicekit.yml`. <!-- slicekit:pending P1/S-08 -->
+5. Running it again creates nothing and prints each skipped path; a pre-existing `docs/README.md` is untouched. <!-- slicekit:example -->
+6. `config.json` validates; an unknown shape or a non-string command is reported with the field name and exit 2.
+7. `package.json` has no `dependencies`; `npm test` (`node --test "test/**/*.test.js"`) passes.
 
 ## Evaluation set
 

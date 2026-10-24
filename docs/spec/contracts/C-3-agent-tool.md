@@ -1,6 +1,8 @@
 # C-3 Agent tool adapter
 
-**Producer:** the kit: the renderer in `src/render/`; the hook handlers will live in `src/hooks/` (S-06). **Consumer:** the agent tool the team uses. <!-- slicekit:example -->
+**Producer:** the kit: the renderer in `src/render/`; the hook handlers
+will live in `src/hooks/` (S-06). <!-- slicekit:pending P1/S-06 -->
+**Consumer:** the agent tool the team uses.
 **Version one implementation:** Claude Code (D-05).
 
 A renderer SHALL take the shape and config and produce, for its tool: the command files, the agent

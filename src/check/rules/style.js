@@ -84,7 +84,8 @@ function runs(prosed, skip) {
     cur = null;
   };
   for (const [i, [line, n]] of prosed.entries()) {
-    if (skip.has(i) || line.trim() === '' || line.includes(EXAMPLE)) {
+    // A marker quoted in a code span is text about the marker, not a marker.
+    if (skip.has(i) || line.trim() === '' || blankCodeSpans(line).includes(EXAMPLE)) {
       close();
       continue;
     }

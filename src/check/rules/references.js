@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseSliceAddr, stateFileName } from '../../ids.js';
-import { frontMatter, headings, isPathLike, refs, toSlashes } from '../../markdown.js';
+import { blankCodeSpans, frontMatter, headings, isPathLike, prose, refs, toSlashes } from '../../markdown.js';
 import { findSliceFiles } from '../../slicefile.js';
 import { readSlice } from '../../state/index.js';
 import { MARKER as BUILD_MARKER } from '../../state/build.js';
@@ -49,6 +49,25 @@ function slugs(text) {
   return out;
 }
 
+// A slice's state: `todo` when it has no state file (planned or not), `problem` set when its state
+// file exists but does not parse.
+function sliceState(ctx, sliceId) {
+  try {
+    return { state: readSlice(ctx.root, ctx.cfg, sliceId).state };
+  } catch {
+    // readSlice throws for a present file only when it is not valid JSON; an absent one with no
+    // matching slice is `todo`.
+    const file = path.join(ctx.paths.state, stateFileName(sliceId));
+    if (fs.existsSync(file)) return { state: null, problem: `state file ${toSlashes(path.relative(ctx.root, file))} is not valid JSON` };
+    return { state: 'todo' };
+  }
+}
+
+// The slices a line's pending markers name, read outside code spans so a quoted marker does not
+// count.
+const PENDING = /<!--\s*slicekit:pending\s+(P(\d+)\/S-\d{2})\s*-->/g;
+const pendingOn = (line) => [...blankCodeSpans(line).matchAll(PENDING)].map((m) => ({ id: m[1], phase: `P${m[2]}` }));
+
 // The lines of an unmerged slice file whose code-span paths are promises: a `**Files:**` line, and
 // every line under `## Expected changes` up to the next heading of level 1 or 2. Null for any
 // other doc, and for a slice that is merged or released (its promises are due). A state file that
@@ -57,17 +76,10 @@ function slugs(text) {
 function promiseLines(ctx, doc, sliceIds, broken) {
   const sliceId = sliceIds.get(doc.rel);
   if (!sliceId) return null;
-  let state = 'todo';
-  try {
-    state = readSlice(ctx.root, ctx.cfg, sliceId).state;
-  } catch {
-    // readSlice throws for a present file only when it is not valid JSON; an absent one with no
-    // matching slice is `todo`.
-    const file = path.join(ctx.paths.state, stateFileName(sliceId));
-    if (fs.existsSync(file)) {
-      broken(`state file ${toSlashes(path.relative(ctx.root, file))} is not valid JSON`);
-      return null;
-    }
+  const { state, problem } = sliceState(ctx, sliceId);
+  if (problem) {
+    broken(problem);
+    return null;
   }
   if (DONE.has(state)) return null;
   const out = new Set();
@@ -166,6 +178,7 @@ export function run(ctx) {
     return slugCache.get(abs);
   };
 
+  const stateCache = new Map();
   const buildFile = path.resolve(ctx.paths.build);
   for (const doc of ctx.docs) {
     const intake = intakeStatus(ctx, doc);
@@ -179,20 +192,39 @@ export function run(ctx) {
       viewEnd = i === -1 ? doc.lines.length : i + 1;
     }
     const seen = new Set();
+    const mine = [];
     const add = (line, message) => {
       const key = `${line} ${message}`;
       if (seen.has(key)) return;
       seen.add(key);
-      findings.push({ rule: id, file: doc.rel, line, message, bucket: doc.rel });
+      mine.push({ rule: id, file: doc.rel, line, message, bucket: doc.rel });
     };
     // An intake file earns its exemption through its sidecar; without a valid one it is checked
     // like any doc and is itself a finding (REQ-1.2).
     if (intake === 'unpinned') add(0, 'intake file has no valid sidecar');
     const promises = promiseLines(ctx, doc, sliceIds, (message) => add(0, message));
+
+    // A pending marker defers its line's paths while the slice it names is not merged or
+    // released; once it is, the paths are checked and the marker is stale. Its own address is not
+    // an unknown id when it names a phase not yet planned; in a planned phase it must be a slice.
+    const deferred = new Set();
+    const ownIds = new Map();
+    for (const [line, n] of prose(doc.text)) {
+      for (const p of pendingOn(line)) {
+        if (!ctx.ids.phase.has(p.phase)) ownIds.set(n, new Set([...(ownIds.get(n) ?? []), p.id]));
+        if (!stateCache.has(p.id)) stateCache.set(p.id, sliceState(ctx, p.id));
+        const { state, problem } = stateCache.get(p.id);
+        if (problem) add(n, problem);
+        else if (DONE.has(state)) add(n, `stale pending marker for ${p.id}; the slice is done, remove it`);
+        else deferred.add(n);
+      }
+    }
+
     for (const ref of refs(doc.text)) {
-      if ((doc.lines[ref.line - 1] ?? '').includes(EXAMPLE)) continue;
+      // A marker quoted in a code span is text about the marker, not a marker.
+      if (blankCodeSpans(doc.lines[ref.line - 1] ?? '').includes(EXAMPLE)) continue;
       if (ref.kind === 'path') {
-        if (ref.line <= viewEnd) continue;
+        if (ref.line <= viewEnd || deferred.has(ref.line)) continue;
         if (ref.via === 'code' && promises?.has(ref.line)) continue;
         if (isPathLike(ref.value) && !resolve(doc, ref.value, ref.via)) add(ref.line, `missing file ${ref.value}`);
       } else if (ref.kind === 'anchor') {
@@ -203,10 +235,13 @@ export function run(ctx) {
           add(ref.line, `missing anchor #${ref.value} in ${ref.file}`);
         }
       } else if (ref.kind === 'id') {
+        if (ownIds.get(ref.line)?.has(ref.value)) continue;
         const kind = KIND.find(([re]) => re.test(ref.value))?.[1];
         if (kind && !ctx.ids[kind]?.has(ref.value)) add(ref.line, `unknown id ${ref.value}`);
       }
     }
+    // In line order; a stable sort keeps a line's findings in the order they were found.
+    findings.push(...mine.sort((a, b) => a.line - b.line));
   }
   return findings;
 }

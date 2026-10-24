@@ -139,6 +139,14 @@ test('an example line is not matched', () => {
   ]);
 });
 
+test('an example marker quoted in a code span does not exempt its line', () => {
+  const r = run({ 'docs/ex.md': ['# Ex', '', 'Mark it `<!-- slicekit:example -->`; robust.'].join('\n') });
+  assert.deepEqual(r.lines, [
+    'style docs/ex.md:3 banned phrase "robust"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
 test('link targets and bare URLs are not matched', () => {
   const r = run({
     'docs/links.md': ['# Links', '', 'See [the guide](docs/robust-guide.md), https://x.io/leverage and <https://x.io/delve>.', '[robust](a.md)'].join('\n'),

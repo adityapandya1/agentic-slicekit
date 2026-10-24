@@ -142,6 +142,54 @@ test('a promise in a merged slice file is checked', () => {
   ]);
 });
 
+const PENDING_DOC = [
+  '# Notes', // 1
+  '', // 2
+  'Later `src/later.js` and [l](later.md), REQ-9.9. <!-- slicekit:pending P1/S-01 -->', // 3
+  'Now `src/now.js`.', // 4
+  'Unplanned `src/far.js`. <!-- slicekit:pending P9/S-15 -->', // 5
+  'Typo `src/typo.js`. <!-- slicekit:pending P1/S-77 -->', // 6
+].join('\n');
+const notes = (r) => r.lines.filter((l) => l.startsWith('references docs/notes.md'));
+
+test('a pending marker skips its line\'s paths while the slice is not merged', () => {
+  const r = run('slice-promises', (root) => fs.writeFileSync(path.join(root, 'docs', 'notes.md'), PENDING_DOC));
+  assert.deepEqual(notes(r), [
+    'references docs/notes.md:3 unknown id REQ-9.9',
+    'references docs/notes.md:4 missing file src/now.js',
+    'references docs/notes.md:6 unknown id P1/S-77',
+  ]);
+});
+
+test('a pending marker whose slice merged is stale and its paths are checked', () => {
+  const r = run('slice-promises', (root) => {
+    fs.writeFileSync(path.join(root, 'docs', 'notes.md'), PENDING_DOC);
+    const cfg = loadConfig(root);
+    writeSlice(root, cfg, { ...readSlice(root, cfg, 'P1/S-01'), state: 'merged' });
+  });
+  assert.deepEqual(notes(r), [
+    'references docs/notes.md:3 stale pending marker for P1/S-01; the slice is done, remove it',
+    'references docs/notes.md:3 missing file later.md',
+    'references docs/notes.md:3 missing file src/later.js',
+    'references docs/notes.md:3 unknown id REQ-9.9',
+    'references docs/notes.md:4 missing file src/now.js',
+    'references docs/notes.md:6 unknown id P1/S-77',
+  ]);
+});
+
+test('a marker quoted in a code span does not count', () => {
+  const r = run('slice-promises', (root) => {
+    fs.writeFileSync(
+      path.join(root, 'docs', 'notes.md'),
+      ['# Notes', '', 'Write `<!-- slicekit:example -->` near `src/a-gone.js`.', 'Or `<!-- slicekit:pending P1/S-01 -->` near `src/b-gone.js`.'].join('\n'),
+    );
+  });
+  assert.deepEqual(notes(r), [
+    'references docs/notes.md:3 missing file src/a-gone.js',
+    'references docs/notes.md:4 missing file src/b-gone.js',
+  ]);
+});
+
 // Writes an intake file and, unless `sha` is false, its sidecar (`sha` overrides the true hash).
 function intakeFile(root, name, text, { sha, sidecar = `${name}.meta.json` } = {}) {
   const dir = path.join(root, 'docs', 'intake');

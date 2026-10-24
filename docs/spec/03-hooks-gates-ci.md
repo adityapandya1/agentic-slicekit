@@ -33,7 +33,8 @@ Enforced by: `slicekit hook pre-bash`.
 SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
-an edit to .slicekit/journal.log (written from S-07), `.slicekit/baselines/` or any `.slicekit/state/` file by anything other than the CLI.
+an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or
+`.slicekit/journal.log` by anything other than the CLI. <!-- slicekit:pending P1/S-07 -->
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
@@ -82,6 +83,8 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | hooks | `.githooks/` is not the configured hooks path, or a rendered hook is missing |
 | journal | the hash chain in `journal.log` is broken |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
+
+For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
 
 Baselines SHALL only go down: `slicekit baseline update` refuses to raise any count. The one exception is a first adoption: `slicekit baseline update --adopt` records higher counts, prints each one with its previous value, is refused in CI, and a reviewer treats an adopted raise like any other finding. Fixing a
 finding by weakening a rule, raising a baseline or deleting a reference target SHALL be a reviewer
@@ -149,7 +152,8 @@ Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
 
-Every file the kit renders into `.claude/`, `.githooks/` and .github/workflows/ (from S-08) SHALL carry the
+Every file the kit renders into `.claude/`, `.githooks/` and
+`.github/workflows/` SHALL carry the <!-- slicekit:pending P1/S-08 -->
 kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
 that front matter and is managed whole, because Claude Code reads front matter only when it starts on
 line 1, so no marker may come before it. Any other file SHALL sit between

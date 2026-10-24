@@ -121,7 +121,7 @@ previous stage is complete:
 
 | Stage | Complete when |
 |---|---|
-| intake | at least one snapshot with a valid sidecar |
+| intake | at least one snapshot, and every file under intake has a valid sidecar |
 | clarify | `decisions.md` exists and no row of type Open is cited by the spec |
 | specify | every REQ has the shape of REQ-1.3 |
 | spec-review | the spec was merged to the default branch through a pull request (D-07) |
