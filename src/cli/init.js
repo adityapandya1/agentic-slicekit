@@ -1,6 +1,9 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { ConfigError } from '../config.js';
+import { CONFIG_PATH, ConfigError } from '../config.js';
+import { exists } from '../fs.js';
+import { git, GitError, isRepo } from '../git.js';
 import { init } from '../init.js';
 
 const USAGE =
@@ -16,6 +19,17 @@ const OPTIONS = {
   e2e: { type: 'string' },
 };
 
+function samePath(a, b) {
+  const norm = (p) => {
+    const real = fs.realpathSync.native(path.resolve(p));
+    return process.platform === 'win32' ? real.toLowerCase() : real;
+  };
+  return norm(a) === norm(b);
+}
+
+// A typed `docs\` or `docs/` becomes `docs`; a hand-edited config gets no such help.
+const normaliseDocs = (d) => (d === undefined ? undefined : d.replace(/\\/g, '/').replace(/\/+$/, ''));
+
 async function run(args, io) {
   let values;
   try {
@@ -24,7 +38,22 @@ async function run(args, io) {
     io.stderr(`slicekit: ${e.message}\nusage: slicekit ${USAGE}\n`);
     return 2;
   }
-  if (!values.shape) {
+  const root = io.cwd;
+  if (isRepo(root)) {
+    let top;
+    try {
+      top = git(root, ['rev-parse', '--show-toplevel']);
+    } catch (e) {
+      if (!(e instanceof GitError)) throw e;
+      io.stderr(`slicekit: ${e.message}\n`);
+      return 2;
+    }
+    if (!samePath(top, root)) {
+      io.stderr(`slicekit: run slicekit init from the repository root: ${path.resolve(top)}\n`);
+      return 2;
+    }
+  }
+  if (!values.shape && !exists(path.join(root, CONFIG_PATH))) {
     io.stderr(`usage: slicekit ${USAGE}\n`);
     return 2;
   }
@@ -34,10 +63,10 @@ async function run(args, io) {
   }
   let result;
   try {
-    result = init(io.cwd, {
-      name: values.name ?? path.basename(io.cwd),
+    result = init(root, {
+      name: values.name ?? path.basename(root),
       shape: values.shape,
-      docsRoot: values.docs,
+      docsRoot: normaliseDocs(values.docs),
       commands,
     });
   } catch (e) {
@@ -48,7 +77,7 @@ async function run(args, io) {
   for (const rel of result.created) io.stdout(`created ${rel}\n`);
   for (const rel of result.updated) io.stdout(`updated ${rel}\n`);
   for (const rel of result.skipped) io.stdout(`skipped ${rel}\n`);
-  for (const warning of result.warnings ?? []) io.stderr(`slicekit: ${warning}\n`);
+  for (const warning of result.warnings) io.stderr(`slicekit: ${warning}\n`);
   return 0;
 }
 

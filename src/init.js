@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, defaultConfig, validateConfig } from './config.js';
+import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
-import { git, isRepo } from './git.js';
+import { isRepo } from './git.js';
 import { kitPaths } from './paths.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GRAPH_RULE = '.slicekit/graph/';
 const GRAPH_FORMS = new Set(['.slicekit/graph/', '/.slicekit/graph/', '.slicekit/graph', '/.slicekit/graph']);
-const NOT_A_REPO = 'not a git repository; git hooks were not configured';
+const NOT_A_REPO = 'not a git repository';
 
 // Each template file maps to a kitPaths destination; nothing else names a destination.
 const TEMPLATE_DEST = {
@@ -47,8 +47,7 @@ function plan(cfg, paths) {
   return files;
 }
 
-function ensureGitignore(root) {
-  const file = path.join(root, '.gitignore');
+function ensureGitignore(file) {
   if (!exists(file)) {
     writeText(file, `${GRAPH_RULE}\n`);
     return 'created';
@@ -60,10 +59,25 @@ function ensureGitignore(root) {
   return 'updated';
 }
 
-export function init(root, { name, shape, docsRoot = 'docs', commands = {} }) {
-  const cfg = defaultConfig({ name, shape, docsRoot, commands });
+// An existing config.json is the truth: a flag may repeat its shape or docsRoot, never change them.
+function resolveConfig(root, { name, shape, docsRoot, commands }) {
+  if (exists(path.join(root, CONFIG_PATH))) {
+    const cfg = loadConfig(root);
+    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot]]) {
+      if (value !== undefined && value !== cfg[field]) {
+        throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
+      }
+    }
+    return cfg;
+  }
+  const cfg = defaultConfig({ name, shape, docsRoot: docsRoot ?? 'docs', commands });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
+  return cfg;
+}
+
+export function init(root, { name, shape, docsRoot, commands = {} }) {
+  const cfg = resolveConfig(root, { name, shape, docsRoot, commands });
 
   const paths = kitPaths(root, cfg);
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
@@ -76,17 +90,13 @@ export function init(root, { name, shape, docsRoot = 'docs', commands = {} }) {
       lists.created.push(rel(abs));
     }
   }
-  lists[ensureGitignore(root)].push('.gitignore');
+  lists[ensureGitignore(paths.gitignore)].push(rel(paths.gitignore));
 
-  const result = {
+  // core.hooksPath is S-06's to set, with its own guards; S-01 only creates .githooks/.
+  return {
     created: lists.created.sort(),
     updated: lists.updated.sort(),
     skipped: lists.skipped.sort(),
+    warnings: isRepo(root) ? [] : [NOT_A_REPO],
   };
-  if (isRepo(root)) {
-    git(root, ['config', 'core.hooksPath', '.githooks']);
-  } else {
-    result.warnings = [NOT_A_REPO];
-  }
-  return result;
 }

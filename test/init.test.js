@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { init } from '../src/init.js';
 import { ConfigError, validateConfig } from '../src/config.js';
-import { git } from '../src/git.js';
+import { git, GitError } from '../src/git.js';
 import { kitPaths } from '../src/paths.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
@@ -57,6 +57,7 @@ test('creates the layout for shape backend', () => {
     assert.equal(fs.existsSync(path.join(root, '.slicekit/journal.log')), false);
     assert.match(read(root, 'docs/runbook.md'), /^# Runbook: demo$/m);
     assert.match(read(root, 'BUILD.md'), /Spec: `docs\/spec\/`/);
+    assert.match(read(root, 'docs/spec/00-overview.md'), /^Source: \.\.\/intake\/$/m);
   });
 });
 
@@ -114,11 +115,13 @@ test('second run skips everything and overwrites nothing', () => {
   });
 });
 
-test('init on a repo with no commits', () => {
+test('init on a repo with no commits leaves core.hooksPath alone', () => {
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'fullstack' });
-    assert.equal(git(root, ['config', 'core.hooksPath']), '.githooks');
-    assert.equal(result.warnings, undefined);
+    assert.ok(result.created.includes('.slicekit/config.json'));
+    assert.ok(isDir(root, '.githooks'));
+    assert.throws(() => git(root, ['config', '--local', 'core.hooksPath']), GitError);
+    assert.deepEqual(result.warnings, []);
   }, { commits: 0 });
 });
 
@@ -127,14 +130,70 @@ test('init outside a git repo', () => {
   try {
     const r = runCli(['init', '--shape', 'data', '--name', 'demo'], { cwd: root });
     assert.equal(r.code, 0);
-    assert.match(r.stderr, /not a git repository; git hooks were not configured/);
+    assert.equal(r.stderr, 'slicekit: not a git repository\n');
     assert.match(r.stdout, /^created \.slicekit\/config\.json$/m);
     assert.equal(fs.existsSync(path.join(root, '.git')), false);
     const direct = init(root, { name: 'demo', shape: 'data' });
-    assert.deepEqual(direct.warnings, ['not a git repository; git hooks were not configured']);
+    assert.deepEqual(direct.warnings, ['not a git repository']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('cli: init from a subdirectory exits 2 and writes nothing', () => {
+  withRepo((root) => {
+    const sub = path.join(root, 'pkg', 'inner');
+    fs.mkdirSync(sub, { recursive: true });
+    const r = runCli(['init', '--shape', 'backend'], { cwd: sub });
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /run slicekit init from the repository root: /);
+    assert.equal(r.stdout, '');
+    assert.deepEqual(fs.readdirSync(root).sort(), ['.git', 'pkg']);
+    assert.deepEqual(fs.readdirSync(sub), []);
+    const top = runCli(['init', '--shape', 'backend'], { cwd: root });
+    assert.equal(top.code, 0);
+    assert.equal(top.stderr, '');
+  });
+});
+
+test('cli: an existing config is the truth for shape and docsRoot', () => {
+  withRepo((root) => {
+    assert.equal(runCli(['init', '--shape', 'backend', '--docs', 'handbook'], { cwd: root }).code, 0);
+    const shape = runCli(['init', '--shape', 'data'], { cwd: root });
+    assert.equal(shape.code, 2);
+    assert.match(shape.stderr, /config\.json already sets shape = backend; remove the flag or edit the config/);
+    const docs = runCli(['init', '--docs', 'docs'], { cwd: root });
+    assert.equal(docs.code, 2);
+    assert.match(docs.stderr, /config\.json already sets docsRoot = handbook; remove the flag or edit the config/);
+    assert.equal(fs.existsSync(path.join(root, 'docs')), false);
+    for (const args of [[], ['--shape', 'backend', '--docs', 'handbook']]) {
+      const again = runCli(['init', ...args], { cwd: root });
+      assert.equal(again.code, 0, args.join(' '));
+      assert.doesNotMatch(again.stdout, /^created /m);
+      assert.match(again.stdout, /^skipped handbook\/decisions\.md$/m);
+    }
+    assert.equal(fs.existsSync(path.join(root, 'docs')), false);
+    assert.equal(JSON.parse(read(root, '.slicekit/config.json')).shape, 'backend');
+  });
+});
+
+test('cli: --docs outside the repo exits 2 and writes nothing', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend', '--docs', '../outside'], { cwd: root });
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /docsRoot: no \.\. segment/);
+    assert.deepEqual(fs.readdirSync(root), ['.git']);
+    assert.equal(fs.existsSync(path.join(root, '..', 'outside')), false);
+  });
+});
+
+test('cli: --docs is normalised to forward slashes without a trailing slash', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend', '--docs', 'handbook\\specs\\'], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(JSON.parse(read(root, '.slicekit/config.json')).docsRoot, 'handbook/specs');
+    assert.ok(fs.existsSync(path.join(root, 'handbook/specs/decisions.md')));
+  });
 });
 
 test('writes gitignore rule once', () => {
