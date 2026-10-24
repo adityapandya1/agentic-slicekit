@@ -1,6 +1,6 @@
 {
   "slice": "P1/S-02",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 2,
@@ -12,21 +12,21 @@
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-24T10:55:12Z",
   "handoff": null,
   "history": [
     {
       "from": "todo",
-      "to": "draft-pr",
-      "at": "2026-10-24T10:47:27.449Z",
+      "to": "merged",
+      "at": "2026-10-24T12:20:30.845Z",
       "by": "backfill",
       "evidence": {
         "pr": {
           "number": 2,
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/2",
-          "headSha": "0e128e1ddd73115c7891b60aa93e2c68410f31b4",
-          "title": "[P1/S-02] Claude Code renderer and update"
-        }
+          "headSha": "0e128e1ddd73115c7891b60aa93e2c68410f31b4"
+        },
+        "mergedAt": "2026-10-24T10:55:12Z"
       }
     }
   ]
