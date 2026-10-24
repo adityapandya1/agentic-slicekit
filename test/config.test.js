@@ -124,3 +124,10 @@ test('loadConfig returns a valid config and throws on an invalid one', () => {
   fs.writeFileSync(file, '{not json');
   assert.throws(() => loadConfig(root), ConfigError);
 });
+
+test('cli is a non-empty string, default npx --no-install slicekit', () => {
+  const cfg = base();
+  assert.equal(cfg.cli, 'npx --no-install slicekit');
+  assert.deepEqual(validateConfig({ ...cfg, cli: '' }), ['cli: must be a non-empty string']);
+  assert.deepEqual(validateConfig({ ...cfg, cli: 3 }), ['cli: must be a non-empty string']);
+});

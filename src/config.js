@@ -39,6 +39,7 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {} })
     shape,
     docsRoot,
     defaultBranch: 'main',
+    cli: 'npx --no-install slicekit',
     protectedBranches: ['main'],
     commands: { test: '', lint: '', build: '', e2e: '', ...commands },
     repos: [],
@@ -68,7 +69,7 @@ export function validateConfig(cfg) {
   if (!isObject(cfg)) return ['config: must be an object'];
   const errors = [];
   if (cfg.configVersion !== CONFIG_VERSION) errors.push(`configVersion: must be ${CONFIG_VERSION}`);
-  for (const key of ['name', 'docsRoot', 'defaultBranch']) {
+  for (const key of ['name', 'docsRoot', 'defaultBranch', 'cli']) {
     if (typeof cfg[key] !== 'string' || cfg[key] === '') errors.push(`${key}: must be a non-empty string`);
   }
   if (typeof cfg.docsRoot === 'string' && cfg.docsRoot !== '') {

@@ -83,3 +83,15 @@ test('managed » json style uses _slicekit key', () => {
   const next = replaceManaged(out, '{"b": 2}', { version: '4', style: 'json' });
   assert.deepEqual(JSON.parse(next), { b: 2, _slicekit: { managed: true, version: '4' } });
 });
+
+test('managed » json style rejects a non-object payload', () => {
+  for (const bad of ['[1]', 'null', '3', '"s"']) {
+    assert.throws(() => wrapManaged(bad, { version: '1', style: 'json' }), /^Error: managed json must be an object$/);
+  }
+});
+
+test('managed » unknown style throws naming it', () => {
+  assert.throws(() => wrapManaged('x', { version: '1', style: 'xml' }), /^Error: unknown managed style: xml$/);
+  assert.throws(() => extractManaged('x', 'xml'), /^Error: unknown managed style: xml$/);
+  assert.throws(() => replaceManaged('x', 'y', { version: '1', style: 'xml' }), /^Error: unknown managed style: xml$/);
+});

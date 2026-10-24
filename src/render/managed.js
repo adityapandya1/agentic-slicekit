@@ -22,19 +22,26 @@ export function markerStyle(path) {
   return 'hash';
 }
 
+function markersFor(style) {
+  const m = MARKERS[style];
+  if (!m) throw new Error(`unknown managed style: ${style}`);
+  return m;
+}
+
 function oneNewline(s) {
   return s.replace(/\n+$/, '') + '\n';
 }
 
 function jsonWith(content, version) {
   const obj = JSON.parse(content);
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) throw new Error('managed json must be an object');
   obj._slicekit = { managed: true, version };
   return JSON.stringify(obj, null, 2) + '\n';
 }
 
 export function wrapManaged(content, { version, style }) {
   if (style === 'json') return jsonWith(content, version);
-  const m = MARKERS[style];
+  const m = markersFor(style);
   return `${m.start(version)}\n${oneNewline(content)}${m.end}\n`;
 }
 
@@ -50,7 +57,7 @@ export function extractManaged(text, style) {
     if (!meta || meta.managed !== true) return null;
     return { before: '', block: text, after: '', version: meta.version };
   }
-  const m = MARKERS[style];
+  const m = markersFor(style);
   let offset = 0;
   let startEnd = -1;
   let endStart = -1;
@@ -82,7 +89,7 @@ export function replaceManaged(text, newBlock, { version, style }) {
   const got = extractManaged(text, style);
   if (!got) throw new Error('no managed block found');
   if (style === 'json') return wrapManaged(newBlock, { version, style });
-  const m = MARKERS[style];
+  const m = markersFor(style);
   const nl = got.before.endsWith('\r\n') ? '\r\n' : '\n';
   const lineStart = got.before.lastIndexOf('\n', got.before.length - 2) + 1;
   const before = got.before.slice(0, lineStart) + m.start(version) + nl;
