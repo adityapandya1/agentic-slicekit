@@ -76,10 +76,26 @@ function reqHeadings(ctx) {
   return out;
 }
 
-// One level of `{a,b}` is expanded: `src/cli/{state,status}.js` is two paths.
-function expand(p) {
-  const m = /^(.*?)\{([^{}]*)\}(.*)$/.exec(p);
-  return m ? m[2].split(',').map((alt) => `${m[1]}${alt.trim()}${m[3]}`) : [p];
+// Every `{a,b}` group is expanded, outermost first, until none is left: `src/cli/{state,status}.js`
+// is two paths, `src/{a,b/{c,d}}.js` three and `src/{a,b}/{c,d}.js` four. A group is split on its
+// own commas only, not on those of a group inside it. An unclosed `{` stays as written.
+export function expand(p) {
+  const open = p.indexOf('{');
+  if (open === -1) return [p];
+  const alts = [];
+  let depth = 0;
+  let from = open + 1;
+  for (let i = open; i < p.length; i++) {
+    if (p[i] === '{') depth++;
+    else if (p[i] === '}' && --depth === 0) {
+      alts.push(p.slice(from, i));
+      return alts.flatMap((alt) => expand(`${p.slice(0, open)}${alt.trim()}${p.slice(i + 1)}`));
+    } else if (p[i] === ',' && depth === 1) {
+      alts.push(p.slice(from, i));
+      from = i + 1;
+    }
+  }
+  return [p];
 }
 
 // Four shared roots are never an overlap: `.` (the repository itself), anything under `test/` (a

@@ -12,7 +12,7 @@ export const blocking = true;
 export const ratchet = false;
 
 const CONFIG = '.slicekit/config.json';
-const FILES = ['config', 'decisions', 'gaps', 'stack', 'platform', 'observability', 'runbook', 'build'];
+const FILES = ['decisions', 'gaps', 'stack', 'platform', 'observability', 'runbook', 'build'];
 const DIRS = ['kit', 'state', 'baselines', 'docs', 'intake', 'spec', 'contracts', 'phases', 'releases', 'githooks', 'claude'];
 
 const toPosix = (p) => p.split(path.sep).join('/');

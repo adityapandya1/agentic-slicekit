@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultConfig } from '../../src/config.js';
 import { git } from '../../src/git.js';
 import { buildContext } from '../../src/check/context.js';
-import coverage from '../../src/check/rules/coverage.js';
+import coverage, { expand } from '../../src/check/rules/coverage.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'stage');
@@ -106,6 +106,22 @@ test('a brace pattern is expanded before comparing', () => {
     },
   });
   assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/cli/status.js' }]);
+});
+
+test('nested and repeated brace groups are expanded fully', () => {
+  assert.deepEqual(expand('src/{a,b/{c,d}}.js').sort(), ['src/a.js', 'src/b/c.js', 'src/b/d.js'].sort());
+  assert.deepEqual(expand('src/{a,b}/{c,d}.js').sort(), ['src/a/c.js', 'src/a/d.js', 'src/b/c.js', 'src/b/d.js']);
+  assert.deepEqual(expand('src/{x,{y,z}/{p,q}}.js').length, 5);
+});
+
+test('an overlap that only a nested expansion reveals is a finding', () => {
+  const out = findings(PLAN, {
+    files: {
+      'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { changes: ['src/{a,b/{c,d}}.js'] }),
+      'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['src/x.js', 'src/b/d.js'] }),
+    },
+  });
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/b/d.js' }]);
 });
 
 test('a slice that lists no expected changes is a finding', () => {

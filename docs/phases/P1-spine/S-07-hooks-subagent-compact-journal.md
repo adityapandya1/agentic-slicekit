@@ -4,7 +4,7 @@ name: Hooks: subagent shape, compaction handoff, journal
 repo: .
 group: C
 runbook: no
-requirements: [REQ-3.4, REQ-3.5, REQ-3.6, REQ-3.8, REQ-2.11, REQ-2.12]
+requirements: [REQ-3.4, REQ-3.5, REQ-3.6, REQ-3.7, REQ-3.8, REQ-2.11, REQ-2.12]
 decisions: [D-19]
 ---
 

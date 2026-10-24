@@ -234,3 +234,43 @@ test("the kit's own spec passes the citations rule", () => {
   const result = check(kitRoot, { rules: [citations] });
   assert.deepEqual(result.lines, ['check: 0 findings, 0 over baseline, 0 blocking, 1 rules']);
 });
+
+test('a REQ heading at level 1 or level 4 is a finding', () => {
+  const repo = fixture({ spec: req('REQ-1.1') + req('REQ-1.2', { level: 4 }) + req('REQ-1.4', { level: 1 }) });
+  try {
+    const found = check(repo.root, { rules: [citations] }).findings;
+    assert.deepEqual(found.map((f) => [f.line, f.message]), [
+      [12, 'REQ-1.2 heading is level 4; a requirement is ## or ### (REQ-1.3)'],
+      [21, 'REQ-1.4 heading is level 1; a requirement is ## or ### (REQ-1.3)'],
+    ]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('an intake path written with backslashes is matched', () => {
+  const repo = fixture({
+    spec:
+      req('REQ-1.1', { cites: 'Cites: `..\\intake\\2026-10-24-brief.md`.' }) +
+      req('REQ-1.2', { cites: 'Cites: `..\\intake\\2026-10-24-gone.md`.' }),
+  });
+  try {
+    assert.deepEqual(messages(repo), ['REQ-1.2 cites missing intake 2026-10-24-gone.md']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('an evaluation row covering a REQ the slice does not name is a finding', () => {
+  const repo = fixture({
+    spec: req('REQ-1.1') + req('REQ-1.2'),
+    sliceText: slice({ rows: ['| `a.test.js » works` | happy | REQ-1.1, REQ-1.2 |'] }),
+  });
+  try {
+    const found = check(repo.root, { rules: [citations] }).findings;
+    assert.deepEqual(found.map((f) => f.message), ['slice P1/S-03 test "a.test.js » works" covers REQ-1.2, which the slice does not name']);
+    assert.equal(found[0].file, 'docs/phases/P1-x/S-03-fixture.md');
+  } finally {
+    repo.cleanup();
+  }
+});

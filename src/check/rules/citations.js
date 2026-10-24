@@ -1,5 +1,5 @@
-// citations (03 REQ-3.7): every requirement has the shape of 01 REQ-1.3 and cites a decision or an
-// intake file that exists; every slice file (REQ-1.5) names only requirements and decisions that
+// citations (03 REQ-3.7): every requirement has the shape of 01 REQ-1.3 (a ## or ### heading) and
+// cites a decision or an intake file that exists; every slice file (REQ-1.5) names only requirements and decisions that
 // exist, and every test in its evaluation set covers a requirement; no D or REQ id is defined twice
 // (REQ-1.4).
 import fs from 'node:fs';
@@ -61,8 +61,9 @@ const DECISION = new RegExp(`^${re('decision').source}$`);
 const DATED = /^\d{4}-\d{2}-\d{2}-.+\.[A-Za-z0-9]+$/;
 
 // The intake file a token names, or null: `intake/<file>` anywhere in it, or a bare dated name.
-// A bare `intake/` names no file and is not an intake token.
-function intakeName(token) {
+// A bare `intake/` names no file and is not an intake token. Backslashes count as `/`.
+function intakeName(raw) {
+  const token = raw.replace(/\\/g, '/');
   const i = token.lastIndexOf('intake/');
   if (i !== -1) {
     const name = token.slice(i + 'intake/'.length).replace(/[)\]]+$/, '');
@@ -121,7 +122,12 @@ function checkRequirements(ctx, defs, out) {
     const fenced = fencedLines(doc.lines);
     const hs = headings(doc.text);
     hs.forEach((h, i) => {
-      if ((h.level !== 2 && h.level !== 3) || !reqHead.test(h.text)) return;
+      if (!reqHead.test(h.text)) return;
+      if (h.level !== 2 && h.level !== 3) {
+        const reqId = re('req').exec(h.text)[0];
+        out.push({ file: doc.rel, line: h.line, message: `${reqId} heading is level ${h.level}; a requirement is ## or ### (REQ-1.3)` });
+        return;
+      }
       // A block ends at the next heading of its own level or higher, or at the next REQ heading of
       // any level, so a nested REQ never lends its lines to the one above it.
       const next = hs.slice(i + 1).find((o) => o.level <= h.level || reqHead.test(o.text));
@@ -186,7 +192,11 @@ function checkSlices(ctx, out) {
         continue;
       }
       // Covers names requirements only; a decision or anything else there is unknown.
-      for (const c of row.covers) if (!ctx.ids.req.has(c)) at(`slice ${s.id} names unknown ${c}`, row.test);
+      // A known requirement the slice's `requirements` does not name is a gap in the record.
+      for (const c of row.covers) {
+        if (!ctx.ids.req.has(c)) at(`slice ${s.id} names unknown ${c}`, row.test);
+        else if (!s.requirements.includes(c)) at(`slice ${s.id} test "${name}" covers ${c}, which the slice does not name`, row.test);
+      }
     }
   }
 }
