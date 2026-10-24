@@ -6,16 +6,46 @@ import { buildContext } from './context.js';
 
 const RULES_DIR = fileURLToPath(new URL('./rules/', import.meta.url));
 
-// Every `*.js` in rules/, in file-name order. Later slices add a rule by adding a file; nothing
-// here changes. A module that does not have the rule shape is kept, and fails when it runs.
-async function loadRules() {
-  if (!fs.existsSync(RULES_DIR)) return [];
-  const names = fs.readdirSync(RULES_DIR).filter((n) => n.endsWith('.js')).sort();
+// Stands in for a rule file that cannot be imported: it crashes when run, so `check` reports it and
+// fails, while every other command (which imports this module through the CLI) keeps working.
+const brokenRule = (id, file, error) => ({
+  id,
+  file,
+  blocking: true,
+  ratchet: false,
+  run() {
+    throw new Error(`import failed: ${error?.message ?? error}`);
+  },
+});
+
+// Every `*.js` in dir, in file-name order. Later slices add a rule by adding a file; nothing here
+// changes. A module without the rule shape is kept, and fails when it runs. A missing directory
+// is itself a blocking finding: zero rules must never look like a clean repository.
+export async function loadRules(dir = RULES_DIR) {
+  if (!fs.existsSync(dir)) {
+    return [
+      {
+        id: 'loader',
+        synthetic: true,
+        blocking: true,
+        ratchet: false,
+        run: () => [{ file: '-', line: 0, message: `rule loader: rules directory missing at ${dir}` }],
+      },
+    ];
+  }
+  const names = fs.readdirSync(dir).filter((n) => n.endsWith('.js')).sort();
   const out = [];
   for (const name of names) {
-    const mod = await import(pathToFileURL(path.join(RULES_DIR, name)).href);
+    const fallback = name.slice(0, -'.js'.length);
+    let mod;
+    try {
+      mod = await import(pathToFileURL(path.join(dir, name)).href);
+    } catch (e) {
+      out.push(brokenRule(fallback, name, e));
+      continue;
+    }
     const rule = mod.default && typeof mod.default === 'object' ? mod.default : mod;
-    out.push({ ...rule, id: typeof rule.id === 'string' && rule.id !== '' ? rule.id : name.slice(0, -3) });
+    out.push({ ...rule, file: name, id: typeof rule.id === 'string' && rule.id !== '' ? rule.id : fallback });
   }
   return out;
 }
@@ -38,35 +68,45 @@ function runRule(rule, ctx) {
 
 const limit = (baselines, rule, bucket) => {
   const n = baselines?.[rule]?.[bucket];
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  return Number.isInteger(n) && n >= 0 ? n : 0;
 };
 
 // A ratchet rule fails a bucket whose count exceeds its baseline; a blocking rule that is not a
-// ratchet fails on any finding; a rule that is neither only reports. A rule that crashes always
-// blocks: the gate must never pass because a rule did not run.
+// ratchet fails on any finding; a rule that is neither only reports. A rule that crashes, or whose
+// id another rule already took, always blocks: the gate must never pass because a rule did not run.
 export function check(root, { ci = false, env = process.env, rules = ALL_RULES } = {}) {
   const cfg = loadConfig(root);
   const ctx = buildContext(root, cfg, { ci, env });
   const findings = [];
   const counts = {};
   const lines = [];
+  const seen = new Map();
   let over = 0;
   let blocking = 0;
+  const block = (f) => {
+    findings.push(f);
+    lines.push(`${f.rule} ${f.file}:${f.line} ${f.message}`);
+    blocking += 1;
+  };
 
   for (const rule of rules) {
+    if (seen.has(rule.id)) {
+      const first = seen.get(rule.id).file ?? '<injected>';
+      block({ rule: rule.id, file: '-', line: 0, message: `rule ${rule.id} defined twice (${first}, ${rule.file ?? '<injected>'})`, bucket: '-' });
+      continue;
+    }
+    seen.set(rule.id, rule);
     counts[rule.id] = {};
     let found;
     try {
       found = runRule(rule, ctx);
     } catch (e) {
-      const f = { rule: rule.id, file: '-', line: 0, message: `rule ${rule.id} crashed: ${e?.message ?? e}`, bucket: '-' };
-      findings.push(f);
-      lines.push(`${f.rule} ${f.file}:${f.line} ${f.message}`);
-      blocking += 1;
+      block({ rule: rule.id, file: '-', line: 0, message: `rule ${rule.id} crashed: ${e?.message ?? e}`, bucket: '-' });
       continue;
     }
     for (const f of found) counts[rule.id][f.bucket] = (counts[rule.id][f.bucket] ?? 0) + 1;
     const atBaseline = new Set();
+    // A ratchet rule is judged by its baselines alone; its `blocking` flag has no effect.
     if (rule.ratchet) {
       for (const [bucket, n] of Object.entries(counts[rule.id])) {
         const max = limit(ctx.baselines, rule.id, bucket);
@@ -82,6 +122,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
     }
   }
 
-  lines.push(`check: ${findings.length} findings, ${over} over baseline, ${blocking} blocking`);
-  return { findings, counts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines };
+  const ruleCount = rules.filter((r) => !r.synthetic).length;
+  lines.push(`check: ${findings.length} findings, ${over} over baseline, ${blocking} blocking, ${ruleCount} rules`);
+  return { findings, counts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount };
 }

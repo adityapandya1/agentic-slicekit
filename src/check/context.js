@@ -34,49 +34,51 @@ function collectDocs(root, paths) {
 }
 
 // The ids in the first cell of a table row, e.g. `| D-01 | ... |`.
-function tableIds(file, name) {
+function tableIds(doc, name) {
   const out = new Set();
-  if (!exists(file)) return out;
+  if (!doc) return out;
   const idRe = new RegExp(`^${re(name).source}$`);
-  for (const t of tables(readText(file))) {
+  for (const t of tables(doc.text)) {
     for (const row of t.rows) if (idRe.test(row[0] ?? '')) out.add(row[0]);
   }
   return out;
 }
 
-function collectIds(root, cfg, paths) {
+// Every id is read from the docs already collected (indexed by rel), so no file is read twice.
+function collectIds(root, cfg, paths, docs) {
+  const relOf = (abs) => toPosix(path.relative(root, abs));
+  const byRel = new Map(docs.map((d) => [d.rel, d]));
+  const inDir = (dirAbs) => {
+    const dir = relOf(dirAbs);
+    return docs.filter((d) => path.posix.dirname(d.rel) === (dir === '' ? '.' : dir));
+  };
   const ids = { req: new Set(), decision: new Set(), gap: new Set(), contract: new Set(), slice: new Set(), phase: new Set() };
 
   // `## REQ-` and `### REQ-` headings in the spec's own files (not contracts).
-  if (exists(paths.spec)) {
-    const reqRe = new RegExp(`^(${re('req').source})\\b`);
-    for (const name of fs.readdirSync(paths.spec).sort()) {
-      const file = path.join(paths.spec, name);
-      if (!name.endsWith('.md') || !fs.statSync(file).isFile()) continue;
-      for (const h of headings(readText(file))) {
-        const m = (h.level === 2 || h.level === 3) && reqRe.exec(h.text);
-        if (m) ids.req.add(m[1]);
-      }
+  const reqRe = new RegExp(`^(${re('req').source})\\b`);
+  for (const doc of inDir(paths.spec)) {
+    for (const h of headings(doc.text)) {
+      const m = (h.level === 2 || h.level === 3) && reqRe.exec(h.text);
+      if (m) ids.req.add(m[1]);
     }
   }
 
-  ids.decision = tableIds(paths.decisions, 'decision');
-  ids.gap = tableIds(paths.gaps, 'gap');
+  ids.decision = tableIds(byRel.get(relOf(paths.decisions)), 'decision');
+  ids.gap = tableIds(byRel.get(relOf(paths.gaps)), 'gap');
 
-  if (exists(paths.contracts)) {
-    const cRe = new RegExp(`^(${re('contract').source})-.*\\.md$`);
-    for (const name of fs.readdirSync(paths.contracts)) {
-      const m = cRe.exec(name);
-      if (m) ids.contract.add(m[1]);
-    }
+  const cRe = new RegExp(`^(${re('contract').source})-.*\\.md$`);
+  for (const doc of inDir(paths.contracts)) {
+    const m = cRe.exec(path.posix.basename(doc.rel));
+    if (m) ids.contract.add(m[1]);
   }
 
   // A malformed slice file is a finding for a rule, not a crash here: read only its address.
   for (const f of findSliceFiles(root, cfg)) {
     ids.phase.add(f.phaseId);
+    const doc = byRel.get(relOf(f.path));
     let addr = null;
     try {
-      addr = parseSliceAddr(String(frontMatter(readText(f.path)).data.slice ?? ''));
+      addr = doc ? parseSliceAddr(String(frontMatter(doc.text).data.slice ?? '')) : null;
     } catch {
       addr = null;
     }
@@ -99,12 +101,13 @@ function gitFacts(root) {
 
 export function buildContext(root, cfg, { ci = false, env = process.env } = {}) {
   const paths = kitPaths(root, cfg);
+  const docs = collectDocs(root, paths);
   return {
     root,
     cfg,
     paths,
-    docs: collectDocs(root, paths),
-    ids: collectIds(root, cfg, paths),
+    docs,
+    ids: collectIds(root, cfg, paths, docs),
     git: gitFacts(root),
     baselines: readBaselines(root),
     ci,
