@@ -1,6 +1,6 @@
 # C-2 Tracker adapter
 
-**Producer:** the kit (`src/adapters/tracker/`). **Consumers:** `/slicekit build` step 8 (declined
+**Producer:** the kit; the adapter will live in `src/adapters/tracker/` (S-15). **Consumers:** `/slicekit build` step 8 (declined <!-- slicekit:pending P2/S-15 -->
 should-haves), `/slicekit gaps` (optional: a gap as a ticket). **Version one implementation:**
 GitHub Issues (D-09). Jira is the first expected second implementation; its fields map onto the same
 three operations.

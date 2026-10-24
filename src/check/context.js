@@ -7,6 +7,7 @@ import { parseSliceAddr, re } from '../ids.js';
 import { frontMatter, headings, lines, tables } from '../markdown.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, phaseOfDir } from '../slicefile.js';
+import { intakePin } from '../stage.js';
 
 const toPosix = (p) => p.split(path.sep).join('/');
 
@@ -115,4 +116,14 @@ export function buildContext(root, cfg, { ci = false, env = process.env } = {}) 
     ci,
     env,
   };
+}
+
+// `frozen` for a doc under the intake directory whose sidecar's sha256 matches its bytes
+// (REQ-1.2): no rule reports on it, because it may not be rewritten to pass. `unpinned` for any
+// other doc there: the exemption is earned by the sidecar, so it is checked like any doc.
+// `not-intake` for everything else.
+export function intakeStatus(ctx, doc) {
+  const rel = path.relative(path.resolve(ctx.paths.intake), path.resolve(doc.path));
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return 'not-intake';
+  return intakePin(doc.path).status === 'frozen' ? 'frozen' : 'unpinned';
 }

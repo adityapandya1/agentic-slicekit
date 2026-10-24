@@ -28,7 +28,7 @@ export function listFiles(dir, { ext, ignore = ['node_modules', '.git'] } = {}) 
       const relPath = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (!ignore.includes(entry.name)) walk(path.join(abs, entry.name), relPath);
-      } else if (!ext || path.extname(entry.name) === ext) {
+      } else if (!ext || path.extname(entry.name).toLowerCase() === ext.toLowerCase()) {
         out.push(relPath);
       }
     }

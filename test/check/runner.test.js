@@ -7,6 +7,7 @@ import { init } from '../../src/init.js';
 import { loadConfig } from '../../src/config.js';
 import { ALL_RULES, check, loadRules } from '../../src/check/index.js';
 import { buildContext } from '../../src/check/context.js';
+import { checkCommand } from '../../src/cli/check.js';
 import os from 'node:os';
 import { makeRepo } from '../helpers/tmp-repo.js';
 import { runCli } from '../helpers/run-cli.js';
@@ -124,13 +125,17 @@ test('check on an empty init\'d repo exits 0', () => {
   try {
     const r = runCli(['check'], { cwd: repo.root });
     assert.equal(r.code, 0, r.stderr);
-    // Every shipped rule runs and none finds anything in a freshly init'd repo.
+    // Counted against the registered rules, so a slice that adds a rule does not edit this test.
     const n = ALL_RULES.length;
+    assert.ok(n >= 1);
     assert.equal(r.stdout, `check: 0 findings, 0 over baseline, 0 blocking, ${n} rules\n`);
     const j = runCli(['check', '--json', '--ci'], { cwd: repo.root });
     assert.equal(j.code, 0, j.stderr);
-    const counts = Object.fromEntries(ALL_RULES.map((rule) => [rule.id, {}]));
-    assert.deepEqual(JSON.parse(j.stdout), { findings: [], counts, exitCode: 0, rules: n });
+    const out = JSON.parse(j.stdout);
+    assert.deepEqual(out.findings, []);
+    assert.equal(out.exitCode, 0);
+    assert.equal(out.rules, n);
+    assert.deepEqual(out.counts, Object.fromEntries(ALL_RULES.map((rule) => [rule.id, {}])));
   } finally {
     repo.cleanup();
   }
@@ -262,6 +267,44 @@ test('a fractional baseline counts as zero and is reported', () => {
     });
     assert.equal(result.lines.at(-1), 'check: 3 findings, 2 over baseline, 1 blocking, 1 rules');
     assert.ok(result.lines.includes('baseline .slicekit/baselines/stubratchet.json:0 a.md is not a non-negative integer (read as 0)'));
+    assert.equal(result.exitCode, 1);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('check --json carries over, blocking and a baseline flag on findings at baseline', async () => {
+  const repo = initRepo();
+  try {
+    fs.writeFileSync(path.join(repo.root, '.slicekit', 'baselines', 'stubratchet.json'), JSON.stringify({ 'b.md': 1 }));
+    const rules = [
+      ratchetRule([
+        { file: 'a.md', line: 1, message: 'one' },
+        { file: 'b.md', line: 2, message: 'two' },
+      ]),
+      blockingRule([{ file: 'c.md', line: 3, message: 'three' }]),
+    ];
+    let stdout = '';
+    const code = await checkCommand.run(['--json'], { cwd: repo.root, env: {}, rules, stdout: (x) => { stdout += x; }, stderr: () => {} });
+    assert.equal(code, 1);
+    const out = JSON.parse(stdout);
+    assert.equal(out.over, 1);
+    assert.equal(out.blocking, 1);
+    assert.deepEqual(out.findings.map((f) => [f.file, f.baseline ?? false]), [['a.md', false], ['b.md', true], ['c.md', false]]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a baseline file for an unknown rule is a blocking finding', () => {
+  const repo = initRepo();
+  try {
+    fs.writeFileSync(path.join(repo.root, '.slicekit', 'baselines', 'ghost.json'), '{}');
+    const result = check(repo.root, { rules: [] });
+    assert.deepEqual(result.lines, [
+      'baseline .slicekit/baselines/ghost.json:0 baseline ghost.json names no rule',
+      'check: 1 findings, 0 over baseline, 1 blocking, 0 rules',
+    ]);
     assert.equal(result.exitCode, 1);
   } finally {
     repo.cleanup();

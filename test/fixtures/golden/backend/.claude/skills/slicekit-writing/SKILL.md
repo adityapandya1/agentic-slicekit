@@ -12,6 +12,7 @@ slicekit-managed: v0.0.0-test
 - Every agent reply ends with what it skipped and what it did not check.
 
 ## Filler the check rejects
+<!-- slicekit:style-catalogue -->
 
 - minting at the gate
 - at the boundary of

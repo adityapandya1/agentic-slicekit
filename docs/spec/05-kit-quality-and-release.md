@@ -144,7 +144,7 @@ Enforced by: the release workflow; a CI step that runs the walkthrough's command
 The kit SHALL keep `docs/runbook.md` for itself (how to release, how to roll back a bad version on
 npm, how to debug a hook on Windows), a user guide with one page per command and one page per check
 rule stating the failure that justifies it, and `docs/adapters.md` describing the contracts in
-`spec/contracts/` for anyone adding a git host, tracker or agent tool.
+`docs/spec/contracts/` for anyone adding a git host, tracker or agent tool.
 
 Scenario: GIVEN `docs/runbook.md` naming a file that no longer exists WHEN `slicekit check` runs on
 the kit THEN the references rule fails naming the line.

@@ -37,12 +37,15 @@ test('update refuses to raise a count', () => {
 test('baseline update through the CLI touches only ratchet rules and exits 0 with nothing to refuse', () => {
   const repo = initRepo();
   try {
-    // No ratchet rule is registered yet, so the CLI has no counts and leaves every file as it is.
+    // The references rule counts zero for a.md, so its bucket is lowered; a file for a rule that is
+    // not registered is left as it is.
     fs.writeFileSync(baselineFile(repo.root, 'references'), '{"a.md":2}');
+    fs.writeFileSync(baselineFile(repo.root, 'unregistered'), '{"b.md":3}');
     const r = runCli(['baseline', 'update'], { cwd: repo.root });
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '');
-    assert.deepEqual(readBaselines(repo.root).references, { 'a.md': 2 });
+    assert.equal(r.stdout, 'baseline references a.md: 2 → 0\n');
+    assert.equal(readBaselines(repo.root).references?.['a.md'], undefined);
+    assert.deepEqual(readBaselines(repo.root).unregistered, { 'b.md': 3 });
     assert.equal(runCli(['baseline'], { cwd: repo.root }).code, 2);
   } finally {
     repo.cleanup();
@@ -151,6 +154,27 @@ test('update --adopt records and prints a raise', async () => {
     const j = await cli(['update', '--adopt', '--json'], repo.root, { rules: [ratchetRule([finding('b.md', 1)])] });
     assert.equal(j.code, 0);
     assert.deepEqual(JSON.parse(j.stdout).adopted, [{ rule: 'stubratchet', bucket: 'b.md', from: 0, to: 1 }]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('--adopt refuses a catalogue bucket', async () => {
+  const repo = initRepo();
+  try {
+    const reason = 'catalogue buckets are never adopted';
+    const direct = updateBaselines(repo.root, { style: { 'catalogue:.slicekit/config.json': 7, catalogue: 1 } }, { adopt: true });
+    assert.deepEqual(direct.adopted, []);
+    assert.deepEqual(direct.refused, [
+      { rule: 'style', bucket: 'catalogue', from: 0, to: 1, reason },
+      { rule: 'style', bucket: 'catalogue:.slicekit/config.json', from: 0, to: 7, reason },
+    ]);
+    assert.deepEqual(readBaselines(repo.root).style, {});
+    const rules = [ratchetRule([{ ...finding('docs/filler.md', 3), bucket: 'catalogue:docs/filler.md' }, finding('a.md', 1)])];
+    const r = await cli(['update', '--adopt'], repo.root, { rules });
+    assert.equal(r.code, 1);
+    assert.equal(r.stdout, `adopted stubratchet a.md: 0 → 1\nrefused stubratchet catalogue:docs/filler.md: 0 → 1 (${reason})\n`);
+    assert.deepEqual(readBaselines(repo.root).stubratchet, { 'a.md': 1 });
   } finally {
     repo.cleanup();
   }

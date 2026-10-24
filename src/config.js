@@ -27,13 +27,14 @@ export class ConfigError extends Error {
   }
 }
 
-function seedBanned() {
+// The kit's own filler list, before any team extends it.
+export function seedBanned() {
   const file = fileURLToPath(new URL('../templates/style.json', import.meta.url));
   return JSON.parse(fs.readFileSync(file, 'utf8')).banned;
 }
 
 // init always passes cli (from --cli or the D-30 probe); the default serves callers that do not.
-export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'npx --no-install slicekit' }) {
+export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'slicekit' }) {
   return {
     configVersion: CONFIG_VERSION,
     name,
