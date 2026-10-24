@@ -11,14 +11,14 @@ const MARKER = '<!-- slicekit:style-catalogue -->';
 const SEED = ['minting at the gate', 'at the boundary of', "it's worth noting", 'robust', 'seamlessly', 'leverage', 'delve'];
 
 // An init'd repo with the given files written on top, checked by the style rule alone.
-function run(files, { banned } = {}) {
+function run(files, { banned, set } = {}) {
   const repo = makeRepo({ commits: 1 });
   try {
     init(repo.root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    if (banned) {
+    if (banned || set) {
       const file = path.join(repo.root, '.slicekit', 'config.json');
       const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-      cfg.style.banned = [...cfg.style.banned, ...banned];
+      cfg.style.banned = set ?? [...cfg.style.banned, ...banned];
       fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
     }
     for (const [rel, content] of Object.entries(files)) {
@@ -98,6 +98,23 @@ test('the catalogue exemption covers only the marked section', () => {
 test('an empty seed list is a finding', () => {
   assert.deepEqual(findStyle([], ['robust'], []), [
     { file: 'templates/style.json', line: 0, message: 'catalogue seed list is empty', bucket: 'catalogue' },
+  ]);
+});
+
+test('a configured list missing a seed phrase is a catalogue finding', () => {
+  assert.deepEqual(findStyle([], [], ['robust']), [
+    { file: '.slicekit/config.json', line: 0, message: 'catalogue missing "robust"', bucket: 'catalogue:.slicekit/config.json' },
+  ]);
+  const r = run({ 'docs/notes.md': '# Notes\n\nWe delve into it.\n' }, { set: [] });
+  assert.deepEqual(r.lines, [
+    ...SEED.map((p) => `style .slicekit/config.json:0 catalogue missing "${p}"`),
+    `check: ${SEED.length} findings, ${SEED.length} over baseline, 0 blocking, 1 rules`,
+  ]);
+  assert.equal(r.exitCode, 1);
+  const kept = run({}, { set: SEED.filter((p) => p !== 'delve').map((p) => p.toUpperCase()) });
+  assert.deepEqual(kept.lines, [
+    'style .slicekit/config.json:0 catalogue missing "delve"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
 });
 

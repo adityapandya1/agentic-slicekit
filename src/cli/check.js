@@ -29,8 +29,8 @@ async function run(args, io) {
     return 2;
   }
   if (values.json) {
-    const { findings, counts, exitCode, rules } = result;
-    io.stdout(`${JSON.stringify({ findings, counts, exitCode, rules }, null, 2)}\n`);
+    const { findings, counts, exitCode, rules, over, blocking } = result;
+    io.stdout(`${JSON.stringify({ findings, counts, over, blocking, exitCode, rules }, null, 2)}\n`);
   } else {
     io.stdout(`${result.lines.join('\n')}\n`);
   }

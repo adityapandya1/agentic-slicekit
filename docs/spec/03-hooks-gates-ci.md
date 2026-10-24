@@ -123,9 +123,11 @@ short list of agent fillers ("it's worth noting", "robust", "seamlessly", "at th
 "minting at the gate", "leverage", "delve"), case-insensitive, matched in every markdown file, verdict
 and pull request body, counted per file against `.slicekit/baselines/style.json`. The team extends the list in
 config; a removal from the list SHALL be a decision row. The files that define the list (config and
-the seed template) are exempt; a document that carries `<!-- slicekit:style-catalogue -->` is exempt
-from the ratchet within the marked section and SHALL contain every seed phrase, so the catalogue
-cannot be emptied by accident.
+the seed template) are exempt, and the check SHALL verify that the configured list still contains
+every seed phrase; a document that carries `<!-- slicekit:style-catalogue -->` is exempt from the
+ratchet within the marked section and SHALL contain every seed phrase, so the catalogue cannot be
+emptied by accident. A missing seed phrase is a catalogue finding, and `slicekit baseline update
+--adopt` SHALL refuse to adopt one.
 
 Enforced by: `slicekit check` (style rule).
 

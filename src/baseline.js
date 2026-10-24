@@ -12,6 +12,10 @@ function fileOf(root, rule) {
 
 const count = (n) => (Number.isInteger(n) && n >= 0 ? n : 0);
 
+// A catalogue bucket (`catalogue` or `catalogue:<file>`) says the filler list itself lost a seed
+// phrase (REQ-3.10). It is fixed in the list, never adopted, so no baseline may raise it.
+const isCatalogue = (bucket) => bucket === 'catalogue' || bucket.startsWith('catalogue:');
+
 // A baseline file is `{ "<bucket>": n }`. Anything unreadable reads as `{}` (every bucket at zero,
 // the strictest reading) and a value that is not a non-negative integer reads as zero; each is
 // reported in `problems` ({file, problem, damaged}), so a damaged file can only make the gate fail.
@@ -82,7 +86,10 @@ export function updateBaselines(root, counts, { adopt = false } = {}) {
     for (const bucket of new Set([...Object.keys(old), ...Object.keys(counts[rule])])) {
       const from = count(old[bucket]);
       const to = count(counts[rule][bucket]);
-      if (to > from && !adopt) {
+      if (to > from && isCatalogue(bucket)) {
+        refused.push({ rule, bucket, from, to, reason: 'catalogue buckets are never adopted' });
+        if (bucket in old) next[bucket] = old[bucket];
+      } else if (to > from && !adopt) {
         refused.push({ rule, bucket, from, to });
         if (bucket in old) next[bucket] = old[bucket];
       } else {

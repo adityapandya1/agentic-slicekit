@@ -159,6 +159,27 @@ test('update --adopt records and prints a raise', async () => {
   }
 });
 
+test('--adopt refuses a catalogue bucket', async () => {
+  const repo = initRepo();
+  try {
+    const reason = 'catalogue buckets are never adopted';
+    const direct = updateBaselines(repo.root, { style: { 'catalogue:.slicekit/config.json': 7, catalogue: 1 } }, { adopt: true });
+    assert.deepEqual(direct.adopted, []);
+    assert.deepEqual(direct.refused, [
+      { rule: 'style', bucket: 'catalogue', from: 0, to: 1, reason },
+      { rule: 'style', bucket: 'catalogue:.slicekit/config.json', from: 0, to: 7, reason },
+    ]);
+    assert.deepEqual(readBaselines(repo.root).style, {});
+    const rules = [ratchetRule([{ ...finding('docs/filler.md', 3), bucket: 'catalogue:docs/filler.md' }, finding('a.md', 1)])];
+    const r = await cli(['update', '--adopt'], repo.root, { rules });
+    assert.equal(r.code, 1);
+    assert.equal(r.stdout, `adopted stubratchet a.md: 0 → 1\nrefused stubratchet catalogue:docs/filler.md: 0 → 1 (${reason})\n`);
+    assert.deepEqual(readBaselines(repo.root).stubratchet, { 'a.md': 1 });
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('--adopt is refused when CI is set', async () => {
   const repo = initRepo();
   try {

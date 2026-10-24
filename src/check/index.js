@@ -121,12 +121,20 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
       blocking += found.length;
     }
     for (const f of found) {
-      findings.push(f);
-      lines.push(`${atBaseline.has(f.bucket) ? '(baseline) ' : ''}${f.rule} ${f.file}:${f.line} ${f.message}`);
+      const held = atBaseline.has(f.bucket);
+      findings.push(held ? { ...f, baseline: true } : f);
+      lines.push(`${held ? '(baseline) ' : ''}${f.rule} ${f.file}:${f.line} ${f.message}`);
     }
+  }
+
+  // A baseline file is named after a rule; one that names no rule the kit knows (loaded or
+  // injected) is a typo or a leftover, and a ratchet must never be kept for nothing.
+  const known = new Set([...ALL_RULES, ...rules].map((r) => r.id));
+  for (const name of Object.keys(ctx.baselines ?? {})) {
+    if (!known.has(name)) block({ rule: 'baseline', file: `.slicekit/baselines/${name}.json`, line: 0, message: `baseline ${name}.json names no rule`, bucket: '-' });
   }
 
   const ruleCount = rules.filter((r) => !r.synthetic).length;
   lines.push(`check: ${findings.length} findings, ${over} over baseline, ${blocking} blocking, ${ruleCount} rules`);
-  return { findings, counts, ratchetCounts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount };
+  return { findings, counts, ratchetCounts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount, over, blocking };
 }

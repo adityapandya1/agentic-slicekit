@@ -14,7 +14,8 @@ const EXAMPLE = '<!-- slicekit:example -->';
 
 // Files that define the list without being docs. They are never in ctx.docs; named here so the
 // exemption REQ-3.10 grants them stays explicit if the doc set ever widens.
-const EXEMPT = new Set(['.slicekit/config.json', 'templates/style.json']);
+const CONFIG = '.slicekit/config.json';
+const EXEMPT = new Set([CONFIG, 'templates/style.json']);
 
 const HEADING = /^(#{1,6})\s/;
 const LINK_TARGET = /\]\(([^)]*)\)/g;
@@ -109,7 +110,16 @@ export function findStyle(docs, banned, seed) {
     // A seed list emptied by accident would make every catalogue pass with nothing in it.
     findings.push({ file: 'templates/style.json', line: 0, message: 'catalogue seed list is empty', bucket: 'catalogue' });
   }
-  const patterns = phrases(banned).map((p) => [p, matcher(p)]);
+  const configured = phrases(banned);
+  // The configured list must keep every seed phrase (REQ-3.10): an emptied list would make this
+  // rule match nothing. Its bucket is a catalogue bucket, which `baseline update --adopt` refuses.
+  const have = new Set(configured.map((p) => p.toLowerCase()));
+  for (const p of seeds) {
+    if (!have.has(p.toLowerCase())) {
+      findings.push({ file: CONFIG, line: 0, message: `catalogue missing "${p}"`, bucket: `catalogue:${CONFIG}` });
+    }
+  }
+  const patterns = configured.map((p) => [p, matcher(p)]);
 
   for (const doc of docs) {
     if (EXEMPT.has(doc.rel)) continue;

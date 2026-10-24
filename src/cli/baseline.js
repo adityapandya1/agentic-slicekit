@@ -58,7 +58,7 @@ async function run(args, io) {
     for (const p of remaining) io.stdout(`baseline ${p.file}: ${p.problem}\n`);
     for (const w of written) io.stdout(`baseline ${w.rule} ${w.bucket}: ${w.from} → ${w.to}\n`);
     for (const a of adopted) io.stdout(`adopted ${a.rule} ${a.bucket}: ${a.from} → ${a.to}\n`);
-    for (const r of refused) io.stdout(`refused ${r.rule} ${r.bucket}: ${r.from} → ${r.to} (a baseline may only go down)\n`);
+    for (const r of refused) io.stdout(`refused ${r.rule} ${r.bucket}: ${r.from} → ${r.to} (${r.reason ?? 'a baseline may only go down'})\n`);
   }
   return refused.length > 0 || remaining.length > 0 ? 1 : 0;
 }
