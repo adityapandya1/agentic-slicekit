@@ -166,7 +166,7 @@ test('a well-cited spec and slice pass', () => {
   const repo = fixture({
     spec:
       req('REQ-1.1', { cites: 'Cites: D-01, D-02, `intake/2026-10-24-brief.md`.' }) +
-      req('REQ-1.2', { cites: '- Cites: 2026-10-24-brief.md', level: 2 }) +
+      req('REQ-1.2', { cites: '- Cites: `../intake/2026-10-24-brief.md`', level: 2 }) +
       '```\n### REQ-1.9 inside a fence is not a requirement\n```\n',
     sliceText: slice({ requirements: '[REQ-1.1, REQ-1.2]', decisions: '[D-02]' }),
   });
@@ -174,6 +174,41 @@ test('a well-cited spec and slice pass', () => {
     const result = check(repo.root, { rules: [citations] });
     assert.deepEqual(result.findings, []);
     assert.equal(result.exitCode, 0);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a nested REQ heading closes the outer block', () => {
+  const outer = '## REQ-1.1 Outer\n\nThe kit SHALL do the outer thing.\n\n';
+  const repo = fixture({ spec: outer + req('REQ-1.2') });
+  try {
+    assert.deepEqual(messages(repo), [
+      'REQ-1.1 has no Scenario',
+      'REQ-1.1 has no Cites line',
+      'REQ-1.1 has no Enforced by line',
+    ]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a bare intake/ token is not an intake citation', () => {
+  const repo = fixture({ spec: req('REQ-1.1', { cites: 'Cites: `intake/`.' }) });
+  try {
+    assert.deepEqual(messages(repo), ['REQ-1.1 Cites line names no decision or intake file']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a wrapped Cites line is read as one line', () => {
+  const repo = fixture({
+    spec: req('REQ-1.1', { cites: 'Cites: D-01,\n  D-99, `../intake/2026-10-24-brief.md`.' }),
+  });
+  try {
+    const found = check(repo.root, { rules: [citations] }).findings;
+    assert.deepEqual(found.map((f) => [f.line, f.message]), [[10, 'REQ-1.1 cites unknown D-99']]);
   } finally {
     repo.cleanup();
   }

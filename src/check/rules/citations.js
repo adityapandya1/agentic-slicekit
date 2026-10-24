@@ -31,22 +31,41 @@ function fencedLines(lines) {
 // The label a line starts with once list markers are stripped, e.g. `- Cites: D-01` → `Cites:`.
 const startsWith = (line, label) => line.replace(LIST, '').startsWith(label);
 
-// The tokens of a `Cites:` line, stripped of markdown punctuation.
-function citedTokens(line) {
-  const rest = line.replace(LIST, '').slice('Cites:'.length);
+// The tokens of one line of a `Cites:` entry, stripped of markdown punctuation. A continuation
+// line has no `Cites:` key to skip.
+function citedTokens(line, continuation = false) {
+  const rest = continuation ? line : line.replace(LIST, '').slice('Cites:'.length);
   return rest
     .split(/[\s,;]+/)
     .map((t) => t.replace(/^[`'"([*_]+/, '').replace(/[`'")\]*_.:]+$/, ''))
     .filter((t) => t !== '');
 }
 
+// Each `Cites:` line with the lines wrapped under it: indented, not blank, carrying no `Key:`.
+// Returns one array of [line, number] per entry.
+function citesEntries(body) {
+  const out = [];
+  for (let i = 0; i < body.length; i++) {
+    if (!startsWith(body[i][0], 'Cites:')) continue;
+    const parts = [body[i]];
+    const wrapped = (l) => /^\s+\S/.test(l) && !/^\s*[A-Z][\w ]*:/.test(l);
+    while (i + 1 < body.length && wrapped(body[i + 1][0])) parts.push(body[++i]);
+    out.push(parts);
+  }
+  return out;
+}
+
 const DECISION = new RegExp(`^${re('decision').source}$`);
 const DATED = /^\d{4}-\d{2}-\d{2}-.+\.[A-Za-z0-9]+$/;
 
 // The intake file a token names, or null: `intake/<file>` anywhere in it, or a bare dated name.
+// A bare `intake/` names no file and is not an intake token.
 function intakeName(token) {
   const i = token.lastIndexOf('intake/');
-  if (i !== -1) return token.slice(i + 'intake/'.length).replace(/[)\]]+$/, '');
+  if (i !== -1) {
+    const name = token.slice(i + 'intake/'.length).replace(/[)\]]+$/, '');
+    return name === '' ? null : name;
+  }
   return DATED.test(token) ? token : null;
 }
 
@@ -65,11 +84,13 @@ function checkReqBlock(ctx, doc, h, end, fenced, out) {
   if (!body.some(([l]) => /\bSHALL\b/.test(l))) at(`${reqId} has no SHALL`);
   if (!body.some(([l]) => startsWith(l, 'Scenario:'))) at(`${reqId} has no Scenario`);
 
-  const cites = body.filter(([l]) => startsWith(l, 'Cites:'));
-  if (cites.length === 0) at(`${reqId} has no Cites line`);
-  for (const [line, n] of cites) {
+  const entries = citesEntries(body);
+  if (entries.length === 0) at(`${reqId} has no Cites line`);
+  for (const parts of entries) {
     let named = 0;
-    for (const token of citedTokens(line)) {
+    const first = parts[0][1];
+    const tokens = parts.flatMap(([line, ln], k) => citedTokens(line, k > 0).map((t) => [t, ln]));
+    for (const [token, n] of tokens) {
       if (DECISION.test(token)) {
         named += 1;
         if (!ctx.ids.decision.has(token)) at(`${reqId} cites unknown ${token}`, n);
@@ -80,7 +101,7 @@ function checkReqBlock(ctx, doc, h, end, fenced, out) {
       named += 1;
       if (!intakeExists(ctx, name)) at(`${reqId} cites missing intake ${name}`, n);
     }
-    if (named === 0) at(`${reqId} Cites line names no decision or intake file`, n);
+    if (named === 0) at(`${reqId} Cites line names no decision or intake file`, first);
   }
 
   if (!body.some(([l]) => startsWith(l, 'Enforced by:'))) at(`${reqId} has no Enforced by line`);
@@ -99,7 +120,9 @@ function checkRequirements(ctx, defs, out) {
     const hs = headings(doc.text);
     hs.forEach((h, i) => {
       if ((h.level !== 2 && h.level !== 3) || !reqHead.test(h.text)) return;
-      const next = hs.slice(i + 1).find((o) => o.level <= h.level);
+      // A block ends at the next heading of its own level or higher, or at the next REQ heading of
+      // any level, so a nested REQ never lends its lines to the one above it.
+      const next = hs.slice(i + 1).find((o) => o.level <= h.level || reqHead.test(o.text));
       const end = next ? next.line - 1 : doc.lines.length;
       defs.push({ id: re('req').exec(h.text)[0], file: doc.rel, line: h.line });
       checkReqBlock(ctx, doc, h, end, fenced, out);
