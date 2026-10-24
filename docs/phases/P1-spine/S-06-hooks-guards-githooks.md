@@ -104,3 +104,7 @@ decisions: [D-10, D-19]
 
 - [ ] **Step 1: Failing tests** — `prepare-commit-msg adds the trailer once` (real commit in a temp repo, two commits, trailer present exactly once each); `hooksPath unset is a finding`; the two `trailer.test.js` cases.
 - [ ] **Step 2–5:** FAIL → implement → run `init` again on the kit so its own hooks install → PASS → commit `feat(hooks): git hooks and the hooks/trailer rules`.
+
+## Carried from S-02
+
+The hooks run with the session's current directory as their working directory, so a slice built in a worktree outside the repository tree needs an absolute `cli` in `.slicekit/config.json` or a global install (D-30); the relative `node node_modules/slicekit/bin/slicekit.js` form does not resolve there. The `_slicekit` key S-02 writes into `.claude/settings.json` is verified against the settings schema only (it allows additional properties), not in a live session: S-06's first live hook run confirms Claude Code accepts it.
