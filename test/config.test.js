@@ -125,9 +125,9 @@ test('loadConfig returns a valid config and throws on an invalid one', () => {
   assert.throws(() => loadConfig(root), ConfigError);
 });
 
-test('cli is a non-empty string, default npx --no-install slicekit', () => {
+test('cli is a non-empty string, default slicekit', () => {
   const cfg = base();
-  assert.equal(cfg.cli, 'npx --no-install slicekit');
+  assert.equal(cfg.cli, 'slicekit');
   assert.deepEqual(validateConfig({ ...cfg, cli: '' }), ['cli: must be a non-empty string']);
   assert.deepEqual(validateConfig({ ...cfg, cli: 3 }), ['cli: must be a non-empty string']);
 });
