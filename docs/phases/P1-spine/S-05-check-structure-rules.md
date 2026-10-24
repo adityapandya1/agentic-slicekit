@@ -4,7 +4,7 @@ name: Check: citations, coverage, queue, commands, layout, managed
 repo: .
 group: B
 runbook: no
-requirements: [REQ-3.7, REQ-1.3, REQ-1.5, REQ-1.6, REQ-1.1, REQ-3.12, REQ-2.5]
+requirements: [REQ-3.7, REQ-1.3, REQ-1.4, REQ-1.5, REQ-1.6, REQ-1.1, REQ-3.12, REQ-2.5]
 decisions: [D-11, D-14]
 ---
 

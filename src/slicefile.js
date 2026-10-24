@@ -19,12 +19,18 @@ const LISTS = ['requirements', 'decisions'];
 
 // The text under the first `## <title>` heading, up to the next level-2 heading.
 function section(body, title) {
+  const at = sectionAt(body, title);
+  return at === null ? null : at.text;
+}
+
+// The same, with the heading's 1-based line in body.
+function sectionAt(body, title) {
   const hs = headings(body).filter((h) => h.level === 2);
   const i = hs.findIndex((h) => h.text.toLowerCase() === title.toLowerCase());
   if (i === -1) return null;
   const all = lines(body);
   const end = i + 1 < hs.length ? hs[i + 1].line - 1 : all.length;
-  return all.slice(hs[i].line, end).join('\n');
+  return { line: hs[i].line, text: all.slice(hs[i].line, end).join('\n') };
 }
 
 const asList = (v) => (Array.isArray(v) ? v : v === '' || v == null ? [] : [String(v)]);
@@ -89,8 +95,21 @@ export function parseSliceFile(text, file) {
     };
   });
 
-  const changes = section(body, 'Expected changes') ?? '';
-  const expectedChanges = [...changes.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
+  // Each backticked path under `## Expected changes`, with its line in the file (front matter
+  // included), so a finding about it can point at it.
+  const offset = lines(text).length - lines(body).length;
+  const changesAt = sectionAt(body, 'Expected changes');
+  const expectedChanges = [];
+  const expectedChangeLines = [];
+  if (changesAt) {
+    lines(changesAt.text).forEach((l, k) => {
+      for (const m of l.matchAll(/`([^`]+)`/g)) {
+        expectedChanges.push(m[1].trim());
+        expectedChangeLines.push(offset + changesAt.line + k + 1);
+      }
+    });
+  }
+  const expectedChangesLine = changesAt ? offset + changesAt.line : null;
 
   return {
     id,
@@ -103,6 +122,8 @@ export function parseSliceFile(text, file) {
     doneWhen,
     evaluation,
     expectedChanges,
+    expectedChangeLines,
+    expectedChangesLine,
     path: file,
   };
 }

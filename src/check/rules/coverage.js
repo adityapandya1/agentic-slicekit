@@ -1,12 +1,13 @@
-// coverage (03 REQ-3.7, 02 REQ-2.5): once a program is planned, every REQ is named by at least one
-// slice, and no two slices in one parallel group of one phase expect to change the same path.
+// coverage (03 REQ-3.7, 02 REQ-2.5): once a program is at the plan stage, every REQ is named by at
+// least one slice, every slice lists its expected changes, and no two slices in one parallel group
+// of one phase expect to change the same path.
+import fs from 'node:fs';
 import path from 'node:path';
 import { readText } from '../../fs.js';
-import { re } from '../../ids.js';
+import { re, stateFileName } from '../../ids.js';
 import { headings } from '../../markdown.js';
 import { findSliceFiles, parseSliceFile } from '../../slicefile.js';
 import { programStage } from '../../stage.js';
-import { readSlice } from '../../state/index.js';
 
 export const id = 'coverage';
 export const blocking = true;
@@ -27,22 +28,37 @@ function readSlices(ctx) {
   });
 }
 
-const beyondTodo = (ctx, s) => {
-  try {
-    return readSlice(ctx.root, ctx.cfg, s.id).state !== 'todo';
-  } catch {
-    return false;
+// One pass over the parsed slices' state files: whether any is past `todo`, and the state files
+// that do not parse. A missing state file is `todo`. A corrupt one is a finding and counts as past
+// `todo`: an unreadable state must never close the gate. (`listSlices` would throw on the first
+// corrupt file or unparseable slice file, so this reads the files itself.)
+function sliceStates(ctx, parsed) {
+  const corrupt = [];
+  let beyondTodo = false;
+  for (const p of parsed) {
+    if (!p.slice) continue;
+    const file = path.join(ctx.paths.state, stateFileName(p.slice.id));
+    if (!fs.existsSync(file)) continue;
+    let stored;
+    try {
+      stored = JSON.parse(readText(file));
+    } catch {
+      corrupt.push(toPosix(path.relative(ctx.root, file)));
+      beyondTodo = true;
+      continue;
+    }
+    if ((stored?.state ?? 'todo') !== 'todo') beyondTodo = true;
   }
-};
+  return { beyondTodo, corrupt };
+}
 
-// Planned means the stage reader proves `plan` complete, or some slice is already past `todo`. The
-// second is needed because a program that is building is past planning even when the stage reader
-// cannot prove `plan` merged (the kit itself has no intake sidecar, so it never gets past intake).
-// Note the stage reader's `plan` already requires every REQ to be named, so for an uncovered REQ
-// only the second condition ever lets this rule speak; the first still lets it report overlaps.
-function planned(ctx, slices) {
-  if (slices.some((s) => s.slice && beyondTodo(ctx, s.slice))) return true;
-  return programStage(ctx.root, ctx.cfg, { upTo: 'plan' }).complete;
+// Planned means the first stage that is not complete is `plan` or later, so the plan branch is
+// checked before it merges. Stopping the stage reader at `plan` gives exactly that: it reports
+// `plan` both when plan is the first incomplete stage and when it is complete. A slice past `todo`
+// also counts: a program that is building is past planning even when its earlier stages cannot be
+// proven (the kit itself has no intake sidecar, so its stage reader stops at intake).
+function planned(ctx, beyondTodo) {
+  return beyondTodo || programStage(ctx.root, ctx.cfg, { upTo: 'plan' }).stage === 'plan';
 }
 
 // The REQ headings of the spec's own files (not contracts), first definition only.
@@ -60,16 +76,24 @@ function reqHeadings(ctx) {
   return out;
 }
 
+// One level of `{a,b}` is expanded: `src/cli/{state,status}.js` is two paths.
+function expand(p) {
+  const m = /^(.*?)\{([^{}]*)\}(.*)$/.exec(p);
+  return m ? m[2].split(',').map((alt) => `${m[1]}${alt.trim()}${m[3]}`) : [p];
+}
+
 // Three paths are never an overlap: `.` (the repository itself), anything under `test/` (a slice
 // may always add tests) and `src/cli/index.js` (the command registration table every slice touches).
 function normalise(p) {
-  const n = p
-    .replace(/\\/g, '/')
-    .replace(/\/{2,}/g, '/')
-    .replace(/^(\.\/)+/, '')
-    .replace(/\/+$/, '');
-  if (n === '' || n === '.' || n === 'test' || n.startsWith('test/') || n === 'src/cli/index.js') return null;
-  return n;
+  return expand(p)
+    .map((one) =>
+      one
+        .replace(/\\/g, '/')
+        .replace(/\/{2,}/g, '/')
+        .replace(/^(\.\/)+/, '')
+        .replace(/\/+$/, ''),
+    )
+    .filter((n) => !(n === '' || n === '.' || n === 'test' || n.startsWith('test/') || n === 'src/cli/index.js'));
 }
 
 // The path both slices would change, when one prefix contains the other by whole segments.
@@ -79,28 +103,38 @@ function overlap(a, b) {
   return null;
 }
 
+// Each slice's normalised prefixes, each with the file line of the first entry that gave it.
+function prefixes(slice) {
+  const out = new Map();
+  slice.expectedChanges.forEach((c, k) => {
+    for (const n of normalise(c)) if (!out.has(n)) out.set(n, slice.expectedChangeLines[k] ?? 1);
+  });
+  return out;
+}
+
 function overlaps(parsed, out) {
   const groups = new Map();
   for (const p of parsed) {
     if (!p.slice) continue;
     const key = `${p.phaseId}\u0000${p.slice.group}`;
-    const prefixes = [...new Set(p.slice.expectedChanges.map(normalise).filter((n) => n !== null))];
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ ...p, prefixes });
+    groups.get(key).push({ ...p, prefixes: prefixes(p.slice) });
   }
   for (const members of groups.values()) {
     for (let j = 1; j < members.length; j++) {
       for (let i = 0; i < j; i++) {
         const [a, b] = [members[i], members[j]];
-        const shared = new Set();
-        for (const x of a.prefixes) for (const y of b.prefixes) {
-          const hit = overlap(x, y);
-          if (hit !== null) shared.add(hit);
+        const shared = new Map();
+        for (const x of a.prefixes.keys()) {
+          for (const [y, line] of b.prefixes) {
+            const hit = overlap(x, y);
+            if (hit !== null && !shared.has(hit)) shared.set(hit, line);
+          }
         }
-        for (const where of shared) {
+        for (const [where, line] of shared) {
           out.push({
             file: b.rel,
-            line: 1,
+            line,
             message: `slices ${a.slice.id} and ${b.slice.id} in group ${b.slice.group} both expect ${where}`,
           });
         }
@@ -111,8 +145,10 @@ function overlaps(parsed, out) {
 
 export function run(ctx) {
   const parsed = readSlices(ctx);
-  if (!planned(ctx, parsed)) return [];
+  const states = sliceStates(ctx, parsed);
+  if (!planned(ctx, states.beyondTodo)) return [];
   const out = [];
+  for (const rel of states.corrupt) out.push({ file: rel, line: 1, message: `state file ${rel} is not valid JSON` });
   for (const p of parsed) {
     if (p.error) out.push({ file: p.rel, line: 1, message: `slice file cannot be read: ${p.error}` });
   }
@@ -122,6 +158,12 @@ export function run(ctx) {
     if (named.has(reqId)) continue;
     const at = heads.get(reqId) ?? { file: toPosix(path.relative(ctx.root, ctx.paths.spec)), line: 1 };
     out.push({ file: at.file, line: at.line, message: `${reqId} is named by no slice` });
+  }
+  // REQ-1.5: a slice file lists its expected changes; an empty list would pass every overlap check.
+  for (const p of parsed) {
+    if (p.slice && p.slice.expectedChanges.length === 0) {
+      out.push({ file: p.rel, line: p.slice.expectedChangesLine ?? 1, message: `slice ${p.slice.id} lists no expected changes` });
+    }
   }
   overlaps(parsed, out);
   return out;

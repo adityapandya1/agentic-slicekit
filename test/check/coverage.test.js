@@ -82,10 +82,49 @@ test('the rule is blocking and not a ratchet', () => {
 });
 
 test('uncovered REQ after plan is a finding', () => {
-  // Plan merged, its one slice merged since; a later REQ that no slice names is a finding on its heading.
+  const at = [{ file: 'docs/spec/a.md', line: 13, message: 'REQ-1.2 is named by no slice' }];
+  // The program is at plan (the spec is merged, the plan does not yet name REQ-1.2): a finding on its heading.
+  assert.deepEqual(findings(PLAN, { files: { 'docs/spec/a.md': (t) => t + UNCOVERED } }), at);
+  // Plan merged and its one slice merged since: still a finding.
   assert.deepEqual(findings([...PLAN, 'all-merged']), []);
-  const out = findings([...PLAN, 'all-merged'], { after: { 'docs/spec/a.md': (t) => t + UNCOVERED } });
-  assert.deepEqual(out, [{ file: 'docs/spec/a.md', line: 13, message: 'REQ-1.2 is named by no slice' }]);
+  assert.deepEqual(findings([...PLAN, 'all-merged'], { files: { 'docs/spec/a.md': (t) => t + UNCOVERED } }), at);
+});
+
+test('the plan branch is checked before it merges', () => {
+  // main holds the plan; a slice file written on the plan branch, not yet committed, overlaps S-01.
+  const out = findings(PLAN, { after: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02') } });
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 23, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' }]);
+});
+
+test('a brace pattern is expanded before comparing', () => {
+  const out = findings(PLAN, {
+    files: {
+      'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { changes: ['src/cli/{state,status}.js'] }),
+      'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['src/x.js', 'src/cli/status.js'] }),
+    },
+  });
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/cli/status.js' }]);
+});
+
+test('a slice that lists no expected changes is a finding', () => {
+  const empty = findings(PLAN, { files: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: [] }) } });
+  assert.deepEqual(empty, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 21, message: 'slice P1/S-02 lists no expected changes' }]);
+  const missing = findings(PLAN, {
+    files: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02').replace(/## Expected changes[\s\S]*$/, '') },
+  });
+  assert.deepEqual(missing, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 1, message: 'slice P1/S-02 lists no expected changes' }]);
+});
+
+test('a corrupt state file is a finding and opens the gate', () => {
+  // Nothing is committed, so only the state file could open the gate; it does not parse.
+  const out = findings(PLAN, {
+    commit: false,
+    files: { 'docs/spec/a.md': (t) => t + UNCOVERED, '.slicekit/state/P1-S-01.json': '{ not json' },
+  });
+  assert.deepEqual(out, [
+    { file: '.slicekit/state/P1-S-01.json', line: 1, message: 'state file .slicekit/state/P1-S-01.json is not valid JSON' },
+    { file: 'docs/spec/a.md', line: 13, message: 'REQ-1.2 is named by no slice' },
+  ]);
 });
 
 test('overlapping expected changes in one group is a finding', () => {
@@ -96,8 +135,8 @@ test('overlapping expected changes in one group is a finding', () => {
     },
   });
   assert.deepEqual(out, [
-    { file: 'docs/phases/P1-x/S-02-b.md', line: 1, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/billing/invoice.js' },
-    { file: 'docs/phases/P1-x/S-02-b.md', line: 1, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' },
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 23, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/billing/invoice.js' },
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' },
   ]);
   // A path segment is not a prefix of a longer segment: `src/a` and `src/ab.js` do not overlap.
   const apart = findings(PLAN, {
@@ -143,7 +182,7 @@ test('test/ and src/cli/index.js never overlap', () => {
     },
   });
   // The rule is speaking (src/x.js is reported), and nothing else the two share is.
-  assert.deepEqual(out.map((f) => f.message), ['slices P1/S-01 and P1/S-02 in group B both expect src/x.js']);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 27, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
 });
 
 test('different groups may overlap', () => {
@@ -154,7 +193,7 @@ test('different groups may overlap', () => {
     },
   });
   // S-01 (group B) and S-02 (group C) both expect src/a.js: not a finding. S-02 and S-03 share group C.
-  assert.deepEqual(out.map((f) => f.message), ['slices P1/S-02 and P1/S-03 in group C both expect src/c.js']);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-03-c.md', line: 23, message: 'slices P1/S-02 and P1/S-03 in group C both expect src/c.js' }]);
 });
 
 test('an unparseable slice file is a finding, not a crash', () => {

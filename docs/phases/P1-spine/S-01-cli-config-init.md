@@ -31,7 +31,7 @@ decisions: [D-04, D-11, D-14, D-24, D-26, D-29]
 
 ## Expected changes
 
-`package.json`, `bin/`, `src/cli/`, `src/config.js`, `src/paths.js`, `src/fs.js`, `src/git.js`, `src/ids.js`, `src/markdown.js`, `src/init.js`, `templates/docs/`, `templates/style.json`, `test/`.
+`package.json`, `bin/`, `src/cli/index.js`, `src/cli/init.js`, `src/config.js`, `src/paths.js`, `src/fs.js`, `src/git.js`, `src/ids.js`, `src/markdown.js`, `src/init.js`, `templates/docs/`, `templates/style.json`, `test/`.
 
 ## Tasks
 

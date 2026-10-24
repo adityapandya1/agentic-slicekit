@@ -96,7 +96,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25) |
 | queue | `BUILD.md` disagrees with `state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
-| coverage | at plan stage or later, a REQ named by no slice |
+| coverage | at plan stage or later, a REQ named by no slice, a slice listing no expected changes, or two slices in one parallel group expecting the same path (REQ-2.5) |
 | trailer | on a slice branch, a commit without the `Slice:` trailer |
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |

@@ -102,6 +102,18 @@ test('expected changes also parse from a list', () => {
   assert.deepEqual(parseSliceFile(text, 'x.md').expectedChanges, ['a.js', 'b/']);
 });
 
+test('expected changes carry the file line of each path and of their heading', () => {
+  const s = parseSliceFile(sample, fixture);
+  assert.equal(s.expectedChangesLine, 24);
+  assert.deepEqual(s.expectedChangeLines, [26, 26, 26]);
+  const listed = parseSliceFile(sample.replace('`src/sample.js`, `src/cli/`, `test/sample.test.js`.', '- `a.js`\n- `b/`'), 'x.md');
+  assert.deepEqual(listed.expectedChangeLines, [26, 27]);
+  const none = parseSliceFile(sample.replace(/## Expected changes[\s\S]*$/, ''), 'x.md');
+  assert.equal(none.expectedChangesLine, null);
+  assert.deepEqual(none.expectedChanges, []);
+  assert.deepEqual(none.expectedChangeLines, []);
+});
+
 test('findSliceFiles orders by phase then slice', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicefile-'));
   try {
