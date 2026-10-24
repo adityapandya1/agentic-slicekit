@@ -109,6 +109,12 @@ export function setState(root, cfg, id, to, evidence = {}) {
       if (current.state !== 'todo') throw new TransitionError('backfill is only allowed from todo');
       const missing = rule.required.filter((k) => ev[k] === undefined);
       if (missing.length > 0) throw new TransitionError(`backfill to ${to} needs ${missing.join(', ')}`);
+      if (['draft-pr', 'ci-green', 'merged'].includes(to)) {
+        const pr = ev.pr;
+        if (!pr || !Number.isInteger(pr.number) || typeof pr.headSha !== 'string' || pr.headSha === '') {
+          throw new TransitionError(`backfill to ${to} needs pr.number and pr.headSha`);
+        }
+      }
       if (to === 'ready' && cfg.review.independent !== 'optional') {
         const v = ev.verdict;
         if (!v || v.independent !== true || v.blockers !== 0) {

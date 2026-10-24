@@ -184,10 +184,16 @@ test('backfill skips the from check and records by backfill', () => {
   withKit((root, cfg, [id]) => {
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { mergedAt: 'x' })), /cannot move/);
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { backfill: true })), /mergedAt/);
+    const noPr = { backfill: true, mergedAt: 'x' };
+    assert.match(refusal(() => setState(root, cfg, id, 'merged', noPr)), /pr.number and pr.headSha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1 } })), /pr.headSha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1.5, headSha: 'a' } })), /pr.number/);
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 1 } })), /pr.headSha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: 'a', status: 'success' } })), /pr.number and pr.headSha/);
     const s = setState(root, cfg, id, 'merged', {
       backfill: true,
       mergedAt: '2026-01-01T00:00:00Z',
-      pr: { number: 1, url: 'http://x/1' },
+      pr: { number: 1, url: 'http://x/1', headSha: 'abc' },
     });
     assert.equal(s.state, 'merged');
     assert.equal(s.pr.number, 1);
@@ -216,7 +222,7 @@ test('write is atomic: 20 slices in one process, 5 parallel processes', async ()
     const ids = writeSliceFixtures(repo.root, 20);
     const cfg = loadConfig(repo.root);
     await Promise.all(
-      ids.map(async (id) => setState(repo.root, cfg, id, 'merged', { backfill: true, mergedAt: 'x' })),
+      ids.map(async (id) => setState(repo.root, cfg, id, 'merged', { backfill: true, mergedAt: 'x', pr: { number: 1, headSha: 'abc' } })),
     );
     const procs = ids.slice(0, 5).map(
       (id) =>
@@ -259,7 +265,7 @@ test('cli: set, show and refusal', () => {
     assert.match(r.stdout, /^P1\/S-01 {2}tests-red {2}PR -/);
     assert.deepEqual(JSON.parse(run('show', id, '--json').stdout).frozenTests, ['a.test.js', 'b.test.js']);
     const id2 = writeSliceFixture(repo.root, { n: 2 });
-    r = run('set', id2, 'merged', '--backfill', '--merged-at', 'x', '--pr-number', '1', '--pr-url', 'u');
+    r = run('set', id2, 'merged', '--backfill', '--merged-at', 'x', '--pr-number', '1', '--pr-url', 'u', '--pr-sha', 'abc');
     assert.equal(r.code, 0, r.stderr);
     assert.match(run('show', id2).stdout, /merged {2}PR 1/);
     r = run('show', 'P9/S-99');
@@ -315,7 +321,7 @@ test('in-review needs a verdict path, an existing file and round 1 first', () =>
 
 test('released accepts a record that names the pull request url', () => {
   withKit((root, cfg, [id]) => {
-    setState(root, cfg, id, 'merged', { backfill: true, mergedAt: 'x', pr: { number: 7, url: 'http://x/7' } });
+    setState(root, cfg, id, 'merged', { backfill: true, mergedAt: 'x', pr: { number: 7, url: 'http://x/7', headSha: 'abc' } });
     fs.writeFileSync(path.join(root, 'r.md'), 'see http://x/7');
     assert.equal(setState(root, cfg, id, 'released', { release: 'r.md' }).state, 'released');
   });
@@ -404,4 +410,19 @@ test('parallel processes writing the same slice all land', async () => {
   } finally {
     repo.cleanup();
   }
+});
+
+test('a stale lock file is taken over and removed', () => {
+  withKit((root, cfg, [id]) => {
+    const dir = kitPaths(root, cfg).state;
+    fs.mkdirSync(dir, { recursive: true });
+    const lock = path.join(dir, 'P1-S-01.json.lock');
+    fs.writeFileSync(lock, '');
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, old, old);
+    fs.writeFileSync(path.join(root, 'a.test.js'), '');
+    const s = setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: ['a.test.js'] });
+    assert.equal(s.state, 'tests-red');
+    assert.equal(fs.existsSync(lock), false);
+  });
 });

@@ -1,0 +1,5 @@
+{
+  "slice": "P1/S-01",
+  "state": "merged",
+  "pr": { "number": 7, "url": "http://x/7", "headSha": "abc" }
+}
