@@ -49,6 +49,10 @@ test('markdown » refs handles titles, parentheses, URLs, placeholders and refer
   assert.deepEqual(paths('`docs/**/*.md` [g](docs/*.md)'), []);
   assert.deepEqual(paths('[t][ref] and [ref]: x/y.md'), []);
   assert.deepEqual(paths('`[t](inline/code.md)`'), [], 'a link written inside a code span is not a link');
+  assert.deepEqual(paths('`src\\cli\\run.js`'), ['src\\cli\\run.js'], 'a backslash is a separator');
+  assert.deepEqual(paths('`node_modules/.bin` `node_modules/x/y.js` `.git/hooks/` [n](node_modules/a.js)'), []);
+  assert.deepEqual(paths('`1/2.5` `docs/.hidden`'), [], 'a fraction and a dotfile are not paths');
+  assert.deepEqual(refs('[l](a/b.md) `c/d.md`').map((r) => r.via), ['link', 'code']);
   const anchor = refs('[t](a.md#sec "title")').find((r) => r.kind === 'anchor');
   assert.deepEqual(anchor, { kind: 'anchor', value: 'sec', file: 'a.md', line: 1 });
 });

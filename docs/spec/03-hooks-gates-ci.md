@@ -71,7 +71,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 
 | Rule | What fails |
 |---|---|
-| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline |
+| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline; in a slice file whose slice is not yet merged or released, a code-span path on a `**Files:**` line or under `## Expected changes` is a promise and is checked only once the slice merges, while every other path, link and ID in it is checked now |
 | style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25) |
 | queue | `BUILD.md` disagrees with `state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |

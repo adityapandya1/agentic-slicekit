@@ -90,13 +90,28 @@ export function tables(text) {
 const LINK = /\[[^\]]*\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
 const CODE_SPAN = /`[^`]*`/g;
 
-// A target the reader cannot resolve to one file: a URL, a `<placeholder>` or a glob.
+// A path written on Windows reads the same as one written anywhere else.
+export const toSlashes = (p) => p.replace(/\\/g, '/');
+
+// A target the reader cannot resolve to one file of repository content: a URL, a `<placeholder>`,
+// a glob, or anything under `.git/` or `node_modules/`.
 export function isPathLike(target) {
-  return !/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.includes('://') && !/[<>*?{}]/.test(target);
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.includes('://') || /[<>*?{}]/.test(target)) return false;
+  const first = toSlashes(target).replace(/^(\.?\/)+/, '').split('/')[0];
+  return first !== '.git' && first !== 'node_modules';
+}
+
+// A backticked token that names a repo path: a separator, a letter, and either a trailing
+// separator or a final segment with an extension (`.bin` alone is a name, not an extension).
+function looksLikePath(token) {
+  const p = toSlashes(token);
+  if (!p.includes('/') || !/[A-Za-z]/.test(p) || !isPathLike(p)) return false;
+  return p.endsWith('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(p.split('/').at(-1));
 }
 
 // Paths, anchors and ids outside fenced code. A link written inside a code span is not a link; a
-// reference-style link (`[t][ref]`) is not followed. An anchor carries the file it points into.
+// reference-style link (`[t][ref]`) is not followed. A path says whether it came from a link or a
+// code span (`via`); an anchor carries the file it points into.
 export function refs(text) {
   const out = [];
   const idRe = new RegExp(
@@ -111,14 +126,11 @@ export function refs(text) {
       const hash = target.indexOf('#');
       const file = hash === -1 ? target : target.slice(0, hash);
       const anchor = hash === -1 ? '' : target.slice(hash + 1);
-      if (file) out.push({ kind: 'path', value: file, line: n });
+      if (file) out.push({ kind: 'path', value: file, via: 'link', line: n });
       if (file && anchor) out.push({ kind: 'anchor', value: anchor, file, line: n });
     }
     for (const m of line.matchAll(/`([^`\s]+)`/g)) {
-      const token = m[1];
-      if (token.includes('/') && (token.endsWith('/') || /\.[A-Za-z0-9]+$/.test(token)) && isPathLike(token)) {
-        out.push({ kind: 'path', value: token, line: n });
-      }
+      if (looksLikePath(m[1])) out.push({ kind: 'path', value: m[1], via: 'code', line: n });
     }
     for (const m of line.matchAll(idRe)) out.push({ kind: 'id', value: m[0], line: n });
   }
