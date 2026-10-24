@@ -1,0 +1,33 @@
+{
+  "slice": "P1/S-03",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 3,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/3",
+    "headSha": "e983859247938bb740aa3c95eb4127cea5beb4f8"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-24T10:47:27.255Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 3,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/3",
+          "headSha": "e983859247938bb740aa3c95eb4127cea5beb4f8",
+          "title": "[P1/S-03] State files, status, BUILD.md"
+        }
+      }
+    }
+  ]
+}

@@ -3,3 +3,5 @@ node_modules/
 *.log
 !.slicekit/journal.log
 .DS_Store
+.slicekit/state/*.lock
+*.tmp-*

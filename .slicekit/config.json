@@ -1,0 +1,49 @@
+{
+  "configVersion": 1,
+  "name": "slicekit",
+  "cli": "node bin/slicekit.js",
+  "shape": "backend",
+  "docsRoot": "docs",
+  "defaultBranch": "main",
+  "protectedBranches": [
+    "main"
+  ],
+  "commands": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint": "",
+    "build": "",
+    "e2e": ""
+  },
+  "repos": [],
+  "gitHost": {
+    "kind": "github"
+  },
+  "tracker": {
+    "kind": "github-issues"
+  },
+  "review": {
+    "independent": "required"
+  },
+  "freezeTests": true,
+  "style": {
+    "banned": [
+      "minting at the gate",
+      "at the boundary of",
+      "it's worth noting",
+      "robust",
+      "seamlessly",
+      "leverage",
+      "delve"
+    ]
+  },
+  "destructive": [
+    "\\brm\\s+-rf\\s+(/|~|\\.\\.)",
+    "\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b",
+    "\\bTRUNCATE\\b",
+    "git\\s+push\\s+.*--force",
+    "git\\s+reset\\s+--hard\\s+origin/"
+  ],
+  "ci": {
+    "observabilitySteps": []
+  }
+}

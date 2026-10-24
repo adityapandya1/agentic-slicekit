@@ -145,7 +145,8 @@ Transitions and their mechanical preconditions:
 | draft-pr → in-review | a verdict file exists for round 1 |
 | in-review → changes-requested | the latest verdict has open blockers |
 | in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA |
-| ci-green → ready | the independent review verdict exists with zero open blockers, or config sets it optional |
+| ci-green → ready | an independent verdict on the current head SHA exists with zero open blockers, or config sets it optional |
+| in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
 | merged → released | the phase's release record names the pull request |
 
