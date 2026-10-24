@@ -19,7 +19,7 @@ Enforced by: `slicekit graph` (schema validation on write).
 The builder SHALL read only: the markdown under the docs root (IDs by pattern); `git log` on every
 branch that matches `slice/*` and the default branch, with trailers and touched files; the state,
 verdict and journal files; and pull request metadata fetched through `gh` once per SHA and cached
-under `.slicekit/graph/cache/`. It SHALL make no model call. With no network it SHALL build from the
+under `.slicekit/graph/cache/`. It SHALL make no model call. With no network it SHALL build from the <!-- slicekit:example -->
 cache and mark pull-request nodes `stale`.
 
 Scenario: GIVEN `gh` is not installed WHEN graph runs THEN it builds every node except pull requests
@@ -40,9 +40,9 @@ Enforced by: `slicekit graph`; `slicekit check`.
 
 ## REQ-4.4 Build and storage
 
-`slicekit graph` SHALL write `.slicekit/graph/graph.json` with `schemaVersion`, `builtAt`, the
+`slicekit graph` SHALL write `.slicekit/graph/graph.json` with `schemaVersion`, `builtAt`, the <!-- slicekit:example -->
 default-branch SHA it was built from, nodes and edges. It SHALL be incremental: a second run walks
-only commits after the recorded SHA and files whose hash changed. `graph/` SHALL be in `.gitignore`
+only commits after the recorded SHA and files whose hash changed. `.slicekit/graph/` SHALL be in `.gitignore` <!-- slicekit:example -->
 (D-23). CI SHALL build it and upload it as an artefact on every pull request.
 
 Enforced by: `slicekit graph`; init writes the ignore rule; the workflow uploads.
@@ -62,7 +62,7 @@ seconds on a repository with ten thousand commits:
 | `slicekit shipped P1` | the requirements and pull requests in that release, with links |
 | `slicekit status [--json] [--sync] [--write]` | every phase and slice with state; `--sync` reads merged pull requests from `gh`; `--write` regenerates `BUILD.md` |
 
-Scenario: GIVEN a failing test in `src/billing/` WHEN `slicekit history src/billing` runs THEN the
+Scenario: GIVEN a failing test in `src/billing/` WHEN `slicekit history src/billing` runs THEN the <!-- slicekit:example -->
 output lists P1/S-03 (PR 14, APPROVE, released P1) above P1/S-07 (PR 21, APPROVE, unreleased), and
 nothing else.
 
@@ -71,7 +71,7 @@ Enforced by: `slicekit <query>`; performance tested in the kit's own suite again
 
 ## REQ-4.6 Multi-repo workspace
 
-A program repository MAY hold `.slicekit/workspace.json` listing repositories as `{ name, path or
+A program repository MAY hold `.slicekit/workspace.json` listing repositories as `{ name, path or <!-- slicekit:example -->
 url, defaultBranch }` (D-15). `slicekit graph` in a program repository SHALL build across every
 listed repository that is present on disk, prefixing file nodes with the repo name, and SHALL report
 the ones it could not reach. A slice file's `repo:` field SHALL name a workspace entry. A contract
@@ -79,7 +79,7 @@ file in `spec/contracts/C-<n>-<name>.md` SHALL name its producer slice and consu
 draws `produces` and `consumes` edges, which `impact` follows across repositories.
 
 Scenario: GIVEN contract C-2 "order.created topic" produced by P1/S-04 in repo `orders` and consumed
-by P1/S-09 in repo `billing` WHEN `slicekit impact C-2` runs THEN both slices and both repos are
+by P1/S-09 in repo `billing` WHEN `slicekit impact C-2` runs THEN both slices and both repos are <!-- slicekit:example -->
 listed.
 
 Enforced by: `slicekit graph`; `slicekit check` (slice `repo:` names a workspace entry; a contract

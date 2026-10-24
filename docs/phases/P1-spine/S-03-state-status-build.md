@@ -79,7 +79,7 @@ decisions: [D-22, D-09]
 
 **Interfaces:**
 - `STAGES = ['intake','clarify','specify','spec-review','gap-scan','stack','plan','build','release']`.
-- `programStage(root, cfg) → {stage, complete: boolean, blockers: string[]}` computing REQ-1.7's table from files: snapshots with sidecars; `decisions.md` rows and Open rows cited by spec; REQ shape; spec merged (git: every file under `spec/` is reachable from the default branch and unchanged in the working tree); `gaps.md` rows all closed (a `Closed by` column non-empty); `stack.md` without `[NEEDS CLARIFICATION`; plan merged and every REQ named by a slice file; every slice `merged`; every release file present.
+- `programStage(root, cfg) → {stage, complete: boolean, blockers: string[]}` computing REQ-1.7's table from files: snapshots with sidecars; `decisions.md` rows and Open rows cited by spec; REQ shape; spec merged (git: every file under `docs/spec/` is reachable from the default branch and unchanged in the working tree); `gaps.md` rows all closed (a `Closed by` column non-empty); `stack.md` without `[NEEDS CLARIFICATION`; plan merged and every REQ named by a slice file; every slice `merged`; every release file present.
 - `requireStage(root, cfg, stage)` throws `StageError("<stage> not done: <first blocker>; run /slicekit <command>")` for the stage commands in S-10 to S-13 to call.
 
 - [ ] **Step 1: Failing tests** — `program stage derives from files` using a fixture tree at each of three points (after intake, after plan, all merged); `requireStage names the command that does it`.

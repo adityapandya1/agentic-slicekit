@@ -76,9 +76,9 @@ decisions: [D-10, D-19]
 **Interfaces:**
 - Input `{session_id, tool_name:'Edit'|'Write'|'MultiEdit', tool_input:{file_path}, cwd}`; `normalise(file_path, root) → POSIX relative path` (handles backslashes and absolute paths).
 - Active slice: `sliceFromBranch(currentBranch(root))`; its state via `readSlice`.
-- Denies: (1) path ∈ `state.frozenTests` and `cfg.freezeTests` and `state.state ∈ {tests-red, building}` and not `state.unfrozen?.includes(path)` → `frozen for <slice>; amend the slice file to change the evaluation set`; (2) `tool_name === 'Write'` and path under `<docsRoot>/` and the file does not exist and `state.state ∈ {tests-red, building}` and path is not the runbook and not under `<docsRoot>/phases/<P>/` → `no slice starts a document; a document changes only when this slice's code made it wrong`; (3) path is `.slicekit/journal.log` or under `.slicekit/baselines/` or `.slicekit/state/` → `<path> is written only by the slicekit CLI`.
+- Denies: (1) path ∈ `state.frozenTests` and `cfg.freezeTests` and `state.state ∈ {tests-red, building}` and not `state.unfrozen?.includes(path)` → `frozen for <slice>; amend the slice file to change the evaluation set`; (2) `tool_name === 'Write'` and path under `<docsRoot>/` and the file does not exist and `state.state ∈ {tests-red, building}` and path is not the runbook and not under `<docsRoot>/phases/<P>/` → `no slice starts a document; a document changes only when this slice's code made it wrong`; (3) path is `.slicekit/journal.log` or under `.slicekit/baselines/` or `.slicekit/state/` → `<path> is written only by the slicekit CLI`. <!-- slicekit:example -->
 
-- [ ] **Step 1: Failing tests** — the three `pre-edit.test.js` cases, with `backslash path matches frozen file` passing `C:\\repo\\test\\a.test.js` against frozen `test/a.test.js`.
+- [ ] **Step 1: Failing tests** — the three `pre-edit.test.js` cases, with `backslash path matches frozen file` passing `C:\\repo\\test\\a.test.js` against frozen `test/a.test.js`. <!-- slicekit:example -->
 - [ ] **Step 2–5:** FAIL → implement → PASS → commit `feat(hooks): pre-edit guard`.
 
 ### Task 4: `session-start`

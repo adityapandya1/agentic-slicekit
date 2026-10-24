@@ -19,18 +19,18 @@ decisions: [D-05, D-14]
 
 | Test | Kind | Covers |
 |---|---|---|
-| `render.test.js » backend renders no designer` | happy | REQ-1.10 |
-| `render.test.js » fullstack renders designer` | happy | REQ-1.10 |
-| `render.test.js » every rendered file has markers with the version` | happy | REQ-3.12 |
-| `render.test.js » golden files per shape` | happy | REQ-3.12 |
-| `render.test.js » settings merge keeps the team's own hooks and permissions` | negative | REQ-3.12 |
+| `render-all.test.js » backend renders no designer` | happy | REQ-1.10 |
+| `render-all.test.js » fullstack renders designer` | happy | REQ-1.10 |
+| `render-all.test.js » every rendered file has markers with the version` | happy | REQ-3.12 |
+| `render-all.test.js » golden files per shape` | happy | REQ-3.12 |
+| `render-all.test.js » settings merge keeps the team's own hooks and permissions` | negative | REQ-3.12 |
 | `update.test.js » update rewrites only inside markers` | happy | REQ-3.12, REQ-5.6 |
 | `update.test.js » text outside markers survives update` | negative | REQ-3.12 |
 | `update.test.js » --check reports a drifted managed block` | negative | REQ-3.12 |
 
 ## Expected changes
 
-`templates/claude-code/`, `src/render/`, `src/cli/update.js`, `test/render.test.js`, `test/update.test.js`, `test/fixtures/golden/`.
+`templates/claude-code/`, `src/render/`, `src/cli/update.js`, `test/render-all.test.js`, `test/render/`, `test/update.test.js`, `test/fixtures/golden/`.
 
 ## Tasks
 
@@ -60,14 +60,14 @@ decisions: [D-05, D-14]
 
 ### Task 3: renderAll and settings merge
 
-**Files:** Create `src/render/index.js`, `src/render/settings.js`, `test/render.test.js`, `test/fixtures/golden/{backend,fullstack,data}/`. Modify `src/init.js` to call `renderAll`.
+**Files:** Create `src/render/index.js`, `src/render/settings.js`, `test/render-all.test.js`, `test/fixtures/golden/{backend,fullstack,data}/`. Modify `src/init.js` to call `renderAll`.
 
 **Interfaces:**
 - `renderAll(root, cfg, {version}) → [{dest, action:'created'|'updated'|'unchanged'}]`; writes each manifest entry wrapped by `wrapManaged`, substituting `{{version}}`, `{{name}}`, `{{docsRoot}}`.
 - `mergeSettings(existing: object|undefined, hooks: object) → object`: keeps every key of `existing`; for each event, removes entries whose any `hooks[].command` starts with `slicekit hook` and appends ours; preserves foreign entries and order; result written with 2-space JSON and a `_slicekit` key.
 - `kitVersion() → string` from `package.json`.
 
-- [ ] **Step 1: Failing tests** — the four `render.test.js` cases in the evaluation set, plus `golden files per shape`: render into a temp dir and compare each file to `test/fixtures/golden/<shape>/`; a `SLICEKIT_UPDATE_GOLDEN=1` env regenerates them.
+- [ ] **Step 1: Failing tests** — the four `render-all.test.js` cases in the evaluation set, plus `golden files per shape`: render into a temp dir and compare each file to `test/fixtures/golden/<shape>/`; a `SLICEKIT_UPDATE_GOLDEN=1` env regenerates them.
 - [ ] **Step 2–5:** FAIL → implement, generate goldens once, review them by eye → PASS → commit `feat(render): renderAll and settings merge`.
 
 ### Task 4: `slicekit update`
