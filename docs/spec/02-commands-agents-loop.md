@@ -69,7 +69,9 @@ absent (taking the stack from intake when given, otherwise asking), then phases 
 in intake or decisions, then slice files (REQ-1.5) such that every REQ is named by at least one slice,
 no two slices in the same parallel group expect to change the same file or package, and each slice's
 evaluation set has at least one `happy` and one `negative` test. It SHALL regenerate `BUILD.md` and
-open a pull request titled `[plan] <program name>`.
+open a pull request titled `[plan] <program name>`. For the overlap rule, `.`, anything under `test/`
+(a slice may always add tests) and `src/cli/index.js` (the command table every slice registers in)
+are never an overlap.
 
 Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the
 plan branch THEN it fails naming both slices.
