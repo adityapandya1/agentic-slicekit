@@ -174,3 +174,28 @@ test('an unclosed quote takes the rest of the string as the token', () => {
     assert.equal(found[0].message, 'commands.e2e: "no such tool --x" not found on PATH or under node_modules/.bin');
   });
 });
+
+const nodeDir = () => path.dirname(process.execPath);
+
+test('a builtin-led compound command judges the command after the builtin', () => {
+  withCommands({ test: 'cd packages/a && node --test' }, ({ run }) => assert.deepEqual(run(nodeDir()), []));
+});
+
+test('a parenthesised subshell is judged inside the parentheses', () => {
+  withCommands({ build: '(cd x && node -v)' }, ({ run }) => assert.deepEqual(run(nodeDir()), []));
+});
+
+test('every segment of a compound command is judged', () => {
+  withCommands({ lint: 'cd x && no-such-tool-xyz' }, ({ run, file }) => {
+    const found = run(nodeDir());
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"lint"'));
+    assert.equal(found[0].message, 'commands.lint: "no-such-tool-xyz" not found on PATH or under node_modules/.bin');
+  });
+});
+
+test('separators inside quotes do not split the command', () => {
+  withCommands({ test: 'node -e "a && b; c | d"', lint: 'node -v | nope-pipe' }, ({ run }) => {
+    assert.deepEqual(run(nodeDir()).map((f) => f.message), ['commands.lint: "nope-pipe" not found on PATH or under node_modules/.bin']);
+  });
+});

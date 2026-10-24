@@ -1,9 +1,13 @@
-// commands (03 REQ-3.7): every command the team declared in config must be findable. The first
-// word of the command is looked up and nothing is ever run. An empty string means "not declared",
-// not missing.
+// commands (03 REQ-3.7): every command the team declared in config must be findable. Nothing is
+// ever run. An empty string means "not declared", not missing.
+//
+// What is judged: the command is split on `&&`, `||`, `;` and `|` outside quotes. Each segment
+// loses a leading `(` and a trailing `)`, then its leading `NAME=value` words. A segment whose next
+// word is a shell builtin (`cd`, `set`, `export`, `.`, `source`, `exit`, `true`, `false`, `echo`,
+// `test`, `[`) is not judged. In every other segment the first word is looked up. So
+// `cd x && nosuchtool` is a finding on `nosuchtool`.
 //
 // Not expanded: a `$VAR` or `%VAR%` token is looked up as written and reported as written.
-// Leading `NAME=value` words are skipped, as a shell would set them before the command.
 // A token with a path separator must be a regular file, relative to the root or absolute. On win32
 // it is tried with the PATHEXT suffixes and bare, as `which()` does; on POSIX bare only. So a
 // Windows-only `.cmd` passes on Windows and fails on POSIX.
@@ -18,6 +22,47 @@ export const ratchet = false;
 const NAMES = ['test', 'lint', 'build', 'e2e'];
 const CONFIG = '.slicekit/config.json';
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+const BUILTINS = new Set(['cd', 'set', 'export', '.', 'source', 'exit', 'true', 'false', 'echo', 'test', '[']);
+
+// Split on &&, ||, ; and | outside single or double quotes.
+function segments(command) {
+  const out = [];
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      cur += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      cur += c;
+    } else if ((c === '&' && command[i + 1] === '&') || (c === '|' && command[i + 1] === '|')) {
+      out.push(cur);
+      cur = '';
+      i++;
+    } else if (c === ';' || c === '|') {
+      out.push(cur);
+      cur = '';
+    } else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// The words to look up: one per segment that is not empty and not led by a builtin.
+function commandWords(command) {
+  const words = [];
+  for (const seg of segments(command)) {
+    const s = seg.trim().replace(/^\(+/, '').replace(/\)+$/, '').trim();
+    if (s === '') continue;
+    const word = firstToken(s);
+    if (word === '' || BUILTINS.has(word)) continue;
+    words.push(word);
+  }
+  return words;
+}
 
 // The command word: skip leading NAME=value words, then take the first token. A leading double
 // quote runs to its closing quote, or to the end of the string when it is never closed.
@@ -86,8 +131,8 @@ export function run(ctx) {
   for (const name of NAMES) {
     const value = ctx.cfg?.commands?.[name];
     if (typeof value !== 'string' || value.trim() === '') continue;
-    const token = firstToken(value);
-    if (!resolves(token, ctx)) {
+    for (const token of commandWords(value)) {
+      if (resolves(token, ctx)) continue;
       out.push({
         file: CONFIG,
         line: keyLine(ctx.root, name),
