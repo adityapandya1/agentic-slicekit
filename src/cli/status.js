@@ -8,6 +8,7 @@ import { renderBuild } from '../state/build.js';
 import { readSlice } from '../state/index.js';
 import { syncFromHost } from '../state/sync.js';
 import { getHost } from '../adapters/githost/index.js';
+import { GitHostError } from '../adapters/githost/errors.js';
 
 const USAGE = 'status [--json] [--write] [--sync]';
 
@@ -38,20 +39,23 @@ async function run(args, io) {
     const cfg = loadConfig(root);
     let synced;
     if (values.sync) {
+      const report = ({ changes, warnings }, plain) => {
+        for (const c of plain ? changes : []) io.stdout(`synced ${c.id} → ${c.to} (PR #${c.pr})\n`);
+        for (const w of warnings) io.stderr(`slicekit: ${w}\n`);
+      };
       let result;
       try {
         result = syncFromHost(root, cfg, getHost(cfg, io.env ?? process.env));
       } catch (e) {
-        if (e instanceof ConfigError || e instanceof SliceFileError) throw e;
-        // The host is outside the kit: gh missing, unauthenticated, a pull request it cannot see.
+        // Whatever stopped the sync, every change already on disk is reported first.
+        if (e?.partial) report(e.partial, true);
+        if (!(e instanceof GitHostError)) throw e;
+        // The host is outside the kit: gh missing, unauthenticated, unreachable.
         io.stderr(`slicekit: ${e.message}\n`);
         return 2;
       }
-      for (const w of result.warnings) io.stderr(`slicekit: ${w}\n`);
       // With --json, stdout stays one JSON document; the changes ride in it as `synced`.
-      if (!values.json) {
-        for (const c of result.changes) io.stdout(`synced ${c.id} → ${c.to} (PR #${c.pr})\n`);
-      }
+      report(result, !values.json);
       synced = result.changes;
     }
     let build;

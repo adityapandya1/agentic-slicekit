@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
 import { kitPaths } from '../src/paths.js';
+import { stateFileName } from '../src/ids.js';
 import { readSlice, writeSlice } from '../src/state/index.js';
 import { syncFromHost } from '../src/state/sync.js';
 import { getHost } from '../src/adapters/githost/index.js';
-import { reduceRuns } from '../src/adapters/githost/github.js';
+import { reduceRuns } from '../src/adapters/githost/gh-json.js';
+import { ghExitError } from '../src/adapters/githost/github.js';
+import { GitHostError, GitHostNotFound } from '../src/adapters/githost/errors.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
 import { writeSliceFixtures } from './helpers/slice-fixture.js';
@@ -55,12 +58,12 @@ test('merged PR from the fixture host moves ready to merged', () => {
 test('an unmerged PR leaves ready alone', () => {
   withKit((root, cfg, ids) => {
     park(root, cfg, ids[1], pr15);
-    const before = fs.readFileSync(path.join(kitPaths(root, cfg).state, fs.readdirSync(kitPaths(root, cfg).state)[0]), 'utf8');
+    const file = path.join(kitPaths(root, cfg).state, stateFileName(ids[1]));
+    const before = fs.readFileSync(file, 'utf8');
     const { changes } = syncFromHost(root, cfg, getHost(cfg, fixtureEnv));
     assert.deepEqual(changes, []);
     assert.equal(readSlice(root, cfg, ids[1]).state, 'ready');
-    const after = fs.readFileSync(path.join(kitPaths(root, cfg).state, fs.readdirSync(kitPaths(root, cfg).state)[0]), 'utf8');
-    assert.equal(after, before);
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
   });
 });
 
@@ -82,7 +85,7 @@ test('sync skips a ready slice without a pr number with a warning', () => {
     const { changes, warnings } = syncFromHost(root, cfg, getHost(cfg, fixtureEnv));
     assert.deepEqual(changes.map((c) => c.id), [ids[1]]);
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0], new RegExp(`${ids[0]}.*no pull request number`));
+    assert.match(warnings[0], new RegExp(`${ids[0]}.*has no valid pull request number`));
     assert.equal(readSlice(root, cfg, ids[0]).state, 'ready');
   });
 });
@@ -170,5 +173,76 @@ test('status --sync --write regenerates after syncing', () => {
     const again = runCli(['status', '--sync'], { cwd: root, env });
     assert.equal(again.code, 0, again.stderr);
     assert.ok(!again.stdout.includes('synced'), again.stdout);
+  }, { slices: 1 });
+});
+
+test('a not-found pull request is warned and skipped; the rest of the sync runs', () => {
+  withKit((root, cfg, ids) => {
+    park(root, cfg, ids[0], pr14);
+    park(root, cfg, ids[1], pr15);
+    park(root, cfg, ids[2], { number: 0 });
+    park(root, cfg, ids[3], { number: 16, headSha: 'ddd4444' });
+    const file = path.join(kitPaths(root, cfg).state, stateFileName(ids[3]));
+    const before = fs.readFileSync(file, 'utf8');
+    const r = runCli(['status', '--sync'], { cwd: root, env: { ...process.env, ...fixtureEnv } });
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.startsWith(`synced ${ids[0]} → merged (PR #14)\n`), r.stdout);
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'merged');
+    assert.equal(readSlice(root, cfg, ids[1]).state, 'ready');
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+    const warnings = r.stderr.trimEnd().split('\n');
+    assert.equal(warnings.length, 2, r.stderr);
+    assert.match(warnings[0], new RegExp(`^slicekit: ${ids[2]} is ready but has no valid pull request number`));
+    assert.equal(warnings[1], `slicekit: ${ids[3]}: pull request 16 could not be fetched: pull request 16 not found; skipped`);
+  }, { slices: 4 });
+});
+
+test('a host failure after a change still reports the change, then the error', () => {
+  withKit((root, cfg, ids) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-ghfix-'));
+    try {
+      fs.copyFileSync(path.join(FIXTURE, 'pr-14.json'), path.join(dir, 'pr-14.json'));
+      fs.writeFileSync(path.join(dir, 'pr-17.json'), '{ not json');
+      park(root, cfg, ids[0], pr14);
+      park(root, cfg, ids[1], { number: 17 });
+      park(root, cfg, ids[2], null);
+      const r = runCli(['status', '--sync'], { cwd: root, env: { ...process.env, SLICEKIT_GITHOST_FIXTURE: dir } });
+      assert.equal(r.code, 2);
+      assert.equal(r.stdout, `synced ${ids[0]} → merged (PR #14)\n`);
+      const err = r.stderr.trimEnd().split('\n');
+      assert.match(err.at(-1), /^slicekit: git host fixture .*pr-17\.json/);
+      assert.equal(readSlice(root, cfg, ids[0]).state, 'merged');
+      assert.equal(readSlice(root, cfg, ids[1]).state, 'ready');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, { slices: 3 });
+});
+
+test('host failures are typed: not-found is GitHostNotFound, the rest GitHostError', () => {
+  const host = getHost({ gitHost: { kind: 'github' } }, fixtureEnv);
+  assert.throws(() => host.getPullRequest(99), (e) => e instanceof GitHostNotFound);
+  const nf = ghExitError(['pr', 'view', '16', '--json', 'x'], 'GraphQL: Could not resolve to a PullRequest with the number of 16. (repository.pullRequest)');
+  assert.ok(nf instanceof GitHostNotFound);
+  assert.equal(nf.message, 'pull request 16 not found');
+  const auth = ghExitError(['pr', 'view', '16', '--json', 'x'], 'gh auth login required');
+  assert.ok(auth instanceof GitHostError && !(auth instanceof GitHostNotFound));
+  assert.equal(auth.stderr, 'gh auth login required');
+  const { env, dir } = emptyPathEnv();
+  try {
+    assert.throws(() => getHost({ gitHost: { kind: 'github' } }, env).ciStatus('abcdef0'), (e) => e instanceof GitHostError);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('status --sync lets a non-host error through', async () => {
+  const { statusCommand } = await import('../src/cli/status.js');
+  await withKit(async (root) => {
+    const io = { cwd: root, env: { SLICEKIT_GITHOST_FIXTURE: FIXTURE }, stdout: () => {}, stderr: () => {} };
+    const statePath = path.join(root, '.slicekit', 'state');
+    fs.mkdirSync(statePath, { recursive: true });
+    fs.writeFileSync(path.join(statePath, 'P1-S-01.json'), '{ broken');
+    await assert.rejects(statusCommand.run(['--sync'], io), SyntaxError);
   }, { slices: 1 });
 });
