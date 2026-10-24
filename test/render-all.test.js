@@ -46,13 +46,29 @@ test('every rendered file has markers with the version', () => {
   assert.ok(results.length > 0);
   for (const { dest } of results) {
     const text = fs.readFileSync(path.join(root, dest), 'utf8');
-    const got = extractManaged(text, markerStyle(dest));
+    const style = markerStyle(dest, text);
+    const got = extractManaged(text, style);
     assert.ok(got, dest);
+    if (style === 'frontmatter') assert.match(text, new RegExp(`^slicekit-managed: v${VERSION}$`, 'm'), dest);
+    else if (style === 'html') assert.match(text, /^<!-- slicekit:managed:start v0\.0\.0-test -->$/m, dest);
     assert.equal(got.version, VERSION, dest);
     assert.doesNotMatch(text.replace(/\{\{cli\}\}/g, ''), /\{\{(version|name|docsRoot|cli)\}\}/, dest);
   }
   const again = renderAll(root, cfgFor('fullstack'), { version: VERSION });
   assert.ok(again.every((r) => r.action === 'unchanged'));
+});
+
+test('every rendered markdown file with front matter starts with ---', () => {
+  const root = tmp();
+  renderAll(root, cfgFor('fullstack'), { version: VERSION });
+  let n = 0;
+  for (const rel of walk(root, '.claude').filter((f) => f.endsWith('.md'))) {
+    const text = fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.ok(text.startsWith('---\n'), rel);
+    assert.doesNotMatch(text, /slicekit:managed/, rel);
+    n++;
+  }
+  assert.ok(n >= 18);
 });
 
 for (const shape of SHAPES) {

@@ -13,10 +13,21 @@ const MARKERS = {
   },
 };
 
-export function markerStyle(path) {
+const KEY = 'slicekit-managed';
+const KEY_RE = /^slicekit-managed:\s*v(.*?)\s*$/;
+
+const bare = (line) => line.replace(/\r$/, '');
+
+// A file whose first line is --- keeps it there: the version rides inside the front matter.
+function frontmatterEnd(lines) {
+  return bare(lines[0]) === '---' ? lines.findIndex((l, i) => i > 0 && bare(l) === '---') : -1;
+}
+
+export function markerStyle(path, content) {
   const base = String(path).split(/[\\/]/).pop();
   const dot = base.lastIndexOf('.');
   const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
+  if (ext === 'md' && typeof content === 'string' && /^---\r?\n/.test(content)) return 'frontmatter';
   if (ext === 'md' || ext === 'html') return 'html';
   if (ext === 'json') return 'json';
   return 'hash';
@@ -39,13 +50,33 @@ function jsonWith(content, version) {
   return JSON.stringify(obj, null, 2) + '\n';
 }
 
+function frontmatterWith(content, version) {
+  const lines = content.split('\n');
+  const end = frontmatterEnd(lines);
+  if (end < 0) throw new Error('managed frontmatter: no front matter block');
+  const cr = lines[0].endsWith('\r') ? '\r' : '';
+  const kept = lines.slice(1, end).filter((l) => !KEY_RE.test(bare(l)));
+  return [lines[0], ...kept, `${KEY}: v${version}${cr}`, ...lines.slice(end)].join('\n');
+}
+
 export function wrapManaged(content, { version, style }) {
+  if (style === 'frontmatter') return frontmatterWith(content, version);
   if (style === 'json') return jsonWith(content, version);
   const m = markersFor(style);
   return `${m.start(version)}\n${oneNewline(content)}${m.end}\n`;
 }
 
 export function extractManaged(text, style) {
+  if (style === 'frontmatter') {
+    const lines = text.split('\n');
+    const end = frontmatterEnd(lines);
+    if (end < 0) return null;
+    for (const l of lines.slice(1, end)) {
+      const hit = KEY_RE.exec(bare(l));
+      if (hit) return { before: '', block: text, after: '', version: hit[1] };
+    }
+    return null;
+  }
   if (style === 'json') {
     let obj;
     try {
@@ -88,7 +119,7 @@ export function extractManaged(text, style) {
 export function replaceManaged(text, newBlock, { version, style }) {
   const got = extractManaged(text, style);
   if (!got) throw new Error('no managed block found');
-  if (style === 'json') return wrapManaged(newBlock, { version, style });
+  if (style === 'json' || style === 'frontmatter') return wrapManaged(newBlock, { version, style });
   const m = markersFor(style);
   const nl = got.before.endsWith('\r\n') ? '\r\n' : '\n';
   const lineStart = got.before.lastIndexOf('\n', got.before.length - 2) + 1;

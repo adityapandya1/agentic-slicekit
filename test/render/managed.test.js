@@ -6,6 +6,7 @@ import {
   extractManaged,
   replaceManaged,
 } from '../../src/render/managed.js';
+import { frontMatter } from '../../src/markdown.js';
 
 test('managed » markerStyle picks by extension', () => {
   assert.equal(markerStyle('a/b.md'), 'html');
@@ -94,4 +95,30 @@ test('managed » unknown style throws naming it', () => {
   assert.throws(() => wrapManaged('x', { version: '1', style: 'xml' }), /^Error: unknown managed style: xml$/);
   assert.throws(() => extractManaged('x', 'xml'), /^Error: unknown managed style: xml$/);
   assert.throws(() => replaceManaged('x', 'y', { version: '1', style: 'xml' }), /^Error: unknown managed style: xml$/);
+});
+
+test('frontmatter style keeps --- on line 1 and carries the version key', () => {
+  const src = '---\nname: x\ndescription: y\n---\nBody\n';
+  assert.equal(markerStyle('a/b.md', src), 'frontmatter');
+  assert.equal(markerStyle('a/b.md', '---\r\nname: x\r\n---\r\n'), 'frontmatter');
+  assert.equal(markerStyle('a/b.md', '# Title\n'), 'html');
+  assert.equal(markerStyle('a.json', src), 'json');
+  const out = wrapManaged(src, { version: '1.2.3', style: 'frontmatter' });
+  assert.equal(out, '---\nname: x\ndescription: y\nslicekit-managed: v1.2.3\n---\nBody\n');
+  assert.equal(out.split('\n')[0], '---');
+  assert.doesNotMatch(out, /slicekit:managed/);
+  assert.equal(frontMatter(out).data['slicekit-managed'], 'v1.2.3');
+});
+
+test('extract returns null without the key', () => {
+  assert.equal(extractManaged('---\nname: x\n---\nBody\n', 'frontmatter'), null);
+  assert.equal(extractManaged('no front matter\n', 'frontmatter'), null);
+  const text = wrapManaged('---\nname: x\n---\nBody\n', { version: '2', style: 'frontmatter' });
+  assert.deepEqual(extractManaged(text, 'frontmatter'), { before: '', block: text, after: '', version: '2' });
+});
+
+test('replace rewrites the version key', () => {
+  const old = wrapManaged('---\nname: x\n---\nOld\n', { version: '1', style: 'frontmatter' });
+  const next = replaceManaged(old, '---\nname: x\n---\nNew\n', { version: '2', style: 'frontmatter' });
+  assert.equal(next, '---\nname: x\nslicekit-managed: v2\n---\nNew\n');
 });

@@ -1,7 +1,7 @@
-<!-- slicekit:managed:start v0.0.0-test -->
 ---
 name: slicekit-writing
 description: Writing rules for every document, verdict, report and pull request body the kit produces.
+slicekit-managed: v0.0.0-test
 ---
 # Writing rules
 
@@ -22,4 +22,3 @@ description: Writing rules for every document, verdict, report and pull request 
 - delve
 
 `slicekit check` fails on these phrases. The reviewer flags filler the list cannot match.
-<!-- slicekit:managed:end -->

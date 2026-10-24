@@ -39,8 +39,9 @@ export function renderAll(root, cfg, { version }) {
   const results = [];
   const copies = [];
   for (const { src, dest } of entriesForShape(cfg.shape)) {
-    const style = markerStyle(dest);
-    const fresh = wrapManaged(substitute(readText(path.join(TEMPLATES, src)), vars), { version, style });
+    const rendered = substitute(readText(path.join(TEMPLATES, src)), vars);
+    const style = markerStyle(dest, rendered);
+    const fresh = wrapManaged(rendered, { version, style });
     const file = path.join(root, dest);
     let next = fresh;
     let action = 'created';
@@ -54,7 +55,7 @@ export function renderAll(root, cfg, { version }) {
         });
         continue;
       }
-      next = style === 'json' ? fresh : replaceManaged(current, fresh.split('\n').slice(1, -2).join('\n'), { version, style });
+      next = style === 'json' || style === 'frontmatter' ? fresh : replaceManaged(current, fresh.split('\n').slice(1, -2).join('\n'), { version, style });
       action = next === current ? 'unchanged' : 'updated';
     }
     if (action !== 'unchanged') writeText(file, next);

@@ -1,7 +1,7 @@
-<!-- slicekit:managed:start v0.0.0-test -->
 ---
 name: slicekit-ids
 description: The ID forms slicekit uses for requirements, decisions, gaps, contracts, phases, slices, branches, trailers and pull request titles.
+slicekit-managed: v0.0.0-test
 ---
 # IDs
 
@@ -15,4 +15,3 @@ description: The ID forms slicekit uses for requirements, decisions, gaps, contr
 - Slice branch: `slice/P<n>-S-<nn>-<descr>`
 - Commit trailer on a slice branch: `Slice: P<n>/S-<nn>`
 - Pull request title: begins `[P<n>/S-<nn>]`
-<!-- slicekit:managed:end -->

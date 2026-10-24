@@ -1,7 +1,7 @@
-<!-- slicekit:managed:start v0.0.0-test -->
 ---
 name: slicekit-loop
 description: The slice states in order and the nine steps of the build loop.
+slicekit-managed: v0.0.0-test
 ---
 # The loop
 
@@ -22,4 +22,3 @@ Only the CLI writes the state file.
 7. On blockers spawn fixer and review again, at most two rounds; a blocker after round two sets `changes-requested`.
 8. For should-haves ask the human once per round; a decline goes in the pull request body and becomes an issue.
 9. With zero open blockers mark the pull request ready, set `ci-green` when CI passes, stop; a human merges.
-<!-- slicekit:managed:end -->
