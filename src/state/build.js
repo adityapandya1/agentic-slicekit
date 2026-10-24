@@ -1,0 +1,120 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readText } from '../fs.js';
+import { headings, lines } from '../markdown.js';
+import { kitPaths } from '../paths.js';
+import { findSliceFiles, parsePhaseFile, parseSliceFile } from '../slicefile.js';
+import { readSlice } from './index.js';
+
+export const MARKER = '<!-- slicekit:generated:end -->';
+
+const TEMPLATE = fileURLToPath(new URL('../../templates/docs/BUILD.md', import.meta.url));
+const TITLE = '# BUILD — the queue';
+const PHASE_HEADING = /^Phase\s+(\d+)\s*(?:—|-|:)/;
+const IN_PROGRESS = new Set(['tests-red', 'building']);
+const OPEN_PR = new Set(['draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready']);
+const DONE = new Set(['merged', 'released']);
+
+export function statusCell(state) {
+  if (DONE.has(state.state)) return 'Done';
+  if (OPEN_PR.has(state.state)) return `PR ${state.pr?.number != null ? `#${state.pr.number}` : '-'}`;
+  if (IN_PROGRESS.has(state.state)) return 'Todo (in progress)';
+  return 'Todo';
+}
+
+const cell = (s) => String(s).replace(/\s*\n\s*/g, ' ').replace(/(?<!\\)\|/g, '\\|');
+
+// The text under a level-2 heading, up to the next level-2 heading, trimmed; null when absent.
+function section(text, title) {
+  const hs = headings(text).filter((h) => h.level === 2);
+  const i = hs.findIndex((h) => h.text.toLowerCase() === title.toLowerCase());
+  if (i === -1) return null;
+  const all = lines(text);
+  const end = i + 1 < hs.length ? hs[i + 1].line - 1 : all.length;
+  const body = all.slice(hs[i].line, end).join('\n').trim();
+  return body === '' ? null : body;
+}
+
+// Phase directories that carry a phase file, in phase order: [{ n, id, name, dir, order }].
+function phases(root, cfg) {
+  const dir = kitPaths(root, cfg).phases;
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+    const m = /^P(\d+)(?:\b|[-_])/.exec(d.name);
+    if (!d.isDirectory() || !m) continue;
+    const phaseDir = path.join(dir, d.name);
+    const candidates = fs
+      .readdirSync(phaseDir)
+      .filter((f) => f.endsWith('.md') && !/^S-\d+/.test(f))
+      .sort((a, b) => (a === `P${m[1]}.md` ? -1 : b === `P${m[1]}.md` ? 1 : a.localeCompare(b)));
+    for (const f of candidates) {
+      const text = readText(path.join(phaseDir, f));
+      const parsed = parsePhaseFile(text);
+      if (parsed && parsed.id === `P${Number(m[1])}`) {
+        out.push({ n: Number(m[1]), id: parsed.id, name: parsed.name, dir: phaseDir, order: section(text, 'Order') });
+        break;
+      }
+    }
+  }
+  return out.sort((a, b) => a.n - b.n);
+}
+
+function preamble(cfg) {
+  const text = readText(TEMPLATE).replace(/\{\{docsRoot\}\}/g, cfg.docsRoot);
+  const all = lines(text);
+  const start = all.findIndex((l) => l.trim() === TITLE);
+  return all.slice(start + 1).join('\n').trim();
+}
+
+// Splits BUILD.md at the marker. Without a marker the whole text is generated and tail is null.
+export function generatedRegion(text) {
+  const all = lines(text);
+  const i = all.findIndex((l) => l.trim() === MARKER);
+  if (i === -1) return { generated: all.join('\n'), tail: null };
+  return { generated: all.slice(0, i).join('\n') + (i > 0 ? '\n' : ''), tail: all.slice(i + 1).join('\n') };
+}
+
+// A BUILD.md written before the marker existed: keep every level-2 section except the generated
+// phases; drop the title and preamble above the first section.
+function migratedTail(text, generatedPhases) {
+  const all = lines(text);
+  const hs = headings(text).filter((h) => h.level === 2);
+  const kept = [];
+  hs.forEach((h, i) => {
+    const m = PHASE_HEADING.exec(h.text);
+    if (m && generatedPhases.has(Number(m[1]))) return;
+    const end = i + 1 < hs.length ? hs[i + 1].line - 1 : all.length;
+    kept.push(all.slice(h.line - 1, end).join('\n').trim());
+  });
+  return kept.length === 0 ? '' : `\n${kept.join('\n\n')}\n`;
+}
+
+export function renderBuild(root, cfg, existingText = '') {
+  const found = phases(root, cfg);
+  const slicesByPhase = new Map();
+  for (const f of findSliceFiles(root, cfg)) {
+    const slice = parseSliceFile(readText(f.path), f.path);
+    const list = slicesByPhase.get(f.phaseId) ?? [];
+    list.push({ slice, state: readSlice(root, cfg, slice.id) });
+    slicesByPhase.set(f.phaseId, list);
+  }
+
+  const out = [TITLE, '', preamble(cfg)];
+  for (const phase of found) {
+    out.push('', `## Phase ${phase.n} — ${phase.name}`, '');
+    out.push('| Slice | Name | Done when | Group | Status |', '|---|---|---|---|---|');
+    for (const { slice, state } of slicesByPhase.get(phase.id) ?? []) {
+      const short = slice.id.split('/')[1];
+      const done = slice.doneWhen.join('; ');
+      out.push(`| ${short} | ${cell(slice.name)} | ${cell(done)} | ${cell(slice.group)} | ${statusCell(state)} |`);
+    }
+    if (phase.order) out.push('', phase.order);
+  }
+  const generated = `${out.join('\n')}\n`;
+
+  const { tail } = generatedRegion(existingText ?? '');
+  const rest = tail ?? migratedTail(existingText ?? '', new Set(found.map((p) => p.n)));
+  return `${generated}\n${MARKER}\n${rest}`;
+}

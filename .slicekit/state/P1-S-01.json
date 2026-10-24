@@ -1,0 +1,32 @@
+{
+  "slice": "P1/S-01",
+  "state": "merged",
+  "branch": null,
+  "pr": {
+    "number": 1,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/1",
+    "headSha": "84d1f89"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "merged",
+      "at": "2026-10-24T09:45:15.031Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 1,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/1",
+          "headSha": "84d1f89"
+        },
+        "mergedAt": "2026-10-24T09:12:06Z"
+      }
+    }
+  ]
+}
