@@ -24,9 +24,22 @@ const COMMANDS = {
   release: 'release',
 };
 
+// The display name of each stage, used in messages; the ids stay in code.
+const LABELS = {
+  intake: 'intake',
+  clarify: 'clarify',
+  specify: 'specify',
+  'spec-review': 'spec review',
+  'gap-scan': 'gap scan',
+  stack: 'stack',
+  plan: 'plan',
+  build: 'build',
+  release: 'release',
+};
+
 export class StageError extends Error {
   constructor(stage, blocker) {
-    super(`${stage} not done: ${blocker}; run /slicekit ${COMMANDS[stage]}`);
+    super(`${LABELS[stage]} not done: ${blocker}; run /slicekit ${COMMANDS[stage]}`);
     this.name = 'StageError';
     this.stage = stage;
   }
@@ -114,7 +127,7 @@ function specify(root, cfg) {
   return blockers;
 }
 
-// A directory counts as merged when nothing in it is untracked or changed and every file is on the default branch.
+// A directory counts as merged when nothing in it is untracked or changed and its content equals the default branch's.
 function unmerged(root, cfg, dir, what) {
   if (!isRepo(root)) return [`${what} needs a git repository`];
   if (!hasCommits(root)) return [`${what} needs a commit on ${cfg.defaultBranch}`];
@@ -127,13 +140,14 @@ function unmerged(root, cfg, dir, what) {
     throw e;
   }
   const where = rel(root, dir);
-  const blockers = [];
-  if (git(root, ['status', '--porcelain', '--', where]) !== '') blockers.push(`${where} has uncommitted or untracked changes`);
-  for (const f of filesUnder(dir)) {
-    const name = rel(root, f);
-    if (git(root, ['log', '-1', '--format=%H', base, '--', name]) === '') blockers.push(`${name} is not on ${base}`);
+  if (git(root, ['status', '--porcelain', '--', where]) !== '') return [`${where} has uncommitted changes`];
+  try {
+    git(root, ['diff', '--quiet', '--end-of-options', base, '--', where]);
+  } catch (e) {
+    if (e instanceof GitError) return [`${where} differs from ${base}; merge the pull request`];
+    throw e;
   }
-  return blockers;
+  return [];
 }
 
 const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 'spec review');
@@ -141,14 +155,18 @@ const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 
 function gapScan(root, cfg) {
   const file = kitPaths(root, cfg).gaps;
   if (!exists(file)) return [`${rel(root, file)} is missing`];
+  const text = readText(file);
   const blockers = [];
-  for (const t of tables(readText(file))) {
+  let hasColumn = false;
+  for (const t of tables(text)) {
     const closed = t.header.findIndex((h) => h.toLowerCase() === 'closed by');
     if (closed === -1) continue;
+    hasColumn = true;
     for (const row of t.rows) {
       if (row[0] && (row[closed] ?? '') === '') blockers.push(`${row[0]} is not closed`);
     }
   }
+  if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
   return blockers;
 }
 
@@ -213,19 +231,20 @@ function release(root, cfg) {
 
 const CHECKS = { intake, clarify, specify, 'spec-review': specReview, 'gap-scan': gapScan, stack, plan, build, release };
 
-export function programStage(root, cfg) {
-  for (const stage of STAGES) {
+// Evaluates the stages in order and stops after `upTo` (default: all), so later stages cost nothing.
+export function programStage(root, cfg, { upTo = 'release' } = {}) {
+  const last = STAGES.indexOf(upTo);
+  if (last === -1) throw new Error(`unknown stage ${upTo}`);
+  for (const stage of STAGES.slice(0, last + 1)) {
     const blockers = CHECKS[stage](root, cfg);
     if (blockers.length > 0) return { stage, complete: false, blockers };
   }
-  return { stage: 'release', complete: true, blockers: [] };
+  return { stage: upTo, complete: true, blockers: [] };
 }
 
-// Passes when `stage` and every stage before it is complete; otherwise throws for the first one that is not.
+// requireStage(X) means X and every stage before it are complete; it throws for the first that is not.
 export function requireStage(root, cfg, stage) {
-  const at = STAGES.indexOf(stage);
-  if (at === -1) throw new Error(`unknown stage ${stage}`);
-  const now = programStage(root, cfg);
-  if (STAGES.indexOf(now.stage) <= at && !now.complete) throw new StageError(now.stage, now.blockers[0]);
+  const now = programStage(root, cfg, { upTo: stage });
+  if (!now.complete) throw new StageError(now.stage, now.blockers[0]);
   return now;
 }

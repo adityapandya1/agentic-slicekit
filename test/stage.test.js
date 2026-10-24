@@ -215,11 +215,52 @@ test('requireStage names the command that does it', () => {
     fs.rmSync(path.join(root, 'docs/spec/gaps.md'));
     git(root, ['add', '-A']);
     git(root, ['commit', '-m', 'no gaps']);
-    assert.throws(() => requireStage(root, cfg, 'stack'), /^StageError: gap-scan not done: .*; run \/slicekit gaps$/);
+    assert.throws(() => requireStage(root, cfg, 'stack'), /^StageError: gap scan not done: .*; run \/slicekit gaps$/);
   });
   withPoint(PLAN, (root) => {
     assert.doesNotThrow(() => requireStage(root, cfg, 'plan'));
     assert.throws(() => requireStage(root, cfg, 'build'), /build not done: P1\/S-01 is todo, not merged; run \/slicekit build/);
     assert.throws(() => requireStage(root, cfg, 'nonsense'), /unknown stage/);
+  });
+});
+
+test('spec-review compares content with the default branch, not history', () => {
+  withPoint(PLAN, (root) => {
+    git(root, ['checkout', '-b', 'edit']);
+    edit(root, 'docs/spec/a.md', (t) => `${t}\nMore.\n`);
+    git(root, ['commit', '-am', 'edit spec']);
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'spec-review');
+    assert.deepEqual(r.blockers, ['docs/spec differs from main; merge the pull request']);
+    git(root, ['checkout', 'main']);
+    git(root, ['merge', '--ff-only', 'edit']);
+    assert.notEqual(programStage(root, cfg).stage, 'spec-review');
+  });
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/spec/a.md', (t) => `${t}\nMore.\n`);
+    assert.deepEqual(programStage(root, cfg).blockers, ['docs/spec has uncommitted changes']);
+  });
+});
+
+test('requireStage stops evaluating after the stage it was asked for', () => {
+  const repo = stageRepo(PLAN, { commit: false });
+  try {
+    fs.rmSync(path.join(repo.root, '.git'), { recursive: true, force: true });
+    assert.doesNotThrow(() => requireStage(repo.root, cfg, 'specify'));
+    assert.deepEqual(programStage(repo.root, cfg, { upTo: 'specify' }), { stage: 'specify', complete: true, blockers: [] });
+    assert.throws(() => requireStage(repo.root, cfg, 'spec-review'), /^StageError: spec review not done: spec review needs a git repository; run /);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('gap-scan blocks when gaps.md has IDs but no Closed by column', () => {
+  withPoint(PLAN, (root) => {
+    fs.writeFileSync(path.join(root, 'docs/spec/gaps.md'), '# Gaps\n\n| # | What |\n|---|---|\n| G-01 | x |\n');
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-m', 'g']);
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'gap-scan');
+    assert.deepEqual(r.blockers, ['docs/spec/gaps.md has no Closed by column']);
   });
 });
