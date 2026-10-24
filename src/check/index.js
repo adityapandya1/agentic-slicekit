@@ -80,6 +80,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
   const findings = [];
   const counts = {};
   const lines = [];
+  const ratchetCounts = {};
   const seen = new Map();
   let over = 0;
   let blocking = 0;
@@ -88,6 +89,8 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
     lines.push(`${f.rule} ${f.file}:${f.line} ${f.message}`);
     blocking += 1;
   };
+
+  for (const problem of ctx.baselineProblems ?? []) block({ rule: 'baseline', file: '-', line: 0, message: problem, bucket: '-' });
 
   for (const rule of rules) {
     if (seen.has(rule.id)) {
@@ -108,6 +111,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
     const atBaseline = new Set();
     // A ratchet rule is judged by its baselines alone; its `blocking` flag has no effect.
     if (rule.ratchet) {
+      ratchetCounts[rule.id] = counts[rule.id];
       for (const [bucket, n] of Object.entries(counts[rule.id])) {
         const max = limit(ctx.baselines, rule.id, bucket);
         if (n > max) over += n - max;
@@ -124,5 +128,5 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
 
   const ruleCount = rules.filter((r) => !r.synthetic).length;
   lines.push(`check: ${findings.length} findings, ${over} over baseline, ${blocking} blocking, ${ruleCount} rules`);
-  return { findings, counts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount };
+  return { findings, counts, ratchetCounts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount };
 }

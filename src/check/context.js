@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readBaselines } from '../baseline.js';
+import { readBaselinesWithProblems } from '../baseline.js';
 import { exists, listFiles, readText } from '../fs.js';
 import { currentBranch, hasCommits, isRepo } from '../git.js';
 import { parseSliceAddr, re } from '../ids.js';
@@ -102,6 +102,7 @@ function gitFacts(root) {
 export function buildContext(root, cfg, { ci = false, env = process.env } = {}) {
   const paths = kitPaths(root, cfg);
   const docs = collectDocs(root, paths);
+  const baselinesRead = readBaselinesWithProblems(root);
   return {
     root,
     cfg,
@@ -109,7 +110,8 @@ export function buildContext(root, cfg, { ci = false, env = process.env } = {}) 
     docs,
     ids: collectIds(root, cfg, paths, docs),
     git: gitFacts(root),
-    baselines: readBaselines(root),
+    baselines: baselinesRead.baselines,
+    baselineProblems: baselinesRead.problems,
     ci,
     env,
   };
