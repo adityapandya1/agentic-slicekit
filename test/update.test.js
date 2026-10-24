@@ -107,26 +107,26 @@ test('diffLines shows added and removed lines with +/-', () => {
 
 test('compareManaged per style', () => {
   const html = (body, before = '', after = '') => `${before}${wrapManaged(body, { version: '1', style: 'html' })}${after}`;
-  assert.equal(compareManaged({style: 'html', current: null, reference: html('x') }), 'missing');
-  assert.equal(compareManaged({style: 'html', current: 'mine\n', reference: html('x') }), 'unmanaged');
-  assert.equal(compareManaged({style: 'html', current: html('x', 'top\n', 'end\n'), reference: html('x') }), 'same');
-  assert.equal(compareManaged({style: 'html', current: html('y'), reference: html('x') }), 'drifted');
-  assert.equal(compareManaged({style: 'html', current: html('x') }), 'same');
+  assert.equal(compareManaged({ style: 'html', current: null, reference: html('x') }), 'missing');
+  assert.equal(compareManaged({ style: 'html', current: 'mine\n', reference: html('x') }), 'unmanaged');
+  assert.equal(compareManaged({ style: 'html', current: html('x', 'top\n', 'end\n'), reference: html('x') }), 'same');
+  assert.equal(compareManaged({ style: 'html', current: html('y'), reference: html('x') }), 'drifted');
+  assert.equal(compareManaged({ style: 'html', current: html('x') }), 'same');
 
   const hash = (body, before = '') => `${before}${wrapManaged(body, { version: '1', style: 'hash' })}`;
-  assert.equal(compareManaged({style: 'hash', current: hash('x', '# top\n'), reference: hash('x') }), 'same');
-  assert.equal(compareManaged({style: 'hash', current: hash('z'), reference: hash('x') }), 'drifted');
-  assert.equal(compareManaged({style: 'hash', current: 'plain\n', reference: hash('x') }), 'unmanaged');
+  assert.equal(compareManaged({ style: 'hash', current: hash('x', '# top\n'), reference: hash('x') }), 'same');
+  assert.equal(compareManaged({ style: 'hash', current: hash('z'), reference: hash('x') }), 'drifted');
+  assert.equal(compareManaged({ style: 'hash', current: 'plain\n', reference: hash('x') }), 'unmanaged');
 
   const fm = (desc) => wrapManaged(`---\ndescription: ${desc}\n---\nbody\n`, { version: '1', style: 'frontmatter' });
-  assert.equal(compareManaged({style: 'frontmatter', current: fm('a'), reference: fm('a') }), 'same');
-  assert.equal(compareManaged({style: 'frontmatter', current: `${fm('a')}tail\n`, reference: fm('a') }), 'drifted');
-  assert.equal(compareManaged({style: 'frontmatter', current: '---\nx: 1\n---\n', reference: fm('a') }), 'unmanaged');
+  assert.equal(compareManaged({ style: 'frontmatter', current: fm('a'), reference: fm('a') }), 'same');
+  assert.equal(compareManaged({ style: 'frontmatter', current: `${fm('a')}tail\n`, reference: fm('a') }), 'drifted');
+  assert.equal(compareManaged({ style: 'frontmatter', current: '---\nx: 1\n---\n', reference: fm('a') }), 'unmanaged');
 
   const js = (v) => wrapManaged(JSON.stringify({ k: v }), { version: '1', style: 'json' });
-  assert.equal(compareManaged({style: 'json', current: js(1), reference: js(1) }), 'same');
-  assert.equal(compareManaged({style: 'json', current: js(2), reference: js(1) }), 'drifted');
-  assert.equal(compareManaged({style: 'json', current: '{"k":1}', reference: js(1) }), 'unmanaged');
+  assert.equal(compareManaged({ style: 'json', current: js(1), reference: js(1) }), 'same');
+  assert.equal(compareManaged({ style: 'json', current: js(2), reference: js(1) }), 'drifted');
+  assert.equal(compareManaged({ style: 'json', current: '{"k":1}', reference: js(1) }), 'unmanaged');
 });
 
 function initRepo() {
@@ -398,7 +398,7 @@ test('installedVersion prefers the recorded version but only when its reference 
   assert.equal(installedVersion(dir, undefined), '1.2.0');
 });
 
-for (const cli of ['node C:\tools\slicekit\bin\slicekit.js', 'node "C:/Program Files/slicekit/bin/slicekit.js"']) {
+for (const cli of ['node C:\\tools\\slicekit\\bin\\slicekit.js', 'node "C:/Program Files/slicekit/bin/slicekit.js"']) {
   test(`a cli with a backslash or a quote renders valid settings: ${cli}`, () => {
     const root = tmp();
     const c = { ...cfg, cli };
