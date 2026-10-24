@@ -91,6 +91,23 @@ function migratedTail(text, generatedPhases) {
   return kept.length === 0 ? '' : `\n${kept.join('\n\n')}\n`;
 }
 
+// The text below the marker, verbatim, less any `## Phase <n>` section whose phase is now generated.
+function prunedTail(text, generatedPhases) {
+  const all = lines(text);
+  const hs = headings(text).filter((h) => h.level === 2);
+  const drop = new Set();
+  hs.forEach((h, i) => {
+    const m = PHASE_HEADING.exec(h.text);
+    if (!m || !generatedPhases.has(Number(m[1]))) return;
+    const end = i + 1 < hs.length ? hs[i + 1].line - 1 : all.length;
+    for (let j = h.line - 1; j < end; j++) drop.add(j);
+  });
+  if (drop.size === 0) return text;
+  const kept = all.filter((_, j) => !drop.has(j));
+  if (all[all.length - 1] === '' && kept[kept.length - 1] !== '') kept.push('');
+  return kept.join('\n');
+}
+
 export function renderBuild(root, cfg, existingText = '') {
   const found = phases(root, cfg);
   const slicesByPhase = new Map();
@@ -107,7 +124,7 @@ export function renderBuild(root, cfg, existingText = '') {
     out.push('| Slice | Name | Done when | Group | Status |', '|---|---|---|---|---|');
     for (const { slice, state } of slicesByPhase.get(phase.id) ?? []) {
       const short = slice.id.split('/')[1];
-      const done = slice.doneWhen.join('; ');
+      const done = slice.doneWhen.map((d) => d.replace(/\.$/, '')).join('; ');
       out.push(`| ${short} | ${cell(slice.name)} | ${cell(done)} | ${cell(slice.group)} | ${statusCell(state)} |`);
     }
     if (phase.order) out.push('', phase.order);
@@ -115,6 +132,7 @@ export function renderBuild(root, cfg, existingText = '') {
   const generated = `${out.join('\n')}\n`;
 
   const { tail } = generatedRegion(existingText ?? '');
-  const rest = tail ?? migratedTail(existingText ?? '', new Set(found.map((p) => p.n)));
+  const generatedPhases = new Set(found.map((p) => p.n));
+  const rest = tail === null ? migratedTail(existingText ?? '', generatedPhases) : prunedTail(tail, generatedPhases);
   return `${generated}\n${MARKER}\n${rest}`;
 }

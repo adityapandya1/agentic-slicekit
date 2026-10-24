@@ -39,23 +39,25 @@ async function run(args, io) {
       io.stderr('sync: not available yet\n');
       return 2;
     }
+    let build;
     if (values.write) {
       const file = kitPaths(root, cfg).build;
       const before = exists(file) ? readText(file) : '';
       const after = renderBuild(root, cfg, before);
-      if (after === before) {
-        io.stdout('BUILD.md unchanged\n');
-      } else {
-        writeText(file, after);
-        io.stdout('BUILD.md updated\n');
-      }
+      build = after === before ? 'unchanged' : 'updated';
+      if (build === 'updated') writeText(file, after);
+    }
+    if (values.json) {
+      // With --write the result rides in the JSON as `build`, so stdout stays one JSON document.
+      const out = { stage: programStage(root, cfg), slices: slices(root, cfg), ...(build ? { build } : {}) };
+      io.stdout(`${JSON.stringify(out, null, 2)}\n`);
+      return 0;
+    }
+    if (build) {
+      io.stdout(`BUILD.md ${build}\n`);
       return 0;
     }
     const list = slices(root, cfg);
-    if (values.json) {
-      io.stdout(`${JSON.stringify({ stage: programStage(root, cfg), slices: list }, null, 2)}\n`);
-      return 0;
-    }
     for (const s of list) io.stdout(`${s.id}  ${s.state}  PR ${s.pr === null ? '-' : `#${s.pr}`}  ${s.name}\n`);
     return 0;
   } catch (e) {

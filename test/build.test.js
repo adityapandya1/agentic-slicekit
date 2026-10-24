@@ -9,7 +9,7 @@ import { setState } from '../src/state/index.js';
 import { renderBuild, generatedRegion, MARKER } from '../src/state/build.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
-import { writeSliceFixtures } from './helpers/slice-fixture.js';
+import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
 
 const kitRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -50,9 +50,9 @@ test('renderBuild lists phases and slices from files and state', () => {
     assert.ok(!out.includes('{{'), out);
     assert.ok(out.includes('## Phase 1 — Spine\n'), out);
     assert.ok(out.includes('| Slice | Name | Done when | Group | Status |'), out);
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works. | B | Todo |'), out);
-    assert.ok(out.includes('| S-02 | Fixture 2 | It works. | B | PR #14 |'), out);
-    assert.ok(out.includes('| S-03 | Fixture 3 | It works. | B | Done |'), out);
+    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
+    assert.ok(out.includes('| S-02 | Fixture 2 | It works | B | PR #14 |'), out);
+    assert.ok(out.includes('| S-03 | Fixture 3 | It works | B | Done |'), out);
     assert.ok(out.includes('Group A first, then B.'), out);
     assert.ok(!out.includes('Not copied.'), out);
     assert.ok(out.trimEnd().endsWith(MARKER), out);
@@ -67,7 +67,7 @@ test('renderBuild shows an in-progress slice and joins Done when items', () => {
     fs.writeFileSync(path.join(root, 'a.test.js'), '');
     setState(root, cfg, ids[0], 'tests-red', { commit: 'c1', testExit: 1, tests: ['a.test.js'] });
     const out = renderBuild(root, cfg, '');
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works.; It has a \\| pipe. | B | Todo (in progress) |'), out);
+    assert.ok(out.includes('| S-01 | Fixture 1 | It works; It has a \\| pipe | B | Todo (in progress) |'), out);
   }, { slices: 1 });
 });
 
@@ -117,6 +117,35 @@ test('renderBuild migrates a hand-written BUILD.md with no marker', () => {
     assert.ok(tail.includes('## Phase 3 — Trace\n\nTrace text.'), tail);
     assert.equal(out.split('## Phase 1 — Spine').length, 2, out);
     assert.equal(renderBuild(root, cfg, out), out);
+  }, { slices: 1 });
+});
+
+test('a phase that gains a phase file leaves the tail once', () => {
+  withKit((root, cfg) => {
+    const existing = `${renderBuild(root, cfg, '')}\n## Phase 2 — Loop\n\nHand-written loop.\n\n## Notes\n\nKept.\n`;
+    assert.ok(existing.includes(`${MARKER}\n\n## Phase 2 — Loop`), existing);
+    writeSliceFixture(root, { phase: 2, n: 9 });
+    fs.writeFileSync(path.join(root, 'docs', 'phases', 'P2-x', 'P2.md'), '# Phase 2 — Loop\n');
+    const out = renderBuild(root, cfg, existing);
+    assert.equal(out.match(/^## Phase 2\b/gm).length, 1, out);
+    assert.ok(!out.includes('Hand-written loop.'), out);
+    assert.ok(out.indexOf('## Phase 2 — Loop') < out.indexOf(MARKER), out);
+    assert.ok(out.includes('| S-09 | Fixture 9 |'), out);
+    assert.ok(out.endsWith(`${MARKER}\n\n## Notes\n\nKept.\n`), out);
+    assert.equal(renderBuild(root, cfg, out), out);
+  }, { slices: 1 });
+});
+
+test('status --write --json writes BUILD.md and emits the JSON', () => {
+  withKit((root) => {
+    const r = runCli(['status', '--write', '--json'], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    const data = JSON.parse(r.stdout);
+    assert.equal(data.build, 'updated');
+    assert.equal(data.slices[0].id, 'P1/S-01');
+    assert.equal(typeof data.stage.stage, 'string');
+    assert.ok(fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8').includes('| S-01 | Fixture 1 |'));
+    assert.equal(JSON.parse(runCli(['status', '--write', '--json'], { cwd: root }).stdout).build, 'unchanged');
   }, { slices: 1 });
 });
 
@@ -174,6 +203,7 @@ test('status without a config exits 2', () => {
 test("status --write regenerates the kit's own BUILD.md", () => {
   const r = runCli(['status', '--write'], { cwd: kitRoot });
   assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, 'BUILD.md unchanged\n', 'the committed BUILD.md is stale; the rewrite left in the tree is the fix');
   const text = fs.readFileSync(path.join(kitRoot, 'BUILD.md'), 'utf8');
   assert.ok(text.includes('## Phase 1 — Spine'), text);
   assert.match(text, /^\| S-01 \|.*\| Done \|$/m);
