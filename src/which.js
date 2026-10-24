@@ -17,16 +17,18 @@ const envGet = (env, name) => {
   return key ? env[key] : undefined;
 };
 
+// Suffixes tried after a name: PATHEXT (default .COM;.EXE;.BAT;.CMD) plus the bare name on win32, none elsewhere.
+export function extensions(env) {
+  if (process.platform !== 'win32') return [''];
+  return [...(envGet(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean), ''];
+}
+
 // The first runnable file for `name` in `extraDirs`, then every directory on env's PATH, with
 // PATHEXT applied on win32 (and the bare name accepted). Returns its path or null. Never executes.
 export function which(name, env, extraDirs = []) {
   const dirs = [...extraDirs, ...(envGet(env, 'PATH') ?? '').split(path.delimiter).filter(Boolean)];
-  const exts =
-    process.platform === 'win32'
-      ? [...(envGet(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean), '']
-      : [''];
   for (const dir of dirs) {
-    for (const ext of exts) {
+    for (const ext of extensions(env)) {
       const file = path.join(dir, `${name}${ext}`);
       if (runnable(file)) return file;
     }

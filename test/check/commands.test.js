@@ -35,6 +35,8 @@ function withCommands(cmds, fn) {
   }
 }
 
+const lineOf = (file, needle) => fs.readFileSync(file, 'utf8').split('\n').findIndex((l) => l.includes(needle)) + 1;
+
 const fakeTool = (dir, name) => {
   const f = path.join(dir, win ? `${name}.cmd` : name);
   fs.writeFileSync(f, win ? '@echo off\r\n' : '#!/bin/sh\n', { mode: 0o755 });
@@ -56,16 +58,17 @@ test('unknown executable is a finding', () => {
     const found = run();
     assert.equal(found.length, 1);
     assert.equal(found[0].file, '.slicekit/config.json');
-    assert.equal(found[0].line, fs.readFileSync(file, 'utf8').split('\n').findIndex((l) => l.includes('"lint"')) + 1);
+    assert.equal(found[0].line, lineOf(file, '"lint"'));
     assert.equal(found[0].message, 'commands.lint: "no-such-tool-xyz" not found on PATH or under node_modules/.bin');
   });
 });
 
 test('a command found on PATH passes', () => {
-  withCommands({ test: 'mytool run all', build: 'node_modules_free' }, ({ run, empty }) => {
+  withCommands({ test: 'mytool run all', build: 'node_modules_free' }, ({ run, empty, file }) => {
     fakeTool(empty, 'mytool');
     const found = run(empty);
     assert.deepEqual(found.map((f) => f.message), ['commands.build: "node_modules_free" not found on PATH or under node_modules/.bin']);
+    assert.equal(found[0].line, lineOf(file, '"build"'));
   });
 });
 
@@ -79,19 +82,21 @@ test('a tool under node_modules/.bin passes', () => {
 });
 
 test('a relative script path must exist', () => {
-  withCommands({ test: './scripts/test.sh', build: 'scripts/build.sh' }, ({ root, run }) => {
+  withCommands({ test: './scripts/test.sh', build: 'scripts/build.sh' }, ({ root, run, file }) => {
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.writeFileSync(path.join(root, 'scripts', 'build.sh'), '');
     const found = run();
     assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"test"'));
     assert.match(found[0].message, /^commands\.test: "\.\/scripts\/test\.sh" not found/);
   });
 });
 
 test('a quoted first token is resolved', () => {
-  withCommands({ test: `"${process.execPath}" --test`, lint: '"C:/nope dir/x/y.exe" --fix' }, ({ run }) => {
+  withCommands({ test: `"${process.execPath}" --test`, lint: '"C:/nope dir/x/y.exe" --fix' }, ({ run, file }) => {
     const found = run();
     assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"lint"'));
     assert.match(found[0].message, /^commands\.lint: "C:\/nope dir\/x\/y\.exe" not found/);
   });
 });
@@ -100,4 +105,72 @@ test('the kit\'s own commands resolve', () => {
   const env = { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}` };
   const ctx = buildContext(kitRoot, loadConfig(kitRoot), { env });
   assert.deepEqual(commands.run(ctx), []);
+});
+
+test('a hand-formatted key with spaces before the colon lands on its own line', () => {
+  withCommands({}, ({ run, file }) => {
+    const text = fs.readFileSync(file, 'utf8').replace('"lint": ""', '"lint"   : "nope-lint"');
+    fs.writeFileSync(file, text);
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"lint"   :'));
+  });
+});
+
+test('a one-line commands object lands on that line', () => {
+  withCommands({}, ({ run, file }) => {
+    const text = fs
+      .readFileSync(file, 'utf8')
+      .replace(/"commands": \{[^}]*\}/, '"commands": {"test":"","lint":"nope-lint","build":"","e2e":""}');
+    fs.writeFileSync(file, text);
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"commands"'));
+  });
+});
+
+test('a later object with the same key does not take the finding', () => {
+  withCommands({ e2e: 'nope-e2e' }, ({ run, file }) => {
+    const text = fs.readFileSync(file, 'utf8').replace(/\n\}\s*$/, ',\n  "x": {\n    "e2e": 1\n  }\n}\n');
+    fs.writeFileSync(file, text);
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"e2e": "nope-e2e"'));
+  });
+});
+
+test('a directory is not a runnable path', () => {
+  withCommands({ test: './scripts' }, ({ root, run, file }) => {
+    fs.mkdirSync(path.join(root, 'scripts'));
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"test"'));
+  });
+});
+
+test('leading NAME=value words are skipped before the command', () => {
+  withCommands({ test: `CI=1 NODE_ENV=test "${process.execPath}" --test`, lint: 'CI=1 nope-lint' }, ({ run, file }) => {
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"lint"'));
+    assert.match(found[0].message, /^commands\.lint: "nope-lint" not found/);
+  });
+});
+
+test('a variable token is reported as written', () => {
+  withCommands({ build: '$TOOL --go' }, ({ run, file }) => {
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"build"'));
+    assert.equal(found[0].message, 'commands.build: "$TOOL" not found on PATH or under node_modules/.bin');
+  });
+});
+
+test('an unclosed quote takes the rest of the string as the token', () => {
+  withCommands({ e2e: '"no such tool --x' }, ({ run, file }) => {
+    const found = run();
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, lineOf(file, '"e2e"'));
+    assert.equal(found[0].message, 'commands.e2e: "no such tool --x" not found on PATH or under node_modules/.bin');
+  });
 });
