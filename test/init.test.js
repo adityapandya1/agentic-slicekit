@@ -6,6 +6,7 @@ import path from 'node:path';
 import { init } from '../src/init.js';
 import { ConfigError, validateConfig } from '../src/config.js';
 import { git } from '../src/git.js';
+import { kitPaths } from '../src/paths.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
 
@@ -148,9 +149,36 @@ test('writes gitignore rule once', () => {
   });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend' });
-    assert.ok(result.skipped.includes('.gitignore'));
+    assert.ok(result.updated.includes('.gitignore'));
+    assert.ok(!result.skipped.includes('.gitignore'));
     assert.equal(read(root, '.gitignore'), 'node_modules\n.slicekit/graph/\n');
   }, { files: { '.gitignore': 'node_modules' } });
+  for (const form of ['/.slicekit/graph/', '.slicekit/graph']) {
+    withRepo((root) => {
+      const result = init(root, { name: 'demo', shape: 'backend' });
+      assert.ok(result.skipped.includes('.gitignore'), form);
+      assert.equal(read(root, '.gitignore'), `${form}\n`);
+    }, { files: { '.gitignore': `${form}\n` } });
+  }
+});
+
+test('every kitPaths entry S-01 owns exists after init', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend' });
+    const cfg = JSON.parse(read(root, '.slicekit/config.json'));
+    const p = kitPaths(root, cfg);
+    const owned = ['config', 'state', 'baselines', 'intake', 'decisions', 'spec', 'contracts', 'gaps', 'stack',
+      'platform', 'observability', 'runbook', 'phases', 'releases', 'build', 'githooks'];
+    for (const key of owned) assert.ok(fs.existsSync(p[key]), key);
+  });
+});
+
+test('cli prints updated for an appended gitignore', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root });
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /^updated \.gitignore$/m);
+  }, { files: { '.gitignore': 'node_modules\n' } });
 });
 
 test('a bad shape throws ConfigError and writes nothing', () => {

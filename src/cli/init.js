@@ -46,6 +46,7 @@ async function run(args, io) {
     return 2;
   }
   for (const rel of result.created) io.stdout(`created ${rel}\n`);
+  for (const rel of result.updated) io.stdout(`updated ${rel}\n`);
   for (const rel of result.skipped) io.stdout(`skipped ${rel}\n`);
   for (const warning of result.warnings ?? []) io.stderr(`slicekit: ${warning}\n`);
   return 0;

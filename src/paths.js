@@ -3,6 +3,7 @@ import path from 'node:path';
 export function kitPaths(root, cfg) {
   const kit = path.join(root, '.slicekit');
   const docs = path.join(root, cfg.docsRoot);
+  const spec = path.join(docs, 'spec');
   return {
     kit,
     config: path.join(kit, 'config.json'),
@@ -13,14 +14,14 @@ export function kitPaths(root, cfg) {
     workspace: path.join(kit, 'workspace.json'),
     docs,
     intake: path.join(docs, 'intake'),
-    decisions: path.join(docs, 'decisions'),
-    spec: path.join(docs, 'spec'),
-    contracts: path.join(docs, 'contracts'),
-    gaps: path.join(docs, 'gaps'),
-    stack: path.join(docs, 'stack'),
-    platform: path.join(docs, 'platform'),
-    observability: path.join(docs, 'observability'),
-    runbook: path.join(docs, 'runbook'),
+    decisions: path.join(docs, 'decisions.md'),
+    spec,
+    contracts: path.join(spec, 'contracts'),
+    gaps: path.join(spec, 'gaps.md'),
+    stack: path.join(spec, 'stack.md'),
+    platform: path.join(docs, 'platform.md'),
+    observability: path.join(docs, 'observability.md'),
+    runbook: path.join(docs, 'runbook.md'),
     phases: path.join(docs, 'phases'),
     releases: path.join(docs, 'releases'),
     build: path.join(root, 'BUILD.md'),
