@@ -23,9 +23,11 @@ const cells = (line) =>
     .slice(1, -1)
     .map((c) => c.trim());
 
-// The generated region split into slice rows keyed `P<n>/S-<m>` and every other line. A row
-// outside a phase section, or a second row for one slice, stays an other line, so it is a
-// difference outside the rows.
+// The generated region split into slice rows keyed `P<n>/S-<m>` and every other line. Each keyed
+// row leaves a placeholder in `other`, so the order and position of rows are compared with the
+// rest of the region. A row outside a phase section, or a second row for one slice, stays an
+// other line, so it is a difference outside the rows.
+const HOLDER = '\u0000';
 function parse(generated) {
   const out = { rows: new Map(), phases: new Map(), other: [] };
   let phase = null;
@@ -38,8 +40,10 @@ function parse(generated) {
     }
     const r = ROW.exec(line);
     const key = r && phase !== null ? `P${phase}/${r[1]}` : null;
-    if (key && !out.rows.has(key)) out.rows.set(key, { line: i + 1, cells: cells(line) });
-    else out.other.push(line);
+    if (key && !out.rows.has(key)) {
+      out.rows.set(key, { line: i + 1, cells: cells(line) });
+      out.other.push(`${HOLDER}${key}`);
+    } else out.other.push(line);
   });
   while (out.other.length > 0 && out.other[out.other.length - 1] === '') out.other.pop();
   return out;
@@ -65,7 +69,7 @@ export function run(ctx) {
   let rendered;
   try {
     // Warnings (a phase without a phase file) are printed by `status`, not reported here.
-    rendered = renderBuild(ctx.root, ctx.cfg, text);
+    rendered = renderBuild(ctx.root, ctx.cfg, '');
   } catch (e) {
     return [at(1, `${file} cannot be rendered from the slice files and state: ${e.message}`)];
   }
@@ -73,7 +77,11 @@ export function run(ctx) {
   const want = parse(generatedRegion(rendered).generated);
 
   const out = [];
-  if (have.other.join('\n') !== want.other.join('\n')) out.push(at(1, `${file} is stale; run slicekit status --write`));
+  // A row on one side only is reported by its own finding below, so its placeholder is dropped
+  // here; what remains differs only through order, position or a line outside the rows.
+  const shared = (key) => have.rows.has(key) && want.rows.has(key);
+  const both = (o) => o.filter((l) => !l.startsWith(HOLDER) || shared(l.slice(HOLDER.length)));
+  if (both(have.other).join('\n') !== both(want.other).join('\n')) out.push(at(1, `${file} is stale; run slicekit status --write`));
   for (const [key, row] of have.rows) {
     const expected = want.rows.get(key);
     if (!expected) {
@@ -81,7 +89,8 @@ export function run(ctx) {
       continue;
     }
     const [hs, ws] = [row.cells.at(-1), expected.cells.at(-1)];
-    if (hs !== ws) out.push(at(row.line, `${file} row for ${key} says "${hs}", state says "${ws}"`));
+    if (row.cells.length !== expected.cells.length) out.push(at(row.line, `${file} row for ${key} is stale; run slicekit status --write`));
+    else if (hs !== ws) out.push(at(row.line, `${file} row for ${key} says "${hs}", state says "${ws}"`));
     else if (row.cells.join('\u0000') !== expected.cells.join('\u0000')) {
       out.push(at(row.line, `${file} row for ${key} is stale; run slicekit status --write`));
     }

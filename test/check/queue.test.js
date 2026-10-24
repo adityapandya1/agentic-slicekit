@@ -49,8 +49,49 @@ test('BUILD.md differing from state is a finding naming the slice', () => {
       { file: 'BUILD.md', line: lineOf(build, '| S-02 |'), message: 'BUILD.md row for P1/S-02 says "Todo", state says "PR #14"' },
     ]);
     fs.writeFileSync(build, fs.readFileSync(build, 'utf8').replace('| S-03 | Fixture 3 |', '| S-03 | Fixture three |'));
-    const found = run().map((f) => f.message);
-    assert.ok(found.includes('BUILD.md row for P1/S-03 is stale; run slicekit status --write'), found.join('\n'));
+    assert.deepEqual(run(), [
+      { file: 'BUILD.md', line: lineOf(build, '| S-02 |'), message: 'BUILD.md row for P1/S-02 says "Todo", state says "PR #14"' },
+      { file: 'BUILD.md', line: lineOf(build, '| S-03 |'), message: 'BUILD.md row for P1/S-03 is stale; run slicekit status --write' },
+    ]);
+  });
+});
+
+test('a row with a different number of cells is stale, not a status difference', () => {
+  withKit(({ build, run }) => {
+    fs.writeFileSync(build, fs.readFileSync(build, 'utf8').replace(/^(\| S-02 \|.*)$/m, '$1 extra |'));
+    assert.deepEqual(run(), [
+      { file: 'BUILD.md', line: lineOf(build, '| S-02 |'), message: 'BUILD.md row for P1/S-02 is stale; run slicekit status --write' },
+    ]);
+  });
+});
+
+test('a reordered table is a finding', () => {
+  withKit(({ build, run }) => {
+    const text = fs.readFileSync(build, 'utf8');
+    const row = (n) => new RegExp(`^\\| S-0${n} \\|.*$`, 'm').exec(text)[0];
+    const [one, two] = [row(1), row(2)];
+    fs.writeFileSync(build, text.replace(one, '\u0001').replace(two, one).replace('\u0001', two));
+    assert.deepEqual(run(), [{ file: 'BUILD.md', line: 1, message: 'BUILD.md is stale; run slicekit status --write' }]);
+  });
+});
+
+test('a row moved out of the table is a finding', () => {
+  withKit(({ build, run }) => {
+    const text = fs.readFileSync(build, 'utf8');
+    const two = /^\| S-02 \|.*\n/m.exec(text)[0];
+    fs.writeFileSync(build, text.replace(two, '').replace(`\n${MARKER}`, `${two}\n${MARKER}`));
+    assert.deepEqual(run(), [{ file: 'BUILD.md', line: 1, message: 'BUILD.md is stale; run slicekit status --write' }]);
+  });
+});
+
+test('a state file that cannot be read is one finding, not a crash', () => {
+  withKit(({ root, run }) => {
+    fs.writeFileSync(path.join(root, '.slicekit', 'state', 'P1-S-01.json'), '{not json');
+    const found = run();
+    assert.equal(found.length, 1, JSON.stringify(found));
+    assert.equal(found[0].file, 'BUILD.md');
+    assert.equal(found[0].line, 1);
+    assert.ok(found[0].message.startsWith('BUILD.md cannot be rendered'), found[0].message);
   });
 });
 
@@ -98,10 +139,7 @@ test('a BUILD.md without the marker, or no BUILD.md, is a finding', () => {
     fs.writeFileSync(build, fs.readFileSync(build, 'utf8').replace(MARKER, ''));
     assert.deepEqual(run(), [{ file: 'BUILD.md', line: 1, message: 'BUILD.md has no generated region marker; run slicekit status --write' }]);
     fs.rmSync(build);
-    const found = run();
-    assert.equal(found.length, 1);
-    assert.equal(found[0].file, 'BUILD.md');
-    assert.equal(found[0].line, 0);
+    assert.deepEqual(run(), [{ file: 'BUILD.md', line: 0, message: 'BUILD.md is missing; run slicekit status --write' }]);
   });
 });
 
