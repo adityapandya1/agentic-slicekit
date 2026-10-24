@@ -38,9 +38,10 @@ const refusal = (fn) => {
 };
 
 const PR = { number: 7, url: 'http://x/7', headSha: 'abc', title: '[P1/S-01] thing' };
-const verdict = (round, blockers, independent = true) => ({
-  verdict: { round, path: `v${round}.md`, blockers, independent },
-});
+const verdict = (root, round, blockers, independent = true) => {
+  fs.writeFileSync(path.join(root, `v${round}.md`), '');
+  return { verdict: { round, path: `v${round}.md`, blockers, independent } };
+};
 
 function toDraftPr(root, cfg, id) {
   fs.writeFileSync(path.join(root, 'a.test.js'), '');
@@ -53,7 +54,8 @@ test('states are the ten in order', () => {
   assert.equal(STATES.length, 10);
   assert.equal(STATES[0], 'todo');
   assert.deepEqual(nextStates('todo'), ['tests-red']);
-  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green']);
+  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green', 'draft-pr']);
+  assert.deepEqual(nextStates('released'), []);
 });
 
 test('readSlice defaults to todo; unknown slice throws', () => {
@@ -91,11 +93,11 @@ test('building needs the frozen tests present when freezeTests', () => {
   });
 });
 
-test('building does not check files when freezeTests is off', () => {
+test('building needs the frozen tests present even when freezeTests is off', () => {
   withKit(
     (root, cfg, [id]) => {
       setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: ['gone.test.js'] });
-      assert.equal(setState(root, cfg, id, 'building', {}).state, 'building');
+      assert.match(refusal(() => setState(root, cfg, id, 'building', {})), /gone\.test\.js/);
     },
     { freeze: false },
   );
@@ -120,10 +122,10 @@ test('full path to released with verdicts, ci and release', () => {
   withKit((root, cfg, [id]) => {
     toDraftPr(root, cfg, id);
     assert.match(refusal(() => setState(root, cfg, id, 'in-review', {})), /verdict/);
-    setState(root, cfg, id, 'in-review', verdict(1, 2));
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 2));
     assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'abc' } })), /blocker/);
     setState(root, cfg, id, 'changes-requested', {});
-    setState(root, cfg, id, 'in-review', verdict(2, 0));
+    setState(root, cfg, id, 'in-review', verdict(root, 2, 0));
     assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { ci: { status: 'failure', sha: 'abc' } })), /success/);
     assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'zzz' } })), /sha/);
     setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'abc' } });
@@ -131,7 +133,9 @@ test('full path to released with verdicts, ci and release', () => {
     assert.match(refusal(() => setState(root, cfg, id, 'merged', {})), /mergedAt/);
     setState(root, cfg, id, 'merged', { mergedAt: '2026-01-01T00:00:00Z' });
     assert.match(refusal(() => setState(root, cfg, id, 'released', { release: 'nope.md' })), /nope\.md/);
-    fs.writeFileSync(path.join(root, 'rel.md'), '');
+    fs.writeFileSync(path.join(root, 'bad.md'), 'nothing here');
+    assert.match(refusal(() => setState(root, cfg, id, 'released', { release: 'bad.md' })), /pull request/);
+    fs.writeFileSync(path.join(root, 'rel.md'), 'shipped #7');
     const s = setState(root, cfg, id, 'released', { release: 'rel.md' });
     assert.equal(s.state, 'released');
     assert.equal(s.verdicts.length, 2);
@@ -142,7 +146,7 @@ test('full path to released with verdicts, ci and release', () => {
 test('changes-requested needs open blockers', () => {
   withKit((root, cfg, [id]) => {
     toDraftPr(root, cfg, id);
-    setState(root, cfg, id, 'in-review', verdict(1, 0, false));
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
     assert.match(refusal(() => setState(root, cfg, id, 'changes-requested', {})), /blocker/);
   });
 });
@@ -150,7 +154,7 @@ test('changes-requested needs open blockers', () => {
 test('ready needs an independent clean verdict when review is required', () => {
   withKit((root, cfg, [id]) => {
     toDraftPr(root, cfg, id);
-    setState(root, cfg, id, 'in-review', verdict(1, 0, false));
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
     setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'abc' } });
     assert.match(refusal(() => setState(root, cfg, id, 'ready', {})), /independent/);
     cfg.review.independent = 'optional';
@@ -168,7 +172,7 @@ test('skipping a state is refused', () => {
 test('changes-requested can go back to draft-pr after a fix push', () => {
   withKit((root, cfg, [id]) => {
     toDraftPr(root, cfg, id);
-    setState(root, cfg, id, 'in-review', verdict(1, 1));
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 1));
     setState(root, cfg, id, 'changes-requested', {});
     const s = setState(root, cfg, id, 'draft-pr', { testExit: 0, checkExit: 0, pr: { ...PR, headSha: 'def' } });
     assert.equal(s.state, 'draft-pr');
@@ -223,12 +227,16 @@ test('write is atomic: 20 slices in one process, 5 parallel processes', async ()
     );
     assert.deepEqual(await Promise.all(procs), [0, 0, 0, 0, 0]);
     const dir = kitPaths(repo.root, cfg).state;
-    const files = fs.readdirSync(dir).filter((f) => !f.startsWith('.') || f.includes('.tmp-'));
+    const files = fs.readdirSync(dir).filter((f) => !f.startsWith('.') || f.includes('.tmp-') || f.endsWith('.lock'));
     assert.equal(files.filter((f) => f.includes('.tmp-')).length, 0);
     assert.equal(files.length, 20);
+    assert.equal(files.filter((f) => f.endsWith('.lock')).length, 0);
     for (const f of files) {
       const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
       assert.equal(j.state, 'merged');
+    }
+    for (const id of ids.slice(0, 5)) {
+      assert.deepEqual(readSlice(repo.root, cfg, id).unfrozen, ['f.js']);
     }
   } finally {
     repo.cleanup();
@@ -250,15 +258,149 @@ test('cli: set, show and refusal', () => {
     assert.equal(r.code, 0);
     assert.match(r.stdout, /^P1\/S-01 {2}tests-red {2}PR -/);
     assert.deepEqual(JSON.parse(run('show', id, '--json').stdout).frozenTests, ['a.test.js', 'b.test.js']);
-    r = run('set', id, 'merged', '--backfill', '--merged-at', 'x', '--pr-number', '1', '--pr-url', 'u');
+    const id2 = writeSliceFixture(repo.root, { n: 2 });
+    r = run('set', id2, 'merged', '--backfill', '--merged-at', 'x', '--pr-number', '1', '--pr-url', 'u');
     assert.equal(r.code, 0, r.stderr);
-    assert.match(run('show', id).stdout, /merged {2}PR 1/);
+    assert.match(run('show', id2).stdout, /merged {2}PR 1/);
     r = run('show', 'P9/S-99');
     assert.equal(r.code, 2);
     assert.match(r.stderr, /unknown slice P9\/S-99/);
     assert.equal(run('set', id, 'bogus').code, 2);
     r = run('unfreeze', id, 'b.test.js');
     assert.equal(r.code, 0, r.stderr);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+const spawnCli = (args, cwd) =>
+  new Promise((resolve) => {
+    const p = spawn(process.execPath, [binPath, ...args], { cwd });
+    p.on('close', resolve);
+  });
+
+test('draft-pr without a head sha is refused', () => {
+  withKit((root, cfg, [id]) => {
+    fs.writeFileSync(path.join(root, 'a.test.js'), '');
+    setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: ['a.test.js'] });
+    setState(root, cfg, id, 'building', {});
+    const ok = { testExit: 0, checkExit: 0 };
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ok, pr: { ...PR, headSha: undefined } })), /headSha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ok, pr: { ...PR, headSha: '' } })), /headSha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ok, pr: { ...PR, number: undefined } })), /number/);
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ok, pr: { ...PR, number: 1.5 } })), /number/);
+  });
+});
+
+test('ci-green without a ci sha is refused', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+    assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { ci: { status: 'success' } })), /sha/);
+    assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: '' } })), /sha/);
+  });
+});
+
+test('in-review needs a verdict path, an existing file and round 1 first', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    const v = { round: 1, blockers: 0, independent: true };
+    assert.match(refusal(() => setState(root, cfg, id, 'in-review', { verdict: v })), /path/);
+    assert.match(refusal(() => setState(root, cfg, id, 'in-review', { verdict: { ...v, path: 'missing.md' } })), /missing\.md/);
+    fs.writeFileSync(path.join(root, 'v2.md'), '');
+    assert.match(refusal(() => setState(root, cfg, id, 'in-review', { verdict: { ...v, round: 2, path: 'v2.md' } })), /round 1/);
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+  });
+});
+
+test('released accepts a record that names the pull request url', () => {
+  withKit((root, cfg, [id]) => {
+    setState(root, cfg, id, 'merged', { backfill: true, mergedAt: 'x', pr: { number: 7, url: 'http://x/7' } });
+    fs.writeFileSync(path.join(root, 'r.md'), 'see http://x/7');
+    assert.equal(setState(root, cfg, id, 'released', { release: 'r.md' }).state, 'released');
+  });
+});
+
+test('backfill from a non-todo state is refused', () => {
+  withKit((root, cfg, [id]) => {
+    fs.writeFileSync(path.join(root, 'a.test.js'), '');
+    setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: ['a.test.js'] });
+    assert.equal(
+      refusal(() => setState(root, cfg, id, 'merged', { backfill: true, mergedAt: 'x' })),
+      'backfill is only allowed from todo',
+    );
+  });
+});
+
+test('backfill to ready under required needs an independent clean verdict', () => {
+  withKit((root, cfg, [id]) => {
+    const bad = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: false } };
+    assert.match(refusal(() => setState(root, cfg, id, 'ready', bad)), /independent/);
+    assert.match(refusal(() => setState(root, cfg, id, 'ready', { backfill: true })), /independent/);
+    const good = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: true } };
+    assert.equal(setState(root, cfg, id, 'ready', good).state, 'ready');
+  });
+});
+
+test('a string for tests is refused, as is a bad number', () => {
+  withKit((root, cfg, [id]) => {
+    assert.match(refusal(() => setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: 'a.test.js' })), /tests/);
+    assert.match(refusal(() => setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1.5, tests: ['a'] })), /testExit/);
+    assert.match(refusal(() => setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: -1, tests: ['a'] })), /testExit/);
+    assert.match(refusal(() => setState(root, cfg, id, 'tests-red', { commit: 'c1', testExit: 1, tests: [''] })), /tests/);
+  });
+});
+
+test('a new head sha returns a reviewed state to draft-pr; the same sha is refused', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+    const ev = { testExit: 0, checkExit: 0 };
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ev, pr: { ...PR, headSha: 'abc' } })), /head sha/);
+    assert.equal(setState(root, cfg, id, 'draft-pr', { ...ev, pr: { ...PR, headSha: 'n1' } }).state, 'draft-pr');
+    setState(root, cfg, id, 'in-review', verdict(root, 2, 0));
+    setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'n1' } });
+    assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { ...ev, pr: { ...PR, headSha: 'n1' } })), /head sha/);
+    const s = setState(root, cfg, id, 'draft-pr', { ...ev, pr: { ...PR, headSha: 'n2' } });
+    assert.equal(s.state, 'draft-pr');
+    assert.equal(s.pr.headSha, 'n2');
+    assert.equal(s.ci, null);
+    assert.equal(s.history.at(-1).from, 'ci-green');
+  });
+});
+
+test('ci-green returns to draft-pr on a new head sha, and ready too', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    cfg.review.independent = 'optional';
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+    setState(root, cfg, id, 'ci-green', { ci: { status: 'success', sha: 'abc' } });
+    setState(root, cfg, id, 'ready', {});
+    const s = setState(root, cfg, id, 'draft-pr', { testExit: 0, checkExit: 0, pr: { ...PR, headSha: 'z' } });
+    assert.equal(s.history.at(-1).from, 'ready');
+  });
+});
+
+test('a malformed slice id is refused before touching a path', () => {
+  withKit((root, cfg) => {
+    assert.throws(() => readSlice(root, cfg, '../../x'), /unknown slice \.\.\/\.\.\/x/);
+  });
+});
+
+test('parallel processes writing the same slice all land', async () => {
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend' });
+    const [id] = writeSliceFixtures(repo.root, 1);
+    const cfg = loadConfig(repo.root);
+    const paths = ['a.js', 'b.js', 'c.js', 'd.js'];
+    const codes = await Promise.all(paths.map((p) => spawnCli(['state', 'unfreeze', id, p], repo.root)));
+    assert.deepEqual(codes, [0, 0, 0, 0]);
+    const s = readSlice(repo.root, cfg, id);
+    assert.deepEqual([...s.unfrozen].sort(), paths);
+    assert.equal(s.history.length, 4);
+    const dir = kitPaths(repo.root, cfg).state;
+    assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith('.lock') || f.includes('.tmp-')).length, 0);
   } finally {
     repo.cleanup();
   }

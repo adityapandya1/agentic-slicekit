@@ -22,31 +22,59 @@ export class TransitionError extends Error {
   }
 }
 
-// The linear order, with changes-requested a side loop: in-review may skip it to ci-green, and it
-// returns only to in-review (a new verdict after a fix) or draft-pr (a fix push before the next verdict).
-const MOVES = {
-  'in-review': ['changes-requested', 'ci-green'],
-  'changes-requested': ['in-review', 'draft-pr'],
-};
-
-export function nextStates(from) {
-  if (MOVES[from]) return [...MOVES[from]];
-  const i = STATES.indexOf(from);
-  return i !== -1 && i + 1 < STATES.length ? [STATES[i + 1]] : [];
-}
-
 const last = (list) => list[list.length - 1];
-const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
+const isInt = (n) => Number.isInteger(n) && n >= 0;
+const isStr = (s) => typeof s === 'string' && s !== '';
 const present = (root, rel) => fs.existsSync(path.resolve(root, rel));
 
-// `required` names the evidence keys a target state stores; --backfill still demands them.
+// Every evidence value that is given must have the right type, whatever the target state.
+export function validateEvidence(ev) {
+  const bad = (name, want) => `${name} must be ${want}`;
+  for (const k of ['commit', 'mergedAt', 'release']) {
+    if (ev[k] !== undefined && !isStr(ev[k])) return bad(k, 'a non-empty string');
+  }
+  for (const k of ['testExit', 'checkExit']) {
+    if (ev[k] !== undefined && !isInt(ev[k])) return bad(k, 'a non-negative integer');
+  }
+  if (ev.tests !== undefined && !(Array.isArray(ev.tests) && ev.tests.every(isStr))) {
+    return bad('tests', 'an array of non-empty strings');
+  }
+  const pr = ev.pr;
+  if (pr !== undefined) {
+    if (pr === null || typeof pr !== 'object') return bad('pr', 'an object');
+    if (pr.number !== undefined && !isInt(pr.number)) return bad('pr.number', 'a non-negative integer');
+    for (const k of ['url', 'headSha', 'title']) {
+      if (pr[k] !== undefined && !isStr(pr[k])) return bad(`pr.${k}`, 'a non-empty string');
+    }
+  }
+  const v = ev.verdict;
+  if (v !== undefined) {
+    if (v === null || typeof v !== 'object') return bad('verdict', 'an object');
+    for (const k of ['round', 'blockers']) {
+      if (v[k] !== undefined && !isInt(v[k])) return bad(`verdict.${k}`, 'a non-negative integer');
+    }
+    if (v.path !== undefined && !isStr(v.path)) return bad('verdict.path', 'a non-empty string');
+  }
+  const ci = ev.ci;
+  if (ci !== undefined) {
+    if (ci === null || typeof ci !== 'object') return bad('ci', 'an object');
+    for (const k of ['sha', 'status']) {
+      if (ci[k] !== undefined && !isStr(ci[k])) return bad(`ci.${k}`, 'a non-empty string');
+    }
+  }
+  return null;
+}
+
+// `from` is the one place the graph is written; `required` names the evidence keys the target
+// stores, which --backfill still demands. "Frozen tests unchanged since the red commit" is not
+// checked here: the pre-edit hook (S-06) and `slicekit check` enforce it.
 export const TRANSITIONS = {
   'tests-red': {
     from: ['todo'],
     required: ['commit', 'tests'],
     check(_current, ev) {
       if (!ev.commit) return 'tests-red needs the commit sha of the failing run (--commit)';
-      if (!isNum(ev.testExit) || ev.testExit === 0) {
+      if (ev.testExit === undefined || ev.testExit === 0) {
         return 'tests-red needs a non-zero test exit code (--test-exit); the tests must fail first';
       }
       if (!Array.isArray(ev.tests) || ev.tests.length === 0) {
@@ -61,38 +89,45 @@ export const TRANSITIONS = {
     required: [],
     check(current, _ev, ctx) {
       if (!current.redCommit) return 'building needs a recorded red commit';
-      if (ctx.cfg.freezeTests) {
-        const missing = current.frozenTests.filter((t) => !present(ctx.root, t));
-        if (missing.length > 0) return `frozen tests are missing: ${missing.join(', ')}`;
-      }
-      return null;
+      const missing = current.frozenTests.filter((t) => !present(ctx.root, t));
+      return missing.length > 0 ? `frozen tests are missing: ${missing.join(', ')}` : null;
     },
     apply: () => ({}),
   },
   'draft-pr': {
-    from: ['building', 'changes-requested'],
+    from: ['building', 'in-review', 'changes-requested', 'ci-green', 'ready'],
     required: ['pr'],
-    check(_current, ev, ctx) {
+    check(current, ev, ctx) {
       if (ev.testExit !== 0) return 'draft-pr needs the test command to exit 0 (--test-exit 0)';
       if (ev.checkExit !== 0) return 'draft-pr needs slicekit check to exit 0 (--check-exit 0)';
       const prefix = `[${ctx.id}]`;
-      if (!ev.pr || typeof ev.pr.title !== 'string' || !ev.pr.title.startsWith(prefix)) {
+      const pr = ev.pr;
+      if (!pr || typeof pr.title !== 'string' || !pr.title.startsWith(prefix)) {
         return `draft-pr needs a pull request whose title begins ${prefix}`;
+      }
+      if (!isInt(pr.number)) return 'draft-pr needs the pull request number (pr.number)';
+      if (!isStr(pr.headSha)) return 'draft-pr needs the pull request head sha (pr.headSha)';
+      if (current.state !== 'building' && current.pr && pr.headSha === current.pr.headSha) {
+        return 'a return to draft-pr needs a new head sha (a fix push)';
       }
       return null;
     },
     apply: (_current, ev) => ({
       pr: { number: ev.pr.number, url: ev.pr.url, headSha: ev.pr.headSha },
+      ci: null,
     }),
   },
   'in-review': {
     from: ['draft-pr', 'changes-requested'],
     required: ['verdict'],
-    check(current, ev) {
+    check(current, ev, ctx) {
       const v = ev.verdict;
-      if (!v || !isNum(v.round) || v.round < 1) return 'in-review needs a verdict with round 1 or more';
-      if (!isNum(v.blockers)) return 'in-review needs the verdict blocker count';
+      if (!v || !isInt(v.round) || v.round < 1) return 'in-review needs a verdict with round 1 or more';
+      if (!isInt(v.blockers)) return 'in-review needs the verdict blocker count';
+      if (!isStr(v.path)) return 'in-review needs the verdict file path (verdict.path)';
+      if (!present(ctx.root, v.path)) return `verdict file not found: ${v.path}`;
       const prev = last(current.verdicts);
+      if (!prev && v.round !== 1) return `the first verdict must be round 1, got round ${v.round}`;
       if (prev && v.round <= prev.round) return `verdict round ${v.round} is not after round ${prev.round}`;
       return null;
     },
@@ -124,6 +159,7 @@ export const TRANSITIONS = {
       const v = last(current.verdicts);
       if (!v || v.blockers !== 0) return 'ci-green needs a latest verdict with no blockers';
       if (!ev.ci || ev.ci.status !== 'success') return 'ci-green needs the CI status to be success (--ci-status)';
+      if (!isStr(ev.ci.sha)) return 'ci-green needs the CI sha (--ci-sha)';
       if (!current.pr || ev.ci.sha !== current.pr.headSha) {
         return 'ci-green needs the CI sha to equal the pull request head sha';
       }
@@ -151,10 +187,19 @@ export const TRANSITIONS = {
   released: {
     from: ['merged'],
     required: ['release'],
-    check(_current, ev, ctx) {
+    check(current, ev, ctx) {
       if (!ev.release) return 'released needs the release file path (--release)';
-      return present(ctx.root, ev.release) ? null : `release file not found: ${ev.release}`;
+      if (!present(ctx.root, ev.release)) return `release file not found: ${ev.release}`;
+      const pr = current.pr;
+      if (!pr) return 'released needs a recorded pull request to look for in the release record';
+      const text = fs.readFileSync(path.resolve(ctx.root, ev.release), 'utf8');
+      const named = (pr.number !== undefined && text.includes(`#${pr.number}`)) || (pr.url && text.includes(pr.url));
+      return named ? null : `the release record does not name the pull request (#${pr.number})`;
     },
     apply: () => ({}),
   },
 };
+
+export function nextStates(from) {
+  return STATES.filter((to) => TRANSITIONS[to]?.from.includes(from));
+}
