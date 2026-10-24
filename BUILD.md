@@ -29,10 +29,10 @@ Group A1 (S-01), then group A2 (S-02 and S-03) in parallel. Groups B (S-04, S-05
 | S-12 | `/slicekit gaps` and the auditor | REQ-2.4: the five gap classes, each closed by a D row or a REQ change, a pull request | B | Todo |
 | S-13 | `/slicekit plan` | REQ-2.5: refuses on markers or open gaps; stack; phases; slice files with evaluation sets; overlap and coverage rules in `check` | B | Todo |
 | S-14 | `/slicekit build`, developer, red-then-green | REQ-2.6 steps 1 to 5 on `examples/backend`: worktree, failing tests committed, freeze, green, draft pull request with the REQ-2.10 body | C | Todo |
-| S-15 | Reviewer, fixer, the loop cap, should-haves | REQ-2.6 steps 6 to 9, REQ-2.11: verdict files, two rounds then stop, should-have prompt, declined ones as issues through C-2 | C | Todo |
-| S-16 | `/slicekit review` and `--parallel` | REQ-2.7 and REQ-2.8: independent verdict marked as such and required by the label gate; parallel worktrees with overlap detection | D | Todo |
+| S-15 | Reviewer, fixer, the loop cap, should-haves | REQ-2.6 steps 6 to 9, REQ-2.11: verdict files, two rounds then stop, should-have prompt, declined ones as issues through C-2 | D | Todo |
+| S-16 | `/slicekit review` and `--parallel` | REQ-2.7 and REQ-2.8: independent verdict marked as such and required by the label gate; parallel worktrees with overlap detection | E | Todo |
 
-Groups: A, then B and C in parallel, then D.
+Groups: A, then B and C in parallel, then D, then E. S-15 (D) finishes the build command S-14 (C) starts, and S-16 (E) adds review and `--parallel` to it.
 
 ## Phase 3 — Trace
 

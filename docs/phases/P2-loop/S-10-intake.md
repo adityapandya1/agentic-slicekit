@@ -17,7 +17,7 @@ decisions: []
 | Test | Kind | Covers |
 |---|---|---|
 | `commands/intake.test.js » the snapshot and its sidecar are written and no spec file is created` | happy | REQ-1.2, REQ-2.2 |
-| `commands/intake.test.js » a spec file at stage intake is a check finding` | negative | REQ-2.2 |
+| `commands/intake.test.js » the next question is refused while the last answer has no D row` | negative | REQ-2.2 |
 
 ## Expected changes
 

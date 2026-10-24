@@ -2,7 +2,7 @@
 slice: P2/S-16
 name: `/slicekit review` and `--parallel`
 repo: .
-group: D
+group: E
 runbook: no
 requirements: [REQ-2.7, REQ-2.8]
 decisions: []

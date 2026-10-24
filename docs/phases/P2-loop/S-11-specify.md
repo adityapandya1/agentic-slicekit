@@ -17,7 +17,7 @@ decisions: []
 | Test | Kind | Covers |
 |---|---|---|
 | `commands/specify.test.js » one spec file per capability and one contract per interface named at intake` | happy | REQ-2.3 |
-| `commands/specify.test.js » a requirement whose Cites line names nothing fails check, naming it` | negative | REQ-2.3 |
+| `commands/specify.test.js » a claim no intake sentence or decision supports is written as a clarification marker, not guessed` | negative | REQ-2.3 |
 
 ## Expected changes
 

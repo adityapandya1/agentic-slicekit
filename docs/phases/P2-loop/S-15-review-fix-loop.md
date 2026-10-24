@@ -2,7 +2,7 @@
 slice: P2/S-15
 name: Reviewer, fixer, the loop cap, should-haves
 repo: .
-group: C
+group: D
 runbook: no
 requirements: [REQ-2.6, REQ-2.11]
 decisions: []
@@ -21,4 +21,4 @@ decisions: []
 
 ## Expected changes
 
-`templates/claude-code/agents/{reviewer,fixer}.md`, tests.
+`templates/claude-code/commands/slicekit-build.md`, `templates/claude-code/agents/{reviewer,fixer}.md`, tests.
