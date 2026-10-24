@@ -2,36 +2,53 @@
 
 ## REQ-5.1 Repository layout of the kit
 
-The kit's own repository SHALL have this layout:
+The kit's own repository SHALL have this layout. A path followed by a slice ID in parentheses is
+created by that slice and does not exist before it is Done; every other path exists today
+(2026-10-24).
 
 ```
 bin/slicekit.js          entry; dispatches subcommands
 src/
   cli/                   one file per subcommand
-  check/                 one file per rule in 03 REQ-3.7
+  check/                 the check runner and its context
+    rules/               one file per rule in 03 REQ-3.7
   state/                 the only writer of .slicekit/state and BUILD.md
-  journal/               append and verify
   render/                templates → adapter files, managed blocks, update
-  graph/                 build, cache, queries
-  visualize/             server and the single page
-  hooks/                 the handlers each hook line calls
+  adapters/
+    githost/             the git host adapter (C-1): GitHub through gh, and a fixture host
+  baseline.js            reads and writes the ratchet baselines
+  config.js              config schema, defaults and validation
+  evidence.js            the shapes of evidence accepted: commit SHAs, dates
+  fs.js                  file reads and writes
+  git.js                 git calls and repository facts
+  hook-cli.js            finds the command the hooks run (D-30)
+  ids.js                 the ID patterns and slice addresses
+  init.js                slicekit init
+  markdown.js            headings, front matter, tables and references in markdown
+  paths.js               every path the kit reads or writes, from config
+  slicefile.js           slice and phase file parsing
+  stage.js               the program stage, read from files
+  hooks/ (S-06)          the handlers each hook line calls
+  journal.js (S-07)      append and verify
+  graph/ (S-17)          build, cache, queries
+  visualize/ (S-19)      server and the single page
 templates/
-  claude-code/           commands/, agents/, skills/, settings.hooks.json
+  claude-code/           commands/, agents/, skills/, hooks.json, manifest.json
   docs/                  the skeletons from 01 REQ-1.1 and REQ-1.11
-  workflow/slicekit.yml
-  githooks/
+  githooks/ (S-06)
+  workflow/slicekit.yml (S-08)
   style.json             the filler seed list
-examples/
-  backend/               a tiny service with two slices, used by the end-to-end test
-  fullstack/
-  data/
+examples/ (S-14)
+  backend/ (S-14)        a tiny service with two slices, used by the end-to-end test
+  fullstack/ (S-24)
+  data/ (S-24)
 test/                    node:test; fixtures beside the tests
-docs/                    this spec, the decisions, the kit's own runbook, the user guide
+docs/                    this spec, the decisions, the kit's own runbook; the user guide is S-24
 BUILD.md                 the kit's own queue
 ```
 
-Scenario: GIVEN a slice in the kit's `BUILD.md` WHEN it adds a module THEN the module sits in the
-directory above that names its job.
+Scenario: GIVEN the kit's repository WHEN its tree is listed THEN every path above without a slice
+ID in parentheses exists, and every path with one is absent until that slice is Done.
 
 Cites: D-04, D-05, D-16, D-29.
 
