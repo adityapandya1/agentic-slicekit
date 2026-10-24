@@ -214,6 +214,22 @@ test('a wrapped Cites line is read as one line', () => {
   }
 });
 
+test('a list-item key line is not a Cites continuation', () => {
+  const nested = fixture({
+    spec: req('REQ-1.1', { cites: '  - Cites: D-01,\n    D-02.\n  - Enforced by: advisory (D-99).', enforced: null }),
+  });
+  const empty = fixture({
+    spec: req('REQ-1.1', { cites: '- Cites: none\n  - Enforced by: `../intake/x.md`', enforced: null }),
+  });
+  try {
+    assert.deepEqual(messages(nested), []);
+    assert.deepEqual(messages(empty), ['REQ-1.1 Cites line names no decision or intake file']);
+  } finally {
+    nested.cleanup();
+    empty.cleanup();
+  }
+});
+
 test("the kit's own spec passes the citations rule", () => {
   const result = check(kitRoot, { rules: [citations] });
   assert.deepEqual(result.lines, ['check: 0 findings, 0 over baseline, 0 blocking, 1 rules']);

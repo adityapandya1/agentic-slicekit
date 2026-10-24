@@ -41,14 +41,16 @@ function citedTokens(line, continuation = false) {
     .filter((t) => t !== '');
 }
 
-// Each `Cites:` line with the lines wrapped under it: indented, not blank, carrying no `Key:`.
+// Each `Cites:` line with the lines wrapped under it: indented, not blank, not a list item and
+// carrying no `Key:`. A list item is a new entry (`  - Enforced by: …`), never a continuation.
 // Returns one array of [line, number] per entry.
+const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/;
 function citesEntries(body) {
   const out = [];
   for (let i = 0; i < body.length; i++) {
     if (!startsWith(body[i][0], 'Cites:')) continue;
     const parts = [body[i]];
-    const wrapped = (l) => /^\s+\S/.test(l) && !/^\s*[A-Z][\w ]*:/.test(l);
+    const wrapped = (l) => /^\s+\S/.test(l) && !LIST_ITEM.test(l) && !/^\s*[A-Z][\w ]*:/.test(l);
     while (i + 1 < body.length && wrapped(body[i + 1][0])) parts.push(body[++i]);
     out.push(parts);
   }
