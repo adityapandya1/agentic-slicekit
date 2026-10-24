@@ -84,8 +84,11 @@ async function run(args, io) {
   for (const rel of result.skipped) io.stdout(`skipped ${rel}\n`);
   io.stdout(`hooks run: ${result.cli}\n`);
   for (const warning of result.warnings) io.stderr(`slicekit: ${warning}\n`);
-  const unanswered = checkCli(result.cli, { version: kitVersion(), cwd: root });
-  if (unanswered) io.stderr(`slicekit: ${unanswered}\n`);
+  // The not-installed warning already says the hooks will fail; the --version check would repeat it.
+  if (!result.cliWarned) {
+    const unanswered = checkCli(result.cli, { version: kitVersion(), cwd: root });
+    if (unanswered) io.stderr(`slicekit: ${unanswered}\n`);
+  }
   return 0;
 }
 

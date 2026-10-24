@@ -8,7 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const binPath = path.resolve(here, '..', '..', 'bin', 'slicekit.js');
 
 // A `slicekit` on PATH that runs this checkout, so init's probe picks it and the --version check
-// answers locally instead of falling through to npx and the registry.
+// answers locally. `shim: false` leaves the environment's PATH as given.
 let shimDir;
 function shim() {
   if (shimDir) return shimDir;
@@ -28,11 +28,11 @@ function withShim(env) {
   return out;
 }
 
-export function runCli(args, { cwd, stdin, env } = {}) {
+export function runCli(args, { cwd, stdin, env, shim: useShim = true } = {}) {
   const r = spawnSync(process.execPath, [binPath, ...args], {
     cwd,
     input: stdin,
-    env: withShim(env ?? process.env),
+    env: useShim ? withShim(env ?? process.env) : (env ?? process.env),
     encoding: 'utf8',
   });
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };

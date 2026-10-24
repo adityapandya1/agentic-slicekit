@@ -117,7 +117,7 @@ test('second run skips everything and overwrites nothing', () => {
 
 test('init on a repo with no commits', () => {
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'fullstack' });
+    const result = init(root, { name: 'demo', shape: 'fullstack', cli: 'slicekit' });
     assert.ok(result.created.includes('.slicekit/config.json'));
     assert.ok(isDir(root, '.githooks'));
     assert.throws(() => git(root, ['config', '--local', 'core.hooksPath']), GitError);
@@ -296,6 +296,28 @@ test('cli: init prints the hook command it chose and checks that it answers', ()
     const cli = JSON.parse(read(root, '.slicekit/config.json')).cli;
     assert.equal(r.stdout.split('\n').filter((l) => l === `hooks run: ${cli}`).length, 1);
     assert.equal(r.stderr, '');
+  });
+});
+
+// PATH without any slicekit (the shim or a global install), so the probe finds nothing.
+function pathWithoutSlicekit() {
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const names = process.platform === 'win32' ? ['slicekit.cmd', 'slicekit.exe', 'slicekit.bat', 'slicekit'] : ['slicekit'];
+  const dirs = (process.env[key] ?? '').split(path.delimiter).filter((d) => d && !names.some((n) => fs.existsSync(path.join(d, n))));
+  return { ...process.env, [key]: dirs.join(path.delimiter) };
+}
+
+test('cli: init with slicekit neither local nor on PATH warns once, never names npx, and exits 0', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root, env: pathWithoutSlicekit(), shim: false });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(
+      r.stderr,
+      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)\n',
+    );
+    assert.match(r.stdout, /^hooks run: slicekit$/m);
+    assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, 'slicekit');
+    assert.doesNotMatch(read(root, '.claude/settings.json'), /npx/);
   });
 });
 

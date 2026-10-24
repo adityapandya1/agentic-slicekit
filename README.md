@@ -14,10 +14,10 @@ alongside it.
 ## How the hooks find slicekit
 
 `slicekit init` writes the hook command as `node node_modules/slicekit/bin/slicekit.js` when the
-repository has a local install, `slicekit` when one is on PATH, and otherwise
-`npx --yes slicekit@<version>`, which needs no install but fetches from the registry. `cli` in
-`.slicekit/config.json` (or `init --cli <command>`) overrides that choice, and init and update warn
-when the command does not answer `--version`. The hooks run from the session's working directory, so
+repository has a local install, and `slicekit` otherwise, which needs slicekit on PATH. When neither
+is found, init still writes `slicekit` and warns that the hooks will fail until it is installed; it
+never fetches slicekit from the registry. `cli` in `.slicekit/config.json` (or `init --cli <command>`)
+overrides that choice, and init and update warn when the command does not answer `--version`. The hooks run from the session's working directory, so
 a worktree outside the repository tree needs an absolute path in `cli` or a global install (D-30).
 
 License: MIT.

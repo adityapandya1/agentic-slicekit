@@ -63,7 +63,7 @@ function ensureGitignore(file) {
 }
 
 // An existing config.json is the truth: a flag may repeat its shape, docsRoot or cli, never change them.
-// A new config takes cli from --cli, else from the probe (D-30).
+// A new config takes cli from --cli, else from the probe (D-30); the probe's warning comes back with it.
 function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
   if (exists(path.join(root, CONFIG_PATH))) {
     const cfg = loadConfig(root);
@@ -72,22 +72,23 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
         throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
       }
     }
-    return cfg;
+    return { cfg, cliWarning: null };
   }
+  const probed = cli === undefined ? probeCli(root, { env }) : { cli, warning: null };
   const cfg = defaultConfig({
     name,
     shape,
     docsRoot: docsRoot ?? 'docs',
     commands,
-    cli: cli ?? probeCli(root, { version: kitVersion(), env }),
+    cli: probed.cli,
   });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
-  return cfg;
+  return { cfg, cliWarning: probed.warning };
 }
 
 export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
-  const cfg = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
+  const { cfg, cliWarning } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
@@ -104,6 +105,7 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
   lists[ensureGitignore(paths.gitignore)].push(rel(paths.gitignore));
 
   const warnings = isRepo(root) ? [] : [NOT_A_REPO];
+  if (cliWarning) warnings.push(cliWarning);
   for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
     lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);
     if (warning) warnings.push(warning);
@@ -116,5 +118,6 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
     skipped: lists.skipped.sort(),
     warnings,
     cli: cfg.cli,
+    cliWarned: cliWarning !== null,
   };
 }

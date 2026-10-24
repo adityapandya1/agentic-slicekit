@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkCli, probeCli } from '../src/hook-cli.js';
+import { checkCli, NOT_INSTALLED, probeCli } from '../src/hook-cli.js';
 import { init } from '../src/init.js';
 import { binPath } from './helpers/run-cli.js';
 
@@ -26,18 +26,30 @@ function fakeGlobal() {
 
 const envWith = (dir) => ({ PATH: dir, PATHEXT: '.COM;.EXE;.BAT;.CMD' });
 
-test('probe order: a local install, then slicekit on PATH, then npx pinned to the kit version', () => {
+test('probe order: a local install, then slicekit on PATH, else the PATH form with a warning, never the registry', () => {
   const global = fakeGlobal();
   const empty = tmp('slicekit-empty-');
 
   const local = tmp('slicekit-probe-');
   fakeLocal(local);
-  assert.equal(probeCli(local, { version: VERSION, env: envWith(global) }), 'node node_modules/slicekit/bin/slicekit.js');
+  assert.deepEqual(probeCli(local, { env: envWith(global) }), { cli: 'node node_modules/slicekit/bin/slicekit.js', warning: null });
 
   const bare = tmp('slicekit-probe-');
-  assert.equal(probeCli(bare, { version: VERSION, env: envWith(global) }), 'slicekit');
-  assert.equal(probeCli(bare, { version: VERSION, env: envWith(empty) }), `npx --yes slicekit@${VERSION}`);
-  assert.equal(probeCli(bare, { version: VERSION, env: {} }), `npx --yes slicekit@${VERSION}`);
+  assert.deepEqual(probeCli(bare, { env: envWith(global) }), { cli: 'slicekit', warning: null });
+  assert.deepEqual(probeCli(bare, { env: envWith(empty) }), { cli: 'slicekit', warning: NOT_INSTALLED });
+  assert.deepEqual(probeCli(bare, { env: {} }), { cli: 'slicekit', warning: NOT_INSTALLED });
+  assert.equal(
+    NOT_INSTALLED,
+    'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)',
+  );
+});
+
+test('init with nothing installed records slicekit and returns the not-installed warning once', () => {
+  const root = tmp('slicekit-probe-init-');
+  const r = init(root, { name: 'demo', shape: 'backend', env: envWith(tmp('slicekit-empty-')) });
+  assert.equal(r.cli, 'slicekit');
+  assert.equal(r.warnings.filter((w) => w === NOT_INSTALLED).length, 1);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, '.claude/settings.json'), 'utf8'), /npx/);
 });
 
 test('init records the probed cli; --cli wins; an existing config keeps its own', () => {

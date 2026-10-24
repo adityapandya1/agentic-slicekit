@@ -24,12 +24,15 @@ export function onPath(name, env) {
   return dirs.some((dir) => exts.some((ext) => runnable(path.join(dir, `${name}${ext}`))));
 }
 
-// The command the hooks call, D-30: a local install, else slicekit on PATH, else npx pinned to this
-// kit version (works with no install, at the cost of a registry fetch).
-export function probeCli(root, { version, env = process.env }) {
-  if (fs.existsSync(path.join(root, LOCAL))) return `node ${LOCAL}`;
-  if (onPath('slicekit', env)) return 'slicekit';
-  return `npx --yes slicekit@${version}`;
+export const NOT_INSTALLED =
+  'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)';
+
+// The command the hooks call, D-30: a local install, else slicekit on PATH, else the PATH form with
+// NOT_INSTALLED. Never a registry fetch: the npm name is unclaimed (D-26), so a hook must not install it.
+export function probeCli(root, { env = process.env } = {}) {
+  if (fs.existsSync(path.join(root, LOCAL))) return { cli: `node ${LOCAL}`, warning: null };
+  if (onPath('slicekit', env)) return { cli: 'slicekit', warning: null };
+  return { cli: 'slicekit', warning: NOT_INSTALLED };
 }
 
 // Runs `<cli> --version` once. null when it prints `version`; otherwise the warning to show.
