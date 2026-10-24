@@ -28,5 +28,6 @@ export function kitPaths(root, cfg) {
     claude: path.join(root, '.claude'),
     githooks: path.join(root, '.githooks'),
     workflow: path.join(root, '.github', 'workflows', 'slicekit.yml'),
+    gitignore: path.join(root, '.gitignore'),
   };
 }

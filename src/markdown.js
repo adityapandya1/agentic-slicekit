@@ -1,7 +1,7 @@
 import { ID } from './ids.js';
 
 export function lines(text) {
-  return text.replace(/\r\n/g, '\n').split('\n');
+  return text.replace(/^﻿/, '').replace(/\r\n/g, '\n').split('\n');
 }
 
 const FENCE = /^\s*(```|~~~)/;

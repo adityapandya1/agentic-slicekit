@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function readText(p) {
-  return fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+  return fs.readFileSync(p, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
 }
 
 export function writeText(p, s) {

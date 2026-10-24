@@ -1,6 +1,6 @@
 # {{name}}: overview
 
-Source: intake/
+Source: ../intake/
 Decisions: ../decisions.md
 
 ## Sections

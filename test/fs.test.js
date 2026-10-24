@@ -24,6 +24,12 @@ test('fs » readText normalises CRLF', () => {
   assert.equal(readText(file), 'x\ny\n');
 });
 
+test('fs » readText strips a leading BOM', () => {
+  const file = path.join(dir, 'bom.txt');
+  fs.writeFileSync(file, '﻿x\r\n');
+  assert.equal(readText(file), 'x\n');
+});
+
 test('fs » exists and listFiles', () => {
   const root = path.join(dir, 'tree');
   writeText(path.join(root, 'b.md'), '');

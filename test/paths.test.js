@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { kitPaths } from '../src/paths.js';
 
-test('kitPaths returns the 23 keys as absolute paths with exact relative forms', () => {
+test('kitPaths returns the 24 keys as absolute paths with exact relative forms', () => {
   const root = path.resolve('some', 'root');
   const p = kitPaths(root, { docsRoot: 'docs' });
   const expected = {
@@ -30,8 +30,9 @@ test('kitPaths returns the 23 keys as absolute paths with exact relative forms',
     claude: '.claude',
     githooks: '.githooks',
     workflow: '.github/workflows/slicekit.yml',
+    gitignore: '.gitignore',
   };
-  assert.equal(Object.keys(expected).length, 23);
+  assert.equal(Object.keys(expected).length, 24);
   assert.deepEqual(Object.keys(p).sort(), Object.keys(expected).sort());
   for (const [key, rel] of Object.entries(expected)) {
     assert.ok(path.isAbsolute(p[key]), key);

@@ -13,6 +13,11 @@ test('markdown » parses CRLF', () => {
   assert.deepEqual(frontMatter('# t\r\nx\r\n'), { data: {}, body: '# t\nx\n' });
 });
 
+test('markdown » a leading BOM is stripped', () => {
+  assert.deepEqual(frontMatter('﻿---\nslice: x\n---\n'), { data: { slice: 'x' }, body: '' });
+  assert.deepEqual(lines('﻿# t'), ['# t']);
+});
+
 test('markdown » tables ignores a table inside a code fence', () => {
   assert.deepEqual(tables('```\n| A | B |\n|---|---|\n| 1 | 2 |\n```\n'), []);
 });
