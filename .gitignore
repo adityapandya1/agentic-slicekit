@@ -1,0 +1,5 @@
+node_modules/
+.slicekit/graph/
+*.log
+!.slicekit/journal.log
+.DS_Store
