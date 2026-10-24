@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import { initCommand } from './init.js';
+import { stateCommand } from './state.js';
 
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string } }
-export const COMMANDS = { init: initCommand };
+export const COMMANDS = { init: initCommand, state: stateCommand };
 
 function readVersion() {
   const url = new URL('../../package.json', import.meta.url);
