@@ -43,3 +43,12 @@ test('fs » exists and listFiles', () => {
   assert.deepEqual(listFiles(root), ['a/c.md', 'a/d.txt', 'b.md']);
   assert.deepEqual(listFiles(root, { ignore: ['a'] }), ['.git/f.md', 'b.md', 'node_modules/x/e.md']);
 });
+
+test('fs » listFiles matches the extension in any case', () => {
+  const root = path.join(dir, 'cased');
+  writeText(path.join(root, 'A.MD'), '');
+  writeText(path.join(root, 'b.Md'), '');
+  writeText(path.join(root, 'c.md'), '');
+  writeText(path.join(root, 'd.txt'), '');
+  assert.deepEqual(listFiles(root, { ext: '.md' }), ['A.MD', 'b.Md', 'c.md']);
+});

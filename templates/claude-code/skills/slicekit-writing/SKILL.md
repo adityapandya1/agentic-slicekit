@@ -11,6 +11,7 @@ description: Writing rules for every document, verdict, report and pull request 
 - Every agent reply ends with what it skipped and what it did not check.
 
 ## Filler the check rejects
+<!-- slicekit:style-catalogue -->
 
 - minting at the gate
 - at the boundary of

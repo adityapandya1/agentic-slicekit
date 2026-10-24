@@ -7,7 +7,7 @@ export function lines(text) {
 const FENCE = /^\s*(```|~~~)/;
 
 // Yields [line, number] for every line outside fenced code blocks (1-based).
-function* prose(text) {
+export function* prose(text) {
   let inFence = false;
   const all = lines(text);
   for (let i = 0; i < all.length; i++) {
@@ -86,6 +86,40 @@ export function tables(text) {
   return out;
 }
 
+// A link target: one level of balanced parentheses (`a(b).md`), then an optional title.
+const LINK = /\[[^\]]*\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/g;
+const CODE_SPAN = /`[^`]*`/g;
+
+// The line with every inline code span blanked to spaces, so columns are unchanged.
+export const blankCodeSpans = (line) => line.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+
+// A path written on Windows reads the same as one written anywhere else.
+export const toSlashes = (p) => p.replace(/\\/g, '/');
+
+// A target the reader cannot resolve to one file of repository content: a URL, a `<placeholder>`,
+// a glob, or anything under `.git/` or `node_modules/`.
+export function isPathLike(target) {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.includes('://') || /[<>*?{}]/.test(target)) return false;
+  const first = toSlashes(target).replace(/^(\.?\/)+/, '').split('/')[0];
+  return first !== '.git' && first !== 'node_modules';
+}
+
+// A backticked token that names a repo path: a separator, a letter, and either a trailing
+// separator or a final segment with an extension. One leading dot is part of the name, so `.bin`
+// has no extension while `.eslintrc.cjs` has `cjs`.
+function looksLikePath(token) {
+  const p = toSlashes(token);
+  if (!p.includes('/') || !/[A-Za-z]/.test(p) || !isPathLike(p)) return false;
+  return p.endsWith('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(p.split('/').at(-1).replace(/^\./, ''));
+}
+
+// A reference-style link definition, `[ref]: target "title"`, its target optionally in `<>`. A
+// footnote (`[^1]: text`) is not one.
+const DEFINITION = /^\s{0,3}\[(?!\^)[^\]]+\]:\s*(?:<([^>\s]+)>|(\S+))/;
+
+// Paths, anchors and ids outside fenced code. A link written inside a code span is not a link; a
+// reference-style link (`[t][ref]`) is checked at its definition line. A path says whether it came
+// from a link or a code span (`via`); an anchor carries the file it points into.
 export function refs(text) {
   const out = [];
   const idRe = new RegExp(
@@ -93,18 +127,20 @@ export function refs(text) {
     'g',
   );
   for (const [line, n] of prose(text)) {
-    for (const m of line.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)) {
-      const target = m[1];
-      if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#')) continue;
-      const [file, anchor] = target.split('#');
-      if (file) out.push({ kind: 'path', value: file, line: n });
-      if (anchor) out.push({ kind: 'anchor', value: anchor, line: n });
+    const outsideCode = blankCodeSpans(line);
+    const def = DEFINITION.exec(outsideCode);
+    const targets = [...outsideCode.matchAll(LINK)].map((m) => m[1]);
+    if (def) targets.push(def[1] ?? def[2]);
+    for (const target of targets) {
+      if (target.startsWith('#') || !isPathLike(target)) continue;
+      const hash = target.indexOf('#');
+      const file = hash === -1 ? target : target.slice(0, hash);
+      const anchor = hash === -1 ? '' : target.slice(hash + 1);
+      if (file) out.push({ kind: 'path', value: file, via: 'link', line: n });
+      if (file && anchor) out.push({ kind: 'anchor', value: anchor, file, line: n });
     }
     for (const m of line.matchAll(/`([^`\s]+)`/g)) {
-      const token = m[1];
-      if (token.includes('/') && (token.endsWith('/') || /\.[A-Za-z0-9]+$/.test(token))) {
-        out.push({ kind: 'path', value: token, line: n });
-      }
+      if (looksLikePath(m[1])) out.push({ kind: 'path', value: m[1], via: 'code', line: n });
     }
     for (const m of line.matchAll(idRe)) out.push({ kind: 'id', value: m[0], line: n });
   }

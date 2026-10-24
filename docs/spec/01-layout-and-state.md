@@ -37,7 +37,7 @@ BUILD.md               the human-readable queue (REQ-1.6)
 ```
 
 Scenario: GIVEN an empty repository WHEN `slicekit init --shape backend` runs THEN every path above
-exists except `workspace.json`, `graph/`, `phases/*` and `releases/*`, and `slicekit check` exits 0.
+exists except `.slicekit/workspace.json`, `.slicekit/graph/`, `docs/phases/*` and `docs/releases/*`, and `slicekit check` exits 0. <!-- slicekit:example -->
 
 Scenario: GIVEN a repository that already has `docs/` WHEN init runs THEN nothing already present is
 overwritten; the kit adds its files beside them and reports each one it added.
@@ -49,10 +49,15 @@ Enforced by: `slicekit init`, `slicekit check` (layout rule).
 Every source document SHALL be copied into `<docsRoot>/intake/` as `YYYY-MM-DD-<slug>.<ext>` with a
 sidecar `.meta.json` carrying origin (URL or path), the SHA-256 of the content, who brought it in and
 when (D-08). The kit SHALL refuse a commit that modifies an existing intake file; a changed source is
-a new snapshot.
+a new snapshot. A file is frozen only while its sidecar's SHA-256 matches its bytes: a file under
+`<docsRoot>/intake/` without such a sidecar SHALL be reported by `slicekit check`, checked like any
+other doc, and SHALL keep the intake stage from being done.
 
 Scenario: GIVEN an intake file WHEN a commit changes its bytes THEN the PreToolUse guard refuses the
 commit and names the file.
+
+Scenario: GIVEN a file dropped into `<docsRoot>/intake/` with no sidecar WHEN `slicekit check` runs
+THEN it reports "intake file has no valid sidecar" for that file and checks its references and style.
 
 Enforced by: PreToolUse guard on Bash (03 REQ-3.2), `slicekit check` (hash matches sidecar).
 
@@ -116,12 +121,12 @@ previous stage is complete:
 
 | Stage | Complete when |
 |---|---|
-| intake | at least one snapshot with a valid sidecar |
+| intake | at least one snapshot, and every file under intake has a valid sidecar |
 | clarify | `decisions.md` exists and no row of type Open is cited by the spec |
 | specify | every REQ has the shape of REQ-1.3 |
 | spec-review | the spec was merged to the default branch through a pull request (D-07) |
 | gap-scan | `gaps.md` exists and every G-NN row is closed by a D-NN or a REQ change |
-| stack | `spec/stack.md` exists with no clarification marker |
+| stack | `<docsRoot>/spec/stack.md` exists with no clarification marker |
 | plan | every REQ is named by at least one slice file; the plan was merged through a pull request |
 | build | every slice in the phase is `merged` |
 | release | `releases/P<n>.md` exists naming every merged pull request |

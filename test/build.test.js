@@ -260,3 +260,23 @@ test("status --write regenerates the kit's own BUILD.md", () => {
   assert.ok(text.includes(MARKER), text);
   assert.ok(text.indexOf('## Phase 2 — Loop') > text.indexOf(MARKER), text);
 });
+
+test('a done-when example marker does not reach the rendered row', () => {
+  withKit((root, cfg, ids) => {
+    const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works. <!-- slicekit:example -->'));
+    const out = renderBuild(root, cfg, '');
+    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
+    assert.ok(!out.includes('slicekit:example'), out);
+  }, { slices: 1 });
+});
+
+test('a done-when pending marker does not reach the rendered row', () => {
+  withKit((root, cfg) => {
+    const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works. <!-- slicekit:pending P1/S-08 -->'));
+    const out = renderBuild(root, cfg, '');
+    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
+    assert.ok(!out.includes('slicekit:pending'), out);
+  }, { slices: 1 });
+});

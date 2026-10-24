@@ -18,7 +18,7 @@ Enforced by: `slicekit hook session-start`.
 ## REQ-3.2 PreToolUse on Bash — fail closed
 
 SHALL deny: a commit on a protected branch; a push to a protected branch; any force push; a commit
-that changes a file under `intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
+that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
 is active (REQ-2.1); and any command matching the destructive list in config (default: recursive
 delete outside the worktree, database drop and truncate statements, history rewrites on shared
 branches). Each denial SHALL state the rule and the file or command.
@@ -33,9 +33,10 @@ Enforced by: `slicekit hook pre-bash`.
 SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
-an edit to `journal.log`, `baselines/` or any `state/` file by anything other than the CLI.
+an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or
+`.slicekit/journal.log` by anything other than the CLI. <!-- slicekit:pending P1/S-07 -->
 
-Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with
+Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
 
 Enforced by: `slicekit hook pre-edit`.
@@ -71,9 +72,9 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 
 | Rule | What fails |
 |---|---|
-| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline |
-| style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25) |
-| queue | `BUILD.md` disagrees with `state/` (REQ-1.6) |
+| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline; in a slice file whose slice is not yet merged or released, a code-span path on a `**Files:**` line or under `## Expected changes` is a promise and is checked only once the slice merges, while every other path, link and ID in it is checked now; a link resolves against its doc's directory (or the root when it starts with `/`), a backticked path also against the root, and a reference-style link at its definition line; a file under `<docsRoot>/intake/` whose sidecar's SHA-256 matches its bytes is exempt because it is frozen (REQ-1.2), while one without a valid sidecar is checked like any doc and is itself a finding; and in `BUILD.md` the generated region's paths are not checked because it is a view of the slice files, which are checked themselves (IDs in it are still checked) |
+| style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25); a file under `<docsRoot>/intake/` whose sidecar's SHA-256 matches its bytes is exempt because it is frozen (REQ-1.2), and one without a valid sidecar is checked like any doc |
+| queue | `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
 | coverage | at plan stage or later, a REQ named by no slice |
 | trailer | on a slice branch, a commit without the `Slice:` trailer |
@@ -83,11 +84,13 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | journal | the hash chain in `journal.log` is broken |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 
-Baselines SHALL only go down: `slicekit baseline update` refuses to raise any count. Fixing a
+For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
+
+Baselines SHALL only go down: `slicekit baseline update` refuses to raise any count. The one exception is a first adoption: `slicekit baseline update --adopt` records higher counts, prints each one with its previous value, is refused in CI, and a reviewer treats an adopted raise like any other finding. Fixing a
 finding by weakening a rule, raising a baseline or deleting a reference target SHALL be a reviewer
 blocker.
 
-Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends THEN the Stop hook
+Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends THEN the Stop hook <!-- slicekit:example -->
 fails with the file, the line and the missing target, and the agent must fix it before the turn is
 accepted.
 
@@ -95,7 +98,7 @@ Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
 ## REQ-3.8 SessionEnd — fail open: the journal
 
-SHALL append one line to `.slicekit/journal.log` in the form
+SHALL append one line to `.slicekit/journal.log` in the form <!-- slicekit:example -->
 `<iso time> <actor> <slice or "-"> <stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
 The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is appended by the CLI only
 (REQ-3.3). A broken chain is a check failure and a reviewer blocker; it is never auto-repaired.
@@ -116,14 +119,18 @@ Each alone fails silently.
 Enforced by: `slicekit init`, `slicekit check` (hooks rule).
 
 ## REQ-3.10 The filler list
+<!-- slicekit:style-catalogue -->
 
 `config.style.banned` SHALL be a list of phrases, seeded by the kit with the author's examples and a
 short list of agent fillers ("it's worth noting", "robust", "seamlessly", "at the boundary of",
 "minting at the gate", "leverage", "delve"), case-insensitive, matched in every markdown file, verdict
-and pull request body, counted per file against `baselines/style.json`. The team extends the list in
-config; a removal from the list SHALL be a decision row. The files that define the list (config, the
-seed template, and this requirement) are exempt, and the check SHALL verify that they still contain
-it, so the catalogue cannot be emptied by accident.
+and pull request body, counted per file against `.slicekit/baselines/style.json`. The team extends the list in
+config; a removal from the list SHALL be a decision row. The files that define the list (config and
+the seed template) are exempt, and the check SHALL verify that the configured list still contains
+every seed phrase; a document that carries `<!-- slicekit:style-catalogue -->` is exempt from the
+ratchet within the marked section and SHALL contain every seed phrase, so the catalogue cannot be
+emptied by accident. A missing seed phrase is a catalogue finding, and `slicekit baseline update
+--adopt` SHALL refuse to adopt one.
 
 Enforced by: `slicekit check` (style rule).
 
@@ -145,7 +152,8 @@ Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
 
-Every file the kit renders into `.claude/`, `.githooks/` and `.github/workflows/` SHALL carry the
+Every file the kit renders into `.claude/`, `.githooks/` and
+`.github/workflows/` SHALL carry the <!-- slicekit:pending P1/S-08 -->
 kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
 that front matter and is managed whole, because Claude Code reads front matter only when it starts on
 line 1, so no marker may come before it. Any other file SHALL sit between

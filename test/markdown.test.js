@@ -38,6 +38,39 @@ test('markdown » tables', () => {
   assert.deepEqual(t, [{ line: 3, header: ['A', 'B'], rows: [['1', '2'], ['3', '4']] }]);
 });
 
+test('markdown » refs handles titles, parentheses, URLs, placeholders and reference links', () => {
+  const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
+  assert.deepEqual(paths('[t](x.md "title")'), ['x.md']);
+  assert.deepEqual(paths("[t](x.md 'title')"), ['x.md']);
+  assert.deepEqual(paths('[t](a(b).md)'), ['a(b).md']);
+  assert.deepEqual(paths('`https://x.io/a.md`'), []);
+  assert.deepEqual(paths('`src/cli/<cmd>.js`'), []);
+  assert.deepEqual(paths('[t](src/cli/<cmd>.js)'), []);
+  assert.deepEqual(paths('`docs/**/*.md` [g](docs/*.md)'), []);
+  assert.deepEqual(paths('[t][ref] and [ref]: x/y.md'), []);
+  assert.deepEqual(paths('`[t](inline/code.md)`'), [], 'a link written inside a code span is not a link');
+  assert.deepEqual(paths('`src\\cli\\run.js`'), ['src\\cli\\run.js'], 'a backslash is a separator');
+  assert.deepEqual(paths('`node_modules/.bin` `node_modules/x/y.js` `.git/hooks/` [n](node_modules/a.js)'), []);
+  assert.deepEqual(paths('`1/2.5` `docs/.hidden`'), [], 'a fraction and a dotfile are not paths');
+  assert.deepEqual(refs('[l](a/b.md) `c/d.md`').map((r) => r.via), ['link', 'code']);
+  const anchor = refs('[t](a.md#sec "title")').find((r) => r.kind === 'anchor');
+  assert.deepEqual(anchor, { kind: 'anchor', value: 'sec', file: 'a.md', line: 1 });
+});
+
+test('markdown » a reference-style link definition is a link path', () => {
+  const text = ['Read [the spec][s].', '', '[s]: docs/spec.md', '  [a]: <other.md#sec> "Title"', '[u]: https://x.io/a.md', '[h]: #local', '`[c]: in/code.md`'].join('\n');
+  assert.deepEqual(refs(text), [
+    { kind: 'path', value: 'docs/spec.md', via: 'link', line: 3 },
+    { kind: 'path', value: 'other.md', via: 'link', line: 4 },
+    { kind: 'anchor', value: 'sec', file: 'other.md', line: 4 },
+  ]);
+});
+
+test('markdown » a dot-leading name with a further dot is a path with an extension', () => {
+  const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
+  assert.deepEqual(paths('`config/.eslintrc.cjs` `scripts/.bin` `a/.env.local`'), ['config/.eslintrc.cjs', 'a/.env.local']);
+});
+
 test('markdown » refs finds paths, ids and links', () => {
   const text = [
     'See [spec](docs/spec/01.md) and [part](02.md#intro).',

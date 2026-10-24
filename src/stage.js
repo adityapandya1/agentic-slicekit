@@ -49,6 +49,23 @@ const posix = (p) => p.split(path.sep).join('/');
 const rel = (root, p) => posix(path.relative(root, p));
 const filesUnder = (dir, ext) => (exists(dir) ? listFiles(dir, { ext }).map((f) => path.join(dir, f)) : []);
 
+// How an intake file is pinned (REQ-1.2): `frozen` when `<file>.meta.json` or `<stem>.meta.json`
+// exists and its sha256 matches the file's bytes; otherwise `no-sidecar`, `bad-json` or
+// `mismatch`, with the sidecar path when there is one.
+export function intakePin(file) {
+  const sidecar = [`${file}.meta.json`, path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.meta.json`)].find(exists);
+  if (!sidecar) return { status: 'no-sidecar', sidecar: null };
+  let want;
+  try {
+    want = JSON.parse(fs.readFileSync(sidecar, 'utf8')).sha256;
+  } catch {
+    return { status: 'bad-json', sidecar };
+  }
+  const got = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  return { status: typeof want === 'string' && want.toLowerCase() === got ? 'frozen' : 'mismatch', sidecar };
+}
+
+// Every intake file must be pinned: one valid snapshot does not excuse another.
 function intake(root, cfg) {
   const dir = kitPaths(root, cfg).intake;
   const files = filesUnder(dir).filter((f) => {
@@ -57,26 +74,14 @@ function intake(root, cfg) {
   });
   if (files.length === 0) return [`no snapshot under ${rel(root, dir)}/`];
   const blockers = [];
-  let valid = 0;
   for (const f of files) {
-    const sidecar = [`${f}.meta.json`, path.join(path.dirname(f), `${path.basename(f, path.extname(f))}.meta.json`)].find(exists);
+    const { status, sidecar } = intakePin(f);
     const name = rel(root, f);
-    if (!sidecar) {
-      blockers.push(`${name} has no sidecar .meta.json`);
-      continue;
-    }
-    let want;
-    try {
-      want = JSON.parse(fs.readFileSync(sidecar, 'utf8')).sha256;
-    } catch {
-      blockers.push(`${rel(root, sidecar)} is not valid JSON`);
-      continue;
-    }
-    const got = crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-    if (typeof want === 'string' && want.toLowerCase() === got) valid++;
-    else blockers.push(`${name} does not match the sha256 in its sidecar`);
+    if (status === 'no-sidecar') blockers.push(`${name} has no sidecar .meta.json`);
+    else if (status === 'bad-json') blockers.push(`${rel(root, sidecar)} is not valid JSON`);
+    else if (status === 'mismatch') blockers.push(`${name} does not match the sha256 in its sidecar`);
   }
-  return valid > 0 ? [] : blockers;
+  return blockers;
 }
 
 function clarify(root, cfg) {

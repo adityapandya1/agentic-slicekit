@@ -79,5 +79,5 @@ decisions: [D-25]
 **Files:** Create `test/check/self.test.js`; modify docs as needed; create `.slicekit/` for the kit via `init`.
 
 - [ ] **Step 1: Failing test** — `the kit's own repo is green`: `runCli(['check'], {cwd: repoRoot}).code === 0`.
-- [ ] **Step 2:** Run `node bin/slicekit.js init --shape backend --name slicekit --test "npm test"` on the kit's own root (the spec and BUILD already exist and are skipped). Run `check`; fix every finding in the docs rather than raising a baseline; commit baselines as `{}`.
+- [ ] **Step 2:** Run `node bin/slicekit.js init --shape backend --name slicekit` on the kit's own root (the spec and BUILD already exist and are skipped). Run `check`; fix every finding in the docs rather than raising a baseline; commit baselines as `{}`.
 - [ ] **Step 3–4:** PASS → commit `chore: the kit checks itself`.

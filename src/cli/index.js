@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { baselineCommand } from './baseline.js';
+import { checkCommand } from './check.js';
 import { initCommand } from './init.js';
 import { hookCommand } from './hook.js';
 import { stateCommand } from './state.js';
@@ -7,6 +9,8 @@ import { updateCommand } from './update.js';
 
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string } }
 export const COMMANDS = {
+  baseline: baselineCommand,
+  check: checkCommand,
   init: initCommand,
   hook: hookCommand,
   state: stateCommand,
