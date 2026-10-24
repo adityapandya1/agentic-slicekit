@@ -107,26 +107,26 @@ test('diffLines shows added and removed lines with +/-', () => {
 
 test('compareManaged per style', () => {
   const html = (body, before = '', after = '') => `${before}${wrapManaged(body, { version: '1', style: 'html' })}${after}`;
-  assert.equal(compareManaged({ dest: 'a.md', style: 'html', current: null, reference: html('x') }), 'missing');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'html', current: 'mine\n', reference: html('x') }), 'unmanaged');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'html', current: html('x', 'top\n', 'end\n'), reference: html('x') }), 'same');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'html', current: html('y'), reference: html('x') }), 'drifted');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'html', current: html('x') }), 'same');
+  assert.equal(compareManaged({style: 'html', current: null, reference: html('x') }), 'missing');
+  assert.equal(compareManaged({style: 'html', current: 'mine\n', reference: html('x') }), 'unmanaged');
+  assert.equal(compareManaged({style: 'html', current: html('x', 'top\n', 'end\n'), reference: html('x') }), 'same');
+  assert.equal(compareManaged({style: 'html', current: html('y'), reference: html('x') }), 'drifted');
+  assert.equal(compareManaged({style: 'html', current: html('x') }), 'same');
 
   const hash = (body, before = '') => `${before}${wrapManaged(body, { version: '1', style: 'hash' })}`;
-  assert.equal(compareManaged({ dest: 'f.yml', style: 'hash', current: hash('x', '# top\n'), reference: hash('x') }), 'same');
-  assert.equal(compareManaged({ dest: 'f.yml', style: 'hash', current: hash('z'), reference: hash('x') }), 'drifted');
-  assert.equal(compareManaged({ dest: 'f.yml', style: 'hash', current: 'plain\n', reference: hash('x') }), 'unmanaged');
+  assert.equal(compareManaged({style: 'hash', current: hash('x', '# top\n'), reference: hash('x') }), 'same');
+  assert.equal(compareManaged({style: 'hash', current: hash('z'), reference: hash('x') }), 'drifted');
+  assert.equal(compareManaged({style: 'hash', current: 'plain\n', reference: hash('x') }), 'unmanaged');
 
   const fm = (desc) => wrapManaged(`---\ndescription: ${desc}\n---\nbody\n`, { version: '1', style: 'frontmatter' });
-  assert.equal(compareManaged({ dest: 'a.md', style: 'frontmatter', current: fm('a'), reference: fm('a') }), 'same');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'frontmatter', current: `${fm('a')}tail\n`, reference: fm('a') }), 'drifted');
-  assert.equal(compareManaged({ dest: 'a.md', style: 'frontmatter', current: '---\nx: 1\n---\n', reference: fm('a') }), 'unmanaged');
+  assert.equal(compareManaged({style: 'frontmatter', current: fm('a'), reference: fm('a') }), 'same');
+  assert.equal(compareManaged({style: 'frontmatter', current: `${fm('a')}tail\n`, reference: fm('a') }), 'drifted');
+  assert.equal(compareManaged({style: 'frontmatter', current: '---\nx: 1\n---\n', reference: fm('a') }), 'unmanaged');
 
   const js = (v) => wrapManaged(JSON.stringify({ k: v }), { version: '1', style: 'json' });
-  assert.equal(compareManaged({ dest: 'a.json', style: 'json', current: js(1), reference: js(1) }), 'same');
-  assert.equal(compareManaged({ dest: 'a.json', style: 'json', current: js(2), reference: js(1) }), 'drifted');
-  assert.equal(compareManaged({ dest: 'a.json', style: 'json', current: '{"k":1}', reference: js(1) }), 'unmanaged');
+  assert.equal(compareManaged({style: 'json', current: js(1), reference: js(1) }), 'same');
+  assert.equal(compareManaged({style: 'json', current: js(2), reference: js(1) }), 'drifted');
+  assert.equal(compareManaged({style: 'json', current: '{"k":1}', reference: js(1) }), 'unmanaged');
 });
 
 function initRepo() {
@@ -396,4 +396,89 @@ test('installedVersion prefers the recorded version but only when its reference 
   assert.equal(installedVersion(dir, { _slicekit: { version: '1.1.0' } }), '1.1.0');
   assert.equal(installedVersion(dir, { _slicekit: { version: '1.0.0' } }), '1.2.0');
   assert.equal(installedVersion(dir, undefined), '1.2.0');
+});
+
+for (const cli of ['node C:\tools\slicekit\bin\slicekit.js', 'node "C:/Program Files/slicekit/bin/slicekit.js"']) {
+  test(`a cli with a backslash or a quote renders valid settings: ${cli}`, () => {
+    const root = tmp();
+    const c = { ...cfg, cli };
+    renderAll(root, c, { version: '1.0.0' });
+    const s = JSON.parse(fs.readFileSync(path.join(root, SETTINGS), 'utf8'));
+    const commands = Object.values(s.hooks).flatMap((entries) => entries.flatMap((e) => e.hooks.map((h) => h.command)));
+    assert.ok(commands.length >= 8);
+    for (const command of commands) assert.ok(command.startsWith(`${cli} hook `), command);
+    assert.equal(s._slicekit.cli, cli);
+    assert.ok(planUpdate(root, c, { version: '1.0.0' }).every((p) => p.status === 'same'));
+  });
+}
+
+test('with no reference copy the drift warning says it cannot tell a kit change from an edit', () => {
+  const root = tmp();
+  renderAll(root, cfg, { version: '1.0.0' });
+  fs.rmSync(path.join(root, '.slicekit/rendered'), { recursive: true, force: true });
+  fs.appendFileSync(path.join(root, DEV), 'team edit\n');
+  const hit = renderAll(root, cfg, { version: '1.0.0' }).find((r) => r.dest === DEV);
+  assert.equal(hit.action, 'skipped');
+  assert.equal(hit.warning, `no reference copy for ${DEV}; cannot tell a kit change from an edit; slicekit update --force overwrites`);
+});
+
+test('update --check hints when .slicekit/rendered/ is missing', () => {
+  const root = initRepo();
+  assert.doesNotMatch(runCli(['update', '--check'], { cwd: root }).stdout, /rendered\/ is missing/);
+  fs.rmSync(path.join(root, '.slicekit/rendered'), { recursive: true, force: true });
+  fs.appendFileSync(path.join(root, DEV), 'team edit\n');
+  const r = runCli(['update', '--check'], { cwd: root });
+  assert.equal(r.code, 1);
+  const hints = r.stdout.split('\n').filter((l) => l === '.slicekit/rendered/ is missing; commit it so drift can be told from kit changes');
+  assert.equal(hints.length, 1);
+  const kept = runCli(['update', '--yes'], { cwd: root });
+  assert.match(kept.stderr, /no reference copy for \.claude\/agents\/developer\.md; cannot tell a kit change from an edit; slicekit update --force overwrites/);
+});
+
+test('applyUpdate writes the new reference directory before pruning the old ones', () => {
+  const root = tmp();
+  renderAll(root, cfg, { version: '1.0.0' });
+  const plan = planUpdate(root, cfg, { version: '1.1.0' });
+  assert.throws(
+    () => applyUpdate(root, cfg, plan, { version: '1.1.0', prune: () => { throw new Error('interrupted'); } }),
+    /interrupted/,
+  );
+  for (const item of plan) {
+    assert.ok(fs.existsSync(path.join(root, '.slicekit/rendered/1.1.0', item.dest)), item.dest);
+  }
+  assert.ok(fs.existsSync(path.join(root, '.slicekit/rendered/1.0.0')));
+});
+
+test('a template root without hooks.json renders files only', () => {
+  const root = tmp();
+  const templates = tmp('slicekit-tpl-');
+  fs.writeFileSync(path.join(templates, 'note.md'), 'body\n');
+  const kit = { templates, entries: [{ src: 'note.md', dest: 'docs/note.md', shapes: ['backend'] }] };
+  const plan = planUpdate(root, cfg, { version: '1.0.0', ...kit });
+  assert.deepEqual(plan.map((p) => p.dest), ['docs/note.md']);
+  const results = renderAll(root, cfg, { version: '1.0.0', ...kit });
+  assert.deepEqual(results.map((r) => r.dest), ['docs/note.md']);
+  assert.equal(fs.existsSync(path.join(root, SETTINGS)), false);
+  assert.equal(fs.existsSync(path.join(root, '.claude')), false);
+});
+
+test('SessionStart has no matcher, so every source fires', () => {
+  const root = tmp();
+  renderAll(root, cfg, { version: '1.0.0' });
+  const s = JSON.parse(fs.readFileSync(path.join(root, SETTINGS), 'utf8'));
+  assert.equal(s.hooks.SessionStart.length, 1);
+  assert.equal(Object.hasOwn(s.hooks.SessionStart[0], 'matcher'), false);
+});
+
+test('installedVersion picks the newest by semver, a prerelease before its release', () => {
+  const pick = (dirs) => {
+    const dir = tmp();
+    for (const d of dirs) fs.mkdirSync(path.join(dir, d));
+    return installedVersion(dir, undefined);
+  };
+  assert.equal(pick(['1.9.0', '1.10.0', '1.10.0-rc.1']), '1.10.0');
+  assert.equal(pick(['1.10.0-rc.1', '1.9.9']), '1.10.0-rc.1');
+  assert.equal(pick(['2.0.0-rc.2', '2.0.0-rc.10']), '2.0.0-rc.10');
+  assert.equal(pick(['2.0.0-alpha', '2.0.0-1']), '2.0.0-alpha');
+  assert.equal(pick(['2.0.0-rc', '2.0.0-rc.1']), '2.0.0-rc.1');
 });

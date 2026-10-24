@@ -1,6 +1,8 @@
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
-import { kitVersion } from '../render/index.js';
+import { exists } from '../fs.js';
+import { kitVersion, RENDERED } from '../render/index.js';
 import { applyUpdate, planUpdate } from '../render/update.js';
 
 const USAGE = 'update [--yes] [--check] [--force]';
@@ -37,7 +39,10 @@ async function run(args, io) {
     io.stdout(`${status} ${dest}\n`);
     if (diff !== '') io.stdout(diff);
   }
-  if (values.check) return pending.some((p) => p.status === 'drifted' || p.status === 'missing') ? 1 : 0;
+  if (values.check) {
+    if (!exists(path.join(root, RENDERED))) io.stdout(`${RENDERED}/ is missing; commit it so drift can be told from kit changes\n`);
+    return pending.some((p) => p.status === 'drifted' || p.status === 'missing') ? 1 : 0;
+  }
   if (!values.yes) {
     const writes = pending.some((p) => p.status === 'changed' || p.status === 'missing' || (p.status === 'drifted' && force));
     if (writes) io.stdout('run again with --yes to apply\n');
