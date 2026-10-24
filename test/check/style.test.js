@@ -181,3 +181,14 @@ test('a team phrase added in config is enforced', () => {
     'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
 });
+
+test('intake files are frozen and exempt', () => {
+  const r = run({
+    'docs/intake/req.md': '# Req\n\nWe delve into it.\n',
+    'docs/notes.md': '# Notes\n\nWe delve into it.\n',
+  });
+  assert.deepEqual(r.lines, [
+    'style docs/notes.md:3 banned phrase "delve"',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});

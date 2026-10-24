@@ -116,3 +116,10 @@ export function buildContext(root, cfg, { ci = false, env = process.env } = {}) 
     env,
   };
 }
+
+// True for a doc under the intake directory. Intake files are frozen source material, pinned by
+// their sidecar's sha256 (REQ-1.2): no rule reports on them, because none may be rewritten to pass.
+export function isIntake(ctx, doc) {
+  const rel = path.relative(path.resolve(ctx.paths.intake), path.resolve(doc.path));
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}

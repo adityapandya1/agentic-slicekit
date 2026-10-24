@@ -18,7 +18,7 @@ Enforced by: `slicekit hook session-start`.
 ## REQ-3.2 PreToolUse on Bash — fail closed
 
 SHALL deny: a commit on a protected branch; a push to a protected branch; any force push; a commit
-that changes a file under `docs/intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
+that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
 is active (REQ-2.1); and any command matching the destructive list in config (default: recursive
 delete outside the worktree, database drop and truncate statements, history rewrites on shared
 branches). Each denial SHALL state the rule and the file or command.
@@ -33,7 +33,7 @@ Enforced by: `slicekit hook pre-bash`.
 SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
-an edit to `.slicekit/journal.log`, `.slicekit/baselines/` or any `.slicekit/state/` file by anything other than the CLI. <!-- slicekit:example -->
+an edit to .slicekit/journal.log (written from S-07), `.slicekit/baselines/` or any `.slicekit/state/` file by anything other than the CLI.
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
@@ -71,8 +71,8 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 
 | Rule | What fails |
 |---|---|
-| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline; in a slice file whose slice is not yet merged or released, a code-span path on a `**Files:**` line or under `## Expected changes` is a promise and is checked only once the slice merges, while every other path, link and ID in it is checked now |
-| style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25) |
+| references | a reference in any doc to a file, heading or ID that does not exist, above the baseline; in a slice file whose slice is not yet merged or released, a code-span path on a `**Files:**` line or under `## Expected changes` is a promise and is checked only once the slice merges, while every other path, link and ID in it is checked now; files under `<docsRoot>/intake/` are exempt because they are frozen (REQ-1.2), and in `BUILD.md` the generated region's paths are not checked because it is a view of the slice files, which are checked themselves (IDs in it are still checked) |
+| style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25); files under `<docsRoot>/intake/` are exempt because they are frozen (REQ-1.2) |
 | queue | `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
 | coverage | at plan stage or later, a REQ named by no slice |
@@ -147,7 +147,7 @@ Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
 
-Every file the kit renders into `.claude/`, `.githooks/` and `.github/workflows/` SHALL carry the <!-- slicekit:example -->
+Every file the kit renders into `.claude/`, `.githooks/` and .github/workflows/ (from S-08) SHALL carry the
 kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
 that front matter and is managed whole, because Claude Code reads front matter only when it starts on
 line 1, so no marker may come before it. Any other file SHALL sit between

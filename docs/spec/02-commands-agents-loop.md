@@ -24,7 +24,7 @@ Every answer SHALL be written as a D-NN row before the next question is asked. T
 write any spec text. It ends by printing the open questions it could not get answered.
 
 Scenario: GIVEN a Word document WHEN intake runs THEN `intake/<date>-<slug>.docx` and its sidecar
-exist, `decisions.md` has one row per answered question, and no file under `docs/spec/` was created.
+exist, `decisions.md` has one row per answered question, and no file under `<docsRoot>/spec/` was created.
 
 Enforced by: the command brief; `slicekit check` (no spec files at stage intake).
 
@@ -44,7 +44,7 @@ Enforced by: `slicekit check` (citation rule); the reviewer's brief for the spec
 ## REQ-2.4 `/slicekit gaps`
 
 After the spec pull request is merged, SHALL spawn the **auditor** with the spec as claims and the
-intake and decisions as evidence, and write `docs/spec/gaps.md` with one `G-<n>` row per gap, classified
+intake and decisions as evidence, and write `<docsRoot>/spec/gaps.md` with one `G-<n>` row per gap, classified
 `missing` (intake says, spec does not), `unsupported` (spec says, nothing supports), `contradiction`,
 `unknown` (a "Not yet known" section or an Open decision), or `unrequested`. For each gap it SHALL
 ask the human and close the row with a new D-NN or a REQ change, then open a pull request.
@@ -56,7 +56,7 @@ Enforced by: the auditor's brief; `slicekit check` (every G row closed before pl
 
 ## REQ-2.5 `/slicekit plan`
 
-SHALL refuse while any clarification marker or open gap exists. It SHALL write `docs/spec/stack.md` if
+SHALL refuse while any clarification marker or open gap exists. It SHALL write `<docsRoot>/spec/stack.md` if
 absent (taking the stack from intake when given, otherwise asking), then phases from the milestones
 in intake or decisions, then slice files (REQ-1.5) such that every REQ is named by at least one slice,
 no two slices in the same parallel group expect to change the same file or package, and each slice's

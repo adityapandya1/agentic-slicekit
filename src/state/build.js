@@ -8,6 +8,7 @@ import { findSliceFiles, parsePhaseFile, parseSliceFile, phaseOfDir } from '../s
 import { readSlice } from './index.js';
 
 export const MARKER = '<!-- slicekit:generated:end -->';
+const EXAMPLE_MARK = /\s*<!-- slicekit:example -->\s*$/;
 
 const TEMPLATE = fileURLToPath(new URL('../../templates/docs/BUILD.md', import.meta.url));
 const TITLE = '# BUILD — the queue';
@@ -140,7 +141,8 @@ export function renderBuild(root, cfg, existingText = '', { onWarning = () => {}
     out.push('| Slice | Name | Done when | Group | Status |', '|---|---|---|---|---|');
     for (const { slice, state } of slicesByPhase.get(phase.id) ?? []) {
       const short = slice.id.split('/')[1];
-      const done = slice.doneWhen.map((d) => d.replace(/(?<!\.)\.$/, '')).join('; ');
+      // A slice file's example marker stays in the slice file, which is checked bullet by bullet.
+      const done = slice.doneWhen.map((d) => d.replace(EXAMPLE_MARK, '').replace(/(?<!\.)\.$/, '')).join('; ');
       out.push(`| ${short} | ${cell(slice.name)} | ${cell(done)} | ${cell(slice.group)} | ${statusCell(state)} |`);
     }
     if (phase.order) out.push('', phase.order);

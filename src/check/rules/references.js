@@ -4,6 +4,8 @@ import { parseSliceAddr, stateFileName } from '../../ids.js';
 import { frontMatter, headings, isPathLike, refs, toSlashes } from '../../markdown.js';
 import { findSliceFiles } from '../../slicefile.js';
 import { readSlice } from '../../state/index.js';
+import { MARKER as BUILD_MARKER } from '../../state/build.js';
+import { isIntake } from '../context.js';
 
 export const id = 'references';
 export const blocking = true;
@@ -160,7 +162,17 @@ export function run(ctx) {
     return slugCache.get(abs);
   };
 
+  const buildFile = path.resolve(ctx.paths.build);
   for (const doc of ctx.docs) {
+    if (isIntake(ctx, doc)) continue;
+    // BUILD.md's generated region is a view of the slice files, which are checked themselves: its
+    // paths are skipped there (a marker in a slice file must not be needed twice), its ids are not.
+    // Without the marker the whole file is generated, as `generatedRegion` reads it.
+    let viewEnd = 0;
+    if (path.resolve(doc.path) === buildFile) {
+      const i = doc.lines.findIndex((l) => l.trim() === BUILD_MARKER);
+      viewEnd = i === -1 ? doc.lines.length : i + 1;
+    }
     const seen = new Set();
     const add = (line, message) => {
       const key = `${line} ${message}`;
@@ -172,6 +184,7 @@ export function run(ctx) {
     for (const ref of refs(doc.text)) {
       if ((doc.lines[ref.line - 1] ?? '').includes(EXAMPLE)) continue;
       if (ref.kind === 'path') {
+        if (ref.line <= viewEnd) continue;
         if (ref.via === 'code' && promises?.has(ref.line)) continue;
         if (isPathLike(ref.value) && !resolve(doc, ref.value)) add(ref.line, `missing file ${ref.value}`);
       } else if (ref.kind === 'anchor') {

@@ -1,5 +1,6 @@
 import { seedBanned } from '../../config.js';
 import { blankCodeSpans, prose } from '../../markdown.js';
+import { isIntake } from '../context.js';
 
 export const id = 'style';
 export const blocking = true;
@@ -142,7 +143,9 @@ export function findStyle(docs, banned, seed) {
 }
 
 export function run(ctx) {
-  return findStyle(ctx.docs, ctx.cfg.style?.banned ?? [], seedBanned());
+  // Intake files are frozen (REQ-1.2): a quoted phrase there is the author's words, never rewritten.
+  const docs = ctx.docs.filter((d) => !isIntake(ctx, d));
+  return findStyle(docs, ctx.cfg.style?.banned ?? [], seedBanned());
 }
 
 export default { id, blocking, ratchet, run };

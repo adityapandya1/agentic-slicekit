@@ -9,6 +9,7 @@ import references from '../../src/check/rules/references.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 import { loadConfig } from '../../src/config.js';
 import { readSlice, writeSlice } from '../../src/state/index.js';
+import { renderBuild, MARKER as BUILD_MARKER } from '../../src/state/build.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'check', 'references');
 
@@ -137,5 +138,53 @@ test('a promise in a merged slice file is checked', () => {
     `${f}:29 missing file src/also-promised.js`,
     `${f}:29 missing file docs/spec/promised.md`,
     'check: 4 findings, 4 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test('intake files are frozen and exempt', () => {
+  const r = run('base', (root) => {
+    fs.mkdirSync(path.join(root, 'docs', 'intake'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'intake', 'req.md'), '# Req\n\nSee `src/gone.js`, [x](gone.md) and REQ-9.9.\n');
+    fs.writeFileSync(path.join(root, 'docs', 'notes.md'), '# Notes\n\nSee `src/gone.js`.\n');
+  });
+  assert.deepEqual(r.lines, [
+    'references docs/notes.md:3 missing file src/gone.js',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test("BUILD.md's generated region: paths are not checked, ids are", () => {
+  const r = run('base', (root) => {
+    fs.writeFileSync(
+      path.join(root, 'BUILD.md'),
+      ['# BUILD — the queue', '', '| S-01 | x | `src/gone.js` and REQ-9.9 | A | Todo |', '', BUILD_MARKER, '', 'Tail `src/tail-gone.js`.', ''].join('\n'),
+    );
+  });
+  assert.deepEqual(r.lines, [
+    'references BUILD.md:3 unknown id REQ-9.9',
+    'references BUILD.md:7 missing file src/tail-gone.js',
+    'check: 2 findings, 2 over baseline, 0 blocking, 1 rules',
+  ]);
+});
+
+test("a dead path in a slice file's done-when is reported on the slice file, not on BUILD.md", () => {
+  const r = run('base', (root) => {
+    const dir = path.join(root, 'docs', 'phases', 'P1-x');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'S-01-a.md'),
+      [
+        '---', 'slice: P1/S-01', 'name: A', 'repo: .', 'group: A', 'runbook: no', 'requirements: [REQ-1.1]', 'decisions: []', '---',
+        '', '## Done when', '', '1. `src/gone.js` exists.', '', '## Evaluation set', '', '| Test | Kind | Covers |', '|---|---|---|',
+        '| `a.test.js » works` | happy | REQ-1.1 |', '',
+      ].join('\n'),
+    );
+    const cfg = loadConfig(root);
+    fs.writeFileSync(path.join(root, 'BUILD.md'), renderBuild(root, cfg, fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8')));
+    assert.ok(fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8').includes('`src/gone.js` exists'));
+  });
+  assert.deepEqual(r.lines, [
+    'references docs/phases/P1-x/S-01-a.md:13 missing file src/gone.js',
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
 });
