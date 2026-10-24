@@ -32,8 +32,8 @@ export async function main(argv, io) {
   }
   const command = Object.hasOwn(COMMANDS, first ?? '') ? COMMANDS[first] : undefined;
   if (!command) {
-    if (first !== undefined) io.stderr(`slicekit: unknown command '${first}'\n`);
     io.stderr(usageText());
+    if (first !== undefined) io.stderr(`slicekit: unknown command '${first}'\n`);
     return 2;
   }
   return command.run(rest, io);

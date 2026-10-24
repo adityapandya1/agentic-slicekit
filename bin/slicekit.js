@@ -16,4 +16,3 @@ const io = {
 };
 
 process.exitCode = await main(process.argv.slice(2), io);
-process.exit(process.exitCode);
