@@ -34,7 +34,7 @@ decisions: [D-11, D-14]
 
 ## Expected changes
 
-`src/check/rules/{citations,coverage,queue,commands,layout,managed}.js`, `test/check/`, fixtures.
+`src/check/rules/{citations,coverage,queue,commands,layout,managed}.js`, `src/which.js`, `src/hook-cli.js`, `src/render/update.js`, `src/slicefile.js`, `test/check/`, fixtures.
 
 ## Tasks
 

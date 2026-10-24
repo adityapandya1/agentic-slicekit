@@ -28,6 +28,7 @@ src/
   paths.js               every path the kit reads or writes, from config
   slicefile.js           slice and phase file parsing
   stage.js               the program stage, read from files
+  which.js               finds an executable on PATH, as which and where do
   hooks/ (S-06)          the handlers each hook line calls
   journal.js (S-07)      append and verify
   graph/ (S-17)          build, cache, queries
@@ -120,7 +121,7 @@ to skip the prompt in CI.
 Scenario: GIVEN a config with an older `configVersion` WHEN the CLI first runs THEN it migrates the
 config forward and prints each change.
 
-Cites: `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-33, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit update`; a test per config migration.
 

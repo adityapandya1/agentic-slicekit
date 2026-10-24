@@ -11,6 +11,7 @@ decisions: [D-28]
 ## Done when
 
 1. `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; repository public (D-28).
+2. An older `configVersion` is migrated forward on first run, printing what changed.
 
 ## Evaluation set
 
@@ -20,7 +21,8 @@ decisions: [D-28]
 | `examples.test.js » every example checks green` | happy | REQ-5.5 |
 | `examples.test.js » a rendered adapter file that differs from its template fails, naming the file` | negative | REQ-5.5 |
 | `user-guide.test.js » a command or check rule with no guide page fails, naming it` | negative | REQ-5.8 |
+| `config.test.js » an older configVersion is migrated and each change printed` | happy | REQ-5.6 |
 
 ## Expected changes
 
-`examples/fullstack/`, `examples/data/`, `README.md`, `docs/guide/`, `docs/adapters.md`, tests.
+`examples/fullstack/`, `examples/data/`, `README.md`, `docs/guide/`, `docs/adapters.md`, `src/config.js`, tests.

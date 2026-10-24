@@ -115,7 +115,7 @@ Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends TH
 fails with the file, the line and the missing target, and the agent must fix it before the turn is
 accepted.
 
-Cites: D-21, D-25, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-21, D-25, D-31, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
@@ -129,7 +129,7 @@ The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is app
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n>".
 
-Cites: `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-32, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 

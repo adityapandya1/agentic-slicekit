@@ -52,7 +52,7 @@ Group A (S-17), then group B (S-18, S-19, S-20) in parallel.
 | S-21 | Runbook rule and `/slicekit release` | REQ-3.7 runbook rule in `check`; REQ-2.9 release records; slices move to `released` | A | Todo |
 | S-22 | Observability steps in CI | REQ-3.11: steps from `observability.md` and config become workflow jobs; the example carries one | A | Todo |
 | S-23 | `/slicekit ops` and `/slicekit audit` | REQ-2.13 and REQ-2.14 on the example with a seeded regression | B | Todo |
-| S-24 | Examples, walkthrough, publish 0.1 | `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; repository public (D-28) | C | Todo |
+| S-24 | Examples, walkthrough, publish 0.1 | `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; repository public (D-28); An older `configVersion` is migrated forward on first run, printing what changed | C | Todo |
 
 Group A (S-21, S-22) in parallel, then group B (S-23), then group C (S-24).
 
