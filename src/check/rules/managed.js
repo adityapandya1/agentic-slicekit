@@ -3,7 +3,7 @@
 // `unmanaged` are findings; `same` and `changed` are not: `changed` means the kit ships a newer
 // template, which is update's business, not drift. A plan that cannot be made is one finding.
 import { kitVersion } from '../../render/index.js';
-import { planUpdate } from '../../render/update.js';
+import { planUpdate, reportKind } from '../../render/update.js';
 
 export const id = 'managed';
 export const blocking = true;
@@ -18,8 +18,6 @@ const MESSAGE = {
   noReference: (dest) => `${dest}: no reference copy; cannot tell a kit change from an edit; slicekit update --force overwrites`,
 };
 
-const kindOf = (item) => (item.status === 'drifted' && item.noReference ? 'noReference' : item.status);
-
 export function run(ctx) {
   let items;
   try {
@@ -27,7 +25,7 @@ export function run(ctx) {
   } catch (e) {
     return [{ file: '-', line: 0, message: `managed: cannot plan an update: ${e?.message ?? e}` }];
   }
-  return items.filter((i) => MESSAGE[i.status]).map((i) => ({ file: i.dest, line: 1, message: MESSAGE[kindOf(i)](i.dest) }));
+  return items.filter((i) => MESSAGE[i.status]).map((i) => ({ file: i.dest, line: 1, message: MESSAGE[reportKind(i)](i.dest) }));
 }
 
 export default { id, blocking, ratchet, run };

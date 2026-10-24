@@ -21,4 +21,4 @@ decisions: []
 
 ## Expected changes
 
-`src/workflow.js`, `templates/workflow/slicekit.yml`, tests.
+`src/workflow.js`, `templates/workflow/slicekit.yml`, `docs/runbook.md`, tests.

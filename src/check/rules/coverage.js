@@ -82,9 +82,13 @@ function expand(p) {
   return m ? m[2].split(',').map((alt) => `${m[1]}${alt.trim()}${m[3]}`) : [p];
 }
 
-// Three paths are never an overlap: `.` (the repository itself), anything under `test/` (a slice
-// may always add tests) and `src/cli/index.js` (the command registration table every slice touches).
-function normalise(p) {
+// Four shared roots are never an overlap: `.` (the repository itself), anything under `test/` (a
+// slice may always add tests), `src/cli/index.js` (the command registration table every slice
+// touches) and the runbook (every operational slice appends a section to it). The runbook is
+// passed in as resolved from the config, because the docs root is the team's to choose.
+const ALWAYS_SHARED = (n, runbook) => n === '' || n === '.' || n === 'test' || n.startsWith('test/') || n === 'src/cli/index.js' || n === runbook;
+
+function normalise(p, runbook) {
   return expand(p)
     .map((one) =>
       one
@@ -93,7 +97,7 @@ function normalise(p) {
         .replace(/^(\.\/)+/, '')
         .replace(/\/+$/, ''),
     )
-    .filter((n) => !(n === '' || n === '.' || n === 'test' || n.startsWith('test/') || n === 'src/cli/index.js'));
+    .filter((n) => !ALWAYS_SHARED(n, runbook));
 }
 
 // The path both slices would change, when one prefix contains the other by whole segments.
@@ -104,21 +108,21 @@ function overlap(a, b) {
 }
 
 // Each slice's normalised prefixes, each with the file line of the first entry that gave it.
-function prefixes(slice) {
+function prefixes(slice, runbook) {
   const out = new Map();
   slice.expectedChanges.forEach((c, k) => {
-    for (const n of normalise(c)) if (!out.has(n)) out.set(n, slice.expectedChangeLines[k] ?? 1);
+    for (const n of normalise(c, runbook)) if (!out.has(n)) out.set(n, slice.expectedChangeLines[k] ?? 1);
   });
   return out;
 }
 
-function overlaps(parsed, out) {
+function overlaps(parsed, out, runbook) {
   const groups = new Map();
   for (const p of parsed) {
     if (!p.slice) continue;
     const key = `${p.phaseId}\u0000${p.slice.group}`;
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ ...p, prefixes: prefixes(p.slice) });
+    groups.get(key).push({ ...p, prefixes: prefixes(p.slice, runbook) });
   }
   for (const members of groups.values()) {
     for (let j = 1; j < members.length; j++) {
@@ -165,7 +169,7 @@ export function run(ctx) {
       out.push({ file: p.rel, line: p.slice.expectedChangesLine ?? 1, message: `slice ${p.slice.id} lists no expected changes` });
     }
   }
-  overlaps(parsed, out);
+  overlaps(parsed, out, toPosix(path.relative(ctx.root, ctx.paths.runbook)));
   return out;
 }
 

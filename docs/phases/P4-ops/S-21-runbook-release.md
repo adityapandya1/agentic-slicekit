@@ -22,4 +22,4 @@ decisions: []
 
 ## Expected changes
 
-`src/check/rules/runbook.js`, `templates/claude-code/commands/slicekit-release.md`, tests.
+`src/check/rules/runbook.js`, `templates/claude-code/commands/slicekit-release.md`, `docs/runbook.md`, tests.

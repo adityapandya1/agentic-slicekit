@@ -53,8 +53,9 @@ Enforced by: advisory
 const BUILDING = JSON.stringify({ slice: 'P1/S-01', state: 'building' });
 
 // Copies the fixture points into a temp repo, writes `files` over them, and commits unless told not
-// to; then runs the coverage rule on it and returns its findings.
-function findings(points, { files = {}, commit = true, after = {} } = {}) {
+// to; then runs the coverage rule on it and returns its findings. With `docsRoot`, the fixtures'
+// `docs/` is moved there and the config says so; `files` keys are then relative to the repo root.
+function findings(points, { files = {}, commit = true, after = {}, docsRoot = 'docs' } = {}) {
   const repo = makeRepo();
   const write = (rel, text) => {
     const f = path.join(repo.root, ...rel.split('/'));
@@ -63,13 +64,14 @@ function findings(points, { files = {}, commit = true, after = {} } = {}) {
   };
   try {
     for (const p of points) fs.cpSync(path.join(FIXTURES, p), repo.root, { recursive: true });
+    if (docsRoot !== 'docs') fs.renameSync(path.join(repo.root, 'docs'), path.join(repo.root, ...docsRoot.split('/')));
     for (const [rel, text] of Object.entries(files)) write(rel, text);
     if (commit) {
       git(repo.root, ['add', '-A']);
       git(repo.root, ['commit', '-m', 'fixture']);
     }
     for (const [rel, text] of Object.entries(after)) write(rel, text);
-    return coverage.run(buildContext(repo.root, cfg));
+    return coverage.run(buildContext(repo.root, { ...cfg, docsRoot }));
   } finally {
     repo.cleanup();
   }
@@ -183,6 +185,29 @@ test('test/ and src/cli/index.js never overlap', () => {
   });
   // The rule is speaking (src/x.js is reported), and nothing else the two share is.
   assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 27, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
+});
+
+test('the runbook never overlaps, wherever the docs root is', () => {
+  const out = findings(PLAN, {
+    files: {
+      'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { changes: ['docs/runbook.md', 'src/x.js'] }),
+      'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['./docs/runbook.md', 'src/x.js'] }),
+    },
+  });
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
+
+  // Under another docs root the runbook is `handbook/runbook.md`; `docs/runbook.md` is then an
+  // ordinary path and still overlaps.
+  const moved = findings(PLAN, {
+    docsRoot: 'handbook',
+    files: {
+      'handbook/phases/P1-x/S-01-a.md': slice('P1/S-01', { changes: ['handbook/runbook.md', 'docs/runbook.md'] }),
+      'handbook/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['handbook/runbook.md', 'docs/runbook.md'] }),
+    },
+  });
+  assert.deepEqual(moved, [
+    { file: 'handbook/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect docs/runbook.md' },
+  ]);
 });
 
 test('different groups may overlap', () => {
