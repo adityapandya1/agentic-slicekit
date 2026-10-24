@@ -11,7 +11,7 @@ decisions: [D-05, D-14]
 ## Done when
 
 1. `init --shape backend` renders `.claude/commands/slicekit-*.md`, `.claude/agents/{developer,reviewer,fixer,auditor,ops}.md`, `.claude/skills/slicekit-*/SKILL.md` and merges the hook entries into `.claude/settings.json`; `designer.md` is absent. `--shape fullstack` adds `designer.md`.
-2. Every rendered file sits inside managed markers carrying the kit version; `slicekit update` changes only what is between the markers, prints a unified diff per changed file, and asks before writing unless `--yes`.
+2. Every rendered file carries the kit version: a file with front matter has `slicekit-managed: v<version>` in it and is managed whole; a file without front matter sits inside comment markers and `slicekit update` changes only what is between them. `slicekit update` prints a unified diff per changed file and asks before writing unless `--yes`.
 3. A rendered file edited inside its markers is reported by `slicekit update --check` with exit 1 and the file name (this becomes the `managed` rule in S-05).
 4. Golden files per shape match byte for byte.
 
@@ -39,7 +39,7 @@ decisions: [D-05, D-14]
 **Files:** Create `src/render/managed.js`, `test/render/managed.test.js`.
 
 **Interfaces:**
-- `markerStyle(path) → 'html' | 'hash'` (`.md`, `.json`→html-comment wrapper is invalid JSON, so JSON files use a top-level `"_slicekit": {"managed": true, "version": "…"}` key instead; `.yml`, `.sh`, no-extension → hash).
+- `markerStyle(path, text) → 'frontmatter' | 'html' | 'hash' | 'json'`: a `.md` file whose text starts with front matter → `frontmatter` (`slicekit-managed: v<version>` added to the front matter, file managed whole, because Claude Code reads front matter only when `---` is on line 1); other `.md` and `.html` → html comment markers, managed block-wise; `.json` → an html-comment wrapper is invalid JSON, so JSON files use a top-level `"_slicekit": {"managed": true, "version": "…"}` key instead; `.yml`, `.sh`, no-extension → hash comment markers, managed block-wise.
 - `wrapManaged(content, {version, style}) → string`; `extractManaged(text, style) → {before, block, after, version} | null`; `replaceManaged(text, newBlock, {version, style}) → string` (keeps `before` and `after` byte for byte).
 
 - [ ] **Step 1: Failing tests** — `wraps with html markers`, `wraps with hash markers`, `extract returns null when absent`, `replace keeps text outside markers` (prefix and suffix identical, including a trailing newline), `json style uses _slicekit key`.

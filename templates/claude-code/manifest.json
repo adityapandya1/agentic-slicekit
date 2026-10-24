@@ -1,0 +1,162 @@
+[
+  {
+    "src": "commands/slicekit-intake.md",
+    "dest": ".claude/commands/slicekit-intake.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-specify.md",
+    "dest": ".claude/commands/slicekit-specify.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-gaps.md",
+    "dest": ".claude/commands/slicekit-gaps.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-plan.md",
+    "dest": ".claude/commands/slicekit-plan.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-build.md",
+    "dest": ".claude/commands/slicekit-build.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-review.md",
+    "dest": ".claude/commands/slicekit-review.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-release.md",
+    "dest": ".claude/commands/slicekit-release.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-ops.md",
+    "dest": ".claude/commands/slicekit-ops.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "commands/slicekit-audit.md",
+    "dest": ".claude/commands/slicekit-audit.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/developer.md",
+    "dest": ".claude/agents/developer.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/reviewer.md",
+    "dest": ".claude/agents/reviewer.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/fixer.md",
+    "dest": ".claude/agents/fixer.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/auditor.md",
+    "dest": ".claude/agents/auditor.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/ops.md",
+    "dest": ".claude/agents/ops.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "agents/designer.md",
+    "dest": ".claude/agents/designer.md",
+    "shapes": [
+      "fullstack"
+    ]
+  },
+  {
+    "src": "skills/slicekit-writing/SKILL.md",
+    "dest": ".claude/skills/slicekit-writing/SKILL.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "skills/slicekit-ids/SKILL.md",
+    "dest": ".claude/skills/slicekit-ids/SKILL.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
+    "src": "skills/slicekit-loop/SKILL.md",
+    "dest": ".claude/skills/slicekit-loop/SKILL.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  }
+]

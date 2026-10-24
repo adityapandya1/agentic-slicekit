@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
 import { isRepo } from './git.js';
+import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
+import { kitVersion, renderAll } from './render/index.js';
+import { readSettings } from './render/settings.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GRAPH_RULE = '.slicekit/graph/';
@@ -59,25 +62,34 @@ function ensureGitignore(file) {
   return 'updated';
 }
 
-// An existing config.json is the truth: a flag may repeat its shape or docsRoot, never change them.
-function resolveConfig(root, { name, shape, docsRoot, commands }) {
+// An existing config.json is the truth: a flag may repeat its shape, docsRoot or cli, never change them.
+// A new config takes cli from --cli, else from the probe (D-30); the probe's warning comes back with it.
+function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
   if (exists(path.join(root, CONFIG_PATH))) {
     const cfg = loadConfig(root);
-    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot]]) {
+    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot], ['cli', cli]]) {
       if (value !== undefined && value !== cfg[field]) {
         throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
       }
     }
-    return cfg;
+    return { cfg, cliWarning: null };
   }
-  const cfg = defaultConfig({ name, shape, docsRoot: docsRoot ?? 'docs', commands });
+  const probed = cli === undefined ? probeCli(root, { env }) : { cli, warning: null };
+  const cfg = defaultConfig({
+    name,
+    shape,
+    docsRoot: docsRoot ?? 'docs',
+    commands,
+    cli: probed.cli,
+  });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
-  return cfg;
+  return { cfg, cliWarning: probed.warning };
 }
 
-export function init(root, { name, shape, docsRoot, commands = {} }) {
-  const cfg = resolveConfig(root, { name, shape, docsRoot, commands });
+export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
+  const { cfg, cliWarning } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
+  readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
@@ -92,11 +104,20 @@ export function init(root, { name, shape, docsRoot, commands = {} }) {
   }
   lists[ensureGitignore(paths.gitignore)].push(rel(paths.gitignore));
 
+  const warnings = isRepo(root) ? [] : [NOT_A_REPO];
+  if (cliWarning) warnings.push(cliWarning);
+  for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
+    lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);
+    if (warning) warnings.push(warning);
+  }
+
   // core.hooksPath is S-06's to set, with its own guards; S-01 only creates .githooks/.
   return {
     created: lists.created.sort(),
     updated: lists.updated.sort(),
     skipped: lists.skipped.sort(),
-    warnings: isRepo(root) ? [] : [NOT_A_REPO],
+    warnings,
+    cli: cfg.cli,
+    cliWarned: cliWarning !== null,
   };
 }
