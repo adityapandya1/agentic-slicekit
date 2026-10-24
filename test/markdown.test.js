@@ -9,6 +9,12 @@ test('markdown » parses CRLF', () => {
   assert.deepEqual(headings(crlf), headings(DOC));
   assert.deepEqual(frontMatter(crlf), frontMatter(DOC));
   assert.deepEqual(lines('a\r\nb'), ['a', 'b']);
+  assert.ok(!frontMatter(crlf).body.includes('\r'));
+  assert.deepEqual(frontMatter('# t\r\nx\r\n'), { data: {}, body: '# t\nx\n' });
+});
+
+test('markdown » tables ignores a table inside a code fence', () => {
+  assert.deepEqual(tables('```\n| A | B |\n|---|---|\n| 1 | 2 |\n```\n'), []);
 });
 
 test('markdown » frontMatter parses lists', () => {

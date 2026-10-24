@@ -30,9 +30,10 @@ export function headings(text) {
 
 export function frontMatter(text) {
   const all = lines(text);
-  if (all[0] !== '---') return { data: {}, body: text };
+  const plain = all.join('\n');
+  if (all[0] !== '---') return { data: {}, body: plain };
   const end = all.indexOf('---', 1);
-  if (end === -1) return { data: {}, body: text };
+  if (end === -1) return { data: {}, body: plain };
   const data = {};
   let listKey = null;
   for (const line of all.slice(1, end)) {
@@ -62,12 +63,22 @@ const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
 
 export function tables(text) {
   const all = lines(text);
+  const fenced = [];
+  let inFence = false;
+  for (const l of all) {
+    if (FENCE.test(l)) {
+      inFence = !inFence;
+      fenced.push(true);
+    } else {
+      fenced.push(inFence);
+    }
+  }
   const out = [];
   for (let i = 0; i < all.length - 1; i++) {
-    if (isRow(all[i]) && isDivider(all[i + 1])) {
+    if (!fenced[i] && !fenced[i + 1] && isRow(all[i]) && isDivider(all[i + 1])) {
       const rows = [];
       let j = i + 2;
-      while (j < all.length && isRow(all[j])) rows.push(cells(all[j++]));
+      while (j < all.length && !fenced[j] && isRow(all[j])) rows.push(cells(all[j++]));
       out.push({ line: i + 1, header: cells(all[i]), rows });
       i = j - 1;
     }

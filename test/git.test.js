@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeRepo } from './helpers/tmp-repo.js';
+import { makeRepo, commit } from './helpers/tmp-repo.js';
 import { git, GitError, isRepo, hasCommits, currentBranch, headSha, changedFiles, commitsOnBranch } from '../src/git.js';
 
 test('git » hasCommits false on fresh repo', () => {
@@ -21,7 +21,7 @@ test('git » commitsOnBranch returns trailers', () => {
     const message = 'feat: add a\n\nbody line\n\nSlice: P1/S-01\nCo-Authored-By: Someone <s@x.io>';
     git(root, ['checkout', '-b', 'slice/P1-S-01-x']);
     git(root, ['add', 'a.txt']);
-    git(root, ['com' + 'mit', '-m', message]);
+    commit(root, message, { allowEmpty: false });
     assert.ok(hasCommits(root));
     assert.deepEqual(changedFiles(root, base), ['a.txt']);
     const found = commitsOnBranch(root, base);

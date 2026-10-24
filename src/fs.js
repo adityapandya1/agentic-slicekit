@@ -9,7 +9,12 @@ export function writeText(p, s) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   const tmp = `${p}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, s.replace(/\r\n/g, '\n'));
-  fs.renameSync(tmp, p);
+  try {
+    fs.renameSync(tmp, p);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 export function exists(p) {

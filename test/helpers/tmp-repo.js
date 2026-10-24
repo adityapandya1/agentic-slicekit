@@ -7,6 +7,10 @@ function run(root, args) {
   execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
+export function commit(root, message, { allowEmpty = true } = {}) {
+  run(root, ['commit', ...(allowEmpty ? ['--allow-empty'] : []), '-m', message]);
+}
+
 export function makeRepo({ commits = 0, branch = 'main', files = {} } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-repo-'));
   run(root, ['init', '-b', branch]);
@@ -18,7 +22,7 @@ export function makeRepo({ commits = 0, branch = 'main', files = {} } = {}) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, content);
   }
-  for (let i = 1; i <= commits; i++) run(root, ['com' + 'mit', '--allow-empty', '-m', `c${i}`]);
+  for (let i = 1; i <= commits; i++) commit(root, `c${i}`);
   const cleanup = () => {
     try {
       fs.rmSync(root, { recursive: true, force: true });
