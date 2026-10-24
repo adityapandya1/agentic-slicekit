@@ -29,15 +29,33 @@ function succeeds(root, args) {
 
 export const isRepo = (root) => succeeds(root, ['rev-parse', '--git-dir']);
 export const hasCommits = (root) => succeeds(root, ['rev-parse', '--verify', 'HEAD']);
-export const currentBranch = (root) => git(root, ['symbolic-ref', '--short', 'HEAD']);
+export function currentBranch(root) {
+  try {
+    return git(root, ['symbolic-ref', '--short', 'HEAD']);
+  } catch (e) {
+    if (e instanceof GitError && /not a symbolic ref/.test(e.stderr)) return null;
+    throw e;
+  }
+}
+
 export const headSha = (root) => git(root, ['rev-parse', 'HEAD']);
 
+// A ref from user input or config: never an option, never a range, never two words.
+export function assertRef(name) {
+  if (typeof name !== 'string' || name === '' || name.startsWith('-') || /\s/.test(name) || name.includes('..')) {
+    throw new GitError(['assertRef', String(name)], `refusing ref '${name}': empty, option-shaped, spaced or a range`);
+  }
+  return name;
+}
+
 export function changedFiles(root, base) {
-  const out = git(root, ['diff', '--name-only', `${base}...HEAD`]);
+  assertRef(base);
+  const out = git(root, ['diff', '--name-only', '--end-of-options', `${base}...HEAD`, '--']);
   return out === '' ? [] : out.split('\n');
 }
 
-function parseTrailers(body) {
+// git's rule: trailers are the lines of the last paragraph, and only when every line is one.
+export function parseTrailers(body) {
   const paragraphs = body.replace(/\r\n/g, '\n').trim().split(/\n\n+/);
   const last = paragraphs[paragraphs.length - 1].split('\n');
   const trailers = {};
@@ -50,8 +68,8 @@ function parseTrailers(body) {
 }
 
 export function commitsOnBranch(root, base) {
-  const range = base ? `${base}..HEAD` : 'HEAD';
-  const out = git(root, ['log', '--format=%H%x1f%s%x1f%b%x1e', range]);
+  const range = base == null ? 'HEAD' : `${assertRef(base)}..HEAD`;
+  const out = git(root, ['log', '--format=%H%x1f%s%x1f%b%x1e', '--end-of-options', range, '--']);
   return out
     .split('\x1e')
     .map((rec) => rec.replace(/^\n/, ''))
