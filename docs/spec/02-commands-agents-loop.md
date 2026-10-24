@@ -127,7 +127,7 @@ its own worktree, then run steps 6 to 9 for each in turn (D-06). State files are
 runs never write the same file. If two runs modify the same path despite the plan, the second to
 push SHALL stop and report the overlap as a plan defect.
 
-Scenario: GIVEN two slices in one parallel group that both change `src/billing/` WHEN
+Scenario: GIVEN two slices in one parallel group that both change `src/billing/` WHEN <!-- slicekit:example -->
 `/slicekit build --parallel P1` pushes the second THEN that run stops and reports the overlap as a
 plan defect.
 
