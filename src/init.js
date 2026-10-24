@@ -6,6 +6,7 @@ import { exists, listFiles, readText, writeText } from './fs.js';
 import { isRepo } from './git.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
+import { readSettings } from './render/settings.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GRAPH_RULE = '.slicekit/graph/';
@@ -79,6 +80,7 @@ function resolveConfig(root, { name, shape, docsRoot, commands }) {
 
 export function init(root, { name, shape, docsRoot, commands = {} }) {
   const cfg = resolveConfig(root, { name, shape, docsRoot, commands });
+  readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');

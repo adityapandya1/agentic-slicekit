@@ -269,3 +269,19 @@ test('cli: flags reach the config', () => {
     assert.ok(fs.existsSync(path.join(root, 'handbook/decisions.md')));
   });
 });
+
+test('cli: a corrupt .claude/settings.json exits 2 and nothing else is created', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-bad-settings-'));
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    fs.writeFileSync(path.join(root, '.claude/settings.json'), '{nope');
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root });
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /^slicekit: \.claude\/settings\.json is not valid JSON/);
+    assert.equal(fs.readFileSync(path.join(root, '.claude/settings.json'), 'utf8'), '{nope');
+    assert.deepEqual(fs.readdirSync(root).sort(), ['.claude']);
+    assert.deepEqual(fs.readdirSync(path.join(root, '.claude')), ['settings.json']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

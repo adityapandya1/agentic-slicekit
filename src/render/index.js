@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { exists, readText, writeText } from '../fs.js';
 import { entriesForShape } from './manifest.js';
 import { extractManaged, markerStyle, replaceManaged, wrapManaged } from './managed.js';
-import { mergeSettings } from './settings.js';
+import { mergeSettings, readSettings } from './settings.js';
 
 const TEMPLATES = fileURLToPath(new URL('../../templates/claude-code/', import.meta.url));
 const PACKAGE_JSON = fileURLToPath(new URL('../../package.json', import.meta.url));
@@ -19,22 +19,22 @@ function substitute(text, vars) {
   return text.replace(/\{\{(version|name|docsRoot|cli)\}\}/g, (_, key) => vars[key]);
 }
 
-function readSettings(file) {
-  if (!exists(file)) return undefined;
-  try {
-    const obj = JSON.parse(readText(file));
-    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('not an object');
-    return obj;
-  } catch {
-    throw new Error('.claude/settings.json is not valid JSON; fix it or remove it');
-  }
+// The version slicekit last wrote: settings.json says so, else the newest reference directory.
+function installedVersion(renderedRoot, settings) {
+  const recorded = settings?._slicekit?.version;
+  if (typeof recorded === 'string' && recorded !== '') return recorded;
+  if (!exists(renderedRoot)) return null;
+  const dirs = fs.readdirSync(renderedRoot).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return dirs.length > 0 ? dirs[dirs.length - 1] : null;
 }
 
 export function renderAll(root, cfg, { version }) {
   const vars = { version, name: cfg.name, docsRoot: cfg.docsRoot, cli: cfg.cli };
   const settingsFile = path.join(root, SETTINGS);
   // Read first so an invalid settings.json stops the run before anything is written.
-  const existingSettings = readSettings(settingsFile);
+  const existingSettings = readSettings(root);
+  const renderedRoot = path.join(root, RENDERED);
+  const installed = installedVersion(renderedRoot, existingSettings);
 
   const results = [];
   const copies = [];
@@ -55,12 +55,23 @@ export function renderAll(root, cfg, { version }) {
         });
         continue;
       }
-      next = style === 'json' || style === 'frontmatter' ? fresh : replaceManaged(current, fresh.split('\n').slice(1, -2).join('\n'), { version, style });
+      const refFile = installed === null ? null : path.join(renderedRoot, installed, dest);
+      if (refFile !== null && exists(refFile) && readText(refFile) !== current) {
+        results.push({
+          dest,
+          action: 'skipped',
+          warning: `${dest} was edited since slicekit wrote it; left untouched (slicekit update --force overwrites)`,
+        });
+        // Carry the old reference forward so the edit is still seen next time.
+        copies.push([dest, readText(refFile)]);
+        continue;
+      }
+      next =style === 'json' || style === 'frontmatter' ? fresh : replaceManaged(current, fresh.split('\n').slice(1, -2).join('\n'), { version, style });
       action = next === current ? 'unchanged' : 'updated';
     }
     if (action !== 'unchanged') writeText(file, next);
     results.push({ dest, action });
-    copies.push([dest, fresh]);
+    copies.push([dest, next]);
   }
 
   const hooks = JSON.parse(substitute(readText(path.join(TEMPLATES, 'hooks.json')), vars));
@@ -69,7 +80,6 @@ export function renderAll(root, cfg, { version }) {
   if (merged !== before) writeText(settingsFile, merged);
   results.push({ dest: SETTINGS, action: before === null ? 'created' : merged === before ? 'unchanged' : 'updated' });
 
-  const renderedRoot = path.join(root, RENDERED);
   if (exists(renderedRoot)) {
     for (const entry of fs.readdirSync(renderedRoot)) {
       if (entry !== version) fs.rmSync(path.join(renderedRoot, entry), { recursive: true, force: true });

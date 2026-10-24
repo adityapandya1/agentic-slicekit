@@ -92,6 +92,7 @@
   },
   "_slicekit": {
     "managed": true,
-    "version": "0.0.0-test"
+    "version": "0.0.0-test",
+    "cli": "npx --no-install slicekit"
   }
 }
