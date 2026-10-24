@@ -6,6 +6,8 @@ import { SliceFileError, findSliceFiles, parseSliceFile } from '../slicefile.js'
 import { programStage } from '../stage.js';
 import { renderBuild } from '../state/build.js';
 import { readSlice } from '../state/index.js';
+import { syncFromHost } from '../state/sync.js';
+import { getHost } from '../adapters/githost/index.js';
 
 const USAGE = 'status [--json] [--write] [--sync]';
 
@@ -34,10 +36,23 @@ async function run(args, io) {
   const root = io.cwd;
   try {
     const cfg = loadConfig(root);
+    let synced;
     if (values.sync) {
-      // Task 5 wires syncFromHost here.
-      io.stderr('sync: not available yet\n');
-      return 2;
+      let result;
+      try {
+        result = syncFromHost(root, cfg, getHost(cfg, io.env ?? process.env));
+      } catch (e) {
+        if (e instanceof ConfigError || e instanceof SliceFileError) throw e;
+        // The host is outside the kit: gh missing, unauthenticated, a pull request it cannot see.
+        io.stderr(`slicekit: ${e.message}\n`);
+        return 2;
+      }
+      for (const w of result.warnings) io.stderr(`slicekit: ${w}\n`);
+      // With --json, stdout stays one JSON document; the changes ride in it as `synced`.
+      if (!values.json) {
+        for (const c of result.changes) io.stdout(`synced ${c.id} → ${c.to} (PR #${c.pr})\n`);
+      }
+      synced = result.changes;
     }
     let build;
     if (values.write) {
@@ -49,7 +64,7 @@ async function run(args, io) {
     }
     if (values.json) {
       // With --write the result rides in the JSON as `build`, so stdout stays one JSON document.
-      const out = { stage: programStage(root, cfg), slices: slices(root, cfg), ...(build ? { build } : {}) };
+      const out = { stage: programStage(root, cfg), slices: slices(root, cfg), ...(build ? { build } : {}), ...(synced ? { synced } : {}) };
       io.stdout(`${JSON.stringify(out, null, 2)}\n`);
       return 0;
     }

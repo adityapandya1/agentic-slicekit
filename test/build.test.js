@@ -181,11 +181,23 @@ test('status --write writes BUILD.md once, then reports it unchanged', () => {
   }, { slices: 1 });
 });
 
-test('status --sync is not available yet', () => {
-  withKit((root) => {
-    const r = runCli(['status', '--sync'], { cwd: root });
-    assert.equal(r.code, 2);
-    assert.match(r.stderr, /sync: not available yet/);
+test('a Done when item ending in an ellipsis keeps it', () => {
+  withKit((root, cfg) => {
+    const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works...\n2. It ends.'));
+    const out = renderBuild(root, cfg, '');
+    assert.ok(out.includes('| S-01 | Fixture 1 | It works...; It ends | B | Todo |'), out);
+  }, { slices: 1 });
+});
+
+test('a bare ## Phase 2 heading in the tail is pruned once phase 2 is generated', () => {
+  withKit((root, cfg) => {
+    const existing = `${renderBuild(root, cfg, '')}\n## Phase 2\n\nHand-written loop.\n\n## Notes\n\nKept.\n`;
+    writeSliceFixture(root, { phase: 2, n: 9 });
+    fs.writeFileSync(path.join(root, 'docs', 'phases', 'P2-x', 'P2.md'), '# Phase 2 — Loop\n');
+    const out = renderBuild(root, cfg, existing);
+    assert.ok(!out.includes('Hand-written loop.'), out);
+    assert.ok(out.endsWith(`${MARKER}\n\n## Notes\n\nKept.\n`), out);
   }, { slices: 1 });
 });
 

@@ -11,7 +11,7 @@ export const MARKER = '<!-- slicekit:generated:end -->';
 
 const TEMPLATE = fileURLToPath(new URL('../../templates/docs/BUILD.md', import.meta.url));
 const TITLE = '# BUILD — the queue';
-const PHASE_HEADING = /^Phase\s+(\d+)\s*(?:—|-|:)/;
+const PHASE_HEADING = /^Phase\s+(\d+)\b/;
 const IN_PROGRESS = new Set(['tests-red', 'building']);
 const OPEN_PR = new Set(['draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready']);
 const DONE = new Set(['merged', 'released']);
@@ -124,7 +124,7 @@ export function renderBuild(root, cfg, existingText = '') {
     out.push('| Slice | Name | Done when | Group | Status |', '|---|---|---|---|---|');
     for (const { slice, state } of slicesByPhase.get(phase.id) ?? []) {
       const short = slice.id.split('/')[1];
-      const done = slice.doneWhen.map((d) => d.replace(/\.$/, '')).join('; ');
+      const done = slice.doneWhen.map((d) => d.replace(/(?<!\.)\.$/, '')).join('; ');
       out.push(`| ${short} | ${cell(slice.name)} | ${cell(done)} | ${cell(slice.group)} | ${statusCell(state)} |`);
     }
     if (phase.order) out.push('', phase.order);

@@ -1,0 +1,4 @@
+[
+  { "status": "in_progress", "conclusion": "", "url": "https://github.com/acme/demo/actions/runs/4", "createdAt": "2026-10-20T09:00:00Z" },
+  { "status": "completed", "conclusion": "failure", "url": "https://github.com/acme/demo/actions/runs/3", "createdAt": "2026-10-20T08:00:00Z" }
+]

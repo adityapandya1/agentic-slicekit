@@ -1,0 +1,10 @@
+{
+  "number": 14,
+  "url": "https://github.com/acme/demo/pull/14",
+  "state": "MERGED",
+  "mergedAt": "2026-10-20T09:30:00Z",
+  "headRefOid": "abc1234def5678",
+  "title": "[P1/S-01] Fixture 1",
+  "body": "Slice: P1/S-01",
+  "labels": [{ "id": "L1", "name": "slice", "description": "", "color": "ededed" }, { "id": "L2", "name": "P1", "description": "", "color": "ededed" }]
+}
