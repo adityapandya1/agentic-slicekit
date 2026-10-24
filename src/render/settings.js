@@ -39,14 +39,25 @@ export function ourPrefixes(existing, cli) {
   return prefixes;
 }
 
-// { event: [sorted slicekit commands] } for a settings-shaped object (or a bare hooks object via {hooks}).
-export function ourCommands(settings, prefixes) {
+const canon = (v) =>
+  Array.isArray(v)
+    ? `[${v.map(canon).join(',')}]`
+    : v && typeof v === 'object'
+      ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}`
+      : JSON.stringify(v);
+
+// { event: [canonical entry] } of the entries that are ours, whole (matcher, timeout, every field),
+// each cut down to its slicekit hooks so a team hook sharing the entry does not count. Order-independent.
+export function ourEntries(settings, prefixes) {
   const out = {};
   const hooks = settings && typeof settings.hooks === 'object' && settings.hooks !== null ? settings.hooks : {};
   for (const event of Object.keys(hooks).sort()) {
     const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
-    const cmds = entries.flatMap((e) => (Array.isArray(e?.hooks) ? e.hooks : [])).filter((h) => isOurs(h, prefixes)).map((h) => h.command);
-    if (cmds.length > 0) out[event] = cmds.sort();
+    const ours = entries
+      .filter((e) => Array.isArray(e?.hooks) && e.hooks.some((h) => isOurs(h, prefixes)))
+      .map((e) => canon({ ...e, hooks: e.hooks.filter((h) => isOurs(h, prefixes)) }))
+      .sort();
+    if (ours.length > 0) out[event] = ours;
   }
   return out;
 }

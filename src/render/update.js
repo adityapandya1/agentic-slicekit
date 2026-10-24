@@ -4,7 +4,7 @@ import { exists, readText, writeText } from '../fs.js';
 import { entriesForShape } from './manifest.js';
 import { managedPart } from './compare.js';
 import { RENDERED, SETTINGS, TEMPLATES, renderEntry, loadReference, substitute, varsFor } from './entry.js';
-import { mergeSettings, ourCommands, ourPrefixes, readSettings } from './settings.js';
+import { mergeSettings, ourEntries, ourPrefixes, readSettings } from './settings.js';
 
 const CONTEXT = 3;
 const NO_EOL = '\\ No newline at end of file';
@@ -88,7 +88,7 @@ function settingsItem(root, cfg, { version, templates }) {
   } catch {
     baseline = { hooks };
   }
-  const drifted = JSON.stringify(ourCommands(existing, prefixes)) !== JSON.stringify(ourCommands(baseline, prefixes));
+  const drifted = JSON.stringify(ourEntries(existing, prefixes)) !== JSON.stringify(ourEntries(baseline, prefixes));
   return { ...base, status: drifted ? 'drifted' : 'changed', diff };
 }
 

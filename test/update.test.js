@@ -288,8 +288,11 @@ test('compareManaged with no reference judges against the fresh render', () => {
 });
 
 test('an invalid recorded version is no installed version', () => {
-  assert.equal(installedVersion('/nonexistent', { _slicekit: { version: '../../x' } }), null);
-  assert.equal(installedVersion('/nonexistent', { _slicekit: { version: '1.2.3-rc.1' } }), '1.2.3-rc.1');
+  const dir = tmp();
+  assert.equal(installedVersion(dir, { _slicekit: { version: '../../x' } }), null);
+  fs.mkdirSync(path.join(dir, '1.2.3-rc.1'));
+  assert.equal(installedVersion(dir, { _slicekit: { version: '../../x' } }), '1.2.3-rc.1');
+  assert.equal(installedVersion(dir, { _slicekit: { version: '1.2.3-rc.1' } }), '1.2.3-rc.1');
 });
 
 test('renderAll reads hooks.json from the injected templates directory', () => {
@@ -300,4 +303,97 @@ test('renderAll reads hooks.json from the injected templates directory', () => {
   const s = JSON.parse(fs.readFileSync(path.join(root, SETTINGS), 'utf8'));
   assert.deepEqual(Object.keys(s.hooks), ['Stop']);
   assert.match(s.hooks.Stop[0].hooks[0].command, /hook custom-stop$/);
+});
+
+test('an edited timeout on a slicekit hook is drifted; --yes leaves it, --force restores it', () => {
+  const root = initRepo();
+  const file = path.join(root, SETTINGS);
+  const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(obj.hooks.Stop[0].hooks[0].timeout, 120);
+  obj.hooks.Stop[0].hooks[0].timeout = 5;
+  fs.writeFileSync(file, `${JSON.stringify(obj, null, 2)}\n`);
+  const check = runCli(['update', '--check'], { cwd: root });
+  assert.equal(check.code, 1);
+  assert.match(check.stdout, /^drifted \.claude\/settings\.json$/m);
+  const kept = runCli(['update', '--yes'], { cwd: root });
+  assert.equal(kept.code, 1);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.Stop[0].hooks[0].timeout, 5);
+  const forced = runCli(['update', '--yes', '--force'], { cwd: root });
+  assert.equal(forced.code, 0, forced.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.Stop[0].hooks[0].timeout, 120);
+  assert.equal(runCli(['update', '--check'], { cwd: root }).code, 0);
+});
+
+test('an edited matcher on a slicekit hook is drifted', () => {
+  const root = initRepo();
+  const file = path.join(root, SETTINGS);
+  const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
+  obj.hooks.PreToolUse[0].matcher = 'Nothing';
+  fs.writeFileSync(file, `${JSON.stringify(obj, null, 2)}\n`);
+  assert.equal(runCli(['update', '--check'], { cwd: root }).code, 1);
+});
+
+const statusOf = (plan, dest) => plan.find((p) => p.dest === dest).status;
+
+test('a drifted settings.json across two version bumps leaves exactly one drifted file and updates the rest', () => {
+  const root = tmp();
+  renderAll(root, cfg, { version: '1.0.0' });
+  const file = path.join(root, SETTINGS);
+  const obj = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete obj.hooks.SessionStart;
+  fs.writeFileSync(file, `${JSON.stringify(obj, null, 2)}\n`);
+  for (const version of ['1.1.0', '1.2.0']) {
+    const plan = planUpdate(root, cfg, { version });
+    const drifted = plan.filter((p) => p.status === 'drifted').map((p) => p.dest);
+    assert.deepEqual(drifted, [SETTINGS], version);
+    const changed = plan.filter((p) => p.status === 'changed');
+    assert.ok(changed.length >= 17, `${version}: ${changed.length} changed`);
+    const { written, skipped } = applyUpdate(root, cfg, plan, { version });
+    assert.equal(written.length, changed.length, version);
+    assert.deepEqual(skipped.map((s) => s.dest), [SETTINGS], version);
+  }
+});
+
+test('settings reference copy survives a version bump and a cli change', () => {
+  const other = { ...cfg, cli: 'node ./bin/slicekit.js' };
+  const noDrift = (plan) => plan.every((p) => p.status !== 'drifted' && p.status !== 'missing');
+
+  // first install: no file at all
+  const first = tmp();
+  assert.equal(statusOf(planUpdate(first, cfg, { version: '1.0.0' }), SETTINGS), 'missing');
+
+  // clean bump
+  const bump = tmp();
+  renderAll(bump, cfg, { version: '1.0.0' });
+  assert.equal(statusOf(planUpdate(bump, cfg, { version: '1.1.0' }), SETTINGS), 'changed');
+  applyUpdate(bump, cfg, planUpdate(bump, cfg, { version: '1.1.0' }), { version: '1.1.0' });
+  assert.ok(planUpdate(bump, cfg, { version: '1.1.0' }).every((p) => p.status === 'same'));
+
+  // cli change with a reference copy: slicekit's own commands move, nothing is drifted
+  const withRef = tmp();
+  renderAll(withRef, cfg, { version: '1.0.0' });
+  const planRef = planUpdate(withRef, other, { version: '1.0.0' });
+  assert.equal(statusOf(planRef, SETTINGS), 'changed');
+  applyUpdate(withRef, other, planRef, { version: '1.0.0' });
+  assert.doesNotMatch(fs.readFileSync(path.join(withRef, SETTINGS), 'utf8'), /npx --no-install/);
+  assert.ok(noDrift(planUpdate(withRef, other, { version: '1.0.0' })));
+
+  // cli change without a reference copy: cannot prove it is ours alone, so drifted until forced
+  const noRef = tmp();
+  renderAll(noRef, cfg, { version: '1.0.0' });
+  fs.rmSync(path.join(noRef, '.slicekit/rendered'), { recursive: true, force: true });
+  const planNo = planUpdate(noRef, other, { version: '1.0.0' });
+  assert.equal(statusOf(planNo, SETTINGS), 'drifted');
+  applyUpdate(noRef, other, planNo, { version: '1.0.0', force: true });
+  assert.ok(noDrift(planUpdate(noRef, other, { version: '1.0.0' })));
+  assert.equal(statusOf(planUpdate(noRef, other, { version: '1.0.0' }), SETTINGS), 'same');
+});
+
+test('installedVersion prefers the recorded version but only when its reference directory exists', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, '1.1.0'));
+  fs.mkdirSync(path.join(dir, '1.2.0'));
+  assert.equal(installedVersion(dir, { _slicekit: { version: '1.1.0' } }), '1.1.0');
+  assert.equal(installedVersion(dir, { _slicekit: { version: '1.0.0' } }), '1.2.0');
+  assert.equal(installedVersion(dir, undefined), '1.2.0');
 });

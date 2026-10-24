@@ -17,12 +17,12 @@ export function substitute(text, vars) {
 
 export const varsFor = (cfg, version) => ({ version, name: cfg.name, docsRoot: cfg.docsRoot, cli: cfg.cli });
 
-// The version slicekit last wrote: settings.json says so, else the newest reference directory.
-// It becomes a path segment, so anything that is not a version counts as none.
+// The version whose reference copies slicekit holds: the one settings.json records if its directory
+// exists, else the newest directory. It becomes a path segment, so only version-shaped names count.
 export function installedVersion(renderedRoot, settings) {
-  const recorded = settings?._slicekit?.version;
-  if (recorded !== undefined && recorded !== null) return typeof recorded === 'string' && VERSION_RE.test(recorded) ? recorded : null;
   if (!exists(renderedRoot)) return null;
+  const recorded = settings?._slicekit?.version;
+  if (typeof recorded === 'string' && VERSION_RE.test(recorded) && exists(path.join(renderedRoot, recorded))) return recorded;
   const dirs = fs
     .readdirSync(renderedRoot)
     .filter((d) => VERSION_RE.test(d))
