@@ -13,6 +13,7 @@ import { real, toPosix } from './paths.js';
 const MAX_ID = 200;
 const REPO_PREFIX = 'subagent-';
 const LOCAL_PREFIX = '.subagent-';
+const RETRY = { [REPO_PREFIX]: 'retry-', [LOCAL_PREFIX]: '.retry-' };
 
 // -> {dir, prefix}: where the markers for root live and how their names start.
 function markerHome(root) {
@@ -27,14 +28,28 @@ function markerHome(root) {
 
 const usable = (id) => typeof id === 'string' && id !== '' && id.length <= MAX_ID;
 
+const safe = (id) => id.replace(/[^A-Za-z0-9_-]/g, '_');
+function check(id, what) {
+  if (!usable(id)) throw new Error(`subagent marker: ${what} must be a non-empty string of at most 200 characters`);
+}
+
 // The session id is mapped to [A-Za-z0-9_-] so the file can never land outside the marker directory.
 export function markerPath(root, sessionId) {
-  if (!usable(sessionId)) {
-    throw new Error('subagent marker: session id must be a non-empty string of at most 200 characters');
-  }
+  check(sessionId, 'session id');
   const { dir, prefix } = markerHome(root);
-  return path.join(dir, `${prefix}${sessionId.replace(/[^A-Za-z0-9_-]/g, '_')}`);
+  return path.join(dir, `${prefix}${safe(sessionId)}`);
 }
+
+// subagent-stop's retry state for one agent of a session, next to the marker: `retry-<session>-<agent>`
+// in the git common directory, `.retry-<session>-<agent>` under .slicekit outside a repository.
+export function retryPath(root, sessionId, agentId) {
+  check(sessionId, 'session id');
+  check(agentId, 'agent id');
+  const { dir, prefix } = markerHome(root);
+  return path.join(dir, `${RETRY[prefix]}${safe(sessionId)}-${safe(agentId)}`);
+}
+
+export const usableId = usable;
 
 // null when there is no marker; NaN when it exists but is unreadable as a count.
 function readCount(file) {

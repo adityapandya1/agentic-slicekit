@@ -389,3 +389,15 @@ test('the subagent marker in the git common directory is kit-owned', () => {
     cleanup();
   }
 });
+
+// S-07: the subagent-stop retry state sits next to the marker and is kit-owned too.
+test('the subagent-stop retry state is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/retry-s-a1'), '.git/slicekit/retry-s-a1 is written only by the slicekit CLI');
+    assertDeny(decide(root, '.slicekit/.retry-s-a1'), '.slicekit/.retry-s-a1 is written only by the slicekit CLI');
+    assertAllow(decide(root, 'src/slicekit/retry-s.js'));
+  } finally {
+    cleanup();
+  }
+});
