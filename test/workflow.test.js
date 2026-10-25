@@ -354,3 +354,11 @@ test('ready-label may create the label: issues write as well as pull requests (I
   const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
   assert.ok(ready.includes('    permissions:\n      contents: read\n      issues: write\n      pull-requests: write\n'), ready);
 });
+
+test('the gate reports a workflow that differs from the generator, after check (I3)', () => {
+  const gate = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'gate');
+  const check = gate.indexOf('      - name: slicekit check\n        run: node node_modules/slicekit/bin/slicekit.js check --ci\n');
+  const drift = gate.indexOf('      - name: The workflow matches the generator\n        run: node node_modules/slicekit/bin/slicekit.js workflow --check\n');
+  assert.notEqual(check, -1, gate);
+  assert.ok(drift > check, gate);
+});

@@ -85,3 +85,12 @@ test('no config means no findings', () => {
     assert.deepEqual(layout.run(ctx), []);
   });
 });
+
+test('a missing workflow file is a finding (I3)', () => {
+  withInstall('backend', ({ root, run }) => {
+    fs.rmSync(path.join(root, '.github', 'workflows', 'slicekit.yml'));
+    assert.deepEqual(run().map((f) => [f.file, f.line, f.message]), [
+      ['.slicekit/config.json', 1, '.github/workflows/slicekit.yml is missing; run slicekit init'],
+    ]);
+  });
+});

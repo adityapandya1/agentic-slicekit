@@ -39,6 +39,8 @@ jobs:
 {{gateExtraSteps}}
       - name: slicekit check
         run: {{cli}} check --ci
+      - name: The workflow matches the generator
+        run: {{cli}} workflow --check
       - name: Upload the graph
         if: always() && hashFiles('.slicekit/graph/graph.json') != ''
         uses: actions/upload-artifact@{{uploadArtifactSha}} # {{uploadArtifactTag}}

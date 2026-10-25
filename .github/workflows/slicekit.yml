@@ -41,6 +41,8 @@ jobs:
           node -e "const d = require('./package.json').dependencies || {}; const n = Object.keys(d); if (n.length) { console.error('package.json has dependencies: ' + n.join(', ')); process.exit(1) }"
       - name: slicekit check
         run: node bin/slicekit.js check --ci
+      - name: The workflow matches the generator
+        run: node bin/slicekit.js workflow --check
       - name: Upload the graph
         if: always() && hashFiles('.slicekit/graph/graph.json') != ''
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3

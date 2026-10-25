@@ -38,6 +38,8 @@ jobs:
         run: git config core.hooksPath .githooks
       - name: slicekit check
         run: node node_modules/slicekit/bin/slicekit.js check --ci
+      - name: The workflow matches the generator
+        run: node node_modules/slicekit/bin/slicekit.js workflow --check
       - name: Upload the graph
         if: always() && hashFiles('.slicekit/graph/graph.json') != ''
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
