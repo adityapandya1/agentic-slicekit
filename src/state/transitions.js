@@ -46,6 +46,7 @@ export function validateEvidence(ev) {
   }
   if (ev.commit !== undefined && !isSha(ev.commit)) return bad('commit', SHA_SHAPE);
   if (ev.mergedAt !== undefined && !isDate(ev.mergedAt)) return bad('mergedAt', 'an ISO date');
+  if (ev.source !== undefined && ev.source !== 'host') return bad('source', "'host'");
   for (const k of ['testExit', 'checkExit']) {
     if (ev[k] !== undefined && !isInt(ev[k])) return bad(k, 'a non-negative integer');
   }
@@ -197,10 +198,22 @@ export const TRANSITIONS = {
     },
     apply: () => ({}),
   },
+  // A merge the git host reports is a fact, whatever pre-merge state the slice was in: `hostFrom`
+  // reaches merged only with `source: 'host'` evidence naming the recorded pull request (the sync
+  // supplies it; the state CLI cannot). The `ready` path is the ordinary one.
   merged: {
     from: ['ready'],
+    hostFrom: ['draft-pr', 'in-review', 'changes-requested', 'ci-green'],
     required: ['mergedAt'],
-    check: (_current, ev) => (ev.mergedAt ? null : 'merged needs mergedAt (--merged-at)'),
+    check(current, ev) {
+      if (!ev.mergedAt) return 'merged needs mergedAt (--merged-at)';
+      if (current.state === 'ready') return null;
+      if (ev.source !== 'host') return `${current.state} reaches merged only on a merge the git host reports`;
+      const n = current.pr?.number;
+      if (!Number.isInteger(n)) return 'a host merge needs a recorded pull request number';
+      if (ev.pr?.number !== n) return `a host merge must name the recorded pull request #${n}`;
+      return null;
+    },
     apply: (current, ev) => ({
       mergedAt: ev.mergedAt,
       ...(ev.pr ? { pr: { ...(current.pr ?? {}), ...ev.pr } } : {}),
@@ -226,4 +239,13 @@ export const TRANSITIONS = {
 
 export function nextStates(from) {
   return STATES.filter((to) => TRANSITIONS[to]?.from.includes(from));
+}
+
+// The states a merge the host reports moves to merged.
+export const HOST_MERGE_FROM = [...TRANSITIONS.merged.hostFrom, ...TRANSITIONS.merged.from];
+
+// Whether from → to is an edge for this evidence: the graph's own, or a host-only edge with host evidence.
+export function allowedMove(from, to, ev) {
+  if (nextStates(from).includes(to)) return true;
+  return ev.source === 'host' && Boolean(TRANSITIONS[to]?.hostFrom?.includes(from));
 }

@@ -5,7 +5,7 @@ import { commitExists, hasCommits, isRepo, resolveCommit } from '../git.js';
 import { parseSliceAddr, stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
-import { TRANSITIONS, TransitionError, nextStates, validateEvidence } from './transitions.js';
+import { TRANSITIONS, TransitionError, allowedMove, nextStates, validateEvidence } from './transitions.js';
 
 export { TransitionError };
 
@@ -113,6 +113,9 @@ export function listSlices(root, cfg) {
   return out;
 }
 
+// Who made a move: a backfill, the host sync (evidence the host reported), or a person at the CLI.
+const by = (backfill, ev) => (backfill ? 'backfill' : ev.source === 'host' ? 'sync' : 'cli');
+
 function entry(from, to, by, evidence) {
   return { from, to, at: new Date().toISOString(), by, evidence };
 }
@@ -165,7 +168,7 @@ export function setState(root, cfg, id, to, evidence = {}) {
         }
       }
     } else {
-      if (!nextStates(current.state).includes(to)) {
+      if (!allowedMove(current.state, to, ev)) {
         throw new TransitionError(`${current.state} cannot move to ${to}`);
       }
       const reason = rule.check(current, ev, { root, cfg, id });
@@ -175,7 +178,7 @@ export function setState(root, cfg, id, to, evidence = {}) {
       ...current,
       ...rule.apply(current, ev),
       state: to,
-      history: [...current.history, entry(current.state, to, backfill ? 'backfill' : 'cli', ev)],
+      history: [...current.history, entry(current.state, to, by(backfill, ev), ev)],
     };
     writeSlice(root, cfg, next);
     return next;

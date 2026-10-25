@@ -169,6 +169,7 @@ Transitions and their mechanical preconditions:
 | ci-green → ready | an independent verdict on the current head SHA exists with zero open blockers, or config sets it optional |
 | in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
+| draft-pr, in-review, changes-requested or ci-green → merged | the git host reports the recorded pull request merged; only `slicekit status --sync` makes this move, and the history records the real previous state and `by: sync`. A slice in `todo`, `tests-red` or `building` whose recorded pull request is merged is reported, not moved |
 | merged → released | the phase's release record names the pull request |
 
 Scenario: GIVEN a slice at `building` WHEN the command tries to open a pull request while the test
