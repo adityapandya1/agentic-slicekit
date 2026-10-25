@@ -19,8 +19,8 @@ Enforced by: `slicekit hook session-start`.
 ## REQ-3.2 PreToolUse on Bash — fail closed
 
 SHALL deny: a commit on a protected branch; a push to a protected branch; any force push; a commit
-that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
-is active (REQ-2.1); and any command matching the destructive list in config (default: recursive
+that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued from inside a subagent, which
+the hook knows by the `agent_id` field Claude Code sends on every tool call a subagent makes (REQ-2.1); and any command matching the destructive list in config (default: recursive
 delete outside the worktree, database drop and truncate statements, history rewrites on shared
 branches). Each denial SHALL state the rule and the file or command.
 

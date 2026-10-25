@@ -30,10 +30,10 @@ function stateFile(root, cfg, id) {
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // One writer per slice at a time: the read-modify-write in setState and unfreeze runs under it.
-function withLock(root, cfg, id, fn) {
+function withLock(root, cfg, id, fn, budgetMs = LOCK_BUDGET_MS) {
   const lock = `${stateFile(root, cfg, id)}.lock`;
   fs.mkdirSync(path.dirname(lock), { recursive: true });
-  const deadline = Date.now() + LOCK_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
   let fd;
   for (;;) {
     try {
@@ -197,4 +197,15 @@ export function unfreeze(root, cfg, id, file) {
     writeSlice(root, cfg, next);
     return next;
   });
+}
+
+// Replaces only the slice's handoff, under the slice lock, re-reading the file inside it so a
+// concurrent `slicekit state set` is never undone. State and history are left as they are. Throws
+// LockError when the lock is not free within budgetMs.
+export function setHandoff(root, cfg, id, handoff, { budgetMs = LOCK_BUDGET_MS } = {}) {
+  return withLock(root, cfg, id, () => {
+    const next = { ...readSlice(root, cfg, id), handoff };
+    writeSlice(root, cfg, next);
+    return next;
+  }, budgetMs);
 }

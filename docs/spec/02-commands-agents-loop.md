@@ -15,7 +15,7 @@ do not run git; report and let the command commit".
 
 Cites: D-19.
 
-Enforced by: PreToolUse guard (03 REQ-3.2) using the subagent marker from SubagentStart.
+Enforced by: PreToolUse guard (03 REQ-3.2), which knows a subagent's tool call by the `agent_id` field Claude Code sends with it.
 
 ## REQ-2.2 `/slicekit intake <file or URL>`
 
