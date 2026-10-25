@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exists, listFiles, readText } from './fs.js';
 import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
+import { readDecisions } from './decisions.js';
 import { headings, lines, refs, tables } from './markdown.js';
 import { re } from './ids.js';
 import { kitPaths } from './paths.js';
@@ -87,12 +88,8 @@ function intake(root, cfg) {
 function clarify(root, cfg) {
   const p = kitPaths(root, cfg);
   if (!exists(p.decisions)) return [`${rel(root, p.decisions)} is missing`];
-  const open = new Set();
-  for (const t of tables(readText(p.decisions))) {
-    const type = t.header.findIndex((h) => h.toLowerCase() === 'type');
-    if (type === -1) continue;
-    for (const row of t.rows) if (row[type] === 'Open' && row[0]) open.add(row[0]);
-  }
+  // A row is open when it sits in the Open table, whatever its Type (REQ-1.4).
+  const open = new Set(readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open').map((r) => r.id));
   const cited = new Set();
   for (const f of filesUnder(p.spec, '.md')) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);

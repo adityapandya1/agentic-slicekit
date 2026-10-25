@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { baselineCommand } from './baseline.js';
 import { checkCommand } from './check.js';
+import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
@@ -10,10 +11,11 @@ import { statusCommand } from './status.js';
 import { updateCommand } from './update.js';
 import { workflowCommand } from './workflow.js';
 
-// Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string } }
+// Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string, subcommands?: string[] } }
 export const COMMANDS = {
   baseline: baselineCommand,
   check: checkCommand,
+  decide: decideCommand,
   init: initCommand,
   hook: hookCommand,
   journal: journalCommand,

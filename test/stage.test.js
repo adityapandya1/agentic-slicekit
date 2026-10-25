@@ -96,6 +96,23 @@ test('clarify blocks on an Open decision that the spec cites', () => {
   });
 });
 
+// REQ-1.4: "Open" means a row of the Open table, whatever its Type.
+test('clarify counts an Open-table row of type Action as open', () => {
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/decisions.md', (t) => `${t}| D-02 | Action | Reserve the name? | matters | publish |
+`);
+    edit(root, 'docs/spec/a.md', (t) => t.replace('D-01.', 'D-01, D-02.'));
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'clarify');
+    assert.deepEqual(r.blockers, ['D-02 is Open and cited by the spec']);
+  });
+  // A Settled row whose Type is Open is answered, so it does not block.
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/decisions.md', (t) => t.replace('| D-01 | Decision |', '| D-01 | Open |'));
+    assert.equal(programStage(root, cfg).stage, 'build');
+  });
+});
+
 test('specify names each REQ that lacks a part, and a spec with no REQ', () => {
   withPoint(PLAN, (root) => {
     edit(root, 'docs/spec/a.md', (t) => t.replace('Enforced by: advisory\n', ''));
