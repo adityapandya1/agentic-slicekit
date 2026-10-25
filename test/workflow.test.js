@@ -84,7 +84,7 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   assert.ok(sync.includes('slicekit.js status --sync --write'));
   assert.ok(sync.includes('chore(slicekit): sync state [skip ci]'));
   assert.ok(sync.includes('github-actions[bot]'));
-  assert.ok(sync.includes('git status --porcelain'));
+  assert.ok(sync.includes('git diff --cached --quiet'));
   assert.match(yml, /^permissions:\n {2}contents: read\n/m);
   assert.match(yml, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened, edited\]\n {2}push:\n {4}branches: \[main\]\n/m);
   assert.ok(yml.includes('group: slicekit-${{ github.ref }}'));
@@ -386,4 +386,20 @@ test('config: ci.timeoutMinutes is an integer from 1 to 360 (I5)', () => {
   for (const bad of [0, 361, 1.5, '30', null]) {
     assert.ok(errs(bad).includes('ci.timeoutMinutes: must be an integer from 1 to 360'), String(bad));
   }
+});
+
+test('sync stages its paths, then commits only when they changed (M1)', () => {
+  const sync = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'sync');
+  const step = sync.slice(sync.indexOf('      - name: Commit state'));
+  assert.ok(!step.includes('git status --porcelain'), 'no whole-tree test');
+  assert.ok(
+    step.includes(
+      [
+        '          git add -- BUILD.md .slicekit/state',
+        "          git diff --cached --quiet || { git commit -m 'chore(slicekit): sync state [skip ci]' && git push; }",
+        '',
+      ].join('\n'),
+    ),
+    step,
+  );
 });
