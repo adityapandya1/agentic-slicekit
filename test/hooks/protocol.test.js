@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
-  HOOK_NAMES, FAIL_OPEN, HookInputError, readHookInput, deny, allow, context, block, runHook, findRoot,
+  HOOK_NAMES, FAIL_OPEN, HookInputError, readHookInput, deny, allow, context, block, runHook, findRoot, hookDeadline,
 } from '../../src/hooks/io.js';
 import { defaultConfig } from '../../src/config.js';
 import { runCli } from '../helpers/run-cli.js';
@@ -13,6 +14,7 @@ import { runCli } from '../helpers/run-cli.js';
 const C3 = ['session-start', 'pre-bash', 'pre-edit', 'subagent-start', 'subagent-stop', 'pre-compact', 'stop', 'session-end'];
 const DENY = new Set(['pre-bash', 'pre-edit']);
 const BLOCK = new Set(['subagent-stop', 'stop']);
+const out = (r) => JSON.parse(r.stdout);
 
 function tmpRoot({ config = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-hooks-'));
@@ -56,15 +58,15 @@ test('each hook with empty stdin', async () => {
     const r = await runHook(name, { stdin: '', root, env: {} });
     if (FAIL_OPEN.has(name)) {
       assert.equal(r.code, 0, name);
-      assert.deepEqual(r.stdout, {}, name);
+      assert.deepEqual(out(r), {}, name);
     } else if (DENY.has(name)) {
       assert.equal(r.code, 0, name);
-      assert.equal(r.stdout.hookSpecificOutput.permissionDecision, 'deny', name);
-      assert.match(r.stdout.hookSpecificOutput.permissionDecisionReason, /could not read hook input/, name);
+      assert.equal(out(r).hookSpecificOutput.permissionDecision, 'deny', name);
+      assert.match(out(r).hookSpecificOutput.permissionDecisionReason, /could not read hook input/, name);
     } else {
       assert.ok(BLOCK.has(name), name);
-      assert.equal(r.stdout.decision, 'block', name);
-      assert.match(r.stdout.reason, /could not read hook input/, name);
+      assert.equal(out(r).decision, 'block', name);
+      assert.match(out(r).reason, /could not read hook input/, name);
     }
   }
 });
@@ -85,7 +87,7 @@ test('a hook whose module is not built yet answers {} on valid input', async () 
   const load = async () => null;
   for (const name of C3) {
     const r = await runHook(name, { stdin: JSON.stringify({ cwd: root }), root, env: {}, load });
-    assert.deepEqual(r, { stdout: {}, code: 0, stderr: '' }, name);
+    assert.deepEqual(r, { stdout: '{}', code: 0, stderr: '' }, name);
   }
 });
 
@@ -102,7 +104,7 @@ test('an exception in a fail-open hook answers {} and reports on stderr', async 
   const root = tmpRoot();
   const load = async () => ({ handle: () => { throw new Error('boom'); } });
   const r = await runHook('session-start', { stdin: '{}', root, env: {}, load });
-  assert.deepEqual(r.stdout, {});
+  assert.deepEqual(out(r), {});
   assert.equal(r.code, 0);
   assert.match(r.stderr, /boom/);
 });
@@ -111,9 +113,9 @@ test('an exception in a fail-closed hook denies or blocks with the generic failu
   const root = tmpRoot();
   const load = async () => ({ handle: async () => { throw new Error('boom'); } });
   const bash = await runHook('pre-bash', { stdin: '{}', root, env: {}, load });
-  assert.deepEqual(bash.stdout, deny('slicekit hook pre-bash failed: boom'));
+  assert.deepEqual(out(bash), deny('slicekit hook pre-bash failed: boom'));
   const stop = await runHook('stop', { stdin: '{}', root, env: {}, load });
-  assert.deepEqual(stop.stdout, block('slicekit hook stop failed: boom'));
+  assert.deepEqual(out(stop), block('slicekit hook stop failed: boom'));
 });
 
 test('a handler receives the input, root, cfg, env and git', async () => {
@@ -121,7 +123,7 @@ test('a handler receives the input, root, cfg, env and git', async () => {
   let seen;
   const load = async () => ({ handle: (input, ctx) => { seen = { input, ...ctx }; return context('SessionStart', 'ok'); } });
   const r = await runHook('session-start', { stdin: JSON.stringify({ cwd: root, x: 1 }), root, env: { A: '1' }, load });
-  assert.deepEqual(r.stdout, context('SessionStart', 'ok'));
+  assert.deepEqual(out(r), context('SessionStart', 'ok'));
   assert.equal(seen.input.x, 1);
   assert.equal(seen.root, root);
   assert.equal(seen.cfg.name, 'demo');
@@ -133,12 +135,12 @@ test('a config that cannot be loaded: fail-open answers {}, fail-closed denies o
   const root = tmpRoot({ config: false });
   const load = async () => ({ handle: () => allow() });
   const open = await runHook('pre-compact', { stdin: '{}', root, env: {}, load });
-  assert.deepEqual(open.stdout, {});
+  assert.deepEqual(out(open), {});
   assert.equal(open.code, 0);
   const bash = await runHook('pre-edit', { stdin: '{}', root, env: {}, load });
-  assert.match(bash.stdout.hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-edit failed: config: cannot read/);
+  assert.match(out(bash).hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-edit failed: config: cannot read/);
   const sub = await runHook('subagent-stop', { stdin: '{}', root, env: {}, load });
-  assert.match(sub.stdout.reason, /^slicekit hook subagent-stop failed: config: cannot read/);
+  assert.match(out(sub).reason, /^slicekit hook subagent-stop failed: config: cannot read/);
 });
 
 test('findRoot walks up from cwd to the directory holding .slicekit/config.json', () => {
@@ -157,4 +159,148 @@ test('runHook finds root from the input cwd when none is given', async () => {
   const load = async () => ({ handle: (input, ctx) => { seen = ctx.root; return {}; } });
   await runHook('session-end', { stdin: JSON.stringify({ cwd: path.join(root) }), env: {}, load });
   assert.equal(seen, root);
+});
+
+// Fix round 1: a fail-closed hook trusts only a well-formed decision.
+const loadReturning = (value) => async () => ({ handle: () => value });
+
+test('a fail-closed hook that returns a non-object or a wrong shape refuses', async () => {
+  const root = tmpRoot();
+  const bad = [
+    [undefined, 'undefined'], [null, 'null'], ['deny', 'string'], [false, 'boolean'], [3, 'number'], [[], 'array'],
+  ];
+  for (const [value, kind] of bad) {
+    const bash = out(await runHook('pre-bash', { stdin: '{}', root, env: {}, load: loadReturning(value) }));
+    assert.deepEqual(bash, deny(`slicekit hook pre-bash failed: handler returned ${kind}`), kind);
+    const stop = out(await runHook('stop', { stdin: '{}', root, env: {}, load: loadReturning(value) }));
+    assert.deepEqual(stop, block(`slicekit hook stop failed: handler returned ${kind}`), kind);
+  }
+  const wrongForPre = [block('x'), { hookSpecificOutput: {} }, { hookSpecificOutput: { permissionDecision: 'maybe' } }];
+  for (const value of wrongForPre) {
+    const r = out(await runHook('pre-bash', { stdin: '{}', root, env: {}, load: loadReturning(value) }));
+    assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
+    assert.match(r.hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-bash failed: handler returned/);
+  }
+  const wrongForStop = [deny('x'), { decision: 'block' }, { decision: 'approve', reason: 'x' }, { reason: 'x' }];
+  for (const value of wrongForStop) {
+    const r = out(await runHook('stop', { stdin: '{}', root, env: {}, load: loadReturning(value) }));
+    assert.equal(r.decision, 'block');
+    assert.match(r.reason, /^slicekit hook stop failed: handler returned/);
+  }
+  // Well-formed answers pass through.
+  assert.deepEqual(out(await runHook('pre-edit', { stdin: '{}', root, env: {}, load: loadReturning(deny('no')) })), deny('no'));
+  assert.deepEqual(out(await runHook('subagent-stop', { stdin: '{}', root, env: {}, load: loadReturning(block('why')) })), block('why'));
+  assert.deepEqual(out(await runHook('stop', { stdin: '{}', root, env: {}, load: loadReturning({}) })), {});
+});
+
+test('a fail-open hook that returns a non-object answers {} with a note', async () => {
+  const root = tmpRoot();
+  const r = await runHook('session-start', { stdin: '{}', root, env: {}, load: loadReturning('hello') });
+  assert.equal(r.stdout, '{}');
+  assert.equal(r.code, 0);
+  assert.match(r.stderr, /handler returned string/);
+});
+
+test('a result that cannot be serialised refuses (fail closed) or answers {} (fail open)', async () => {
+  const root = tmpRoot();
+  const circular = { hookSpecificOutput: { permissionDecision: 'allow' } };
+  circular.self = circular;
+  const bash = await runHook('pre-bash', { stdin: '{}', root, env: {}, load: loadReturning(circular) });
+  assert.equal(typeof bash.stdout, 'string');
+  assert.equal(out(bash).hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(out(bash).hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-bash failed: /);
+  const big = await runHook('stop', { stdin: '{}', root, env: {}, load: loadReturning({ decision: 'block', reason: 'x', n: 1n }) });
+  assert.equal(out(big).decision, 'block');
+  assert.match(out(big).reason, /^slicekit hook stop failed: /);
+  const open = await runHook('pre-compact', { stdin: '{}', root, env: {}, load: loadReturning({ n: 1n }) });
+  assert.equal(open.stdout, '{}');
+});
+
+test('every refusal reason is one line of at most 300 characters', async () => {
+  const root = tmpRoot();
+  const thrower = (msg) => async () => ({ handle: () => { throw new Error(msg); } });
+  const r = out(await runHook('pre-bash', { stdin: '{}', root, env: {}, load: thrower('a\n\n   b\tc') }));
+  assert.equal(r.hookSpecificOutput.permissionDecisionReason, 'slicekit hook pre-bash failed: a b c');
+  const long = out(await runHook('stop', { stdin: '{}', root, env: {}, load: thrower('x'.repeat(1000)) }));
+  assert.equal(long.reason.length, 300);
+  assert.ok(long.reason.startsWith('slicekit hook stop failed: xxx'));
+});
+
+test('a handler that outlives the deadline: fail closed refuses, fail open answers {}', async (t) => {
+  const root = tmpRoot();
+  const hang = async () => ({ handle: () => new Promise(() => {}) });
+  // The deadline timer is unref'd by design; hold the test's loop open while it runs.
+  const keep = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(keep));
+  const bash = out(await runHook('pre-bash', { stdin: '{}', root, env: {}, load: hang, deadline: 30 }));
+  assert.deepEqual(bash, deny('slicekit hook pre-bash failed: timed out after 30 ms'));
+  const stop = out(await runHook('subagent-stop', { stdin: '{}', root, env: {}, load: hang, deadline: 30 }));
+  assert.deepEqual(stop, block('slicekit hook subagent-stop failed: timed out after 30 ms'));
+  const open = await runHook('session-end', { stdin: '{}', root, env: {}, load: hang, deadline: 30 });
+  assert.equal(open.stdout, '{}');
+  assert.match(open.stderr, /timed out after 30 ms/);
+});
+
+test('the deadline is the rendered hook timeout minus 2 seconds, 8 s when absent', () => {
+  assert.equal(hookDeadline('pre-bash'), 18000);
+  assert.equal(hookDeadline('stop'), 118000);
+  assert.equal(hookDeadline('pre-bash', {}), 8000);
+  assert.equal(hookDeadline('stop', { Stop: [{ hooks: [{ command: '{{cli}} hook stop' }] }] }), 8000);
+  assert.equal(hookDeadline('stop', { Stop: [{ hooks: [{ command: '{{cli}} hook stop', timeout: 5 }] }] }), 3000);
+});
+
+// Through the real process entry: a driver imports runProcess with a test-only loader.
+const processUrl = new URL('../../src/cli/process.js', import.meta.url).href;
+function runDriver(body, { cwd } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-driver-'));
+  const driver = path.join(dir, 'driver.mjs');
+  fs.writeFileSync(driver, `import { runProcess } from ${JSON.stringify(processUrl)};\n${body}\n`);
+  const r = spawnSync(process.execPath, [driver], { cwd: cwd ?? tmpRoot(), input: '{}', encoding: 'utf8' });
+  return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+const driveHook = (name, handleSource) => runDriver(
+  `const handle = ${handleSource};\nawait runProcess(['hook', ${JSON.stringify(name)}], { loadHook: async () => ({ handle }) });`,
+);
+
+test('CLI: a circular result prints one line of valid JSON, a deny, exit 0', () => {
+  const r = driveHook('pre-bash', '() => { const o = { hookSpecificOutput: { permissionDecision: "allow" } }; o.o = o; return o; }');
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.split('\n').filter(Boolean);
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0]).hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('CLI: a late rejection or throw around the answer leaves exit 0 and the deny intact', () => {
+  const answer = '{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "stop" } }';
+  const lates = [
+    'Promise.reject(new Error("late"))',
+    'setTimeout(() => Promise.reject(new Error("late")), 0)',
+    'setTimeout(() => { throw new Error("late throw"); }, 0)',
+  ];
+  for (const late of lates) {
+    const r = driveHook('pre-bash', `async () => { ${late}; await new Promise((ok) => setTimeout(ok, 20)); return ${answer}; }`);
+    assert.equal(r.code, 0, `${late}: ${r.stderr}`);
+    assert.deepEqual(JSON.parse(r.stdout), deny('stop'), late);
+  }
+  const after = driveHook('pre-bash', `() => { setTimeout(() => Promise.reject(new Error("later")), 50); return ${answer}; }`);
+  assert.equal(after.code, 0, after.stderr);
+  assert.deepEqual(JSON.parse(after.stdout), deny('stop'));
+});
+
+test('CLI: a handler that never settles and holds nothing still answers', () => {
+  const r = driveHook('pre-bash', '() => new Promise(() => {})');
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-bash failed: /);
+  const open = driveHook('session-start', '() => new Promise(() => {})');
+  assert.equal(open.code, 0, open.stderr);
+  assert.deepEqual(JSON.parse(open.stdout), {});
+});
+
+test('CLI: a throw outside the dispatcher still answers', () => {
+  const r = runDriver("await runProcess(['hook', 'stop'], { stdin: async () => { throw new Error('no stdin'); } });");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), block('slicekit hook stop failed: no stdin'));
+  const open = runDriver("await runProcess(['hook', 'pre-compact'], { stdin: async () => { throw new Error('no stdin'); } });");
+  assert.equal(open.code, 0, open.stderr);
+  assert.deepEqual(JSON.parse(open.stdout), {});
 });
