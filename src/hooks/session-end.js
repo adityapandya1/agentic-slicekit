@@ -88,8 +88,9 @@ function decisionsSince(root, cfg, git, base, last) {
   const then = last
     ? tryGit(git, ['rev-list', '-1', `--before=${last.at}`, 'HEAD'])
     : base && tryGit(git, ['merge-base', base, 'HEAD']);
+  // `./` makes the path relative to root, which may sit below the git top level.
   const rel = toPosix(path.relative(root, file));
-  const old = then ? decisionIds(tryGit(git, ['show', `${then}:${rel}`])) : new Set();
+  const old = then ? decisionIds(tryGit(git, ['show', `${then}:./${rel}`])) : new Set();
   return [...decisionIds(now)].filter((d) => !old.has(d));
 }
 

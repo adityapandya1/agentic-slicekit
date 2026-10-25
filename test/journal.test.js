@@ -653,3 +653,61 @@ test('the append-only check takes --against and is silent without a repo or a ba
     t.cleanup();
   }
 });
+
+// A repo `top/` with the kit at `top/pkg`, one committed journal file there, now on a slice branch.
+function nestedJournal({ decisions } = {}) {
+  const r = makeRepo({ commits: 1 });
+  const pkg = path.join(r.root, 'pkg');
+  fs.mkdirSync(pkg, { recursive: true });
+  withConfig(pkg);
+  if (decisions) {
+    fs.mkdirSync(path.join(pkg, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'docs', 'decisions.md'), decisions);
+  }
+  appendJournal(pkg, FIELDS);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'journal']);
+  git(r.root, ['checkout', '--quiet', '-b', 'slice/x']);
+  return { ...r, pkg, file: fileOf(pkg, 'main'), rel: relOf(pkg, 'main') };
+}
+
+// Whole-branch I1: a kit root below the git top level.
+test('the journal rule works with the kit root below the git top level', () => {
+  const r = nestedJournal();
+  try {
+    assert.deepEqual(journalRule.run(buildContext(r.pkg, cfg)), []);
+    fs.writeFileSync(r.file, '');
+    const msg = `journal file ${r.rel} was shortened or removed since main`;
+    assert.deepEqual(appendOnly(r.pkg).map((p) => p.message), [msg]);
+    assert.deepEqual(appendOnly(r.pkg).map((p) => p.file), [r.rel]);
+    assert.ok(journalRule.run(buildContext(r.pkg, cfg)).some((f) => f.message === msg));
+  } finally {
+    r.cleanup();
+  }
+});
+
+// Whole-branch I1: session-end reads the decisions at the base from the kit root's own path.
+test('session-end with the kit root below the git top level counts only new decisions', async () => {
+  const decisions = (rows) => `# Decisions\n\n## Settled\n\n| # | Type | Question | Answer | By |\n|---|---|---|---|---|\n${rows.map((d) => `| ${d} | Decision | q | a | b |\n`).join('')}`;
+  const r = nestedJournal({ decisions: decisions(['D-01']) });
+  try {
+    fs.writeFileSync(path.join(r.pkg, 'docs', 'decisions.md'), decisions(['D-01', 'D-02']));
+    await sessionEnd({ session_id: 's', reason: 'exit', cwd: r.pkg }, { root: r.pkg, cfg, env: { SLICEKIT_ACTOR: 'ada' } });
+    assert.deepEqual(readLast(r.pkg, 'slice/x').decisions, ['D-02']);
+  } finally {
+    r.cleanup();
+  }
+});
+
+// Whole-branch M3: under check --ci a missing base is a finding; locally it is not.
+test('the journal rule under --ci reports a missing base; locally it stays silent', () => {
+  const r = committedJournal();
+  try {
+    git(r.root, ['branch', '-m', 'main', 'trunk']);
+    const NO_BASE = 'journal: no base to compare against (fetch the default branch with full history)';
+    assert.deepEqual(journalRule.run(buildContext(r.root, cfg)), []);
+    assert.deepEqual(journalRule.run(buildContext(r.root, cfg, { ci: true })).map((f) => f.message), [NO_BASE]);
+  } finally {
+    r.cleanup();
+  }
+});

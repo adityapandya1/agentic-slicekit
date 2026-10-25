@@ -155,6 +155,7 @@ function verifyText(text) {
   return { lines: complete.length, brokenAt: torn ? complete.length + 1 : null };
 }
 
+export const NO_BASE = 'journal: no base to compare against (fetch the default branch with full history)';
 export const brokenMessage = (file, n) => `journal chain broken at line ${n} of ${file}`;
 const unexpectedMessage = (name) => `unexpected entry ${name} in .slicekit/journal/`;
 
@@ -198,7 +199,13 @@ export function verifyJournal(root, cfg) {
   };
 }
 
-const gitBytes = (root, args) => execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 });
+function gitBytes(root, args) {
+  try {
+    return execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+  } catch (e) {
+    throw new GitError(args, String(e.stderr ?? e.message).trim());
+  }
+}
 const lf = (buf) => Buffer.from(buf.toString('latin1').replace(/\r\n/g, '\n'), 'latin1');
 
 function resolves(root, ref) {
@@ -212,27 +219,34 @@ function resolves(root, ref) {
 
 // Append-only against git: every journal file at the merge base of HEAD and `against` (default: the
 // default branch, local, else origin's) must still exist in the working tree and start with the base
-// copy's bytes (CRLF read as LF). [] outside a repo, or when the ref or the merge base does not exist.
+// copy's bytes (CRLF read as LF). [] outside a repo. When the ref or the merge base does not exist: []
+// locally, and with ci one problem saying so (a CI checkout without the default branch's history).
+// root may sit below the git top level; the files reported are relative to root.
 // -> [{file, line, message}] with message `journal file <f> was shortened or removed since <ref>`.
-export function appendOnlyProblems(root, cfg, { against } = {}) {
+export function appendOnlyProblems(root, cfg, { against, ci = false } = {}) {
   if (!isRepo(root)) return [];
+  const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
+  const noBase = () => (ci ? [{ file: relDir, line: 0, message: NO_BASE }] : []);
   const def = cfg?.defaultBranch ?? 'main';
   const candidates = against != null ? [against] : [def, `origin/${def}`];
   const ref = candidates.find((r) => resolves(root, r));
-  if (ref === undefined) return [];
+  if (ref === undefined) return noBase();
   let base;
   try {
     base = git(root, ['merge-base', 'HEAD', ref]);
   } catch (e) {
-    if (e instanceof GitError) return [];
+    if (e instanceof GitError) return noBase();
     throw e;
   }
-  const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
-  const listed = git(root, ['ls-tree', '-r', '--name-only', base, '--', `${relDir}/`]);
+  // --full-name lists paths from the top level, as `git show <base>:<path>` takes them; the prefix
+  // (root's place below the top level) maps each back to root.
+  const prefix = git(root, ['rev-parse', '--show-prefix']);
+  const listed = git(root, ['ls-tree', '-r', '--full-name', '--name-only', base, '--', `${relDir}/`]);
   const out = [];
-  for (const rel of listed === '' ? [] : listed.split('\n')) {
-    if (!rel.endsWith('.log')) continue;
-    const was = lf(gitBytes(root, ['show', `${base}:${rel}`]));
+  for (const full of listed === '' ? [] : listed.split('\n')) {
+    if (!full.endsWith('.log') || !full.startsWith(prefix)) continue;
+    const rel = full.slice(prefix.length);
+    const was = lf(gitBytes(root, ['show', `${base}:${full}`]));
     let now = null;
     try {
       now = lf(fs.readFileSync(path.join(root, ...rel.split('/'))));
