@@ -8,6 +8,13 @@ export function assertPrNumber(n) {
   return n;
 }
 
+export function assertLabel(name) {
+  if (typeof name !== 'string' || name.trim() === '' || /[\r\n]/.test(name)) {
+    throw new Error(`label must be a non-empty single-line string, got ${JSON.stringify(name)}`);
+  }
+  return name;
+}
+
 export function mapPullRequest(raw) {
   return {
     number: raw.number,

@@ -49,7 +49,7 @@ jobs:
 {{observabilityJobs}}
 
   ready-label:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     needs: [{{readyNeeds}}]
     runs-on: ubuntu-latest
     permissions:
@@ -68,6 +68,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLICEKIT_CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}
         run: {{cli}} ready-label
 
   sync:

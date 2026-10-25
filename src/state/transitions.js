@@ -30,8 +30,11 @@ const present = (root, rel) => fs.existsSync(path.resolve(root, rel));
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The verdicts given on the pull request head as it stands now. A verdict on an earlier head
-// reviewed code that a fix push has since replaced.
-const onHead = (current) => current.verdicts.filter((v) => current.pr && v.headSha === current.pr.headSha);
+// reviewed code that a fix push has since replaced. `head` defaults to the head the state recorded;
+// a caller holding the live head (a CI event) passes it instead. No head, no verdicts.
+export const verdictsOnHead = (current, head = current.pr?.headSha) =>
+  (current.verdicts ?? []).filter((v) => sameSha(v.headSha, head));
+const onHead = (current) => verdictsOnHead(current);
 
 const SHA_SHAPE = '7 to 40 lowercase hex characters';
 

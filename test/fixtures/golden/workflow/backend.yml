@@ -94,7 +94,7 @@ jobs:
         run: curl -fsS "$STAGING_URL/health"
 
   ready-label:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     needs: [gate, cmd-test, cmd-lint]
     runs-on: ubuntu-latest
     permissions:
@@ -113,6 +113,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLICEKIT_CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}
         run: node node_modules/slicekit/bin/slicekit.js ready-label
 
   sync:

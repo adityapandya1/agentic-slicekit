@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GitHostError, GitHostNotFound } from './errors.js';
 import { assertDate, assertSha } from '../../evidence.js';
-import { assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import { assertLabel, assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
 //   pr-<n>.json          what `gh pr view <n> --json ...` prints
@@ -34,6 +34,19 @@ export function fixtureHost(dir) {
     ciStatus(sha) {
       assertSha(sha);
       return reduceRuns(readJson(path.join(dir, `ci-${sha}.json`)) ?? []);
+    },
+    // label-error.txt stands for gh refusing; otherwise each call is appended to label-calls.jsonl.
+    setLabel(n, name, present) {
+      assertPrNumber(n);
+      assertLabel(name);
+      let refusal;
+      try {
+        refusal = fs.readFileSync(path.join(dir, 'label-error.txt'), 'utf8').trim();
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw new GitHostError(`git host fixture ${dir}: ${e.message}`);
+      }
+      if (refusal !== undefined) throw new GitHostError(`gh pr edit failed: ${refusal}`, { stderr: refusal });
+      fs.appendFileSync(path.join(dir, 'label-calls.jsonl'), `${JSON.stringify({ number: n, name, present: Boolean(present) })}\n`);
     },
   };
 }

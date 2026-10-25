@@ -191,9 +191,18 @@ test('ready-label runs only for same-repository pull requests not opened by depe
   const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
   assert.ok(
     ready.includes(
-      "    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'\n",
+      "    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}\n",
     ),
   );
+});
+
+test('ready-label still runs when a needed job failed, and is told so', () => {
+  // A failed gate or command job must take the label away, so the job runs unless the run was
+  // cancelled (a newer push superseded it), and passes the failure to the CLI.
+  const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
+  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint]'));
+  assert.ok(ready.includes("          SLICEKIT_CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}\n"), ready);
+  assert.ok(!ready.includes('always()'), 'always() would also run a cancelled, superseded run');
 });
 
 test('sync stages only BUILD.md and the state directory (I3)', () => {
