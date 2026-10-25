@@ -119,7 +119,7 @@ test('branch without origin cuts from the local default; a failed fetch warns', 
     git(root, ['remote', 'add', 'origin', path.join(os.tmpdir(), 'slicekit-no-such-remote')]);
     const r = await cli(root, ['branch', 'plan', 'p3']);
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stderr, /^slicekit: could not fetch origin \(.+\); branching from local main$/m);
+    assert.match(r.stderr, /^slicekit: could not fetch origin \((?:fatal|error): .+\); branching from local main$/m);
     assert.equal(sha(root, 'HEAD'), sha(root, 'main'));
   });
 });
@@ -155,6 +155,85 @@ test('pushBranch never pushes to a protected branch or from a detached head', as
       git(root, ['switch', '-q', '--detach', 'HEAD']);
       assert.throws(() => pushBranch(root), GitError);
       assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
+    },
+    { remote: true },
+  );
+});
+
+test('a tag named like the branch does not hide main from pushBranch or currentBranch', async () => {
+  await withRepo(
+    async (root, remote) => {
+      const before = git(remote, ['rev-parse', 'refs/heads/main']);
+      git(root, ['tag', 'main']);
+      commit(root, 'local');
+      assert.equal(currentBranch(root), 'main');
+      assert.throws(() => pushBranch(root), /protected/);
+      assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
+    },
+    { remote: true },
+  );
+});
+
+test('a push mapping in the config cannot redirect pushBranch onto main', async () => {
+  await withRepo(
+    async (root, remote) => {
+      const before = git(remote, ['rev-parse', 'refs/heads/main']);
+      git(root, ['config', 'remote.origin.push', 'refs/heads/work:refs/heads/main']);
+      switchBranch(root, 'work', { create: true, from: 'main' });
+      commit(root, 'work');
+      assert.deepEqual(pushBranch(root), { branch: 'work', remoteRef: 'refs/heads/work' });
+      assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
+      assert.equal(git(remote, ['rev-parse', 'refs/heads/work']), sha(root, 'HEAD'));
+      assert.equal(git(root, ['rev-parse', '--abbrev-ref', '@{u}']), 'origin/work');
+      // With the upstream set, the second push goes by explicit refspec too.
+      commit(root, 'work 2');
+      assert.deepEqual(pushBranch(root), { branch: 'work', remoteRef: 'refs/heads/work' });
+      assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
+      assert.equal(git(remote, ['rev-parse', 'refs/heads/work']), sha(root, 'HEAD'));
+    },
+    { remote: true },
+  );
+});
+
+test('pushBranch refuses the default branch even when it is not listed as protected', async () => {
+  await withRepo(
+    async (root, remote) => {
+      switchBranch(root, 'trunk', { create: true, from: 'main' });
+      commit(root, 'on trunk');
+      assert.throws(() => pushBranch(root, { protectedBranches: ['main'], defaultBranch: 'trunk' }), /trunk/);
+      assert.throws(() => git(remote, ['rev-parse', '--verify', 'refs/heads/trunk']), GitError);
+    },
+    { remote: true },
+  );
+});
+
+test('behindUpstream is 0 once the upstream branch is deleted on the remote', async () => {
+  await withRepo(
+    async (root, remote) => {
+      switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+      pushBranch(root);
+      pushFromElsewhere(remote, 'spec/demo');
+      assert.equal(behindUpstream(root), 1);
+      git(remote, ['update-ref', '-d', 'refs/heads/spec/demo']);
+      assert.equal(behindUpstream(root), 0);
+    },
+    { remote: true },
+  );
+});
+
+test('branch takes a work branch that exists only on origin and tracks it', async () => {
+  await withRepo(
+    async (root, remote) => {
+      pushFromElsewhere(remote, 'main');
+      // Another clone made spec/demo on origin; this clone has no local branch of that name.
+      git(root, ['push', '-q', 'origin', 'HEAD:refs/heads/spec/demo']);
+      pushFromElsewhere(remote, 'spec/demo');
+      git(root, ['fetch', '-q', 'origin']);
+      const r = await cli(root, ['branch', 'spec', 'demo']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/spec/demo'));
+      assert.notEqual(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+      assert.equal(git(root, ['rev-parse', '--abbrev-ref', '@{u}']), 'origin/spec/demo');
     },
     { remote: true },
   );

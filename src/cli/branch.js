@@ -45,14 +45,19 @@ async function run(args, io) {
     if (hasRemote(root, 'origin')) {
       try {
         git(root, ['fetch', '-q', 'origin', base]);
-        if (resolves(root, `origin/${base}`)) from = `origin/${base}`;
+        if (resolves(root, `refs/remotes/origin/${base}`)) from = `refs/remotes/origin/${base}`;
       } catch (e) {
         if (!(e instanceof GitError)) throw e;
-        const reason = e.stderr.split('\n')[0] || 'unknown reason';
+        const lines = e.stderr.split('\n');
+        const reason = lines.find((l) => /^(fatal|error):/.test(l)) ?? (lines[0] || 'unknown reason');
         io.stderr(`slicekit: could not fetch origin (${reason}); branching from local ${base}\n`);
       }
     }
+    // A work branch someone already pushed is taken up where it stands, tracking origin's copy;
+    // only a new one is cut from the default branch.
+    const remote = `refs/remotes/origin/${target}`;
     if (resolves(root, `refs/heads/${target}`)) switchBranch(root, target);
+    else if (resolves(root, remote)) switchBranch(root, target, { create: true, from: remote, track: true });
     else switchBranch(root, target, { create: true, from });
     io.stdout(`${target}\n`);
     return 0;

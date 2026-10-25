@@ -29,13 +29,18 @@ function succeeds(root, args) {
 
 export const isRepo = (root) => succeeds(root, ['rev-parse', '--git-dir']);
 export const hasCommits = (root) => succeeds(root, ['rev-parse', '--verify', 'HEAD']);
+// HEAD's branch, or null when HEAD is detached. It reads the full ref and strips `refs/heads/`:
+// `--short` gives `heads/main` when a tag `main` exists, which would slip past a protected check.
 export function currentBranch(root) {
+  let ref;
   try {
-    return git(root, ['symbolic-ref', '--short', 'HEAD']);
+    ref = git(root, ['symbolic-ref', '-q', 'HEAD']);
   } catch (e) {
-    if (e instanceof GitError && /not a symbolic ref/.test(e.stderr)) return null;
+    // -q: a detached HEAD exits 1 with nothing on stderr; anything else is a real failure.
+    if (e instanceof GitError && e.stderr === '') return null;
     throw e;
   }
+  return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null;
 }
 
 export const headSha = (root) => git(root, ['rev-parse', 'HEAD']);
@@ -116,12 +121,14 @@ export const isClean = (root) => git(root, ['status', '--porcelain']) === '';
 export const hasRemote = (root, name = 'origin') => git(root, ['remote']).split('\n').includes(name);
 
 // Switches to `name`; with `create`, makes it from `from` (default HEAD) without an upstream, so a
-// branch cut from origin/main never pushes to main. Without `create`, it never guesses a branch
-// from a remote one.
-export function switchBranch(root, name, { create = false, from } = {}) {
+// branch cut from origin/main never pushes to main. `track` sets `from` as the upstream instead:
+// only for origin's copy of the same work branch. Without `create`, it never guesses a branch from
+// a remote one.
+export function switchBranch(root, name, { create = false, from, track = false } = {}) {
   assertRef(name);
   if (from !== undefined) assertRef(from);
-  if (create) git(root, ['switch', '-q', '--no-track', '-c', name, ...(from === undefined ? [] : [from])]);
+  const upstream = track ? '--track' : '--no-track';
+  if (create) git(root, ['switch', '-q', upstream, '-c', name, ...(from === undefined ? [] : [from])]);
   else git(root, ['switch', '-q', '--no-guess', name]);
 }
 
@@ -157,21 +164,24 @@ function branchOrThrow(root, what) {
   return branch;
 }
 
-// Pushes HEAD. With an upstream on origin, to that branch by name (`HEAD:refs/heads/<b>`), since a
-// plain push refuses when the names differ under push.default=simple; otherwise `push -u origin
-// <branch>`. Refuses a target in `protectedBranches` before anything is sent.
-export function pushBranch(root, { protectedBranches = ['main'] } = {}) {
+// Pushes HEAD to origin, always by explicit refspec `HEAD:refs/heads/<target>`: the target is the
+// upstream branch on origin when there is one (a plain push refuses when the names differ under
+// push.default=simple), else the current branch, and then `-u` sets the upstream. An explicit
+// refspec also keeps a `remote.origin.push` mapping from redirecting the push. Refuses a target in
+// `protectedBranches` or equal to `defaultBranch` before anything is sent; callers pass the config's
+// values.
+export function pushBranch(root, { protectedBranches = ['main'], defaultBranch } = {}) {
   const branch = branchOrThrow(root, 'push');
   const up = upstreamOf(root, branch);
   const tracked = up !== null && up.remote === 'origin';
   const target = tracked ? up.branch : branch;
   assertRef(target);
-  if (protectedBranches.includes(target)) {
+  if (protectedBranches.includes(target) || target === defaultBranch) {
     throw new GitError(['push'], `refusing to push to ${target}: it is protected; push from a work branch`);
   }
-  if (tracked) git(root, ['push', '-q', 'origin', `HEAD:refs/heads/${target}`]);
-  else git(root, ['push', '-q', '-u', 'origin', branch]);
-  return { branch, remoteRef: `refs/heads/${target}` };
+  const remoteRef = `refs/heads/${target}`;
+  git(root, ['push', '-q', ...(tracked ? [] : ['-u']), 'origin', `HEAD:${remoteRef}`]);
+  return { branch, remoteRef };
 }
 
 // The number of commits on the upstream that HEAD lacks, after fetching its remote; 0 without an
@@ -180,7 +190,8 @@ export function behindUpstream(root) {
   const branch = currentBranch(root);
   const up = branch === null ? null : upstreamOf(root, branch);
   if (up === null) return 0;
-  git(root, ['fetch', '-q', up.remote]);
+  // --prune drops the remote-tracking ref of a branch deleted on the remote, so it reads as gone.
+  git(root, ['fetch', '--prune', '-q', up.remote]);
   if (!succeeds(root, ['rev-parse', '--verify', '--quiet', '@{u}'])) return 0;
   return Number(git(root, ['rev-list', '--count', 'HEAD..@{u}']));
 }

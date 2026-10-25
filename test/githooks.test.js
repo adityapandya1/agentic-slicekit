@@ -111,6 +111,16 @@ test('pre-commit refuses a commit on a protected branch', { skip: noSh }, () => 
   }, { branch: 'main' });
 });
 
+// S-09 fix round 1, C1: a tag named main must not make the branch read as heads/main.
+test('pre-commit refuses a commit on main when a tag main exists', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['tag', 'main']);
+    const r = commit(root, ['-m', 'on main']);
+    assert.notEqual(r.code, 0);
+    assert.match(r.stderr, /main is protected/);
+  }, { branch: 'main', commits: 1 });
+});
+
 test('pre-commit reads protectedBranches from the config', { skip: noSh }, () => {
   withHooks((root) => {
     const file = path.join(root, '.slicekit', 'config.json');
