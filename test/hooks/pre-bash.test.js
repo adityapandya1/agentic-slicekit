@@ -657,3 +657,18 @@ test('outside a git repository the marker falls back to .slicekit', () => {
     fs.rmSync(plain, { recursive: true, force: true });
   }
 });
+
+// M8
+test('a subagent does not change history', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  try {
+    const cmds = ['git merge slice/y', 'git pull', 'git rebase origin/main', 'git cherry-pick abc123', 'git revert HEAD',
+      'git am 0001.patch', 'git tag v1', 'git -C . tag -d v1'];
+    for (const cmd of cmds) assertAllow(decide(root, cmd));
+    enter(root, SESSION);
+    for (const cmd of cmds) assertDeny(decide(root, cmd), AGENT);
+    assertAllow(decide(root, 'git tag -l && git log --oneline'));
+  } finally {
+    cleanup();
+  }
+});

@@ -1,8 +1,9 @@
 // pre-bash (REQ-3.2, REQ-2.1, REQ-1.2): the PreToolUse guard on Bash. Fails closed through io.js.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
-// (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) commit, push, cherry-pick/
-// revert/am, `gh pr` writes or a non-GET `gh api` from a subagent; (6) a command matching cfg.destructive.
+// (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
+// push, merge, pull, rebase, cherry-pick, revert, am, tag (other than listing), `gh pr` writes or a
+// non-GET `gh api`; (6) a command matching cfg.destructive.
 //
 // Limits: this reads the command as a shell would on its surface. It splits on operators outside
 // quotes, treats here-document bodies as data, strips shell keywords, env prefixes and wrappers
@@ -14,7 +15,9 @@
 // read from the shell's directory); a command substitution inside double quotes (`echo "$(git ...)"`)
 // is not split out; `echo '...' | bash` (a piped string, not a here-document) and a shell function
 // (`function f { ...; }; f`) are not followed; the default destructive list misses `rm -fr /`
-// spellings and absolute paths inside the worktree.
+// spellings and absolute paths inside the worktree; `gh api` with `-f`, `-F` or `--input` and no `-X`
+// is an implicit POST that a subagent may still send; SQL read from a file (`psql -f f.sql`,
+// `cat f.sql | psql`) is not matched against the destructive list.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -457,6 +460,9 @@ function destructiveText(toks, heredocs) {
   return (DB_CLIENTS.has(b) ? [...words, ...heredocs] : words).join(' ');
 }
 
+// `git tag` with no arguments, or in list mode, only reads.
+const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a === '--list' || a.startsWith('--list='));
+
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
@@ -536,6 +542,9 @@ function walk(seg, state, acc) {
   else if (sub === 'cherry-pick' || sub === 'revert' || sub === 'am') {
     inv = { kind: 'commit', replay: true, all: false, include: false, whole: false, paths: [] };
   }
+  // These change history without a commit of their own: only a subagent is refused them (rule 5).
+  else if (sub === 'merge' || sub === 'pull' || sub === 'rebase') inv = { kind: 'history' };
+  else if (sub === 'tag') inv = tagLists(args) ? { kind: 'other' } : { kind: 'history' };
   else inv = { kind: 'other' };
   acc.invs.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
 }
@@ -688,7 +697,7 @@ export function handle(input, { root, cfg }) {
   const frozen = frozenIntake(root, cfg, invs, mentions);
   if (frozen) return deny(`intake snapshot ${frozen} is frozen; add a new snapshot`);
   // (5)
-  if (invs.some((i) => ['commit', 'push', 'force-push', 'pr', 'api-write'].includes(i.kind))) {
+  if (invs.some((i) => ['commit', 'history', 'push', 'force-push', 'pr', 'api-write'].includes(i.kind))) {
     const marker = activeMarker(root, input.session_id);
     if (marker) return deny(`agents do not run git; report and let the command commit (marker ${marker})`);
   }
