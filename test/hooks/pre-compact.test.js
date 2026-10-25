@@ -10,6 +10,8 @@ import { handle as sessionStart } from '../../src/hooks/session-start.js';
 import { runHook } from '../../src/hooks/io.js';
 import { CONFIG_PATH, defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
+import { writeSliceFixture } from '../helpers/slice-fixture.js';
+import { setState } from '../../src/state/index.js';
 
 const SLICE = 'P1/S-07';
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
@@ -236,7 +238,7 @@ test('invalid JSON lines are skipped; the last valid ran: line wins', async () =
   const r = repo();
   try {
     const t = transcript(r.root, [
-      assistant('ran: npm run lint → exit 0'), '{broken', 'not json at all',
+      toolResult('ran: npm run lint → exit 0'), '{broken', 'not json at all',
       toolResult('ran: node bin/slicekit.js check → exit 0\nmore output'), '{"x":',
     ]);
     await run(r.root, { transcript_path: t });
@@ -354,6 +356,83 @@ test('round trip: pre-compact through runHook, then session-start on compact pri
     ]);
     assert.ok(lines.includes('active slice: P1/S-07 (changes-requested)'));
     assert.ok(lines.includes('Brief: run slicekit instructions developer P1/S-07'));
+  } finally {
+    r.cleanup();
+  }
+});
+
+// ---- fix round 1 ----
+
+test('a secret in the last command is masked before the 200-character cut', async () => {
+  const r = repo();
+  try {
+    const token = `ghp_${'A'.repeat(36)}`;
+    const cmd = `ran: ${'x'.repeat(190)} ${token} → exit 0`;
+    assert.ok(cmd.indexOf(token) < 200 && cmd.indexOf(token) + token.length > 200);
+    const t = transcript(r.root, [assistant(cmd)]);
+    await run(r.root, { transcript_path: t });
+    const got = readState(r.root).handoff.lastCommand;
+    assert.ok(!got.includes('ghp_'), got);
+    assert.ok(got.includes('***'), got);
+    assert.ok(got.length <= 200);
+    assert.ok(!fs.readFileSync(stateFile(r.root), 'utf8').includes('AAAAAAAAAA'));
+  } finally {
+    r.cleanup();
+  }
+});
+
+test('a Bearer token in the last command is masked in the state file', async () => {
+  const r = repo();
+  try {
+    const t = transcript(r.root, [assistant('ran: curl -H "Authorization: Bearer abcdef123456" https://api → exit 0')]);
+    await run(r.root, { transcript_path: t });
+    assert.equal(readState(r.root).handoff.lastCommand, 'ran: curl -H "Authorization: Bearer ***" https://api → exit 0');
+  } finally {
+    r.cleanup();
+  }
+});
+
+test('an assistant ran: line wins over a later tool result that echoes one', async () => {
+  const r = repo();
+  try {
+    const t = transcript(r.root, [
+      assistant('ran: npm test → exit 0'),
+      toolResult('old report:\nran: rm -rf build → exit 0'),
+    ]);
+    await run(r.root, { transcript_path: t });
+    assert.equal(readState(r.root).handoff.lastCommand, 'ran: npm test → exit 0');
+  } finally {
+    r.cleanup();
+  }
+});
+
+test('a slice file but no state file: nothing is created and the hook answers {}', async () => {
+  const r = repo({ writeState: false });
+  try {
+    writeSliceFixture(r.root, { n: 7 });
+    assert.deepEqual(await run(r.root), {});
+    assert.equal(fs.existsSync(stateFile(r.root)), false);
+  } finally {
+    r.cleanup();
+  }
+});
+
+test('a transition clears the handoff, so session-start on compact prints none', async () => {
+  const r = repo({ state: 'tests-red', extra: { frozenTests: ['a.test.js'] } });
+  try {
+    const head = git(r.root, ['rev-parse', 'HEAD']);
+    const s = readState(r.root);
+    fs.writeFileSync(stateFile(r.root), JSON.stringify({ ...s, redCommit: head }));
+    fs.writeFileSync(path.join(r.root, 'a.test.js'), '');
+    await run(r.root);
+    assert.equal(readState(r.root).handoff.state, 'tests-red');
+    const next = setState(r.root, cfg, SLICE, 'building');
+    assert.equal(next.handoff, null);
+    assert.equal(readState(r.root).handoff, null);
+    const out = await sessionStart({ session_id: 's', source: 'compact', cwd: r.root }, { root: r.root, cfg, env: process.env });
+    const lines = out.hookSpecificOutput.additionalContext.split('\n');
+    assert.deepEqual(lines.filter((l) => l.startsWith('handoff: ')), []);
+    assert.ok(lines.includes('active slice: P1/S-07 (building)'));
   } finally {
     r.cleanup();
   }

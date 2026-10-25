@@ -7,12 +7,14 @@
 //   state         the slice's stage
 //   openFindings  the B-<n> ids of the latest verdict when that verdict is BLOCK, comma-joined; `none`
 //   lastCommand   the last `ran: <command> → exit <n>` line in the tail of the main session's transcript,
-//                 cut to 200 characters; `none`
+//                 assistant text before tool output, secrets masked, cut to 200 characters; `none`
 //   nextStep      by stage (nextStep below)
 // Only the handoff changes: setHandoff re-reads the state under the slice lock and leaves state and
-// history alone. The lock is waited on for at most LOCK_BUDGET_MS.
+// history alone, and skips a slice with no state file yet. The lock is waited on for at most
+// LOCK_BUDGET_MS.
 import fs from 'node:fs';
 import path from 'node:path';
+import { redact } from '../redact.js';
 import { setHandoff } from '../state/index.js';
 import { parseVerdict } from '../verdict.js';
 import { allow } from './io.js';
@@ -23,24 +25,32 @@ export const LOCK_BUDGET_MS = 2_000;
 const COMMAND_MAX = 200;
 const RAN = /^\s*ran: /;
 
+// The texts of one transcript entry: {assistant, tool}. Text the user typed is in neither.
 function texts(content, role) {
-  if (typeof content === 'string') return role === 'assistant' ? [content] : [];
-  if (!Array.isArray(content)) return [];
-  const out = [];
+  const out = { assistant: [], tool: [] };
+  if (typeof content === 'string') {
+    if (role === 'assistant') out.assistant.push(content);
+    return out;
+  }
+  if (!Array.isArray(content)) return out;
   for (const part of content) {
-    if (role === 'assistant' && part?.type === 'text' && typeof part.text === 'string') out.push(part.text);
+    if (role === 'assistant' && part?.type === 'text' && typeof part.text === 'string') out.assistant.push(part.text);
     if (part?.type === 'tool_result') {
-      if (typeof part.content === 'string') out.push(part.content);
+      if (typeof part.content === 'string') out.tool.push(part.content);
       else if (Array.isArray(part.content)) {
-        for (const p of part.content) if (p?.type === 'text' && typeof p.text === 'string') out.push(p.text);
+        for (const p of part.content) if (p?.type === 'text' && typeof p.text === 'string') out.tool.push(p.text);
       }
     }
   }
   return out;
 }
 
-// The last line of assistant or tool text starting `ran: ` in the transcript's last TRANSCRIPT_TAIL
-// bytes, trimmed and cut to COMMAND_MAX characters; null when there is none or the file cannot be read.
+const lastRan = (list) => list.flatMap((t) => t.split(/\r?\n/)).filter((l) => RAN.test(l)).at(-1);
+
+// The last line starting `ran: ` in the transcript's last TRANSCRIPT_TAIL bytes: from assistant text
+// when any has one (the agent's own report), else from tool output (which may only echo an old line).
+// Secrets are masked (redact) before the line is trimmed and cut to COMMAND_MAX characters. null when
+// there is none or the file cannot be read.
 export function lastRanLine(file) {
   let fd;
   try {
@@ -52,6 +62,7 @@ export function lastRanLine(file) {
     fs.readSync(fd, buf, 0, buf.length, start);
     const lines = buf.toString('utf8').split('\n');
     if (start > 0) lines.shift(); // a partial first line
+    let fromTool;
     for (let i = lines.length - 1; i >= 0; i--) {
       let entry;
       try {
@@ -61,16 +72,20 @@ export function lastRanLine(file) {
       }
       const role = entry?.message?.role;
       if (role !== 'assistant' && role !== 'user') continue;
-      const found = texts(entry.message.content, role).flatMap((t) => t.split(/\r?\n/)).filter((l) => RAN.test(l));
-      if (found.length > 0) return found[found.length - 1].trim().slice(0, COMMAND_MAX);
+      const t = texts(entry.message.content, role);
+      const said = lastRan(t.assistant);
+      if (said !== undefined) return clip(said);
+      fromTool ??= lastRan(t.tool);
     }
-    return null;
+    return fromTool === undefined ? null : clip(fromTool);
   } catch {
     return null;
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
   }
 }
+
+const clip = (line) => redact(line).trim().slice(0, COMMAND_MAX);
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

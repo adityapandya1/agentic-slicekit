@@ -175,6 +175,8 @@ export function setState(root, cfg, id, to, evidence = {}) {
       ...current,
       ...rule.apply(current, ev),
       state: to,
+      // A handoff belongs to the state it was written in.
+      handoff: null,
       history: [...current.history, entry(current.state, to, backfill ? 'backfill' : 'cli', ev)],
     };
     writeSlice(root, cfg, next);
@@ -200,12 +202,13 @@ export function unfreeze(root, cfg, id, file) {
 }
 
 // Replaces only the slice's handoff, under the slice lock, re-reading the file inside it so a
-// concurrent `slicekit state set` is never undone. State and history are left as they are. Throws
-// LockError when the lock is not free within budgetMs.
+// concurrent `slicekit state set` is never undone. State and history are left as they are. A slice with
+// no state file yet is skipped (returns false): the handoff never creates one. Throws LockError when
+// the lock is not free within budgetMs.
 export function setHandoff(root, cfg, id, handoff, { budgetMs = LOCK_BUDGET_MS } = {}) {
   return withLock(root, cfg, id, () => {
-    const next = { ...readSlice(root, cfg, id), handoff };
-    writeSlice(root, cfg, next);
-    return next;
+    if (!exists(stateFile(root, cfg, id))) return false;
+    writeSlice(root, cfg, { ...readSlice(root, cfg, id), handoff });
+    return true;
   }, budgetMs);
 }
