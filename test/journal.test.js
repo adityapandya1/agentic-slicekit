@@ -8,9 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import {
-  GENESIS, appendJournal, branchFileName, hashLine, journalBranch, parseLine, readLast, verifyJournal,
-} from '../src/journal.js';
+import crypto from 'node:crypto';
+import * as J from '../src/journal.js';
 import journalRule from '../src/check/rules/journal.js';
 import { handle as sessionEnd } from '../src/hooks/session-end.js';
 import { runHook } from '../src/hooks/io.js';
@@ -22,7 +21,11 @@ import { runCli } from './helpers/run-cli.js';
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
 const git = (root, args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const DIR = (root) => path.join(root, '.slicekit', 'journal');
-const fileOf = (root, branch) => path.join(DIR(root), `${branchFileName(branch)}.log`);
+const { GENESIS, appendJournal, hashLine, journalBranch, parseLine, readLast, verifyJournal } = J;
+// The file this clone appends to for branch (D-34): <branch-part>--<clone-id>.log.
+const fileOf = (root, branch) => J.journalFile(root, branch);
+const relOf = (root, branch) => path.relative(root, fileOf(root, branch)).split(path.sep).join('/');
+const NC = '--no-clone.log'; // outside git
 const FIELDS = { actor: 'ada', slice: 'P1/S-07', stage: 'build', commits: ['abc1234'], verdicts: [], decisions: ['D-34'] };
 
 function tmpDir() {
@@ -45,7 +48,7 @@ test('append builds a chain from genesis', () => {
     const first = appendJournal(root, FIELDS, { branch: 'slice/P1-S-07-x', now: new Date('2026-10-25T10:00:00.000Z') });
     const second = appendJournal(root, { ...FIELDS, commits: ['def5678', 'abc1234'] }, { branch: 'slice/P1-S-07-x', now: new Date('2026-10-25T11:00:00.000Z') });
     const file = fileOf(root, 'slice/P1-S-07-x');
-    assert.equal(path.basename(file), 'slice__P1-S-07-x.log');
+    assert.match(path.basename(file), /^slice__P1-S-07-x-[0-9a-f]{8}--no-clone\.log$/);
     const text = fs.readFileSync(file, 'utf8');
     assert.equal(text, `${first}\n${second}\n`);
     const a = parseLine(first);
@@ -55,7 +58,7 @@ test('append builds a chain from genesis', () => {
     assert.match(first, /^2026-10-25T10:00:00\.000Z actor=ada slice=P1\/S-07 stage=build commits=abc1234 verdicts=- decisions=D-34 prev=genesis hash=[0-9a-f]{64}$/);
     assert.match(second, / commits=abc1234,def5678 /);
     assert.equal(a.hash, hashLine(first.slice(0, first.indexOf(' hash='))));
-    assert.deepEqual(verifyJournal(root), { ok: true, lines: 2, brokenAt: null, file: null, message: null, files: [{ file: '.slicekit/journal/slice__P1-S-07-x.log', lines: 2, brokenAt: null }] });
+    assert.deepEqual(verifyJournal(root), { ok: true, lines: 2, brokenAt: null, file: null, message: null, problems: [], files: [{ file: relOf(root, 'slice/P1-S-07-x'), lines: 2, brokenAt: null }] });
   } finally {
     cleanup();
   }
@@ -71,8 +74,8 @@ test('an edited line breaks the chain at its number', () => {
     const r = verifyJournal(root);
     assert.equal(r.ok, false);
     assert.equal(r.brokenAt, 2);
-    assert.equal(r.file, '.slicekit/journal/main.log');
-    assert.equal(r.message, 'journal chain broken at line 2 of .slicekit/journal/main.log');
+    assert.equal(r.file, `.slicekit/journal/main${NC}`);
+    assert.equal(r.message, `journal chain broken at line 2 of .slicekit/journal/main${NC}`);
     assert.match(r.message, /^journal chain broken at line 2/);
   } finally {
     cleanup();
@@ -92,10 +95,10 @@ test('verify never rewrites the file', () => {
     for (let i = 0; i < 3; i++) assert.equal(verifyJournal(root).ok, false);
     assert.equal(fs.readFileSync(file, 'utf8'), tampered);
     assert.equal(fs.statSync(file).mtimeMs, before);
-    assert.deepEqual(fs.readdirSync(DIR(root)), ['main.log']);
+    assert.deepEqual(fs.readdirSync(DIR(root)), [`main${NC}`]);
     const cli = runCli(['journal', 'verify'], { cwd: root });
     assert.equal(cli.code, 1);
-    assert.match(cli.stdout, /journal chain broken at line 1 of \.slicekit\/journal\/main\.log/);
+    assert.match(cli.stdout, /journal chain broken at line 1 of \.slicekit\/journal\/main--no-clone\.log/);
     assert.equal(fs.readFileSync(file, 'utf8'), tampered);
   } finally {
     cleanup();
@@ -106,9 +109,13 @@ test('verify never rewrites the file', () => {
 
 // REQ-3.8, D-34
 test('branch names map to one file name each', () => {
-  assert.equal(branchFileName('slice/P1-S-07-x'), 'slice__P1-S-07-x');
-  assert.equal(branchFileName('feature/a b:c'), 'feature__a_b_c');
-  assert.equal(branchFileName('main'), 'main');
+  const h = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 8);
+  assert.equal(J.branchPart('main'), 'main');
+  assert.equal(J.branchPart('feature__a'), 'feature__a');
+  assert.equal(J.branchPart('feature/a'), `feature__a-${h('feature/a')}`);
+  assert.equal(J.branchPart('feature/a b:c'), `feature__a_b_c-${h('feature/a b:c')}`);
+  const long = 'x'.repeat(81);
+  assert.equal(J.branchPart(long), `${'x'.repeat(60)}-${h(long)}`);
 });
 
 // REQ-3.8, D-34
@@ -122,11 +129,11 @@ test('two branch files are verified independently', () => {
     let r = verifyJournal(root);
     assert.equal(r.ok, true);
     assert.equal(r.lines, 3);
-    assert.deepEqual(r.files.map((f) => [f.file, f.lines]), [['.slicekit/journal/slice__a.log', 1], ['.slicekit/journal/slice__b.log', 2]]);
+    assert.deepEqual(r.files.map((f) => [f.file, f.lines]), [[relOf(root, 'slice/a'), 1], [relOf(root, 'slice/b'), 2]].sort());
     fs.writeFileSync(fileOf(root, 'slice/b'), fs.readFileSync(fileOf(root, 'slice/b'), 'utf8').replace(/stage=build/, 'stage=plan'));
     r = verifyJournal(root);
     assert.equal(r.ok, false);
-    assert.equal(r.message, 'journal chain broken at line 1 of .slicekit/journal/slice__b.log');
+    assert.equal(r.message, `journal chain broken at line 1 of ${relOf(root, 'slice/b')}`);
     assert.deepEqual(r.files.map((f) => f.brokenAt), [null, 1]);
   } finally {
     cleanup();
@@ -149,7 +156,7 @@ test('a merged history with both branch files present verifies', () => {
     git(root, ['checkout', '--quiet', 'main']);
     git(root, ['merge', '--quiet', '--no-ff', '-m', 'merge a', 'slice/a']);
     git(root, ['merge', '--quiet', '--no-ff', '-m', 'merge b', 'slice/b']);
-    assert.deepEqual(fs.readdirSync(DIR(root)).sort(), ['slice__a.log', 'slice__b.log']);
+    assert.deepEqual(fs.readdirSync(DIR(root)).sort(), [path.basename(fileOf(root, 'slice/a')), path.basename(fileOf(root, 'slice/b'))].sort());
     const r = verifyJournal(root);
     assert.equal(r.ok, true);
     assert.equal(r.lines, 2);
@@ -194,8 +201,8 @@ test('CRLF line endings still verify', () => {
 });
 
 // REQ-3.8
-test('concurrent appends from two processes both land with a valid chain', async () => {
-  const { root, cleanup } = tmpDir();
+test('concurrent appends from two processes in a fresh clone share one id and land with a valid chain', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
   try {
     const mod = pathToFileURL(path.resolve('src/journal.js')).href;
     const script = `import { appendJournal } from ${JSON.stringify(mod)};
@@ -210,6 +217,7 @@ for (let i = 0; i < 15; i++) appendJournal(process.argv[1], { actor: process.arg
     const r = verifyJournal(root);
     assert.equal(r.ok, true, r.message);
     assert.equal(r.lines, 30);
+    assert.equal(r.files.length, 1);
     const text = fs.readFileSync(fileOf(root, 'main'), 'utf8');
     assert.equal(text.match(/actor=p1/g).length, 15);
     assert.equal(text.match(/actor=p2/g).length, 15);
@@ -292,7 +300,7 @@ test('the journal rule reports a broken chain and is silent without a journal', 
     assert.deepEqual(run(), []);
     const file = fileOf(root, 'main');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/decisions=D-34 prev=genesis/, 'decisions=- prev=genesis'));
-    assert.deepEqual(run(), [{ file: '.slicekit/journal/main.log', line: 1, message: 'journal chain broken at line 1 of .slicekit/journal/main.log' }]);
+    assert.deepEqual(run(), [{ file: `.slicekit/journal/main${NC}`, line: 1, message: `journal chain broken at line 1 of .slicekit/journal/main${NC}` }]);
   } finally {
     cleanup();
   }
@@ -386,13 +394,262 @@ test('session-end on a torn journal fails open and writes nothing', async () => 
   try {
     withConfig(root);
     fs.mkdirSync(DIR(root), { recursive: true });
-    fs.writeFileSync(path.join(DIR(root), 'no-branch.log'), 'torn');
+    fs.writeFileSync(path.join(DIR(root), `no-branch${NC}`), 'torn');
     const out = await runHook('session-end', { stdin: JSON.stringify({ session_id: 's', cwd: root, reason: 'exit' }), root, env: {} });
     assert.equal(out.code, 0);
     assert.equal(out.stdout, '{}');
     assert.match(out.stderr, /slicekit hook session-end failed: .*torn/);
-    assert.equal(fs.readFileSync(path.join(DIR(root), 'no-branch.log'), 'utf8'), 'torn');
+    assert.equal(fs.readFileSync(path.join(DIR(root), `no-branch${NC}`), 'utf8'), 'torn');
   } finally {
     cleanup();
+  }
+});
+
+// ---- fix round 1 ----
+
+function fourLines(root) {
+  for (let i = 0; i < 4; i++) appendJournal(root, { ...FIELDS, stage: `s${i}` }, { branch: 'main' });
+  const file = fileOf(root, 'main');
+  return { file, lines: fs.readFileSync(file, 'utf8').trimEnd().split('\n') };
+}
+const write = (file, lines) => fs.writeFileSync(file, `${lines.join('\n')}\n`);
+
+// REQ-3.8 (I1): the prev link is checked, not only each line's own hash.
+test('a deleted middle line breaks the chain at its number', () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    const { file, lines } = fourLines(root);
+    write(file, [lines[0], lines[2], lines[3]]);
+    assert.equal(verifyJournal(root).brokenAt, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.8 (I1)
+test('an edited line with its hash recomputed breaks the chain at the next line', () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    const { file, lines } = fourLines(root);
+    const p = parseLine(lines[1]);
+    const body = p.body.replace('stage=s1', 'stage=s9');
+    write(file, [lines[0], `${body} hash=${hashLine(body)}`, lines[2], lines[3]]);
+    assert.equal(verifyJournal(root).brokenAt, 3);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.8 (I1)
+test('a first line whose prev is not genesis breaks at line 1', () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    const { file, lines } = fourLines(root);
+    write(file, lines.slice(1));
+    assert.equal(verifyJournal(root).brokenAt, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+function cloneOf(origin, dir) {
+  execFileSync('git', ['clone', '--quiet', '-b', 'main', origin, dir], { stdio: 'ignore' });
+  git(dir, ['config', 'user.name', 'T']);
+  git(dir, ['config', 'user.email', 't@example.com']);
+  git(dir, ['config', 'commit.gpgsign', 'false']);
+}
+
+// REQ-3.8, D-34 (I2): two clones on one branch each get their own file, so merging both never conflicts.
+test('two clones appending on main merge without conflict and verify', () => {
+  const origin = makeRepo({ commits: 1 });
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-clones-'));
+  try {
+    const ids = [];
+    for (const n of ['a', 'b']) {
+      const dir = path.join(base, n);
+      cloneOf(origin.root, dir);
+      appendJournal(dir, FIELDS);
+      ids.push(J.cloneId(dir));
+      git(dir, ['checkout', '--quiet', '-b', `slice/${n}`]);
+      git(dir, ['add', '-A']);
+      git(dir, ['commit', '--quiet', '-m', n]);
+      git(dir, ['push', '--quiet', 'origin', `slice/${n}`]);
+    }
+    assert.match(ids[0], /^[0-9a-f]{8}$/);
+    assert.notEqual(ids[0], ids[1]);
+    git(origin.root, ['merge', '--quiet', '--no-ff', '-m', 'ma', 'slice/a']);
+    git(origin.root, ['merge', '--quiet', '--no-ff', '-m', 'mb', 'slice/b']);
+    assert.deepEqual(fs.readdirSync(DIR(origin.root)).sort(), ids.map((id) => `main--${id}.log`).sort());
+    const r = verifyJournal(origin.root);
+    assert.equal(r.ok, true, r.message);
+    assert.equal(r.lines, 2);
+  } finally {
+    origin.cleanup();
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// D-34 (I2): the clone id lives in the git common dir, so worktrees of one clone share it.
+test('worktrees of one clone share its clone id', () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  const wt = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-wt-')), 'w');
+  try {
+    assert.equal(J.cloneId(root), null);
+    appendJournal(root, FIELDS);
+    const id = J.cloneId(root);
+    assert.equal(fs.readFileSync(path.join(root, '.git', 'slicekit', 'clone-id'), 'utf8').trim(), id);
+    git(root, ['worktree', 'add', '--quiet', '-b', 'other', wt]);
+    assert.equal(J.cloneId(wt), id);
+    assert.equal(J.cloneId(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-nogit-'))), 'no-clone');
+  } finally {
+    cleanup();
+  }
+});
+
+// D-34 (M4/M5): names that sanitise alike get different files; a long name still appends.
+test('feature/a and feature__a go to different files, and a 300-character branch appends', () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    appendJournal(root, FIELDS, { branch: 'feature/a' });
+    appendJournal(root, FIELDS, { branch: 'feature__a' });
+    assert.notEqual(fileOf(root, 'feature/a'), fileOf(root, 'feature__a'));
+    const long = `slice/${'y'.repeat(294)}`;
+    appendJournal(root, FIELDS, { branch: long });
+    assert.ok(path.basename(fileOf(root, long)).length < 100);
+    const r = verifyJournal(root);
+    assert.equal(r.ok, true);
+    assert.equal(r.files.length, 3);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.8 (M6): no blank-skipping; a last line that is not a journal line stops the append.
+test('append refuses a file whose last line is blank or not a journal line', async () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    appendJournal(root, FIELDS, { branch: 'main' });
+    const file = fileOf(root, 'main');
+    fs.appendFileSync(file, '\n');
+    let before = fs.readFileSync(file, 'utf8');
+    assert.throws(() => appendJournal(root, FIELDS, { branch: 'main' }), /does not parse/);
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+    fs.writeFileSync(file, `${before.trimEnd()}\nnot a journal line\n`);
+    before = fs.readFileSync(file, 'utf8');
+    withConfig(root);
+    fs.renameSync(file, fileOf(root, 'no-branch'));
+    const out = await runHook('session-end', { stdin: JSON.stringify({ session_id: 's', cwd: root, reason: 'exit' }), root, env: {} });
+    assert.equal(out.stdout, '{}');
+    assert.match(out.stderr, /does not parse/);
+    assert.equal(fs.readFileSync(fileOf(root, 'no-branch'), 'utf8'), before);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.8 (M7): anything in the journal directory other than a regular *.log (or a *.lock) is reported.
+test('verify reports an unexpected entry in the journal directory', () => {
+  const { root, cleanup } = tmpDir();
+  try {
+    appendJournal(root, FIELDS, { branch: 'main' });
+    fs.writeFileSync(path.join(DIR(root), 'main--no-clone.log.lock'), '');
+    assert.equal(verifyJournal(root).ok, true);
+    fs.writeFileSync(path.join(DIR(root), 'notes.txt'), 'x');
+    fs.mkdirSync(path.join(DIR(root), 'sub.log'));
+    let linked = true;
+    try {
+      fs.symlinkSync(fileOf(root, 'main'), path.join(DIR(root), 'link.log'));
+    } catch {
+      linked = false; // no symlink right on this machine
+    }
+    const r = verifyJournal(root);
+    assert.equal(r.ok, false);
+    const msgs = r.problems.map((p) => p.message);
+    assert.ok(msgs.includes('unexpected entry notes.txt in .slicekit/journal/'), msgs.join('; '));
+    assert.ok(msgs.includes('unexpected entry sub.log in .slicekit/journal/'));
+    if (linked) assert.ok(msgs.includes('unexpected entry link.log in .slicekit/journal/'));
+    assert.ok(!msgs.some((m) => m.includes('.lock')));
+    withConfig(root);
+    assert.ok(journalRule.run(buildContext(root, cfg)).some((f) => f.message === 'unexpected entry notes.txt in .slicekit/journal/'));
+  } finally {
+    cleanup();
+  }
+});
+
+// A repo whose main holds a committed two-line journal, now on a slice branch.
+function committedJournal() {
+  const r = makeRepo({ commits: 1 });
+  withConfig(r.root);
+  appendJournal(r.root, FIELDS);
+  appendJournal(r.root, FIELDS);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'journal']);
+  git(r.root, ['checkout', '--quiet', '-b', 'slice/x']);
+  return { ...r, file: fileOf(r.root, 'main'), rel: relOf(r.root, 'main') };
+}
+const appendOnly = (root, opts) => J.appendOnlyProblems(root, cfg, opts);
+
+// REQ-3.8 (I3): a committed journal file may only grow.
+test('a committed journal file that only grew passes the append-only check', () => {
+  const r = committedJournal();
+  try {
+    appendJournal(r.root, FIELDS, { branch: 'main' });
+    assert.deepEqual(appendOnly(r.root), []);
+    assert.deepEqual(journalRule.run(buildContext(r.root, cfg)), []);
+  } finally {
+    r.cleanup();
+  }
+});
+
+// REQ-3.8 (I3)
+test('a shortened committed journal file is reported against the default branch', () => {
+  const r = committedJournal();
+  try {
+    const lines = fs.readFileSync(r.file, 'utf8').split('\n');
+    fs.writeFileSync(r.file, `${lines[0]}\n`);
+    assert.equal(verifyJournal(r.root).ok, true); // the chain alone cannot see it
+    const msg = `journal file ${r.rel} was shortened or removed since main`;
+    assert.deepEqual(appendOnly(r.root).map((p) => p.message), [msg]);
+    assert.ok(journalRule.run(buildContext(r.root, cfg)).some((f) => f.message === msg));
+    const cli = runCli(['journal', 'verify'], { cwd: r.root });
+    assert.equal(cli.code, 1);
+    assert.match(cli.stdout, /was shortened or removed since main/);
+  } finally {
+    r.cleanup();
+  }
+});
+
+// REQ-3.8 (I3)
+test('a removed or wholly rewritten committed journal file is reported', () => {
+  const r = committedJournal();
+  try {
+    fs.rmSync(r.file);
+    assert.deepEqual(appendOnly(r.root).map((p) => p.message), [`journal file ${r.rel} was shortened or removed since main`]);
+    appendJournal(r.root, { ...FIELDS, actor: 'eve' }, { branch: 'main' });
+    assert.equal(verifyJournal(r.root).ok, true); // a fresh chain from genesis verifies
+    assert.equal(appendOnly(r.root).length, 1);
+  } finally {
+    r.cleanup();
+  }
+});
+
+// REQ-3.8 (I3): --against names the ref; no repo or no base is no finding.
+test('the append-only check takes --against and is silent without a repo or a base', () => {
+  const r = committedJournal();
+  const t = tmpDir();
+  try {
+    git(r.root, ['branch', 'keep']);
+    fs.writeFileSync(r.file, '');
+    assert.match(appendOnly(r.root, { against: 'keep' })[0].message, /since keep$/);
+    const cli = runCli(['journal', 'verify', '--against', 'keep'], { cwd: r.root });
+    assert.equal(cli.code, 1);
+    assert.match(cli.stdout, /since keep/);
+    assert.deepEqual(appendOnly(r.root, { against: 'nope' }), []);
+    assert.deepEqual(appendOnly(t.root), []);
+    git(r.root, ['branch', '-m', 'main', 'trunk']);
+    assert.deepEqual(appendOnly(r.root), []);
+  } finally {
+    r.cleanup();
+    t.cleanup();
   }
 });

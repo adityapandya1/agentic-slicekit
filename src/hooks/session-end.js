@@ -1,8 +1,8 @@
-// session-end (REQ-3.8, D-32, D-34): appends one line to the current branch's journal file,
-// `.slicekit/journal/<branch>.log`. Fails open through io.js: a refused append (torn last line, lock
-// busy) is a stderr note and nothing is written.
+// session-end (REQ-3.8, D-32, D-34): appends one line to this clone's journal file for the current
+// branch, `.slicekit/journal/<branch-part>--<clone-id>.log`. Fails open through io.js: a refused append
+// (torn or unparseable last line, lock busy) is a stderr note and nothing is written.
 //
-// Since the last line in THIS branch's file (from the start of the branch when the file is empty):
+// Since the last line in that file (from the start of the branch when the file is empty):
 //   commits    short shas of commits on the branch beyond the default branch, committed since that line
 //              (same-second commits the last line already named are left out); `-` outside a repository
 //   verdicts   stems of `.slicekit/reviews/*.md` files modified since that line
