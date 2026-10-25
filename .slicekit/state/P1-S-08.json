@@ -1,18 +1,18 @@
 {
   "slice": "P1/S-08",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 7,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/7",
-    "headSha": "312cdccc34915a15c7c536b6bed397fca5fca24f"
+    "headSha": "f605648cd18578edc6f0301691dda8c3cd9fee71"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-25T17:34:28Z",
   "handoff": null,
   "history": [
     {
@@ -27,6 +27,21 @@
           "headSha": "312cdccc34915a15c7c536b6bed397fca5fca24f",
           "title": "[P1/S-08] CI workflow generator"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-25T17:34:41.553Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-25T17:34:28Z",
+        "pr": {
+          "number": 7,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/7",
+          "headSha": "f605648cd18578edc6f0301691dda8c3cd9fee71"
+        },
+        "source": "host"
       }
     }
   ]
