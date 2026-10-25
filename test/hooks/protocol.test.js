@@ -361,3 +361,52 @@ test('CLI: a fail-open handler that never settles notes it on stderr', () => {
   assert.equal(open.code, 0);
   assert.match(open.stderr, /handler never settled/);
 });
+
+// ---- final fix wave ----
+
+// M7
+test('with no config above the cwd every hook answers {}: not a slicekit project', async () => {
+  const bare = tmpRoot({ config: false });
+  try {
+    for (const name of C3) {
+      const r = await runHook(name, { stdin: JSON.stringify({ cwd: bare, tool_input: {} }), env: {} });
+      assert.equal(r.stdout, '{}', name);
+    }
+    const bash = await runHook('pre-bash', {
+      stdin: JSON.stringify({ cwd: bare, tool_name: 'Bash', tool_input: { command: 'git commit -m x' } }), env: {},
+    });
+    assert.equal(bash.stdout, '{}');
+    const edit = await runHook('pre-edit', {
+      stdin: JSON.stringify({ cwd: bare, tool_name: 'Write', tool_input: { file_path: path.join(bare, 'a.js') } }), env: {},
+    });
+    assert.equal(edit.stdout, '{}');
+  } finally {
+    fs.rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+// M7
+test('a config that exists but is invalid still fails closed', async () => {
+  const bare = tmpRoot({ config: false });
+  const broken = tmpRoot({ config: false });
+  try {
+    fs.mkdirSync(path.join(broken, '.slicekit'));
+    fs.writeFileSync(path.join(broken, '.slicekit', 'config.json'), '{not json');
+    const bash = await runHook('pre-bash', {
+      stdin: JSON.stringify({ cwd: broken, tool_name: 'Bash', tool_input: { command: 'ls' } }), env: {},
+    });
+    assert.equal(out(bash).hookSpecificOutput.permissionDecision, 'deny');
+    const edit = await runHook('pre-edit', {
+      stdin: JSON.stringify({ cwd: broken, tool_name: 'Edit', tool_input: { file_path: 'a.js' } }), env: {},
+    });
+    assert.equal(out(edit).hookSpecificOutput.permissionDecision, 'deny');
+    // The session sits outside any project, the file inside a broken one: pre-edit judges the file's root.
+    const across = await runHook('pre-edit', {
+      stdin: JSON.stringify({ cwd: bare, tool_name: 'Edit', tool_input: { file_path: path.join(broken, 'src', 'a.js') } }), env: {},
+    });
+    assert.equal(out(across).hookSpecificOutput.permissionDecision, 'deny');
+  } finally {
+    fs.rmSync(bare, { recursive: true, force: true });
+    fs.rmSync(broken, { recursive: true, force: true });
+  }
+});

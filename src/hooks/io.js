@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG_PATH, loadConfig } from '../config.js';
 import { git as runGit } from '../git.js';
+import { existingAncestor, fromGitBash } from './paths.js';
 
 // C-3's table: these eight names are the full set.
 export const HOOK_NAMES = new Set([
@@ -44,18 +45,33 @@ export const deny = (reason) => ({
 export const context = (event, text) => ({ hookSpecificOutput: { hookEventName: event, additionalContext: text } });
 export const block = (reason) => ({ decision: 'block', reason });
 
+// The nearest directory at or above dir holding .slicekit/config.json, or null.
+function configAbove(dir) {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, CONFIG_PATH))) return d;
+    if (path.dirname(d) === d) return null;
+  }
+}
+
 // The directory holding .slicekit/config.json, walking up from cwd; process.cwd() when there is none.
 export function findRoot(cwd) {
-  if (typeof cwd === 'string' && cwd !== '') {
-    let dir = path.resolve(cwd);
-    for (;;) {
-      if (fs.existsSync(path.join(dir, CONFIG_PATH))) return dir;
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return process.cwd();
+  return (typeof cwd === 'string' && cwd !== '' ? configAbove(cwd) : null) ?? process.cwd();
+}
+
+const PATH_KEYS = ['file_path', 'notebook_path'];
+
+// Whether the hook call belongs to a slicekit project: a config above the cwd (process.cwd() when the
+// input has none) or, for pre-edit, above any path the tool names. Outside one, every hook answers {}.
+const slashed = (p) => fromGitBash(p.replace(/\\/g, '/'));
+function inProject(name, input) {
+  const cwd = typeof input.cwd === 'string' && input.cwd !== '' ? path.resolve(slashed(input.cwd)) : process.cwd();
+  if (configAbove(cwd)) return true;
+  if (name !== 'pre-edit') return false;
+  return PATH_KEYS.some((k) => {
+    const p = input.tool_input?.[k];
+    if (typeof p !== 'string' || p === '') return false;
+    return configAbove(existingAncestor(path.resolve(cwd, slashed(p)))) !== null;
+  });
 }
 
 
@@ -163,6 +179,9 @@ export async function runHook(name, { stdin, root, env = process.env, load = loa
     // Not built yet: answer {} even for a fail-closed name once its input parsed, so installing the
     // kit never blocks a team before the guard exists. The guard takes over when its module lands.
     if (!mod) return { stdout: '{}', code: 0, stderr: '' };
+    // Not a slicekit project: the kit has nothing to guard. A config that exists but is invalid is
+    // still loaded below, and fails closed.
+    if (root === undefined && !inProject(name, input)) return { stdout: '{}', code: 0, stderr: '' };
     const hookRoot = root ?? findRoot(input.cwd);
     const cfg = loadConfig(hookRoot);
     const git = (args) => runGit(hookRoot, args);
