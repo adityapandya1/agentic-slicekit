@@ -2,6 +2,9 @@
 // blocks once on any problem named here. An empty array means the output is well formed.
 import fs from 'node:fs';
 import path from 'node:path';
+import { GitError, currentBranch } from '../git.js';
+import { sliceFromBranch } from '../ids.js';
+import { prose } from '../markdown.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
 
 export const ROLES = new Set(['developer', 'reviewer', 'fixer', 'auditor', 'ops', 'designer']);
@@ -15,7 +18,23 @@ const NOT_CHECKED = /^\s*Not checked:/m;
 const RAN = /^\s*ran: .+ (?:→|->) exit \d+/m;
 const FINDING_ID = /\b[BH]-[1-9]\d*\b/;
 
-// The newest regular file in <root>/.slicekit/reviews/ modified within the window, or null.
+const VERDICT_NAME = /^(P\d+-S-\d+)[a-z]?-r\d+\.md$/;
+
+// The slice the branch at root names, as a verdict file names it (`P1-S-07`); null when there is none.
+function currentSlice(root) {
+  let branch;
+  try {
+    branch = currentBranch(root);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+  const id = branch ? sliceFromBranch(branch) : null;
+  return id ? id.replace('/', '-') : null;
+}
+
+// The newest regular file in <root>/.slicekit/reviews/ named like a verdict (`P<n>-S-<nn>-r<k>.md`) of
+// the current slice, modified within the window, or null. With no current slice any verdict name counts.
 function newestReview(root, now) {
   const dir = path.join(root, '.slicekit', 'reviews');
   let names;
@@ -24,8 +43,11 @@ function newestReview(root, now) {
   } catch {
     return null;
   }
+  const slice = currentSlice(root);
   let best = null;
   for (const name of names) {
+    const m = VERDICT_NAME.exec(name);
+    if (!m || (slice !== null && m[1] !== slice)) continue;
     let st;
     try {
       st = fs.statSync(path.join(dir, name));
@@ -54,6 +76,12 @@ function reviewerProblems(root, now) {
 export function shapeProblems(role, text, { root, now = Date.now() } = {}) {
   if (!ROLES.has(role)) return [];
   if (typeof text !== 'string' || text.trim() === '') return [NO_OUTPUT];
+  // Lines inside fenced code blocks are quoted material, not the agent's own report.
+  const own = [...prose(text)].map(([l]) => l).join('\n');
+  return reportProblems(role, own, root, now);
+}
+
+function reportProblems(role, text, root, now) {
   const out = [];
   if (!SKIPPED.test(text)) out.push('no "Skipped:" line');
   if (!NOT_CHECKED.test(text)) out.push('no "Not checked:" line');

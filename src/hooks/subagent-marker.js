@@ -1,5 +1,6 @@
 // The subagent marker (REQ-2.1): a file that holds how many subagents are open in a session.
-// SubagentStart enters, SubagentStop leaves; pre-bash reads it to keep git out of agents.
+// SubagentStart enters, SubagentStop leaves. pre-bash does not read it (it keys on the tool call's
+// agent_id, S-07); it records that a subagent of the session is open.
 //
 // Inside a git repository the marker is `<git-common-dir>/slicekit/subagent-<sessionId>`: every worktree
 // of the repository shares the common directory, so a marker entered from the main checkout is found
@@ -14,6 +15,7 @@ const MAX_ID = 200;
 const REPO_PREFIX = 'subagent-';
 const LOCAL_PREFIX = '.subagent-';
 const RETRY = { [REPO_PREFIX]: 'retry-', [LOCAL_PREFIX]: '.retry-' };
+const AGENTS = { [REPO_PREFIX]: 'agents-', [LOCAL_PREFIX]: '.agents-' };
 
 // -> {dir, prefix}: where the markers for root live and how their names start.
 function markerHome(root) {
@@ -50,6 +52,45 @@ export function retryPath(root, sessionId, agentId) {
 }
 
 export const usableId = usable;
+
+// The agents subagent-start recorded for a session, one sanitised agent_id per line, next to the marker:
+// `agents-<session>` in the git common directory, `.agents-<session>` under .slicekit outside a repository.
+// subagent-stop acts only for an agent recorded here: Claude Code also sends SubagentStop for its own
+// internal agents, which never had a SubagentStart.
+export function agentsPath(root, sessionId) {
+  check(sessionId, 'session id');
+  const { dir, prefix } = markerHome(root);
+  return path.join(dir, `${AGENTS[prefix]}${safe(sessionId)}`);
+}
+
+function readAgents(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l !== '');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+}
+
+export function addAgent(root, sessionId, agentId) {
+  check(agentId, 'agent id');
+  const file = agentsPath(root, sessionId);
+  const ids = readAgents(file);
+  if (ids.includes(safe(agentId))) return;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${[...ids, safe(agentId)].join('\n')}\n`);
+}
+
+export function hasAgent(root, sessionId, agentId) {
+  return usable(agentId) && readAgents(agentsPath(root, sessionId)).includes(safe(agentId));
+}
+
+export function removeAgent(root, sessionId, agentId) {
+  const file = agentsPath(root, sessionId);
+  const ids = readAgents(file).filter((id) => id !== safe(agentId));
+  if (ids.length === 0) fs.rmSync(file, { force: true });
+  else fs.writeFileSync(file, `${ids.join('\n')}\n`);
+}
 
 // null when there is no marker; NaN when it exists but is unreadable as a count.
 function readCount(file) {

@@ -1,11 +1,14 @@
-// subagent-start (REQ-3.4): marks that a subagent is running (pre-bash then keeps git out of it) and
-// injects its role brief, the writing rules and the no-git rule. Fails open through io.js.
+// subagent-start (REQ-3.4): marks that a subagent is running (the session marker, and its agent_id in
+// the session's started-agents record, which subagent-stop checks) and injects its role brief, the
+// writing rules and the no-git rule. Fails open through io.js. pre-bash keeps git out of the subagent by
+// the agent_id Claude Code puts on every tool call made inside it, not by the marker.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { context } from './io.js';
+import { toPosix } from './paths.js';
 import { roleOf } from './shapes.js';
-import { enter, usableId } from './subagent-marker.js';
+import { addAgent, enter, usableId } from './subagent-marker.js';
 
 export { roleOf };
 export const BRIEF_MAX = 8000;
@@ -13,18 +16,25 @@ export const NO_GIT = 'You never run git; report and the command commits.';
 const SKILL = path.join('.claude', 'skills', 'slicekit-writing', 'SKILL.md');
 const KIT_SKILL = fileURLToPath(new URL('../../templates/claude-code/skills/slicekit-writing/SKILL.md', import.meta.url));
 
-const stripFrontMatter = (text) => text.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+const stripFrontMatter = (text) => text.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
 
-// The writing rules as rendered in the project, else the kit's template; '' when neither reads.
+// A file as the brief names it: relative to root when inside it, else absolute; forward slashes.
+function shown(root, file) {
+  const rel = path.relative(path.resolve(root), file);
+  return toPosix(rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? file : rel);
+}
+
+// -> {text, file}: the writing rules as rendered in the project, else the kit's template; text '' when
+// neither reads.
 function writingRules(root) {
   for (const file of [path.join(root, SKILL), KIT_SKILL]) {
     try {
-      return stripFrontMatter(fs.readFileSync(file, 'utf8')).replace(/\r\n/g, '\n').trim();
+      return { text: stripFrontMatter(fs.readFileSync(file, 'utf8')).replace(/\r\n/g, '\n').trim(), file: shown(root, file) };
     } catch {
       // try the next one
     }
   }
-  return '';
+  return { text: '', file: null };
 }
 
 // `slicekit instructions <role>` when that command exists (S-09) and succeeds, else the P1 placeholder.
@@ -45,13 +55,24 @@ async function cliCommands() {
   return (await import('../cli/index.js')).COMMANDS;
 }
 
+// The brief, the rules and the no-git sentence in at most BRIEF_MAX characters. A cut text ends with a
+// line naming where the full text is; the no-git sentence is always last.
+function assemble(brief, rules, role) {
+  const tail = `\n\n${NO_GIT}`;
+  const body = [brief, rules.text].filter((s) => s !== '').join('\n\n');
+  if (body.length + tail.length <= BRIEF_MAX) return body + tail;
+  const where = brief.length + tail.length + 200 > BRIEF_MAX || !rules.file ? `slicekit instructions ${role}` : rules.file;
+  const note = `\n(brief truncated; full text in ${where})`;
+  return body.slice(0, BRIEF_MAX - tail.length - note.length) + note + tail;
+}
+
 export async function handle(input, { root, env = process.env, commands }) {
-  // With no usable session id there is no marker to key; the brief is still injected.
-  if (usableId(input?.session_id)) enter(root, input.session_id);
+  // Only an agent that can be named at its stop is recorded: the stop hook acts for recorded agents.
+  if (usableId(input?.session_id) && usableId(input?.agent_id)) {
+    enter(root, input.session_id);
+    addAgent(root, input.session_id, input.agent_id);
+  }
   const role = roleOf(input?.agent_type);
   const brief = await roleBrief(role, root, env, commands ?? await cliCommands());
-  const body = [brief, writingRules(root)].filter((s) => s !== '').join('\n\n');
-  // The no-git rule always survives the cap.
-  const room = BRIEF_MAX - NO_GIT.length - 2;
-  return context('SubagentStart', `${body.length > room ? body.slice(0, room) : body}\n\n${NO_GIT}`);
+  return context('SubagentStart', assemble(brief, writingRules(root), role));
 }

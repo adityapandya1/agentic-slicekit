@@ -100,6 +100,24 @@ test('subagent-start » the brief is capped at 8000 characters and keeps the no-
   }
 });
 
+// M-3: a cut brief says so and names where the full text is; the no-git sentence stays last.
+test('subagent-start » a truncated brief names the full text and keeps the no-git rule last', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const file = path.join(root, '.claude', 'skills', 'slicekit-writing', 'SKILL.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `# Rules\n${'x'.repeat(20000)}\n`);
+    const t = text(await start(root));
+    assert.ok(t.length <= 8000, String(t.length));
+    assert.ok(t.endsWith(`\n(brief truncated; full text in .claude/skills/slicekit-writing/SKILL.md)\n\n${NO_GIT}`), t.slice(-200));
+    // An uncut brief carries no such line.
+    fs.writeFileSync(file, '# Rules\n- short\n');
+    assert.doesNotMatch(text(await start(root, { agent_id: 'a2' })), /brief truncated/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('subagent-start » uses `slicekit instructions <role>` when that command exists', async () => {
   const { root, cleanup } = makeRepo({ commits: 1 });
   try {
