@@ -1,0 +1,33 @@
+{
+  "slice": "P2/S-09",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 10,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/10",
+    "headSha": "61c4f1730b32673910d4e6fb6fe340472ab038b1"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-25T21:04:07.002Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 10,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/10",
+          "headSha": "61c4f1730b32673910d4e6fb6fe340472ab038b1",
+          "title": "[P2/S-09] `instructions`, the agent briefs and the shared commands"
+        }
+      }
+    }
+  ]
+}
