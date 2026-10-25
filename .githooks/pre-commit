@@ -1,23 +1,39 @@
 #!/bin/sh
-# slicekit: refuses a commit on a protected branch (REQ-3.9). ALLOW_PROTECTED_COMMIT=1 overrides.
-[ "$ALLOW_PROTECTED_COMMIT" = "1" ] && exit 0
-
-# A detached HEAD is on no branch, so no branch is protected.
-branch=$(git symbolic-ref --short -q HEAD) || exit 0
-
-# protectedBranches from .slicekit/config.json; main when node or the file is absent or unreadable.
-protected=main
-config=.slicekit/config.json
-if [ -f "$config" ] && command -v node >/dev/null 2>&1; then
-  if list=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^﻿/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' "$config" 2>/dev/null); then
-    protected=$list
+# slicekit: refuses a commit on a protected branch (REQ-3.9). Installed as pre-commit and as
+# pre-merge-commit, byte for byte; prepare-commit-msg carries the same check between the markers.
+# >>> slicekit protected-branch check (identical in every slicekit hook)
+# The branch a commit lands on: HEAD's branch, or during a rebase the branch being rebased.
+slicekit_branch() {
+  git symbolic-ref --short -q HEAD && return 0
+  for slicekit_d in rebase-merge rebase-apply; do
+    slicekit_f=$(git rev-parse --git-path "$slicekit_d/head-name")
+    if [ -f "$slicekit_f" ]; then
+      sed -e 's#^refs/heads/##' "$slicekit_f"
+      return 0
+    fi
+  done
+  return 0
+}
+# Refuses when that branch is in protectedBranches of .slicekit/config.json, or is main when node or
+# the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides.
+slicekit_check_protected() {
+  [ "$ALLOW_PROTECTED_COMMIT" = "1" ] && return 0
+  slicekit_b=$(slicekit_branch)
+  [ -n "$slicekit_b" ] || return 0
+  slicekit_p=main
+  if [ -f .slicekit/config.json ] && command -v node >/dev/null 2>&1; then
+    if slicekit_l=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^﻿/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' .slicekit/config.json 2>/dev/null); then
+      slicekit_p=$slicekit_l
+    fi
   fi
-fi
-
-for name in $protected; do
-  if [ "$name" = "$branch" ]; then
-    echo "slicekit: $branch is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1" >&2
-    exit 1
-  fi
-done
+  for slicekit_n in $slicekit_p; do
+    if [ "$slicekit_n" = "$slicekit_b" ]; then
+      echo "slicekit: $slicekit_b is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+# <<< slicekit protected-branch check
+slicekit_check_protected || exit 1
 exit 0

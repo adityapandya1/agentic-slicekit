@@ -353,7 +353,7 @@ test('cli: a hook command that does not answer warns on init and on update', () 
   });
 });
 
-const HOOKS = ['pre-commit', 'prepare-commit-msg'];
+const HOOKS = ['pre-commit', 'pre-merge-commit', 'prepare-commit-msg'];
 const template = (name) => fs.readFileSync(new URL(`../templates/githooks/${name}`, import.meta.url), 'utf8');
 
 // REQ-3.9: init writes both git hooks, executable, and points core.hooksPath at them.
@@ -416,4 +416,64 @@ test('init outside a repo writes the hooks and sets no hooks path', () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// R2: hooks checked out with CRLF break sh, so init pins .githooks/* to LF.
+test('init writes the .githooks eol rule to .gitattributes once', () => {
+  withRepo((root) => {
+    const first = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(first.created.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+    const second = init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(second.skipped.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+  });
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(result.updated.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\n');
+  }, { files: { '.gitattributes': '* text=auto\n' } });
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(result.skipped.includes('.gitattributes'));
+  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n' } });
+});
+
+// M5: a CRLF file gets CRLF lines appended.
+test('init keeps a CRLF ignore or attributes file CRLF', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(read(root, '.gitignore'), 'node_modules\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
+  }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+  }, { files: { '.gitignore': 'a\r\nb' } });
+});
+
+// I3: on win32 a new file is staged 100644; init stages its hooks executable so the first commit
+// records 100755. D-19: init never commits.
+test('init stages the hooks it creates as executable in a repo with commits', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    assert.equal(git(root, ['rev-list', '--count', 'HEAD']), '1');
+  }, { commits: 1 });
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(git(root, ['ls-files', '-s', '.githooks']), '');
+  }, { commits: 0 });
+});
+
+// M2: the absolute path to .githooks is already installed.
+test('init treats another spelling of .githooks as installed', () => {
+  withRepo((root) => {
+    const abs = path.join(root, '.githooks').split(path.sep).join('/');
+    git(root, ['config', 'core.hooksPath', abs]);
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.deepEqual(result.warnings, []);
+    assert.equal(git(root, ['config', 'core.hooksPath']), abs);
+  });
 });

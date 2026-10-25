@@ -98,10 +98,10 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | queue | `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
 | coverage | at plan stage or later, a REQ named by no slice, a slice listing no expected changes, or two slices in one parallel group expecting the same path (REQ-2.5) |
-| trailer | on a slice branch, a commit without the `Slice:` trailer |
+| trailer | on a slice branch, a first-parent commit not reachable from the default branch, local or on origin, whose `Slice:` trailer, as git reads it, is missing or names another slice; merge commits are exempt |
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
-| hooks | `.githooks/` is not the configured hooks path, or a rendered hook is missing |
+| hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
 | journal | the hash chain in `journal.log` is broken |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 
@@ -136,7 +136,8 @@ Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 ## REQ-3.9 Git hooks — two layers
 
 Init SHALL write `.githooks/prepare-commit-msg` (adds the `Slice:` trailer from the branch name) and
-`.githooks/pre-commit` (refuses a commit on a protected branch), set `core.hooksPath` to `.githooks`,
+`.githooks/pre-commit` and `.githooks/pre-merge-commit` (refuse a commit on a protected branch; the
+same check runs in `prepare-commit-msg`, so cherry-pick, revert and rebase are covered), set `core.hooksPath` to `.githooks`,
 and `slicekit check` SHALL fail when the hooks path is not set, because git hooks do not survive a
 clone. The Claude Code PreToolUse guard covers tool-issued commands; the git hooks cover plain git.
 Each alone fails silently.

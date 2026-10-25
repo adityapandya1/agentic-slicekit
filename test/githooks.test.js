@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { init } from '../src/init.js';
 import { git, parseTrailers } from '../src/git.js';
+import { loadConfig } from '../src/config.js';
+import { buildContext } from '../src/check/context.js';
+import trailer from '../src/check/rules/trailer.js';
 import { which } from '../src/which.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 
@@ -19,6 +22,8 @@ function withHooks(fn, { branch = 'slice/P1-S-06-x', commits = 0 } = {}) {
   const repo = makeRepo({ branch, commits });
   try {
     init(repo.root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    // init stages the hooks it creates in a repo with commits; unstage them so the index is clean.
+    if (commits > 0) git(repo.root, ['reset', '-q']);
     return fn(repo.root);
   } finally {
     repo.cleanup();
@@ -139,9 +144,109 @@ test('pre-commit allows a detached HEAD', { skip: noSh }, () => {
 });
 
 test('the hook templates are POSIX sh with LF endings', () => {
-  for (const name of ['prepare-commit-msg', 'pre-commit']) {
+  for (const name of ['prepare-commit-msg', 'pre-commit', 'pre-merge-commit']) {
     const text = fs.readFileSync(path.join(kitRoot, 'templates', 'githooks', name), 'utf8');
     assert.ok(text.startsWith('#!/bin/sh\n'), name);
     assert.ok(!text.includes('\r'), name);
   }
+});
+
+// sh has no import: the protected-branch check is copied into every hook, and the copies must agree.
+test('every hook carries the same protected-branch check', () => {
+  const read = (name) => fs.readFileSync(path.join(kitRoot, 'templates', 'githooks', name), 'utf8');
+  assert.equal(read('pre-merge-commit'), read('pre-commit'));
+  const block = (text) => {
+    const m = /# >>> slicekit protected-branch check[\s\S]*# <<< slicekit protected-branch check\n/.exec(text);
+    assert.ok(m, 'marked block present');
+    return m[0];
+  };
+  assert.equal(block(read('prepare-commit-msg')), block(read('pre-commit')));
+});
+
+// Any git command, hooks and all; never throws.
+function gitRun(root, args, env = {}) {
+  const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', env: { ...process.env, ALLOW_PROTECTED_COMMIT: '', ...env } });
+  return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+}
+
+// A real change staged, so a pick or a revert of it is never empty.
+const change = (root, name) => {
+  fs.writeFileSync(path.join(root, name), name);
+  git(root, ['add', name]);
+};
+
+const INNER = ['git', 'com' + 'mit', '--allow-empty', '-m', 'inner'].join(' ');
+
+// REQ-3.9: a clean `git merge` runs pre-merge-commit, not pre-commit.
+test('pre-merge-commit refuses a merge on a protected branch', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['checkout', '-q', '-b', 'feature/x']);
+    assert.equal(commit(root, ['-m', 'on feature']).code, 0);
+    git(root, ['checkout', '-q', 'main']);
+    const refused = gitRun(root, ['merge', '--no-ff', '-m', 'merge feature', 'feature/x']);
+    assert.notEqual(refused.code, 0);
+    assert.match(refused.stderr, /main is protected/);
+    gitRun(root, ['merge', '--abort']);
+    const allowed = gitRun(root, ['merge', '--no-ff', '-m', 'merge feature', 'feature/x'], { ALLOW_PROTECTED_COMMIT: '1' });
+    assert.equal(allowed.code, 0, allowed.stderr);
+    assert.equal(body(root), 'merge feature');
+  }, { branch: 'main', commits: 1 });
+});
+
+// REQ-3.9: cherry-pick, revert and a commit inside a rebase never run pre-commit; prepare-commit-msg
+// carries the same check, and during a rebase the branch is read from the rebase's head-name.
+test('cherry-pick, revert and a rebase commit on a protected branch are refused', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['checkout', '-q', '-b', 'feature/x']);
+    change(root, 'f.txt');
+    assert.equal(commit(root, ['-m', 'on feature']).code, 0);
+    git(root, ['checkout', '-q', 'main']);
+    const pick = gitRun(root, ['cherry-pick', 'feature/x']);
+    assert.notEqual(pick.code, 0);
+    assert.match(pick.stderr, /main is protected/);
+    gitRun(root, ['cherry-pick', '--abort']);
+    change(root, 'm.txt');
+    assert.equal(commit(root, ['-m', 'on main'], { ALLOW_PROTECTED_COMMIT: '1' }).code, 0);
+    const revert = gitRun(root, ['revert', '--no-edit', 'HEAD']);
+    assert.notEqual(revert.code, 0);
+    assert.match(revert.stderr, /main is protected/);
+    gitRun(root, ['revert', '--abort']);
+    // A refused single revert can leave its changes staged; start the rebase from a clean index.
+    git(root, ['reset', '-q', '--hard']);
+    const before = git(root, ['rev-parse', 'HEAD']);
+    const rebase = gitRun(root, ['rebase', '--exec', INNER, 'HEAD~1']);
+    assert.notEqual(rebase.code, 0);
+    assert.match(rebase.stderr, /main is protected/);
+    gitRun(root, ['rebase', '--abort']);
+    assert.equal(git(root, ['rev-parse', 'HEAD']), before);
+  }, { branch: 'main', commits: 2 });
+});
+
+test('cherry-pick, revert and a rebase commit on a slice branch are allowed', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['checkout', '-q', '-b', 'feature/x']);
+    change(root, 'f.txt');
+    assert.equal(commit(root, ['-m', 'on feature']).code, 0);
+    git(root, ['checkout', '-q', '-b', 'slice/P1-S-06-x', 'main']);
+    const pick = gitRun(root, ['cherry-pick', 'feature/x']);
+    assert.equal(pick.code, 0, pick.stderr);
+    assert.equal(body(root), 'on feature\n\nSlice: P1/S-06');
+    const revert = gitRun(root, ['revert', '--no-edit', 'HEAD']);
+    assert.equal(revert.code, 0, revert.stderr);
+    assert.equal(count(body(root), 'Slice: P1/S-06'), 1);
+    // M1: a commit made during a rebase on a slice branch gets the trailer too.
+    const rebase = gitRun(root, ['rebase', '--exec', INNER, 'HEAD~1']);
+    assert.equal(rebase.code, 0, rebase.stderr);
+    assert.equal(git(root, ['symbolic-ref', '--short', 'HEAD']), 'slice/P1-S-06-x');
+    assert.equal(body(root), 'inner\n\nSlice: P1/S-06');
+  }, { branch: 'main', commits: 2 });
+});
+
+// A `---` line in a body is text: the trailer goes at the end, where git reads trailers.
+test('a body with a --- line still ends in the trailer the rule reads', { skip: noSh }, () => {
+  withHooks((root) => {
+    assert.equal(commit(root, ['-m', 'subject\n\n---\nnot a patch']).code, 0);
+    assert.equal(body(root), 'subject\n\n---\nnot a patch\n\nSlice: P1/S-06');
+    assert.deepEqual(trailer.run(buildContext(root, loadConfig(root))), []);
+  });
 });
