@@ -132,6 +132,24 @@ test('no origin remote: says so without the network', async () => {
   }
 });
 
+// Whole-branch M5: per-session leftovers older than a day are swept; the clone id never is.
+test('session-start sweeps retry- and agents- files older than 24 hours', async () => {
+  const repo = makeRepo({ commits: 1 });
+  try {
+    const dir = path.join(repo.root, '.git', 'slicekit');
+    fs.mkdirSync(dir, { recursive: true });
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    for (const name of ['agents-old', 'retry-old-a1', 'agents-fresh', 'retry-fresh-a1', 'clone-id', 'other-old']) {
+      fs.writeFileSync(path.join(dir, name), 'x\n');
+      if (!name.includes('fresh')) fs.utimesSync(path.join(dir, name), old, old);
+    }
+    await start(repo.root);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['agents-fresh', 'clone-id', 'other-old', 'retry-fresh-a1']);
+  } finally {
+    repo.cleanup();
+  }
+});
+
 test('not a git repository', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-norepo-'));
   try {
