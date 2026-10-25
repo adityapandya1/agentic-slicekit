@@ -11,8 +11,11 @@ export const SETTINGS = '.claude/settings.json';
 export const RENDERED = '.slicekit/rendered';
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
-export function substitute(text, vars) {
-  return text.replace(/\{\{(version|name|docsRoot|cli)\}\}/g, (_, key) => vars[key]);
+const TEMPLATE_KEYS = ['version', 'name', 'docsRoot', 'cli'];
+
+// {{key}} for each key in keys; any other {{…}} (and GitHub's ${{ … }}) is left as written.
+export function substitute(text, vars, keys = TEMPLATE_KEYS) {
+  return text.replace(/\{\{([A-Za-z]+)\}\}/g, (whole, key) => (keys.includes(key) ? vars[key] : whole));
 }
 
 export const varsFor = (cfg, version) => ({ version, name: cfg.name, docsRoot: cfg.docsRoot, cli: cfg.cli });

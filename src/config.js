@@ -51,7 +51,7 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, c
     freezeTests: true,
     style: { banned: seedBanned() },
     destructive: [...DESTRUCTIVE],
-    ci: { observabilitySteps: [] },
+    ci: { matrix: false, observabilitySteps: [] },
   };
 }
 
@@ -65,6 +65,31 @@ function docsRootError(d) {
   if (d.split('/').includes('..')) return 'docsRoot: no .. segment';
   if (d.endsWith('/')) return 'docsRoot: no trailing slash';
   return null;
+}
+
+const STEP_KEYS = ['name', 'run', 'env'];
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
+
+// ci.matrix is optional (absent reads as false); each observability step renders as one CI job (REQ-3.11).
+function ciErrors(ci) {
+  if (!isObject(ci)) return ['ci: must be an object'];
+  const errors = [];
+  if (ci.matrix !== undefined && typeof ci.matrix !== 'boolean') errors.push('ci.matrix: must be a boolean');
+  if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
+  ci.observabilitySteps.forEach((step, i) => {
+    const at = `ci.observabilitySteps[${i}]`;
+    if (!isObject(step)) return errors.push(`${at}: must be an object`);
+    for (const key of ['name', 'run']) if (!nonEmpty(step[key])) errors.push(`${at}.${key}: must be a non-empty string`);
+    if (step.env !== undefined) {
+      const ok = isObject(step.env) && Object.entries(step.env).every(([k, v]) => ENV_NAME.test(k) && typeof v === 'string');
+      if (!ok) errors.push(`${at}.env: must map names to strings`);
+    }
+    for (const key of Object.keys(step)) {
+      if (!STEP_KEYS.includes(key)) errors.push(`${at}.${key}: unknown key; use ${STEP_KEYS.join(', ')}`);
+    }
+  });
+  return errors;
 }
 
 export function validateConfig(cfg) {
@@ -119,7 +144,7 @@ export function validateConfig(cfg) {
       }
     });
   }
-  if (!isObject(cfg.ci) || !isStringArray(cfg.ci.observabilitySteps)) errors.push('ci.observabilitySteps: must be an array of strings');
+  errors.push(...ciErrors(cfg.ci));
   return errors;
 }
 
