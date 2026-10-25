@@ -23,6 +23,25 @@ export function assertLabel(name) {
   return name;
 }
 
+// A pull request title as gh takes it: one non-empty line.
+export function assertTitle(title) {
+  if (typeof title !== 'string' || title.trim() === '' || /[\r\n]/.test(title)) {
+    throw new Error(`pull request title must be a non-empty single line, got ${JSON.stringify(title)}`);
+  }
+  return title;
+}
+
+// The number and url gh prints for a pull request it made: the last line holding `/pull/<n>`.
+export function parsePullRequestUrl(out) {
+  const line = String(out ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .reverse()
+    .find((l) => /^https?:\/\/\S+\/pull\/\d+$/.test(l));
+  if (line === undefined) return null;
+  return { number: Number(/\/pull\/(\d+)$/.exec(line)[1]), url: line };
+}
+
 export function mapPullRequest(raw) {
   return {
     number: raw.number,
@@ -30,6 +49,8 @@ export function mapPullRequest(raw) {
     state: raw.state,
     mergedAt: raw.mergedAt || null,
     headSha: raw.headRefOid,
+    headRef: raw.headRefName ?? null,
+    draft: typeof raw.isDraft === 'boolean' ? raw.isDraft : null,
     title: raw.title,
     body: raw.body ?? '',
     labels: (raw.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name)),

@@ -4,6 +4,7 @@ import { branchCommand } from './branch.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
+import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
@@ -24,6 +25,7 @@ export const COMMANDS = {
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
+  pr: prCommand,
   'ready-label': readyLabelCommand,
   stage: stageCommand,
   state: stateCommand,

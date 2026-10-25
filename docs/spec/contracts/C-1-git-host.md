@@ -13,7 +13,8 @@ second file, not a second kit.
 | `updatePullRequestBody` | number, body | — |
 | `markReady` | number | — |
 | `setLabel` / `removeLabel` | number, label | — |
-| `getPullRequest` | number | state, headSha, mergedAt, url, title, body, labels |
+| `pullRequestForBranch` | branch | number and url of its open pull request, or none |
+| `getPullRequest` | number | state, headSha, headRef, draft, mergedAt, url, title, body, labels |
 | `listMergedSince` | isoDate | pull requests merged at or after that instant |
 | `ciStatus` | sha | success, failure, pending, with run url |
 | `renderWorkflow` | config | the CI file content for this host |

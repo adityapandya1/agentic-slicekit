@@ -220,6 +220,8 @@ test('getPullRequest maps gh fields', () => {
     state: 'MERGED',
     mergedAt: '2026-10-20T09:30:00Z',
     headSha: 'abc1234def5678',
+    headRef: null,
+    draft: null,
     title: '[P1/S-01] Fixture 1',
     body: 'Slice: P1/S-01',
     labels: ['slice', 'P1'],

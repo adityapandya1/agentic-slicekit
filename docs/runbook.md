@@ -6,7 +6,7 @@ Not yet known
 
 ## Dependencies and their owners
 
-Not yet known
+`gh` (GitHub CLI), authenticated (`gh auth status`), is needed by `slicekit pr open` and the build commands; tests use `SLICEKIT_GITHOST_FIXTURE` instead.
 
 ## Known failure modes and the first thing to check
 

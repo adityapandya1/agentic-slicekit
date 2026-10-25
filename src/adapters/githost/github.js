@@ -1,27 +1,43 @@
 import { execFileSync } from 'node:child_process';
 import { assertDate, assertSha } from '../../evidence.js';
+import { assertRef } from '../../git.js';
+import { redact } from '../../redact.js';
 import { GitHostError, GitHostNotFound } from './errors.js';
-import { assertLabel, assertLabelColor, assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import {
+  assertLabel,
+  assertLabelColor,
+  assertPrNumber,
+  assertTitle,
+  filterMergedSince,
+  mapPullRequest,
+  parsePullRequestUrl,
+  reduceRuns,
+} from './gh-json.js';
 
 // C-1 for GitHub through the `gh` CLI. This file owns only the spawn; the JSON mapping is gh-json.js.
 
 export const GH_NOT_FOUND = 'gh not found; install GitHub CLI or set SLICEKIT_GITHOST_FIXTURE';
 
-const PR_FIELDS = 'number,url,state,mergedAt,headRefOid,title,body,labels';
+const PR_FIELDS = 'number,url,state,mergedAt,headRefOid,headRefName,isDraft,title,body,labels';
 const LIST_FIELDS = 'number,mergedAt,headRefOid,title';
 const RUN_FIELDS = 'status,conclusion,url,createdAt';
 
-// A non-zero gh exit, typed: "no such pull request" is a GitHostNotFound, anything else a GitHostError.
+// A non-zero gh exit, typed: "no such pull request" is a GitHostNotFound, anything else a GitHostError
+// whose message carries the first line of gh's stderr, with any token shape masked.
 export function ghExitError(args, stderr) {
   if (args[0] === 'pr' && args[1] === 'view' && /Could not resolve to a PullRequest/i.test(stderr)) {
     return new GitHostNotFound(`pull request ${args[2]} not found`, { stderr });
   }
-  return new GitHostError(`gh ${args.slice(0, 2).join(' ')} failed: ${stderr}`, { stderr });
+  const first = stderr.split(/\r?\n/).find((l) => l.trim() !== '')?.trim() ?? '';
+  return new GitHostError(`gh ${args.slice(0, 2).join(' ')} failed: ${redact(first)}`, { stderr });
 }
 
-function gh(exec, args, opts) {
+// `input`, when given, is piped to gh's stdin (a body passed as `--body-file -`, never on the
+// command line).
+function gh(exec, args, { input, ...opts } = {}) {
+  const stdin = input === undefined ? 'ignore' : 'pipe';
   try {
-    return exec('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+    return exec('gh', args, { encoding: 'utf8', stdio: [stdin, 'pipe', 'pipe'], ...opts, ...(input === undefined ? {} : { input }) });
   } catch (e) {
     if (e.code === 'ENOENT') throw new GitHostError(GH_NOT_FOUND);
     if (typeof e.status !== 'number') throw new GitHostError(`gh could not be run: ${e.message}`);
@@ -64,6 +80,34 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertPrNumber(n);
       assertLabel(name);
       gh(exec, ['pr', 'edit', String(n), present ? '--add-label' : '--remove-label', name], { env, cwd: root });
+    },
+    // Opens a pull request from `branch` into `base`; the body goes on stdin. gh prints the new
+    // pull request's url, and its number is read from `/pull/<n>`. Each value is one `--flag=value`
+    // argument, so a title starting with "-" is not read as a flag.
+    openPullRequest({ branch, base, title, body, draft }) {
+      assertRef(branch);
+      assertRef(base);
+      assertTitle(title);
+      const args = ['pr', 'create', `--head=${branch}`, `--base=${base}`, `--title=${title}`, '--body-file', '-', ...(draft ? ['--draft'] : [])];
+      const out = gh(exec, args, { env, cwd: root, input: String(body ?? '') });
+      const made = parsePullRequestUrl(out);
+      if (made === null) throw new GitHostError('gh pr create printed no pull request url');
+      return made;
+    },
+    updatePullRequestBody(n, body) {
+      assertPrNumber(n);
+      gh(exec, ['pr', 'edit', String(n), '--body-file', '-'], { env, cwd: root, input: String(body ?? '') });
+    },
+    markReady(n) {
+      assertPrNumber(n);
+      gh(exec, ['pr', 'ready', String(n)], { env, cwd: root });
+    },
+    // The open pull request whose head is `branch`, as { number, url }, or null.
+    pullRequestForBranch(branch) {
+      assertRef(branch);
+      const list = ghJson(['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number,url', '--limit', '1']);
+      const pr = Array.isArray(list) ? list[0] : undefined;
+      return pr ? { number: pr.number, url: pr.url } : null;
     },
     // Creates the label, or with --force updates its colour and description: safe to run every time.
     ensureLabel(name, { color, description }) {
