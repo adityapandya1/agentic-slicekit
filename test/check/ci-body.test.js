@@ -169,3 +169,32 @@ test('a pull request from a listed bot is exempt from ci-body (D-37)', () => {
   const judged = ciBody.run({ ci: true, env, cfg: { ci: { botActors: [] } } });
   assert.ok(messages(judged).includes('pull request body is missing "Done when"'), messages(judged).join('\n'));
 });
+
+// M5 (REQ-3.7 style row, REQ-3.10): the filler list also runs over the pull request body.
+test('a banned phrase in the body is one finding per phrase', () => {
+  const cfg = { style: { banned: ['robust', "it's worth noting", 'leverage'] } };
+  const text = [
+    body(),
+    'This is Robust, and robust again.',
+    "It's",
+    'worth noting that we leverage `robust` code.',
+    '```',
+    'leverage inside a fence',
+    '```',
+    'robustness and leverages are other words.',
+  ].join('\n');
+  const found = ciBody.run({ ci: true, env: { SLICEKIT_PR_TITLE: TITLE, SLICEKIT_PR_BODY: text }, cfg });
+  assert.deepEqual(messages(found), [
+    'pull request body uses banned phrase "robust"',
+    'pull request body uses banned phrase "it\'s worth noting"',
+    'pull request body uses banned phrase "leverage"',
+  ]);
+  assert.ok(found.every((f) => f.file === FILE && f.line === 0));
+  const clean = [body(), 'Nothing filler here; robustness is fine.', 'A `leverage` in code.'].join('\n');
+  assert.deepEqual(ciBody.run({ ci: true, env: { SLICEKIT_PR_TITLE: TITLE, SLICEKIT_PR_BODY: clean }, cfg }), []);
+});
+
+test('a bot pull request is exempt from the body style check too (D-37)', () => {
+  const env = { GITHUB_EVENT_PATH: path.join(events, 'pr-bot.json') };
+  assert.deepEqual(ciBody.run({ ci: true, env, cfg: { style: { banned: ['Bumps'] } } }), []);
+});

@@ -6,10 +6,12 @@
 // or an HTML comment is never a section or a heading, and a comment is never section text. A
 // `[spec] ` / `[plan] ` title needs only the first three sections and no slice heading; a title
 // with no slice id leaves the heading to ci-title. A pull request opened by an actor in ci.botActors
-// is exempt (D-37). Without --ci, or with no pull request, nothing.
+// is exempt (D-37). The configured filler list (style.banned) is matched over the body as the style
+// rule matches a doc, one finding per phrase (REQ-3.10). Without --ci, or with no pull request, nothing.
 import { ID } from '../../ids.js';
 import { EXEMPT_TITLE, PR_FILE, isBotAuthor, readCiEvent } from '../ci-event.js';
 import { titleSlice } from './ci-title.js';
+import { bannedPhrasesIn } from './style.js';
 
 export const id = 'ci-body';
 export const blocking = true;
@@ -133,6 +135,8 @@ export function run(ctx) {
     if (!s.filled) at(`pull request body has an empty "${s.name}"`);
   }
   for (const name of required) if (!seen.has(name)) at(`pull request body is missing "${name}"`);
+  // REQ-3.10: the filler list covers the pull request body too, one finding per phrase.
+  for (const p of bannedPhrasesIn(pr.body, ctx.cfg?.style?.banned ?? [])) at(`pull request body uses banned phrase "${p}"`);
   return out;
 }
 
