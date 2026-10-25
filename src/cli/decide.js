@@ -3,12 +3,13 @@ import { ConfigError, loadConfig } from '../config.js';
 import { DecisionError, addDecision, settleDecision } from '../decisions.js';
 
 const USAGE =
-  'decide add --type <T> --question <q> (--answer <a> | --why <w> --recommendation <r>) [--who <w>] [--replaces D-<n>] [--interface <name> [--source <file>:<line>]]\n' +
-  '  slicekit decide settle D-<n> --answer <a> [--who <w>]';
+  'decide add (--type <T> --question <q> --answer <a> | --open [--type <T>] --question <q> --why <w> --recommendation <r>) [--who <w>] [--replaces D-<n>] [--interface <name> [--source <file>:<line>]]\n' +
+  '  slicekit decide settle D-<n> --answer <a> [--type <T>] [--who <w>]\n' +
+  '  (a value that starts with "-" goes as --answer=<text>, and so for every option)';
 
-const ADD = ['type', 'question', 'answer', 'why', 'recommendation', 'who', 'replaces', 'interface', 'source'];
-const SETTLE = ['answer', 'who'];
-const OPTIONS = Object.fromEntries(ADD.map((k) => [k, { type: 'string' }]));
+const ADD = ['type', 'question', 'answer', 'why', 'recommendation', 'who', 'replaces', 'interface', 'source', 'open'];
+const SETTLE = ['answer', 'who', 'type'];
+const OPTIONS = { ...Object.fromEntries(ADD.map((k) => [k, { type: 'string' }])), open: { type: 'boolean' } };
 
 const usage = (io, why) => {
   io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n`);
@@ -30,7 +31,7 @@ async function run(args, io) {
   if (!allowed) return usage(io);
   const extra = Object.keys(values).filter((k) => !allowed.includes(k));
   if (extra.length > 0) return usage(io, `${sub} does not take --${extra[0]}`);
-  if (sub === 'add' && (rest.length > 0 || values.type === undefined || values.question === undefined)) return usage(io);
+  if (sub === 'add' && (rest.length > 0 || (values.type === undefined && !values.open) || values.question === undefined)) return usage(io);
   if (sub === 'add' && values.source !== undefined && values.interface === undefined) return usage(io, '--source needs --interface');
   if (sub === 'settle' && (rest.length !== 1 || values.answer === undefined)) return usage(io);
   try {

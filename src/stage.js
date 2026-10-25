@@ -85,12 +85,13 @@ function intake(root, cfg) {
   return blockers;
 }
 
-// The Types of an open row that stop clarify.
-const BLOCKING_TYPES = ['Decision', 'Open'];
+// The Types of an open row that do not stop clarify: work only a person can do, or a fact still
+// being gathered.
+const PENDING_TYPES = ['Action', 'Information'];
 
-// A row is open when it sits in the Open table, whatever its Type (REQ-1.4). An open Decision or
-// Open row blocks. An open Action, Information or Counsel row is work the spec does not wait on,
-// so it is listed as pending.
+// A row is open when it sits in the Open table, whatever its Type (REQ-1.4). An open Action or
+// Information row is listed as pending. Any other open row blocks: Decision, Open, Counsel (an
+// expert view not yet given), and an unknown or empty Type, so a typo never passes silently.
 function clarify(root, cfg) {
   const p = kitPaths(root, cfg);
   if (!exists(p.decisions)) return [`${rel(root, p.decisions)} is missing`];
@@ -101,7 +102,7 @@ function clarify(root, cfg) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);
   }
   const ids = [...cited].sort();
-  const blocks = (id) => BLOCKING_TYPES.includes(open.get(id));
+  const blocks = (id) => !PENDING_TYPES.includes(open.get(id));
   return {
     blockers: ids.filter(blocks).map((id) => `${id} is Open and cited by the spec`),
     pending: ids.filter((id) => !blocks(id)).map((id) => `${id} is Open (${open.get(id)}) and cited by the spec; it does not block`),

@@ -11,7 +11,7 @@ import { kitPaths } from './paths.js';
 
 export const TYPES = ['Decision', 'Action', 'Information', 'Counsel', 'Open'];
 
-// `code` 1: a file problem (missing file or table, a settled row). `code` 2: bad input.
+// `code` 1: a file problem (missing file or table, wrong columns, a settled row). `code` 2: bad input.
 export class DecisionError extends Error {
   constructor(code, message) {
     super(message);
@@ -21,12 +21,17 @@ export class DecisionError extends Error {
 }
 
 const SECTIONS = { settled: 'Settled', open: 'Open' };
+// The columns of each table, as `templates/docs/decisions.md` writes them.
+const COLUMNS = {
+  settled: ['#', 'Type', 'Question', 'Answer', 'Who, when'],
+  open: ['#', 'Type', 'Question', 'Why it matters', 'Recommendation'],
+};
 const ID = /^D-(\d+)$/;
 
 const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
 const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
 
-// Each section's table: `{header, divider, rows: [{line, cells}], last}` with 1-based lines, `last`
+// Each section's table: `{header: [cells], rows: [{line, cells}], last}` with 1-based lines, `last`
 // the line after which a new row goes. Null for a section or table that is absent.
 function sections(text) {
   const all = text.replace(/^﻿/, '').split(/\r?\n/);
@@ -46,7 +51,7 @@ function sections(text) {
         rows.push({ line: m, cells: cells(all[m - 1]) });
         m++;
       }
-      out[key] = { header: n, rows, last: m - 1 };
+      out[key] = { header: cells(all[n - 1]), rows, last: m - 1 };
       break;
     }
   }
@@ -82,6 +87,19 @@ function load(root, cfg) {
   return { file, text: fs.readFileSync(file, 'utf8') };
 }
 
+// Writes a temporary file in the same directory, then renames it over the file, so a reader never
+// sees half a file.
+function save(file, text) {
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+}
+
 function oneLine(field, value) {
   if (value === undefined || value === null) return;
   if (typeof value !== 'string') throw new DecisionError(2, `${field} must be text`);
@@ -100,31 +118,50 @@ function whoDefault(root) {
 }
 
 const todayUtc = () => new Date().toISOString().slice(0, 10);
+const whoWhen = (root, who, today) => `${(who ?? whoDefault(root)).trim() || 'unknown'}, ${today ?? todayUtc()}`;
 
-// Inserts `line` after line `after` (1-based), keeping the file's line endings.
+// The file's lines, each with its own ending. A new line takes the first line's ending; no other
+// line's ending changes, except that a last line with no ending gets one when a line follows it.
+const split = (text) => text.split(/(?<=\n)/);
+
 function insertAfter(text, after, line) {
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const all = text.split(/\r?\n/);
-  all.splice(after, 0, line);
-  return all.join(eol);
+  const parts = split(text);
+  const eol = parts[0]?.endsWith('\r\n') ? '\r\n' : '\n';
+  const prev = parts[after - 1];
+  if (prev !== undefined && !prev.endsWith('\n')) parts[after - 1] = prev + eol;
+  parts.splice(after, 0, line + eol);
+  return parts.join('');
 }
 
 function removeLine(text, n) {
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const all = text.split(/\r?\n/);
-  all.splice(n - 1, 1);
-  return all.join(eol);
+  const parts = split(text);
+  parts.splice(n - 1, 1);
+  return parts.join('');
 }
 
+// The table under `## <name>`, refused when absent or when its columns are not the template's.
 function table(found, key) {
-  if (!found[key]) throw new DecisionError(1, `decisions.md has no ${SECTIONS[key]} table`);
-  return found[key];
+  const t = found[key];
+  if (!t) throw new DecisionError(1, `decisions.md has no ${SECTIONS[key]} table`);
+  const want = COLUMNS[key];
+  if (t.header.length !== want.length || t.header.some((h, i) => h !== want[i])) {
+    throw new DecisionError(1, `decisions table ${SECTIONS[key]} has columns ${t.header.join(' | ')}; expected ${want.join(' | ')}`);
+  }
+  return t;
+}
+
+function byNumber(rows, id) {
+  const m = ID.exec(id ?? '');
+  return m ? rows.find((r) => r.n === Number(m[1])) : undefined;
 }
 
 const SOURCE = /^\S+:\d+$/;
 
+// `open: true`, or type Open, puts the row in the Open table, where it keeps its real Type.
 export function addDecision(root, cfg, opts) {
-  const { type, question, answer, why, recommendation, replaces, iface, today } = opts;
+  const { question, answer, why, recommendation, replaces, iface, today } = opts;
+  const open = Boolean(opts.open) || opts.type === 'Open';
+  const type = opts.type ?? (open ? 'Open' : undefined);
   if (!TYPES.includes(type)) throw new DecisionError(2, `unknown type '${type}'; one of ${TYPES.join(', ')}`);
   for (const field of ['question', 'answer', 'why', 'recommendation', 'who', 'replaces', 'today']) oneLine(field, opts[field]);
   if (iface) {
@@ -132,9 +169,9 @@ export function addDecision(root, cfg, opts) {
     oneLine('source', iface.source);
   }
   if (!question?.trim()) throw new DecisionError(2, 'question is required');
-  if (type === 'Open') {
-    if (!why?.trim() || !recommendation?.trim()) throw new DecisionError(2, 'an Open row needs why and recommendation');
-    if (answer !== undefined) throw new DecisionError(2, 'an Open row takes why and recommendation, not answer');
+  if (open) {
+    if (!why?.trim() || !recommendation?.trim()) throw new DecisionError(2, 'an open row needs why and recommendation');
+    if (answer !== undefined) throw new DecisionError(2, 'an open row takes why and recommendation, not answer');
   } else {
     if (!answer?.trim()) throw new DecisionError(2, `a ${type} row needs answer`);
     if (why !== undefined || recommendation !== undefined) throw new DecisionError(2, `a ${type} row takes answer, not why or recommendation`);
@@ -146,49 +183,71 @@ export function addDecision(root, cfg, opts) {
   }
 
   const { file, text } = load(root, cfg);
-  const { rows } = readDecisions(text);
+  const { rows, next: id } = readDecisions(text);
+  let replaced;
   if (replaces !== undefined) {
-    const m = ID.exec(replaces);
-    if (!m || !rows.some((r) => r.n === Number(m[1]))) throw new DecisionError(2, `unknown decision ${replaces}`);
+    replaced = byNumber(rows, replaces);
+    if (!replaced) throw new DecisionError(2, `unknown decision ${replaces}`);
+    if (replaced.table === 'open') throw new DecisionError(2, `${replaced.id} is still open; settle it instead`);
   }
-  const key = type === 'Open' ? 'open' : 'settled';
-  const target = table(sections(text), key);
-  const { next: id } = readDecisions(text);
+  const target = table(sections(text), open ? 'open' : 'settled');
 
   let q = question.trim();
-  if (replaces !== undefined) q = `Replaces ${replaces}. ${q}`;
+  if (replaced) q = `Replaces ${replaced.id}. ${q}`;
   if (iface) q = `Interface: ${iface.name.trim()}. ${q}`;
   const named = iface?.source !== undefined ? ` Named at ${iface.source}.` : '';
-  const cellsOut =
-    type === 'Open'
-      ? [id, type, q, `${why.trim()}${named}`, recommendation]
-      : [id, type, q, `${answer.trim()}${named}`, `${(opts.who ?? whoDefault(root)).trim() || 'unknown'}, ${today ?? todayUtc()}`];
-  fs.writeFileSync(file, insertAfter(text, target.last, row(cellsOut)));
+  const cellsOut = open
+    ? [id, type, q, `${why.trim()}${named}`, recommendation]
+    : [id, type, q, `${answer.trim()}${named}`, whoWhen(root, opts.who, today)];
+  save(file, insertAfter(text, target.last, row(cellsOut)));
   return { id };
 }
 
-const NAMED_AT = /\bNamed at (\S+:\d+)\.$/;
+const NAMED_AT = /\s*\bNamed at (\S+:\d+)\.$/;
+const sentence = (s) => (s ?? '').trim().replace(/\.+$/, '');
 
-// Moves an Open-table row to Settled under the same ID, keeping its Type. A `Named at` source in
-// the Why cell carries over to the answer, so an interface row keeps its source.
-export function settleDecision(root, cfg, id, { answer, who, today } = {}) {
-  oneLine('answer', answer);
-  oneLine('who', who);
-  oneLine('today', today);
+// The Settled answer of a settled open row: the answer, then the open row's reasons in brackets
+// (an empty part left out), then the `Named at` source, so an interface row keeps it.
+function settledAnswer(answer, why, recommendation) {
+  const source = NAMED_AT.exec(why);
+  const parts = [];
+  const reason = sentence(why.replace(NAMED_AT, ''));
+  if (reason) parts.push(`Asked because: ${reason}.`);
+  if (sentence(recommendation)) parts.push(`Recommended: ${sentence(recommendation)}.`);
+  const own = NAMED_AT.exec(answer.trim());
+  let out = answer.trim().replace(NAMED_AT, '');
+  if (parts.length > 0) out += ` (${parts.join(' ')})`;
+  const where = own ?? source;
+  return where ? `${out} Named at ${where[1]}.` : out;
+}
+
+// Moves an Open-table row to Settled under the same ID. A row whose Type is Open (or not a known
+// Type) needs `type`, one of the other Types; any other row keeps its Type, and a different
+// `type` is refused.
+export function settleDecision(root, cfg, id, { answer, who, today, type } = {}) {
+  for (const [field, value] of Object.entries({ answer, who, today, type })) oneLine(field, value);
   if (!answer?.trim()) throw new DecisionError(2, 'settle needs answer');
+  const settledTypes = TYPES.filter((t) => t !== 'Open');
+  if (type !== undefined && !settledTypes.includes(type)) {
+    throw new DecisionError(2, `settle --type must be one of ${settledTypes.join(', ')}`);
+  }
   const { file, text } = load(root, cfg);
-  const m = ID.exec(id ?? '');
-  const found = m ? readDecisions(text).rows.find((r) => r.n === Number(m[1])) : undefined;
+  const found = byNumber(readDecisions(text).rows, id);
   if (!found) throw new DecisionError(2, `unknown decision ${id}`);
   if (found.table === 'settled') {
     throw new DecisionError(1, `${found.id} is settled; a reversal is a new row (decide add --replaces ${found.id})`);
   }
-  table(sections(text), 'settled');
-  const source = NAMED_AT.exec(found.why);
-  const kept = source && !NAMED_AT.test(answer.trim()) ? ` Named at ${source[1]}.` : '';
-  const line = row([found.id, found.type, found.question, `${answer.trim()}${kept}`, `${(who ?? whoDefault(root)).trim() || 'unknown'}, ${today ?? todayUtc()}`]);
+  const known = settledTypes.includes(found.type);
+  if (!known && type === undefined) throw new DecisionError(2, `${found.id} has Type ${found.type || '(empty)'}; settle with --type`);
+  if (known && type !== undefined && type !== found.type) {
+    throw new DecisionError(2, `${found.id} has Type ${found.type}; settle keeps it`);
+  }
+  const found2 = sections(text);
+  table(found2, 'open');
+  table(found2, 'settled');
+  const line = row([found.id, known ? found.type : type, found.question, settledAnswer(answer, found.why, found.recommendation), whoWhen(root, who, today)]);
   const without = removeLine(text, found.line);
-  fs.writeFileSync(file, insertAfter(without, table(sections(without), 'settled').last, line));
+  save(file, insertAfter(without, table(sections(without), 'settled').last, line));
   return { id: found.id };
 }
 

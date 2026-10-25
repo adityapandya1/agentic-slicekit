@@ -131,6 +131,15 @@ test('an Open-table Decision row blocks clarify', () => {
     assert.deepEqual(r.blockers, ['D-02 is Open and cited by the spec']);
     assert.deepEqual(r.pending, ['D-03 is Open (Action) and cited by the spec; it does not block']);
   });
+  // Counsel (an expert view not yet given), an unknown Type and an empty Type all block.
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/decisions.md', (t) => `${t}| D-02 | Counsel | Fiduciary? | matters | ask counsel |\n| D-03 | Maybe | x | y | z |\n| D-04 |  | x | y | z |\n`);
+    edit(root, 'docs/spec/a.md', (t) => t.replace('D-01.', 'D-01, D-02, D-03, D-04.'));
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'clarify');
+    assert.deepEqual(r.blockers, ['D-02 is Open and cited by the spec', 'D-03 is Open and cited by the spec', 'D-04 is Open and cited by the spec']);
+    assert.equal(r.pending, undefined);
+  });
 });
 
 test('specify names each REQ that lacks a part, and a spec with no REQ', () => {
