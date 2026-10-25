@@ -4,8 +4,8 @@ name: CI workflow generator
 repo: .
 group: C
 runbook: no
-requirements: [REQ-3.11, REQ-2.10, REQ-5.2, REQ-5.3, REQ-5.5]
-decisions: [D-12, D-09]
+requirements: [REQ-3.11, REQ-2.10, REQ-5.2, REQ-5.3, REQ-5.5, REQ-1.8]
+decisions: [D-12, D-09, D-18, D-30, D-35, D-37]
 ---
 
 ## Done when
