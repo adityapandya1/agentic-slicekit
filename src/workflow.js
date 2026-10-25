@@ -3,7 +3,10 @@
 // generated as text; every free-text value goes through yamlScalar so a quote, colon or hash in a
 // team's command cannot change the document's structure.
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { GITHUB_EXPRESSION, LINE_SEPARATOR } from './config.js';
+import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
 
 export const WORKFLOW_TEMPLATE = fileURLToPath(new URL('../templates/workflow/slicekit.yml', import.meta.url));
@@ -15,10 +18,13 @@ const MATRIX_OS = ['ubuntu-latest', 'windows-latest', 'macos-latest'];
 const SHA = /^[0-9a-f]{40}$/;
 const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
+// Filled as written: values the kit computes or validates to a safe shape.
 const VALUE_KEYS = [
-  'defaultBranch', 'readyNeeds',
+  'defaultBranchItem', 'readyNeeds', 'syncPaths',
   ...Object.keys(ACTIONS).flatMap((k) => [`${k}Sha`, `${k}Tag`]),
 ];
+// The team's own text: a mapping value holding one is filled, then quoted as a whole.
+const FREE_TEXT_KEYS = ['cli', 'defaultBranch'];
 
 // REQ-5.3 for the kit's own repository: fails naming each runtime dependency.
 const NO_DEPENDENCIES = [
@@ -34,20 +40,26 @@ export function loadPins() {
 const RESERVED = /^(true|false|yes|no|on|off|null|~|y|n)$/i;
 
 // One YAML scalar for value at a mapping key indented by indent spaces: plain when that is safe, a `|`
-// block when it spans lines, otherwise single-quoted (a ' inside is doubled).
+// block when it spans lines, otherwise single-quoted (a ' inside is doubled). A carriage return is a
+// line break; the separators YAML also breaks on (U+0085, U+2028, U+2029) are refused.
 export function yamlScalar(value, indent = 0) {
+  if (LINE_SEPARATOR.test(value)) throw new Error('yaml: value contains a line separator YAML cannot carry');
+  value = value.replace(/\r\n?/g, '\n');
   if (value.includes('\n')) {
     const lines = value.replace(/\n+$/, '').split('\n');
     const pad = ' '.repeat(indent + 2);
-    const indicator = lines[0].startsWith(' ') ? '|2' : '|';
+    // YAML takes the indentation from the first non-empty line, so a leading space there needs the indicator.
+    const first = lines.find((l) => l !== '') ?? '';
+    const indicator = first.startsWith(' ') ? '|2' : '|';
     return [indicator, ...lines.map((l) => (l === '' ? '' : pad + l))].join('\n');
   }
   const unsafe =
     value === '' ||
-    /[:#{}*]/.test(value) ||
+    /[:#{}*\t]/.test(value) ||
     value !== value.trim() ||
     /^[-?,[\]&!|>'"%@`]/.test(value) ||
     RESERVED.test(value) ||
+    /^[-+]?\.(inf|nan)$/i.test(value) ||
     /^[-+]?\.?\d/.test(value);
   return unsafe ? `'${value.replace(/'/g, "''")}'` : value;
 }
@@ -63,10 +75,12 @@ function checkPins(pins) {
   return vars;
 }
 
-// Checkout, Node 22 and npm ci (only when a lockfile exists): the head of every generated job.
+// Checkout (no token kept), Node 22 and npm ci (only when a lockfile exists): the head of every generated job.
 function setupSteps(v) {
   return [
     `      - uses: actions/checkout@${v.checkoutSha} # ${v.checkoutTag}`,
+    '        with:',
+    '          persist-credentials: false',
     `      - uses: actions/setup-node@${v.setupNodeSha} # ${v.setupNodeTag}`,
     '        with:',
     '          node-version: 22',
@@ -77,7 +91,7 @@ function setupSteps(v) {
 }
 
 function runStep(name, run, env) {
-  const lines = [`      - name: ${yamlScalar(name)}`];
+  const lines = [`      - name: ${yamlScalar(name, 8)}`];
   const vars = Object.entries(env ?? {});
   if (vars.length > 0) {
     lines.push('        env:');
@@ -98,25 +112,41 @@ function observabilityJob(n, step, v) {
   return ['', `  obs-${n}:`, `    name: ${yamlScalar(step.name, 4)}`, '    runs-on: ubuntu-latest', '    steps:', ...setupSteps(v), ...runStep(step.name, step.run, step.env)];
 }
 
-// A line whose value holds {{cli}} is filled and then quoted as a whole: cli is the team's own text (D-30).
-function fillCli(line, cli) {
-  if (!line.includes('{{cli}}')) return line;
+// One pass over the value, so text inside cli is never itself read as a placeholder.
+function fillFreeText(line, vars) {
+  if (!FREE_TEXT_KEYS.some((k) => line.includes(`{{${k}}}`))) return line;
   const m = /^(\s*(?:- )?[A-Za-z_-]+: )(.*)$/.exec(line);
-  if (!m) throw new Error(`workflow template: {{cli}} outside a mapping value: ${line}`);
-  return m[1] + yamlScalar(substitute(m[2], { cli }, ['cli']));
+  if (!m) throw new Error(`workflow template: a free-text placeholder outside a mapping value: ${line}`);
+  return m[1] + yamlScalar(substitute(m[2], vars, FREE_TEXT_KEYS));
+}
+
+// What the sync commit may stage: BUILD.md and the state directory, as repository-relative paths.
+function syncPaths(cfg) {
+  // Neither path depends on docsRoot; the default only keeps a partial config renderable.
+  const p = kitPaths('.', { docsRoot: 'docs', ...cfg });
+  return [p.build, p.state].map((f) => path.relative('.', f).split(path.sep).join('/')).join(' ');
 }
 
 export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8') } = {}) {
-  if (cfg.cli.includes('\n')) throw new Error('cli: must be one line to render the workflow');
+  if (/[\r\n]/.test(cfg.cli)) throw new Error('cli: must be one line to render the workflow');
   const v = checkPins(pins);
   const matrix = cfg.ci?.matrix === true;
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
+  const steps = cfg.ci?.observabilitySteps ?? [];
+  const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
+  if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
   const blocks = {
     gateExtraSteps: matrix ? NO_DEPENDENCIES : [],
     commandJobs: commands.flatMap((name) => commandJob(name, cfg.commands[name], v, matrix && name === 'test')),
-    observabilityJobs: (cfg.ci?.observabilitySteps ?? []).flatMap((step, i) => observabilityJob(i + 1, step, v)),
+    observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v)),
   };
-  const vars = { ...v, defaultBranch: cfg.defaultBranch, readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`)].join(', ') };
+  const vars = {
+    ...v,
+    defaultBranchItem: yamlScalar(cfg.defaultBranch),
+    readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`)].join(', '),
+    syncPaths: syncPaths(cfg),
+  };
+  const free = { cli: cfg.cli, defaultBranch: cfg.defaultBranch };
   const out = [];
   for (const line of template.replace(/\r\n/g, '\n').split('\n')) {
     const block = /^\{\{([A-Za-z]+)\}\}$/.exec(line);
@@ -124,7 +154,7 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
       out.push(...blocks[block[1]]);
       continue;
     }
-    out.push(substitute(fillCli(line, cfg.cli), vars, VALUE_KEYS));
+    out.push(fillFreeText(substitute(line, vars, VALUE_KEYS), free));
   }
   return out.join('\n');
 }

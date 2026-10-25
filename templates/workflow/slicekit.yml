@@ -3,8 +3,9 @@ name: slicekit
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
-    branches: [{{defaultBranch}}]
+    branches: [{{defaultBranchItem}}]
 
 permissions:
   contents: read
@@ -24,8 +25,9 @@ jobs:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
           fetch-depth: 0
-      - name: Fetch the default branch
-        run: git fetch --no-tags origin {{defaultBranch}}
+          persist-credentials: false
+      - name: The default branch is present
+        run: git rev-parse --verify --quiet refs/remotes/origin/{{defaultBranch}}
       - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
         with:
           node-version: 22
@@ -47,7 +49,7 @@ jobs:
 {{observabilityJobs}}
 
   ready-label:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     needs: [{{readyNeeds}}]
     runs-on: ubuntu-latest
     permissions:
@@ -55,6 +57,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
         with:
           node-version: 22
@@ -71,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
@@ -84,6 +89,8 @@ jobs:
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
       - name: Sync state
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: {{cli}} status --sync --write
       - name: Commit state
         env:
@@ -92,7 +99,7 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -A
+            git add -- {{syncPaths}}
             git commit -m 'chore(slicekit): sync state [skip ci]'
             git push
           fi
