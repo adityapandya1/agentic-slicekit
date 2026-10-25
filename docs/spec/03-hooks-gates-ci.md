@@ -37,7 +37,7 @@ SHALL deny an edit to a test file listed as frozen in the active slice's state f
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
 an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
-directory (`.slicekit/journal/<branch>.log`, REQ-3.8) by anything other than the CLI.
+directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI.
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
@@ -102,7 +102,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
-| journal | the hash chain in any `.slicekit/journal/<branch>.log` is broken |
+| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 
 For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
@@ -121,12 +121,18 @@ Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
 ## REQ-3.8 SessionEnd — fail open: the journal
 
-SHALL append one line to the current branch's file, `.slicekit/journal/<branch>.log` (`/` in the
-branch name becomes `__`), in the form <!-- slicekit:example -->
+SHALL append one line to this clone's file for the current branch, `.slicekit/journal/<branch>--<clone-id>.log`, in the form <!-- slicekit:example -->
 `<iso time> actor=<actor> slice=<slice or "-"> stage=<stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
-There is one file per branch, each its own chain whose first line's `prev` is `genesis`, because two
-branches appending to one file would both chain from the same line and break it at merge (D-34). CI SHALL verify the chain. The file is appended by the CLI only
-(REQ-3.3). A broken chain is a check failure and a reviewer blocker; it is never auto-repaired.
+The branch part is the name with `/` as `__` and other unsafe characters as `_`, cut to 60 characters
+with an 8-hex hash of the raw name when that changed it or it is over 80; the clone id is 8 random hex
+characters kept in the git common directory. There is one file per branch per clone, each its own chain
+whose first line's `prev` is `genesis`, because two branches or two clones appending to one file would
+both chain from the same line and conflict or break at merge (D-34). CI SHALL verify the chain, and that
+every journal file committed at the merge base with the default branch is still there as a byte prefix
+of the current file. The protection is exactly this: a mid-chain edit is caught by the chain; shortening
+or removing a committed file is caught against the default branch; lines not yet committed are not
+protected. The file is appended by the CLI only (REQ-3.3). A broken chain is a check failure and a
+reviewer blocker; it is never auto-repaired.
 
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n> of <file>".
