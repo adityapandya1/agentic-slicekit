@@ -3,13 +3,14 @@
 // `draft-pr` and before `merged`: a pull request opened by hand, outside the build loop, fails, and
 // so does one for a slice already merged or released (a later change needs its own slice). A `[spec] ` or
 // `[plan] ` title is not a slice's and is exempt. Draft and closed pull requests are judged alike.
-// Without --ci, or with no pull request in the event (a push), there is nothing to judge.
+// A pull request opened by an actor in ci.botActors is exempt (D-37). Without --ci, or with no pull
+// request in the event (a push), there is nothing to judge.
 import fs from 'node:fs';
 import path from 'node:path';
 import { ID, stateFileName } from '../../ids.js';
 import { readSlice } from '../../state/index.js';
 import { STATES } from '../../state/transitions.js';
-import { EXEMPT_TITLE, PR_FILE, readCiEvent } from '../ci-event.js';
+import { EXEMPT_TITLE, PR_FILE, isBotAuthor, readCiEvent } from '../ci-event.js';
 
 export const id = 'ci-title';
 export const blocking = true;
@@ -25,7 +26,7 @@ export const titleSlice = (title) => TITLE.exec(title)?.[1] ?? null;
 export function run(ctx) {
   if (!ctx.ci) return [];
   const pr = readCiEvent(ctx.env);
-  if (!pr) return [];
+  if (!pr || isBotAuthor(ctx.cfg, pr)) return [];
   const at = (message) => [{ file: PR_FILE, line: 0, message }];
   if (EXEMPT_TITLE.test(pr.title)) return [];
   const slice = titleSlice(pr.title);

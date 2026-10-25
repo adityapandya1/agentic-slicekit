@@ -133,7 +133,7 @@ test('readCiEvent reads the pull request fields', () => {
 });
 
 test('readCiEvent uses the local override only when no event file is set', () => {
-  assert.deepEqual(readCiEvent({ SLICEKIT_PR_TITLE: 't', SLICEKIT_PR_BODY: 'b' }), { title: 't', body: 'b', number: null, headSha: null, labels: [] });
+  assert.deepEqual(readCiEvent({ SLICEKIT_PR_TITLE: 't', SLICEKIT_PR_BODY: 'b' }), { title: 't', body: 'b', number: null, headSha: null, labels: [], author: null });
   assert.equal(readCiEvent({ SLICEKIT_PR_BODY: 'b' }).title, '');
   assert.equal(readCiEvent({ GITHUB_EVENT_PATH: path.join(events, 'push.json'), SLICEKIT_PR_TITLE: 'Fix billing' }), null);
 });
@@ -156,5 +156,24 @@ test('a merged or released slice is a finding', () => {
       writeSlice(root, cfg, { slice: 'P1/S-01', state });
       assert.deepEqual(run(titled('[P1/S-01] Fixture 1')).map((f) => f.message), [`slice P1/S-01 is ${state}; a change after merge needs its own slice`]);
     }
+  });
+});
+
+// D-37: a pull request opened by a listed bot is exempt from the title and body rules.
+test('readCiEvent reads the author login', () => {
+  assert.equal(readCiEvent({ GITHUB_EVENT_PATH: path.join(events, 'pr-bot.json') }).author, 'dependabot[bot]');
+  assert.equal(readCiEvent({ GITHUB_EVENT_PATH: path.join(events, 'pr-complete.json') }).author, null);
+});
+
+test('a pull request from a listed bot is exempt from ci-title (D-37)', () => {
+  withKit(({ root, cfg }) => {
+    const bot = { GITHUB_EVENT_PATH: path.join(events, 'pr-bot.json') };
+    const runWith = (c) => ciTitle.run(buildContext(root, c, { ci: true, env: bot }));
+    assert.deepEqual(runWith(cfg), [], 'dependabot[bot] is in the default list');
+    assert.deepEqual(runWith({ ...cfg, ci: { ...cfg.ci, botActors: ['renovate[bot]'] } }), [
+      { file: FILE, line: 0, message: 'title must begin with [P<n>/S-<nn>]' },
+    ]);
+    const { botActors, ...noList } = cfg.ci;
+    assert.deepEqual(runWith({ ...cfg, ci: noList }), [], 'an absent list is the default');
   });
 });

@@ -5,9 +5,10 @@
 // itself a required section or a heading. Anything inside a fenced code block (CommonMark fences)
 // or an HTML comment is never a section or a heading, and a comment is never section text. A
 // `[spec] ` / `[plan] ` title needs only the first three sections and no slice heading; a title
-// with no slice id leaves the heading to ci-title. Without --ci, or with no pull request, nothing.
+// with no slice id leaves the heading to ci-title. A pull request opened by an actor in ci.botActors
+// is exempt (D-37). Without --ci, or with no pull request, nothing.
 import { ID } from '../../ids.js';
-import { EXEMPT_TITLE, PR_FILE, readCiEvent } from '../ci-event.js';
+import { EXEMPT_TITLE, PR_FILE, isBotAuthor, readCiEvent } from '../ci-event.js';
 import { titleSlice } from './ci-title.js';
 
 export const id = 'ci-body';
@@ -85,7 +86,7 @@ function scan(body) {
 export function run(ctx) {
   if (!ctx.ci) return [];
   const pr = readCiEvent(ctx.env);
-  if (!pr) return [];
+  if (!pr || isBotAuthor(ctx.cfg, pr)) return [];
   const exempt = EXEMPT_TITLE.test(pr.title);
   const required = exempt ? EXEMPT_SECTIONS : REQUIRED_SECTIONS;
   const lines = scan(pr.body);

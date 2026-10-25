@@ -160,3 +160,12 @@ test('a leading byte order mark is not text', () => {
   const b = '\uFEFF' + body();
   assert.deepEqual(local(b), []);
 });
+
+// D-37: a pull request opened by a listed bot is exempt from the body rule.
+test('a pull request from a listed bot is exempt from ci-body (D-37)', () => {
+  const env = { GITHUB_EVENT_PATH: path.join(events, 'pr-bot.json') };
+  assert.deepEqual(ciBody.run({ ci: true, env }), [], 'no config: the default list');
+  assert.deepEqual(ciBody.run({ ci: true, env, cfg: { ci: { botActors: ['dependabot[bot]'] } } }), []);
+  const judged = ciBody.run({ ci: true, env, cfg: { ci: { botActors: [] } } });
+  assert.ok(messages(judged).includes('pull request body is missing "Done when"'), messages(judged).join('\n'));
+});

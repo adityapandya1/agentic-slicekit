@@ -43,6 +43,7 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | D-34 | Decision | One journal or one per branch? | One hash-chained file per branch under .slicekit/journal/, each from genesis: two branches that both append to one file break its chain at merge, and a broken chain is never repaired. A deleted whole file shows only in git history. | the build, 2026-10-25 |
 | D-35 | Decision | Does a verdict still hold after the verdict and state files are committed? | Yes, when every commit after the reviewed head touches only the kit's own bookkeeping (state, reviews, journal, BUILD.md); any other change needs a new review. Without this the verdict commit itself makes every verdict stale. | the build, 2026-10-25 |
 | D-36 | Decision | What does the journal catch, given D-32 and D-34? | Amends D-32 and D-34. A mid-chain edit is caught by the chain. Shortening or removing a journal file that reached the default branch is caught against the merge base. Lines not yet committed, or a file shortened before it reaches the default branch, are not protected. Files are per branch per clone (<branch-part>--<clone-id>.log). | the build, 2026-10-25 |
+| D-37 | Decision | Do bot pull requests have to follow the slice title and body? | No. Pull requests opened by an actor listed in ci.botActors (default dependabot[bot], renovate[bot]) are exempt from ci-title and ci-body; they still pass the gate's other rules and the tests. | the build, 2026-10-25 |
 
 ## Open
 

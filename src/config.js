@@ -51,9 +51,12 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, c
     freezeTests: true,
     style: { banned: seedBanned() },
     destructive: [...DESTRUCTIVE],
-    ci: { matrix: false, observabilitySteps: [] },
+    ci: { matrix: false, observabilitySteps: [], botActors: [...DEFAULT_BOT_ACTORS] },
   };
 }
+
+// D-37: pull requests these actors open skip ci-title and ci-body.
+export const DEFAULT_BOT_ACTORS = Object.freeze(['dependabot[bot]', 'renovate[bot]']);
 
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
@@ -85,11 +88,14 @@ function workflowTextErrors(at, value, { expression = true } = {}) {
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
-// ci.matrix is optional (absent reads as false); each observability step renders as one CI job (REQ-3.11).
+// ci.matrix is optional (absent reads as false), ci.botActors too (absent reads as the default list); each observability step renders as one CI job (REQ-3.11).
 function ciErrors(ci) {
   if (!isObject(ci)) return ['ci: must be an object'];
   const errors = [];
   if (ci.matrix !== undefined && typeof ci.matrix !== 'boolean') errors.push('ci.matrix: must be a boolean');
+  if (ci.botActors !== undefined && !(isStringArray(ci.botActors) && ci.botActors.every(nonEmpty))) {
+    errors.push('ci.botActors: must be an array of non-empty strings');
+  }
   if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
   ci.observabilitySteps.forEach((step, i) => {
     const at = `ci.observabilitySteps[${i}]`;

@@ -191,14 +191,15 @@ slice's state is before `draft-pr`; fails if the body lacks a section from REQ-2
 `ready` label only when the latest verdict on the pull request's current head has zero open
 blockers and, if required, the latest independent verdict on it has none either (REQ-2.8); a
 verdict given on an earlier head counts when every later commit touches only the kit's own
-bookkeeping (D-35). On merge to the default branch it SHALL run
+bookkeeping (D-35). A pull request opened by an actor in `ci.botActors` is exempt from the title
+and body rules (D-37). On merge to the default branch it SHALL run
 `slicekit status --sync --write` and commit the state and `BUILD.md` change as a bot commit (D-12).
 Actions SHALL be pinned by SHA.
 
 Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must
 begin with [P<n>/S-<nn>]".
 
-Cites: D-12, D-18, D-20, D-35.
+Cites: D-12, D-18, D-20, D-35, D-37.
 
 Enforced by: the generated workflow; `slicekit check --ci`.
 
