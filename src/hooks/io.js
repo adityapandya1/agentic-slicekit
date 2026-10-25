@@ -168,10 +168,18 @@ export async function runHook(name, { stdin, root, env = process.env, load = loa
     const git = (args) => runGit(hookRoot, args);
     const ms = deadline ?? hookDeadline(name);
     const result = await withDeadline(Promise.resolve().then(() => mod.handle(input, { root: hookRoot, cfg, env, git })), ms);
-    const problem = shapeError(name, result);
+    // Serialised here so a circular or BigInt result is a failure of this hook, not of the CLI; the
+    // shape check runs on what is written (a Date, a Map or a toJSON can make the two disagree).
+    const raw = kindOf(result);
+    if (raw !== 'object') return fail(`handler returned ${raw}`);
+    // Only a plain object: a Map serialises to {} and would read as an answer it never gave.
+    const proto = Object.getPrototypeOf(result);
+    if (proto !== Object.prototype && proto !== null) return fail(`handler returned a ${proto?.constructor?.name ?? 'non-plain object'}`);
+    const text = JSON.stringify(result);
+    if (typeof text !== 'string') return fail('handler result did not serialise');
+    const problem = shapeError(name, JSON.parse(text));
     if (problem) return fail(problem);
-    // Serialised here so a circular or BigInt result is a failure of this hook, not of the CLI.
-    return { stdout: JSON.stringify(result), code: 0, stderr: '' };
+    return { stdout: text, code: 0, stderr: '' };
   } catch (err) {
     return fail(err?.message ?? String(err));
   }

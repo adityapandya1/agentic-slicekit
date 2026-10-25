@@ -14,12 +14,15 @@ export const hookCommand = {
     try {
       const stdin = await io.stdin();
       const load = io.loadHook ? { load: io.loadHook } : {};
-      r = await runHook(name, { stdin, env: io.env ?? process.env, ...load });
+      const dispatch = io.runHook ?? runHook; // io.runHook: a seam for tests only
+      r = await dispatch(name, { stdin, env: io.env ?? process.env, ...load });
     } catch (err) {
       r = { stdout: failureOutput(name, err?.message ?? String(err)), code: 0, stderr: '' };
     }
     if (r.stderr) await io.stderr(r.stderr);
-    if (r.stdout) await io.stdout(`${r.stdout}\n`);
+    // Never print nothing for a known name: zero bytes at exit 0 reads as an allow.
+    const answer = r.stdout || (r.code === 2 ? '' : failureOutput(name, 'hook produced no answer'));
+    if (answer) await io.stdout(`${answer}\n`);
     return r.code;
   },
 };

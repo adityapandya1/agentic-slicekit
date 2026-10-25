@@ -304,3 +304,60 @@ test('CLI: a throw outside the dispatcher still answers', () => {
   assert.equal(open.code, 0, open.stderr);
   assert.deepEqual(JSON.parse(open.stdout), {});
 });
+
+// Fix round 2: the check runs on what is written, not on the object before serialisation.
+test('a result whose JSON disagrees with its object refuses (fail closed) or answers {} (fail open)', async () => {
+  const root = tmpRoot();
+  const tricky = [
+    ['Date', new Date(0)],
+    ['Map', new Map([['a', 1]])],
+    ['toJSON string', { toJSON: () => 'allow' }],
+    ['toJSON undefined', { toJSON: () => undefined }],
+  ];
+  for (const [label, value] of tricky) {
+    const r = await runHook('pre-bash', { stdin: '{}', root, env: {}, load: loadReturning(value) });
+    assert.equal(r.code, 0, label);
+    assert.equal(r.stdout.split('\n').length, 1, label);
+    assert.equal(out(r).hookSpecificOutput.permissionDecision, 'deny', label);
+    assert.match(out(r).hookSpecificOutput.permissionDecisionReason, /^slicekit hook pre-bash failed: handler /, label);
+  }
+  const stop = out(await runHook('stop', { stdin: '{}', root, env: {}, load: loadReturning({ toJSON: () => undefined }) }));
+  assert.deepEqual(stop, block('slicekit hook stop failed: handler result did not serialise'));
+  const open = await runHook('session-start', { stdin: '{}', root, env: {}, load: loadReturning({ toJSON: () => 'x' }) });
+  assert.equal(open.stdout, '{}');
+  assert.match(open.stderr, /handler returned string/);
+  // A Map serialises to {} and is therefore an honest {} for a fail-open hook.
+  const map = await runHook('pre-compact', { stdin: '{}', root, env: {}, load: loadReturning(new Map()) });
+  assert.equal(map.stdout, '{}');
+});
+
+test('CLI: a toJSON returning undefined still prints a deny, exit 0', () => {
+  const r = driveHook('pre-bash', '() => ({ toJSON: () => undefined })');
+  assert.equal(r.code, 0, r.stderr);
+  const lines = r.stdout.split('\n').filter(Boolean);
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]), deny('slicekit hook pre-bash failed: handler result did not serialise'));
+});
+
+test('hookCommand never skips the write: an empty answer becomes the refusal or {}', async () => {
+  const { hookCommand } = await import('../../src/cli/hook.js');
+  const run = async (name) => {
+    const written = [];
+    const io = { stdin: async () => '{}', stdout: (s) => written.push(s), stderr: () => {}, env: {} };
+    // io.runHook is a test-only seam: a dispatcher that, for whatever reason, produced no answer.
+    io.runHook = async () => ({ stdout: '', code: 0, stderr: '' });
+    const code = await hookCommand.run([name], io);
+    return { code, written: written.join('') };
+  };
+  const bash = await run('pre-bash');
+  assert.equal(bash.code, 0);
+  assert.equal(JSON.parse(bash.written).hookSpecificOutput.permissionDecision, 'deny');
+  const open = await run('session-end');
+  assert.deepEqual(JSON.parse(open.written), {});
+});
+
+test('CLI: a fail-open handler that never settles notes it on stderr', () => {
+  const open = driveHook('session-start', '() => new Promise(() => {})');
+  assert.equal(open.code, 0);
+  assert.match(open.stderr, /handler never settled/);
+});

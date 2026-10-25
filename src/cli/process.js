@@ -1,5 +1,5 @@
 import { main } from './index.js';
-import { failureOutput } from '../hooks/io.js';
+import { FAIL_OPEN, failureOutput } from '../hooks/io.js';
 
 async function readStdin() {
   const chunks = [];
@@ -50,6 +50,8 @@ export async function runProcess(argv, { stdin = readStdin, loadHook } = {}) {
   process.on('beforeExit', () => {
     if (answered) return;
     answered = true;
+    if (FAIL_OPEN.has(name)) process.stderr.write(`slicekit hook ${name} failed: handler never settled
+`);
     process.stdout.write(`${failureOutput(name, 'handler never settled')}\n`, () => process.exit(0));
   });
   const code = await main(argv, io);
