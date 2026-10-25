@@ -156,3 +156,28 @@ test('subagent-start » outside a git repository the started-agents record is un
     cleanup();
   }
 });
+
+// REQ-2.12: the brief `slicekit instructions` prints already carries the writing rules.
+test('hooks/subagent-start.test.js » a brief from instructions is not followed by a second copy of the writing rules', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    const commands = {
+      instructions: {
+        run: async (args, io) => {
+          io.stdout(`# Brief: ${args[0]}\n\n## Writing rules\n\n${rule}\n`);
+          return 0;
+        },
+      },
+    };
+    const t = text(await start(root, {}, { commands }));
+    assert.ok(t.startsWith('# Brief: developer\n'), t);
+    assert.equal(t.split(rule).length - 1, 1, t);
+    assert.ok(t.endsWith(`\n${NO_GIT}`), t);
+    // The placeholder path still adds the rules.
+    const p = text(await start(root, { agent_id: 'a2' }));
+    assert.equal(p.split(rule).length - 1, 1, p);
+  } finally {
+    cleanup();
+  }
+});

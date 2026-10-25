@@ -1,0 +1,290 @@
+// REQ-2.12: `slicekit instructions` is the one home of every agent brief and every command procedure.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { defaultConfig } from '../src/config.js';
+import { main } from '../src/cli/index.js';
+import { InstructionsError, PROCEDURES, briefSlice, renderBrief, renderProcedure } from '../src/instructions.js';
+import { reqBlocks } from '../src/stage.js';
+import { makeRepo } from './helpers/tmp-repo.js';
+
+const ROLES = ['developer', 'reviewer', 'fixer', 'auditor', 'ops', 'designer'];
+const RULE = '- State the fact, the consequence, the check. Not the importance.';
+
+const SLICE = `---
+slice: P1/S-01
+name: First
+repo: .
+group: A
+runbook: no
+requirements: [REQ-1.1, REQ-9.9]
+decisions: [D-01, D-77]
+---
+
+## Done when
+
+1. It works.
+
+## Evaluation set
+
+| Test | Kind | Covers |
+|---|---|---|
+| \`a.test.js » works\` | happy | REQ-1.1 |
+`;
+
+const SPEC = `# Spec
+
+### REQ-1.1 The first requirement
+
+The tool SHALL work.
+
+### REQ-1.2 The second
+
+Other text.
+`;
+
+const DECISIONS = `# Decisions
+
+## Settled
+
+| # | Type | Question | Answer | Who, when |
+|---|------|----------|--------|-----------|
+| D-01 | Decision | Which runtime? | Node | ann, 2026-01-01 |
+
+## Open
+
+| # | Type | Question | Why it matters | Recommendation |
+|---|------|----------|----------------|----------------|
+`;
+
+// A temp repository with a config of the shape, one slice file, one spec file and one decisions file.
+function project(shape = 'backend', { commands = { test: 'npm test' } } = {}) {
+  const cfg = defaultConfig({ name: 'demo', shape, commands, cli: 'npx slicekit' });
+  const repo = makeRepo({
+    commits: 1,
+    files: {
+      '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`,
+      'docs/phases/P1-x/S-01-first.md': SLICE,
+      'docs/spec/01-first.md': SPEC,
+      'docs/decisions.md': DECISIONS,
+    },
+  });
+  return { ...repo, cfg };
+}
+
+// A templates directory with a brief per role and the given procedures.
+function templates({ commands = {} } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-tpl-'));
+  fs.mkdirSync(path.join(dir, 'agents'));
+  fs.mkdirSync(path.join(dir, 'commands'));
+  for (const r of ROLES) fs.writeFileSync(path.join(dir, 'agents', `${r}.md`), `# Brief: ${r}\n\nRun \`{{cli}} check\`.\n`);
+  for (const [name, text] of Object.entries(commands)) fs.writeFileSync(path.join(dir, 'commands', `${name}.md`), text);
+  return dir;
+}
+
+async function cli(root, args) {
+  let stdout = '';
+  let stderr = '';
+  const code = await main(args, { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } });
+  return { code, stdout, stderr };
+}
+
+const codeOf = (fn) => {
+  try {
+    fn();
+  } catch (e) {
+    if (e instanceof InstructionsError) return { code: e.code, message: e.message };
+    throw e;
+  }
+  return null;
+};
+
+// ---- evaluation set ----
+
+// REQ-2.12
+test("instructions.test.js » each role's brief inlines the slice file, its REQ and D rows and the writing rules", () => {
+  const dir = templates();
+  for (const [shape, roles] of [['backend', ROLES.filter((r) => r !== 'designer')], ['fullstack', ['designer']]]) {
+    const { root, cfg, cleanup } = project(shape);
+    try {
+      for (const role of roles) {
+        const t = renderBrief(root, cfg, role, 'P1/S-01', { templatesDir: dir });
+        assert.ok(t.startsWith(`# Brief: ${role}\n`), t);
+        assert.match(t, /Run `npx slicekit check`\./, '{{cli}} replaced');
+        assert.match(t, /^## Slice P1\/S-01$/m);
+        assert.match(t, /^## Done when$/m);
+        assert.match(t, /^### REQ-1\.1 The first requirement$/m);
+        assert.match(t, /The tool SHALL work\./);
+        assert.doesNotMatch(t, /REQ-1\.2 The second/, 'only the named REQ');
+        assert.match(t, /^REQ-9\.9: not found under docs\/spec\/$/m);
+        assert.ok(t.includes('- D-01 (Decision): Which runtime? → Node'), t);
+        assert.match(t, /^- D-77: not found in decisions\.md$/m);
+        assert.match(t, /^- test: npm test$/m);
+        assert.match(t, /^- lint: not declared$/m);
+        assert.match(t, /^## Writing rules$/m);
+        assert.ok(t.split('\n').includes(RULE), t);
+        assert.doesNotMatch(t, /^# Writing rules$/m, 'the template heading is removed');
+        assert.doesNotMatch(t, /^name: slicekit-writing/m, 'front matter removed');
+        const order = ['## Slice P1/S-01', '## Requirements', '## Decisions', '## Team commands', '## Writing rules'].map((h) => t.indexOf(`\n${h}\n`));
+        assert.deepEqual([...order].sort((a, b) => a - b), order, `sections in order: ${order}`);
+        assert.ok(order.every((n) => n > 0), String(order));
+      }
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+// REQ-2.12
+test('instructions.test.js » an unknown role exits 2', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const r = await cli(root, ['instructions', 'tester']);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /^slicekit: unknown role 'tester'; one of developer, reviewer, fixer, auditor, ops, designer\n$/);
+    const d = await cli(root, ['instructions', 'designer']);
+    assert.equal(d.code, 2);
+    assert.match(d.stderr, /designer is not installed for shape backend/);
+    assert.equal(d.stdout, '');
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12
+test('instructions.test.js » the slice comes from the branch when no argument is given', () => {
+  const { root, cfg, cleanup } = project('backend');
+  const dir = templates();
+  try {
+    execFileSync('git', ['checkout', '-q', '-b', 'slice/P1-S-01-x'], { cwd: root });
+    const id = briefSlice(root, undefined);
+    assert.equal(id, 'P1/S-01');
+    const t = renderBrief(root, cfg, 'developer', id, { templatesDir: dir });
+    assert.match(t, /^## Slice P1\/S-01$/m);
+    assert.doesNotMatch(t, /## Where/);
+    const wt = path.join(root, '.worktrees', 'P1-S-01');
+    const w = renderBrief(root, cfg, 'developer', id, { templatesDir: dir, worktree: wt });
+    assert.ok(w.includes(`## Where\n\nWork only under ${wt}; use absolute paths.`), w);
+    assert.ok(w.indexOf('## Where') < w.indexOf('## Slice'), 'Where comes before the slice');
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12
+test('instructions.test.js » a command whose procedure is not built exits 1', () => {
+  const { root, cfg, cleanup } = project('backend');
+  try {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-tpl-'));
+    assert.deepEqual(codeOf(() => renderProcedure(root, cfg, 'plan', [], { templatesDir: empty })), {
+      code: 1,
+      message: 'the /slicekit plan command is not built in this version',
+    });
+    assert.deepEqual(codeOf(() => renderProcedure(root, cfg, 'foo', [], { templatesDir: empty })), {
+      code: 2,
+      message: "unknown command 'foo'",
+    });
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- further cases ----
+
+test('instructions » PROCEDURES names the nine commands', () => {
+  assert.deepEqual(PROCEDURES, ['intake', 'specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit']);
+});
+
+test('instructions » a procedure has {{cli}} and {{args}} replaced', () => {
+  const { root, cfg, cleanup } = project('backend');
+  const dir = templates({ commands: { build: 'Run `{{cli}} build next {{args}}`.\n' } });
+  try {
+    assert.equal(renderProcedure(root, cfg, 'build', ['--parallel', 'P2'], { templatesDir: dir }), 'Run `npx slicekit build next --parallel P2`.\n');
+    assert.equal(renderProcedure(root, cfg, 'build', [], { templatesDir: dir }), 'Run `npx slicekit build next (none)`.\n');
+  } finally {
+    cleanup();
+  }
+});
+
+test('instructions » --command passes everything after the name through unparsed', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    // The kit ships no procedures yet: an unbuilt command exits 1, even with options after it.
+    const r = await cli(root, ['instructions', '--command', 'plan', '--parallel', 'P2']);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, 'slicekit: the /slicekit plan command is not built in this version\n');
+    const u = await cli(root, ['instructions', '--command', 'nosuch']);
+    assert.equal(u.code, 2);
+    assert.equal(u.stderr, "slicekit: unknown command 'nosuch'\n");
+    assert.equal((await cli(root, ['instructions', '--command'])).code, 2);
+    assert.equal((await cli(root, ['instructions'])).code, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test('instructions » briefSlice: an address, a bad address, no branch, no repository', () => {
+  const { root, cleanup } = project('backend');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-norepo-'));
+  try {
+    assert.equal(briefSlice(root, 'P2/S-09'), 'P2/S-09');
+    assert.deepEqual(codeOf(() => briefSlice(root, 'S-09')), { code: 2, message: 'not a slice address: S-09' });
+    assert.equal(briefSlice(root, undefined), null, 'main is not a slice branch');
+    assert.equal(briefSlice(outside, undefined), null);
+  } finally {
+    cleanup();
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('instructions » no active slice, an unknown slice, the project writing rules', () => {
+  const { root, cfg, cleanup } = project('backend');
+  const dir = templates();
+  try {
+    const t = renderBrief(root, cfg, 'reviewer', null, { templatesDir: dir });
+    assert.ok(t.includes('## Slice\n\nNo active slice.'), t);
+    assert.deepEqual(codeOf(() => renderBrief(root, cfg, 'reviewer', 'P1/S-05', { templatesDir: dir })), { code: 2, message: 'unknown slice P1/S-05' });
+    const skill = path.join(root, '.claude', 'skills', 'slicekit-writing', 'SKILL.md');
+    fs.mkdirSync(path.dirname(skill), { recursive: true });
+    fs.writeFileSync(skill, '---\nname: slicekit-writing\ndescription: x\n---\n# Writing rules\n\n- Project rule.\n');
+    const p = renderBrief(root, cfg, 'reviewer', null, { templatesDir: dir });
+    assert.ok(p.endsWith('## Writing rules\n\n- Project rule.'), p.slice(-120));
+  } finally {
+    cleanup();
+  }
+});
+
+test('instructions » the CLI prints a brief for a slice given as an argument', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    // The kit's agent templates arrive in Task 3; until then a missing template is a refusal, not a crash.
+    const r = await cli(root, ['instructions', 'developer', 'P1/S-01', '--worktree', 'wt']);
+    if (r.code === 0) {
+      assert.match(r.stdout, /^## Slice P1\/S-01$/m);
+      assert.ok(r.stdout.includes(`Work only under ${path.resolve(root, 'wt')}; use absolute paths.`));
+    } else {
+      assert.equal(r.code, 1, r.stderr);
+      assert.match(r.stderr, /^slicekit: /);
+    }
+    assert.equal((await cli(root, ['instructions', 'developer', 'nope'])).code, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test('stage » reqBlocks gives each REQ its file and the 1-based line of its heading', () => {
+  const { root, cfg, cleanup } = project('backend');
+  try {
+    const blocks = reqBlocks(root, cfg);
+    assert.deepEqual(blocks.map(({ id, file, line }) => ({ id, file, line })), [
+      { id: 'REQ-1.1', file: 'docs/spec/01-first.md', line: 3 },
+      { id: 'REQ-1.2', file: 'docs/spec/01-first.md', line: 7 },
+    ]);
+    assert.match(blocks[0].block, /The tool SHALL work\./);
+  } finally {
+    cleanup();
+  }
+});

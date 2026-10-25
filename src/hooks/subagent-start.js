@@ -1,7 +1,8 @@
 // subagent-start (REQ-3.4): records the agent in the session's started-agents record (once per agent:
 // SubagentStart fires on spawn and again on resume), which subagent-stop checks, and injects its role
-// brief, the writing rules and the no-git rule. Fails open through io.js. pre-bash keeps git out of the
-// subagent by the agent_id Claude Code puts on every tool call made inside it, not by the record.
+// brief, the writing rules (inside the brief when `slicekit instructions` gave it) and the no-git rule.
+// Fails open through io.js. pre-bash keeps git out of the subagent by the agent_id Claude Code puts on
+// every tool call made inside it, not by the record.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,14 +39,15 @@ function writingRules(root) {
 }
 
 // `slicekit instructions <role>` when that command exists (S-09) and succeeds, else the P1 placeholder.
+// -> {text, fromKit}: fromKit when the text came from the command, whose brief carries the writing rules.
 async function roleBrief(role, root, env, commands) {
-  const placeholder = `Brief: role ${role}.`;
+  const placeholder = { text: `Brief: role ${role}.`, fromKit: false };
   const cmd = Object.hasOwn(commands, 'instructions') ? commands.instructions : undefined;
   if (!cmd) return placeholder;
   let out = '';
   try {
     const code = await cmd.run([role], { cwd: root, env, stdout: (s) => { out += s; }, stderr: () => {}, stdin: async () => '' });
-    return code === 0 && out.trim() !== '' ? out.trim() : placeholder;
+    return code === 0 && out.trim() !== '' ? { text: out.trim(), fromKit: true } : placeholder;
   } catch {
     return placeholder;
   }
@@ -71,5 +73,7 @@ export async function handle(input, { root, env = process.env, commands }) {
   if (usableId(input?.session_id) && usableId(input?.agent_id)) addAgent(root, input.session_id, input.agent_id);
   const role = roleOf(input?.agent_type);
   const brief = await roleBrief(role, root, env, commands ?? await cliCommands());
-  return context('SubagentStart', assemble(brief, writingRules(root), role));
+  // A brief from the kit already holds the writing rules; a second copy would only spend the budget.
+  const rules = brief.fromKit ? { text: '', file: null } : writingRules(root);
+  return context('SubagentStart', assemble(brief.text, rules, role));
 }

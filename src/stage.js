@@ -109,8 +109,10 @@ function clarify(root, cfg) {
   };
 }
 
-// Every REQ heading in the spec, with its block of text up to the next heading of the same or a higher level.
-function reqBlocks(root, cfg) {
+// Every REQ heading in the spec: its ID, its file (relative to root, forward slashes), the 1-based
+// line of the heading, and the text after the heading up to the next heading of the same or a higher
+// level. S-11 and S-12 report findings at `file:line`.
+export function reqBlocks(root, cfg) {
   const out = [];
   for (const f of filesUnder(kitPaths(root, cfg).spec, '.md')) {
     const text = readText(f);
@@ -120,7 +122,7 @@ function reqBlocks(root, cfg) {
       const m = h.level >= 2 && h.level <= 3 ? new RegExp(`^(${re('req').source})\\b`).exec(h.text) : null;
       if (!m) return;
       const next = hs.slice(i + 1).find((n) => n.level <= h.level);
-      out.push({ id: m[1], block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
+      out.push({ id: m[1], file: rel(root, f), line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
     });
   }
   return out;

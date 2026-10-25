@@ -3,6 +3,7 @@ import { baselineCommand } from './baseline.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
+import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
@@ -17,6 +18,7 @@ export const COMMANDS = {
   check: checkCommand,
   decide: decideCommand,
   init: initCommand,
+  instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
   'ready-label': readyLabelCommand,
