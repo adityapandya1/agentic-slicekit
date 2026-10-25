@@ -16,6 +16,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { GitError, assertRef, currentBranch, git, isRepo, resolveCommit } from './git.js';
+import { toPosix } from './hooks/paths.js';
+import { LOCK_WAIT_MS, sleep, withFileLock } from './lock.js';
 import { kitPaths } from './paths.js';
 import { redact } from './redact.js';
 
@@ -27,8 +29,6 @@ const LINE = /^(\S+) actor=(\S+) slice=(\S+) stage=(\S+) commits=(\S+) verdicts=
 const CLONE_ID = /^[0-9a-f]{8}$/;
 
 const LOCK_BUDGET_MS = 2_000;
-const LOCK_WAIT_MS = 10;
-const LOCK_STALE_MS = 30_000;
 
 export class JournalError extends Error {
   constructor(message) {
@@ -37,9 +37,7 @@ export class JournalError extends Error {
   }
 }
 
-const toPosix = (p) => p.split(path.sep).join('/');
 const dirOf = (root, cfg) => kitPaths(root, cfg ?? { docsRoot: 'docs' }).journalDir;
-const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 export const hashLine = (text) => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 
@@ -286,30 +284,10 @@ export function readLast(root, branch = journalBranch(root), cfg) {
 }
 
 function withLock(file, fn, budgetMs) {
-  const lock = `${file}.lock`;
-  const deadline = Date.now() + budgetMs;
-  let fd;
-  for (;;) {
-    try {
-      fd = fs.openSync(lock, 'wx');
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST' && e.code !== 'EPERM' && e.code !== 'EACCES') throw e;
-      try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.unlinkSync(lock);
-      } catch {
-        // released between the attempt and the stat
-      }
-      if (Date.now() >= deadline) throw new JournalError(`could not lock ${toPosix(file)}: another slicekit is appending`);
-      sleep(LOCK_WAIT_MS);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    fs.closeSync(fd);
-    fs.rmSync(lock, { force: true });
-  }
+  return withFileLock(`${file}.lock`, fn, {
+    budgetMs,
+    busy: () => new JournalError(`could not lock ${toPosix(file)}: another slicekit is appending`),
+  });
 }
 
 function writeAll(fd, text) {

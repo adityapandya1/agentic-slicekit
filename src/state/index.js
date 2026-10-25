@@ -3,6 +3,7 @@ import path from 'node:path';
 import { exists, readText, writeText } from '../fs.js';
 import { commitExists, hasCommits, isRepo, resolveCommit } from '../git.js';
 import { parseSliceAddr, stateFileName } from '../ids.js';
+import { withFileLock } from '../lock.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { TRANSITIONS, TransitionError, nextStates, validateEvidence } from './transitions.js';
@@ -19,43 +20,17 @@ export class LockError extends Error {
 }
 
 const LOCK_BUDGET_MS = 5_000;
-const LOCK_WAIT_MS = 10;
-const LOCK_STALE_MS = 30_000;
 
 function stateFile(root, cfg, id) {
   if (!parseSliceAddr(id)) throw new Error(`unknown slice ${id}`);
   return path.join(kitPaths(root, cfg).state, stateFileName(id));
 }
 
-const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-
 // One writer per slice at a time: the read-modify-write in setState and unfreeze runs under it.
 function withLock(root, cfg, id, fn, budgetMs = LOCK_BUDGET_MS) {
   const lock = `${stateFile(root, cfg, id)}.lock`;
   fs.mkdirSync(path.dirname(lock), { recursive: true });
-  const deadline = Date.now() + budgetMs;
-  let fd;
-  for (;;) {
-    try {
-      fd = fs.openSync(lock, 'wx');
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST' && e.code !== 'EPERM' && e.code !== 'EACCES') throw e;
-      try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.unlinkSync(lock);
-      } catch {
-        // the holder released it between our attempt and the stat; try again
-      }
-      if (Date.now() >= deadline) throw new LockError(id);
-      sleep(LOCK_WAIT_MS);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    fs.closeSync(fd);
-    fs.rmSync(lock, { force: true });
-  }
+  return withFileLock(lock, fn, { budgetMs, busy: () => new LockError(id) });
 }
 
 function defaultState(id) {

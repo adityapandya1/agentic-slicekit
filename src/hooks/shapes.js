@@ -14,8 +14,8 @@ export const NO_VERDICT = 'no verdict file in .slicekit/reviews/ from this run';
 
 const SKIPPED = /^\s*Skipped:/m;
 const NOT_CHECKED = /^\s*Not checked:/m;
-// Agents type ASCII: `->` stands for `→`.
-const RAN = /^\s*ran: .+ (?:→|->) exit \d+/m;
+// Agents type ASCII: `->` stands for `→`. pre-compact reads the last such line from the transcript.
+export const RAN = /^\s*ran: .+ (?:→|->) exit \d+/m;
 const FINDING_ID = /\b[BH]-[1-9]\d*\b/;
 
 const VERDICT_NAME = /^(P\d+-S-\d+)[a-z]?-r\d+\.md$/;

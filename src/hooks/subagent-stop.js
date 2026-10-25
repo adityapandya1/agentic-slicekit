@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { allow, block } from './io.js';
-import { fromGitBash } from './paths.js';
+import { fromGitBash, transcriptTail } from './paths.js';
 import { roleOf, shapeProblems, ROLES } from './shapes.js';
 import { hasAgent, removeAgent, retryPath, usableId } from './subagent-marker.js';
 
@@ -34,32 +34,19 @@ function textOf(content) {
 
 // The last assistant text in the transcript's last TRANSCRIPT_TAIL bytes; '' when there is none.
 export function lastAssistantText(file) {
-  let fd;
-  try {
-    fd = fs.openSync(file, 'r');
-    const { size } = fs.fstatSync(fd);
-    const start = Math.max(0, size - TRANSCRIPT_TAIL);
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    const lines = buf.toString('utf8').split('\n');
-    if (start > 0) lines.shift(); // a partial first line
-    for (let i = lines.length - 1; i >= 0; i--) {
-      let entry;
-      try {
-        entry = JSON.parse(lines[i]);
-      } catch {
-        continue;
-      }
-      if (entry?.message?.role !== 'assistant') continue;
-      const text = textOf(entry.message.content);
-      if (text.trim() !== '') return text;
+  const lines = transcriptTail(file, TRANSCRIPT_TAIL) ?? [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch {
+      continue;
     }
-    return '';
-  } catch {
-    return '';
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
+    if (entry?.message?.role !== 'assistant') continue;
+    const text = textOf(entry.message.content);
+    if (text.trim() !== '') return text;
   }
+  return '';
 }
 
 // The subagent's final text: last_assistant_message, else its own transcript. transcript_path is the

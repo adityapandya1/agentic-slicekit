@@ -18,12 +18,12 @@ import { redact } from '../redact.js';
 import { setHandoff } from '../state/index.js';
 import { parseVerdict } from '../verdict.js';
 import { allow } from './io.js';
-import { activeSlice, fromGitBash } from './paths.js';
+import { activeSlice, fromGitBash, transcriptTail } from './paths.js';
+import { RAN } from './shapes.js';
 
 export const TRANSCRIPT_TAIL = 256 * 1024;
 export const LOCK_BUDGET_MS = 2_000;
 const COMMAND_MAX = 200;
-const RAN = /^\s*ran: /;
 
 // The texts of one transcript entry: {assistant, tool}. Text the user typed is in neither.
 function texts(content, role) {
@@ -47,42 +47,29 @@ function texts(content, role) {
 
 const lastRan = (list) => list.flatMap((t) => t.split(/\r?\n/)).filter((l) => RAN.test(l)).at(-1);
 
-// The last line starting `ran: ` in the transcript's last TRANSCRIPT_TAIL bytes: from assistant text
-// when any has one (the agent's own report), else from tool output (which may only echo an old line).
-// Secrets are masked (redact) before the line is trimmed and cut to COMMAND_MAX characters. null when
-// there is none or the file cannot be read.
+// The last `ran: <command> → exit <n>` line (shapes.js RAN) in the transcript's last TRANSCRIPT_TAIL
+// bytes: from assistant text when any has one (the agent's own report), else from tool output (which
+// may only echo an old line). Secrets are masked (redact) before the line is trimmed and cut to
+// COMMAND_MAX characters. null when there is none or the file cannot be read.
 export function lastRanLine(file) {
-  let fd;
-  try {
-    fd = fs.openSync(file, 'r');
-    const st = fs.fstatSync(fd);
-    if (!st.isFile()) return null;
-    const start = Math.max(0, st.size - TRANSCRIPT_TAIL);
-    const buf = Buffer.alloc(st.size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    const lines = buf.toString('utf8').split('\n');
-    if (start > 0) lines.shift(); // a partial first line
-    let fromTool;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      let entry;
-      try {
-        entry = JSON.parse(lines[i]);
-      } catch {
-        continue;
-      }
-      const role = entry?.message?.role;
-      if (role !== 'assistant' && role !== 'user') continue;
-      const t = texts(entry.message.content, role);
-      const said = lastRan(t.assistant);
-      if (said !== undefined) return clip(said);
-      fromTool ??= lastRan(t.tool);
+  const lines = transcriptTail(file, TRANSCRIPT_TAIL);
+  if (lines === null) return null;
+  let fromTool;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch {
+      continue;
     }
-    return fromTool === undefined ? null : clip(fromTool);
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
+    const role = entry?.message?.role;
+    if (role !== 'assistant' && role !== 'user') continue;
+    const t = texts(entry.message.content, role);
+    const said = lastRan(t.assistant);
+    if (said !== undefined) return clip(said);
+    fromTool ??= lastRan(t.tool);
   }
+  return fromTool === undefined ? null : clip(fromTool);
 }
 
 const clip = (line) => redact(line).trim().slice(0, COMMAND_MAX);

@@ -18,9 +18,7 @@ import { tables } from '../markdown.js';
 import { kitPaths } from '../paths.js';
 import { programStage } from '../stage.js';
 import { allow } from './io.js';
-import { activeSlice } from './paths.js';
-
-const toPosix = (p) => p.split(path.sep).join('/');
+import { activeSlice, toPosix } from './paths.js';
 
 function tryGit(git, args) {
   try {

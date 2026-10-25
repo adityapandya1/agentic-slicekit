@@ -259,6 +259,19 @@ test('text the user typed is not a command run', async () => {
   }
 });
 
+// Whole-branch M4: the same ran: shape as the developer check (shapes.js); a line with no result is
+// not a command run.
+test('a ran: line without its exit code is skipped', async () => {
+  const r = repo();
+  try {
+    const t = transcript(r.root, [assistant('ran: npm test -> exit 2'), assistant('ran: next I will lint')]);
+    await run(r.root, { transcript_path: t });
+    assert.equal(readState(r.root).handoff.lastCommand, 'ran: npm test -> exit 2');
+  } finally {
+    r.cleanup();
+  }
+});
+
 test('a huge transcript is read only in its tail', async () => {
   const r = repo();
   try {
