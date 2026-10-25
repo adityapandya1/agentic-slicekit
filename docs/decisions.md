@@ -40,6 +40,8 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | D-31 | Decision | May a first adoption raise a baseline? | Yes, once: `slicekit baseline update --adopt` records higher counts, prints each one with its previous value, is refused in CI, and a reviewer treats an adopted raise like any other finding. | the build, 2026-10-24 |
 | D-32 | Decision | Is a hash-chained session journal wanted, or is the git log enough? | A per-session append-only journal of agent actions, each line carrying the hash of the previous one, so a tampered or truncated record is visible; the git log records commits, not what the agents did between them. | brainstorm with the author, 2026-10-24 |
 | D-33 | Decision | Does the kit version itself and migrate a team's config? | Semver on the package; `.slicekit/config.json` carries `configVersion`; a newer kit migrates an older config forward on first run and prints each change; a downgrade refuses. | brainstorm with the author, 2026-10-24 |
+| D-34 | Decision | One journal or one per branch? | One hash-chained file per branch under .slicekit/journal/, each from genesis: two branches that both append to one file break its chain at merge, and a broken chain is never repaired. A deleted whole file shows only in git history. | the build, 2026-10-25 |
+| D-36 | Decision | What does the journal catch, given D-32 and D-34? | Amends D-32 and D-34. A mid-chain edit is caught by the chain. Shortening or removing a journal file that reached the default branch is caught against the merge base. Lines not yet committed, or a file shortened before it reaches the default branch, are not protected. Files are per branch per clone (<branch-part>--<clone-id>.log). | the build, 2026-10-25 |
 
 ## Open
 

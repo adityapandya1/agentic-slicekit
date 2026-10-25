@@ -5,6 +5,11 @@
 // push, merge, pull, rebase, cherry-pick, revert, am, tag (other than listing), `gh pr` writes or a
 // non-GET `gh api`; (6) a command matching cfg.destructive.
 //
+// "From a subagent" means the input carries a non-empty `agent_id`: Claude Code sets it on every tool
+// call made inside a subagent and never in the main session (an `--agent` session has `agent_type`
+// alone). The subagent marker is not read here: it is per session, so it cannot tell the main session's
+// own commit from its subagent's.
+//
 // Limits: this reads the command as a shell would on its surface. It splits on operators outside
 // quotes, treats here-document bodies as data, strips shell keywords, env prefixes and wrappers
 // (command/exec/sudo/env/timeout/nice/xargs/...), follows `cd`, `pushd`, `git -C`, `git checkout` and
@@ -26,7 +31,6 @@ import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
 import { fromGitBash, real, toPosix } from './paths.js';
-import { activeMarker } from './subagent-marker.js';
 
 // ---- tokenising ----
 
@@ -698,8 +702,9 @@ export function handle(input, { root, cfg }) {
   if (frozen) return deny(`intake snapshot ${frozen} is frozen; add a new snapshot`);
   // (5)
   if (invs.some((i) => ['commit', 'history', 'push', 'force-push', 'pr', 'api-write'].includes(i.kind))) {
-    const marker = activeMarker(root, input.session_id);
-    if (marker) return deny(`agents do not run git; report and let the command commit (marker ${marker})`);
+    if (typeof input.agent_id === 'string' && input.agent_id !== '') {
+      return deny('agents do not run git; report and let the command commit');
+    }
   }
   // (6)
   const patterns = compileDestructive(cfg);

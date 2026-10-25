@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { handle, classifyGit, segments } from '../../src/hooks/pre-bash.js';
-import { markerPath, enter, leave, subagentActive } from '../../src/hooks/subagent-marker.js';
+import { addAgent, agentsPath, hasAgent, removeAgent } from '../../src/hooks/subagent-marker.js';
 import { runHook } from '../../src/hooks/io.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo, commit } from '../helpers/tmp-repo.js';
@@ -14,8 +14,11 @@ const SESSION = 'sess-1';
 const cfgFor = (over = {}) => ({ ...defaultConfig({ name: 'demo', shape: 'backend' }), ...over });
 const run = (root, args) => execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 
-function decide(root, command, { cfg = cfgFor(), cwd = root, session = SESSION } = {}) {
-  return handle({ session_id: session, tool_name: 'Bash', tool_input: { command }, cwd }, { root, cfg, env: {} });
+// `agent` sets agent_id, which Claude Code sends only for a call made inside a subagent.
+function decide(root, command, { cfg = cfgFor(), cwd = root, session = SESSION, agent } = {}) {
+  const input = { session_id: session, tool_name: 'Bash', tool_input: { command }, cwd };
+  if (agent !== undefined) input.agent_id = agent;
+  return handle(input, { root, cfg, env: {} });
 }
 const reason = (r) => r.hookSpecificOutput?.permissionDecisionReason;
 function assertDeny(r, text) {
@@ -155,19 +158,17 @@ test('denies destructive pattern from config', () => {
 // REQ-2.1
 test('denies git from a subagent', () => {
   const { root, cleanup } = repoOn('slice/P1-S-06-x');
-  const msg = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)';
+  const msg = 'agents do not run git; report and let the command commit';
+  const sub = (cmd) => decide(root, cmd, { agent: 'a1' });
   try {
-    enter(root, SESSION);
-    assertDeny(decide(root, 'git commit -m x'), msg);
-    assertDeny(decide(root, 'git push -u origin slice/P1-S-06-x'), msg);
-    for (const sub of ['create', 'merge', 'edit', 'ready', 'close', 'comment']) {
-      assertDeny(decide(root, `gh pr ${sub} --fill`), msg);
+    assertDeny(sub('git commit -m x'), msg);
+    assertDeny(sub('git push -u origin slice/P1-S-06-x'), msg);
+    for (const s of ['create', 'merge', 'edit', 'ready', 'close', 'comment']) {
+      assertDeny(sub(`gh pr ${s} --fill`), msg);
     }
     // Read-only git and gh stay available to the agent.
-    assertAllow(decide(root, 'git status && git diff && gh pr view 3'));
-    // Another session is not marked.
-    assertAllow(decide(root, 'git commit -m x', { session: 'other' }));
-    leave(root, SESSION);
+    assertAllow(sub('git status && git diff && gh pr view 3'));
+    // The main session (no agent_id) commits.
     assertAllow(decide(root, 'git commit -m x'));
     assertAllow(decide(root, 'gh pr create --fill'));
   } finally {
@@ -266,29 +267,31 @@ test('runs through the dispatcher and fails closed on a missing command', async 
   }
 });
 
-// ---- subagent marker ----
+// ---- the started-agents record (the subagent marker) ----
 
-test('subagent marker counts nested entries and stays inside the git common directory', () => {
+test('the started-agents record holds each agent once and stays inside the git common directory', () => {
   const { root, cleanup } = makeRepo();
   try {
-    assert.equal(subagentActive(root, SESSION), false);
-    enter(root, SESSION);
-    enter(root, SESSION);
-    assert.equal(fs.readFileSync(markerPath(root, SESSION), 'utf8').trim(), '2');
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), true);
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), false);
-    assert.equal(fs.existsSync(markerPath(root, SESSION)), false);
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(hasAgent(root, SESSION, 'a1'), false);
+    addAgent(root, SESSION, 'a1');
+    addAgent(root, SESSION, 'a2');
+    addAgent(root, SESSION, 'a1');
+    assert.equal(fs.readFileSync(agentsPath(root, SESSION), 'utf8'), 'a1\na2\n');
+    removeAgent(root, SESSION, 'a1');
+    assert.equal(hasAgent(root, SESSION, 'a1'), false);
+    assert.equal(hasAgent(root, SESSION, 'a2'), true);
+    removeAgent(root, SESSION, 'a2');
+    assert.equal(fs.existsSync(agentsPath(root, SESSION)), false);
+    removeAgent(root, SESSION, 'a2');
+    assert.equal(hasAgent(root, SESSION, 'a2'), false);
 
-    const evil = markerPath(root, '../../etc/passwd');
+    const evil = agentsPath(root, '../../etc/passwd');
     assert.equal(path.dirname(evil), path.join(fs.realpathSync.native(path.join(root, '.git')), 'slicekit'));
-    assert.match(path.basename(evil), /^subagent-[A-Za-z0-9_-]+$/);
-    assert.throws(() => markerPath(root, ''));
-    assert.throws(() => markerPath(root, undefined));
-    assert.equal(subagentActive(root, undefined), false);
+    assert.match(path.basename(evil), /^agents-[A-Za-z0-9_-]+$/);
+    assert.throws(() => agentsPath(root, ''));
+    assert.throws(() => agentsPath(root, undefined));
+    assert.throws(() => addAgent(root, SESSION, ''));
+    assert.equal(hasAgent(root, SESSION, undefined), false);
   } finally {
     cleanup();
   }
@@ -434,7 +437,7 @@ test('destructive patterns judge parsed commands, not quoted text or messages', 
 
 // ---- fix round 1: subagent and minors ----
 
-const AGENT = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)';
+const AGENT = 'agents do not run git; report and let the command commit';
 
 // I5
 test('a subagent may only read pull requests and the API', () => {
@@ -442,35 +445,36 @@ test('a subagent may only read pull requests and the API', () => {
   try {
     assertAllow(decide(root, 'gh api repos/o/r/pulls/5/merge -X PUT'));
     assertAllow(decide(root, 'gh pr review 5 --approve'));
-    enter(root, SESSION);
-    assertDeny(decide(root, 'gh pr review 5 --approve'), AGENT);
-    assertDeny(decide(root, 'gh pr -R o/r merge 5'), AGENT);
-    assertDeny(decide(root, 'gh pr --repo=o/r reopen 5'), AGENT);
-    assertDeny(decide(root, 'gh api repos/o/r/pulls/5/merge -X PUT'), AGENT);
-    assertDeny(decide(root, 'gh api --method=post repos/o/r/issues'), AGENT);
-    assertDeny(decide(root, 'gh api -XDELETE repos/o/r/git/refs/heads/x'), AGENT);
+    const sub = (cmd) => decide(root, cmd, { agent: 'a1' });
+    assertDeny(sub('gh pr review 5 --approve'), AGENT);
+    assertDeny(sub('gh pr -R o/r merge 5'), AGENT);
+    assertDeny(sub('gh pr --repo=o/r reopen 5'), AGENT);
+    assertDeny(sub('gh api repos/o/r/pulls/5/merge -X PUT'), AGENT);
+    assertDeny(sub('gh api --method=post repos/o/r/issues'), AGENT);
+    assertDeny(sub('gh api -XDELETE repos/o/r/git/refs/heads/x'), AGENT);
     for (const cmd of ['gh pr view 5', 'gh pr list', 'gh pr status', 'gh pr checks 5', 'gh pr diff 5', 'gh pr -R o/r view 5',
       'gh api repos/o/r/pulls/5', 'gh api -X GET repos/o/r/pulls']) {
-      assertAllow(decide(root, cmd));
+      assertAllow(sub(cmd));
     }
   } finally {
     cleanup();
   }
 });
 
-// M8, M9
-test('an empty session id with any marker present counts as a subagent', () => {
+// M8, M9 (S-07 I-2): agent_id decides, whatever the session id; a marker alone never does.
+test('an agent_id with an empty session id counts as a subagent; a marker alone does not', () => {
   const { root, cleanup } = repoOn('slice/x');
-  const any = (session_id) => handle({ session_id, tool_name: 'Bash', tool_input: { command: 'git commit -m x' }, cwd: root },
+  const any = (session_id, agent_id) => handle({ session_id, agent_id, tool_name: 'Bash', tool_input: { command: 'git commit -m x' }, cwd: root },
     { root, cfg: cfgFor(), env: {} });
   try {
     assertAllow(any(''));
     assertAllow(any(undefined));
-    enter(root, 'other-session');
-    const msg = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-other-session)';
-    assertDeny(any(''), msg);
-    assertDeny(any(undefined), msg);
-    assertAllow(any(SESSION));
+    assertDeny(any('', 'a1'), 'agents do not run git; report and let the command commit');
+    assertDeny(any(undefined, 'a1'), 'agents do not run git; report and let the command commit');
+    addAgent(root, 'other-session', 'a9');
+    assertAllow(any(''));
+    assertAllow(any(undefined));
+    assertAllow(any(SESSION, ''));
     assertAllow(handle({ tool_name: 'Bash', tool_input: { command: 'npm test' }, cwd: root }, { root, cfg: cfgFor(), env: {} }));
   } finally {
     cleanup();
@@ -616,43 +620,41 @@ function withLinkedWorktree(fn) {
     repo.cleanup();
   }
 }
-const agentDeny = (r) => {
-  assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `expected a deny, got ${JSON.stringify(r)}`);
-  assert.match(reason(r), /^agents do not run git; report and let the command commit \(marker .*slicekit\/subagent-sess-1\)$/);
-};
+const agentDeny = (r) => assertDeny(r, 'agents do not run git; report and let the command commit');
 
-// I2
-test('a marker entered from the main checkout guards a linked worktree', () => withLinkedWorktree((main, wt) => {
-  enter(main, SESSION);
-  agentDeny(decide(wt, 'git commit -m x', { cwd: wt }));
-  agentDeny(decide(main, 'git commit -m x', { cwd: wt }));
-  assert.equal(subagentActive(wt, SESSION), true);
-  leave(wt, SESSION);
+// I2 (S-07 I-2: the guard keys on agent_id; the started-agents record is shared by every worktree)
+test('an agent recorded from the main checkout is seen from a linked worktree', () => withLinkedWorktree((main, wt) => {
+  addAgent(main, SESSION, 'a1');
+  agentDeny(decide(wt, 'git commit -m x', { cwd: wt, agent: 'a1' }));
+  agentDeny(decide(main, 'git commit -m x', { cwd: wt, agent: 'a1' }));
   assertAllow(decide(wt, 'git commit -m x', { cwd: wt }));
+  assert.equal(hasAgent(wt, SESSION, 'a1'), true);
+  removeAgent(wt, SESSION, 'a1');
+  assert.equal(hasAgent(main, SESSION, 'a1'), false);
 }));
 
 // I2
-test('a marker entered from a linked worktree guards the main checkout', () => withLinkedWorktree((main, wt) => {
-  enter(wt, SESSION);
-  assertDeny(decide(main, 'git commit -m x'), 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)');
-  // M9's rule over the new location: no session id, any marker.
-  assert.equal(handle({ tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: main }, { root: main, cfg: cfgFor(), env: {} })
-    .hookSpecificOutput?.permissionDecision, 'deny');
-  leave(main, SESSION);
+test('an agent recorded from a linked worktree is seen from the main checkout', () => withLinkedWorktree((main, wt) => {
+  addAgent(wt, SESSION, 'a1');
+  assert.equal(hasAgent(main, SESSION, 'a1'), true);
+  agentDeny(decide(main, 'git commit -m x', { agent: 'a1' }));
+  // No session id but an agent_id: still a subagent.
+  agentDeny(handle({ agent_id: 'a1', tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: main }, { root: main, cfg: cfgFor(), env: {} }));
+  removeAgent(main, SESSION, 'a1');
   assertAllow(decide(main, 'git commit -m x'));
 }));
 
 // I2
-test('outside a git repository the marker falls back to .slicekit', () => {
+test('outside a git repository the started-agents record falls back to .slicekit', () => {
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
   try {
-    enter(plain, SESSION);
-    assert.equal(path.dirname(markerPath(plain, SESSION)), path.join(plain, '.slicekit'));
-    assert.equal(fs.readFileSync(path.join(plain, '.slicekit', '.subagent-sess-1'), 'utf8').trim(), '1');
-    assertDeny(decide(plain, 'git commit -m x'), 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)');
-    assertDeny(decide(plain, 'git push', { session: '' }), 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)');
-    leave(plain, SESSION);
-    assert.equal(subagentActive(plain, SESSION), false);
+    addAgent(plain, SESSION, 'a1');
+    assert.equal(path.dirname(agentsPath(plain, SESSION)), path.join(plain, '.slicekit'));
+    assert.equal(fs.readFileSync(path.join(plain, '.slicekit', '.agents-sess-1'), 'utf8'), 'a1\n');
+    assertDeny(decide(plain, 'git commit -m x', { agent: 'a1' }), 'agents do not run git; report and let the command commit');
+    assertDeny(decide(plain, 'git push', { session: '', agent: 'a1' }), 'agents do not run git; report and let the command commit');
+    removeAgent(plain, SESSION, 'a1');
+    assert.equal(hasAgent(plain, SESSION, 'a1'), false);
   } finally {
     fs.rmSync(plain, { recursive: true, force: true });
   }
@@ -665,9 +667,22 @@ test('a subagent does not change history', () => {
     const cmds = ['git merge slice/y', 'git pull', 'git rebase origin/main', 'git cherry-pick abc123', 'git revert HEAD',
       'git am 0001.patch', 'git tag v1', 'git -C . tag -d v1'];
     for (const cmd of cmds) assertAllow(decide(root, cmd));
-    enter(root, SESSION);
-    for (const cmd of cmds) assertDeny(decide(root, cmd), AGENT);
-    assertAllow(decide(root, 'git tag -l && git log --oneline'));
+    for (const cmd of cmds) assertDeny(decide(root, cmd, { agent: 'a1' }), AGENT);
+    assertAllow(decide(root, 'git tag -l && git log --oneline', { agent: 'a1' }));
+  } finally {
+    cleanup();
+  }
+});
+
+// S-07 I-2: Claude Code sends agent_id only for a tool call made inside a subagent. The main session
+// may commit on a slice branch while a subagent of the same session is open.
+test('the main session commits while a subagent is open; the subagent is refused', () => {
+  const { root, cleanup } = repoOn('slice/P1-S-07-x');
+  try {
+    addAgent(root, SESSION, 'B');
+    assertAllow(decide(root, 'git commit -m x'));
+    assertDeny(decide(root, 'git commit -m x', { agent: 'B' }), AGENT);
+    assertAllow(decide(root, 'git commit -m x', { agent: '' }));
   } finally {
     cleanup();
   }
