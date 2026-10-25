@@ -1,6 +1,6 @@
 // D-35: a verdict given on head `from` still holds on a later head `to` when `to` descends from
 // `from` and every change between them is the kit's own bookkeeping: the state directory, the
-// review verdicts, the journal and BUILD.md. Without this, committing the verdict and the state
+// review verdicts, the journal directory (every file under it) and BUILD.md. Without this, committing the verdict and the state
 // file would itself make every verdict stale. Any doubt (unknown commit, no repository) is "no".
 import path from 'node:path';
 import { isSha, sameSha } from '../evidence.js';
@@ -14,8 +14,8 @@ function bookkeeping(root) {
   const prefix = git(root, ['rev-parse', '--show-prefix']);
   const rel = (f) => prefix + path.relative(root, f).split(path.sep).join('/');
   return {
-    dirs: [p.state, path.join(p.kit, 'reviews'), path.join(p.kit, 'journal')].map((d) => `${rel(d)}/`),
-    files: [rel(p.journal), rel(p.build)],
+    dirs: [p.state, path.join(p.kit, 'reviews'), p.journalDir].map((d) => `${rel(d)}/`),
+    files: [rel(p.build)],
   };
 }
 

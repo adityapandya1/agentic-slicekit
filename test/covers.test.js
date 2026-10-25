@@ -38,7 +38,7 @@ function withHistory(fn) {
     const H = commitAll(root, 'code');
     write(root, '.slicekit/state/P1-S-01.json', '{}\n');
     write(root, '.slicekit/reviews/P1-S-01-r1.md', '# review\n');
-    write(root, '.slicekit/journal.log', 'line\n');
+    write(root, '.slicekit/journal/main--abc123.log', 'line\n');
     write(root, 'BUILD.md', '# Build\n');
     const H1 = commitAll(root, 'bookkeeping');
     write(root, 'src/x.js', 'export const x = 2;\n');
@@ -46,14 +46,17 @@ function withHistory(fn) {
     git(root, 'checkout', '-q', '-b', 'side', H);
     write(root, '.slicekit/state/P1-S-01.json', '{"side":true}\n');
     const C = commitAll(root, 'side bookkeeping');
-    return fn({ root, cfg: loadConfig(root), id, H, H1, H2, C });
+    git(root, 'checkout', '-q', '-b', 'oldjournal', H1);
+    write(root, '.slicekit/journal.log', 'line\n');
+    const J = commitAll(root, 'the old single journal file');
+    return fn({ root, cfg: loadConfig(root), id, H, H1, H2, C, J });
   } finally {
     repo.cleanup();
   }
 }
 
 test('a later head with only bookkeeping commits is covered; any other change is not', () => {
-  withHistory(({ root, H, H1, H2, C }) => {
+  withHistory(({ root, H, H1, H2, C, J }) => {
     assert.equal(headCovers(root, H, H), true);
     assert.equal(headCovers(root, H, H1), true, 'state, review, journal and BUILD.md only');
     assert.equal(headCovers(root, H, H1.slice(0, 7)), true, 'an abbreviated head resolves');
@@ -64,6 +67,7 @@ test('a later head with only bookkeeping commits is covered; any other change is
     assert.equal(headCovers(root, H, 'f'.repeat(40)), false, 'unknown commit');
     assert.equal(headCovers(root, undefined, H1), false);
     assert.equal(headCovers(root, H, '--all'), false, 'not a sha');
+    assert.equal(headCovers(root, H1, J), false, '.slicekit/journal.log is no longer bookkeeping');
   });
 });
 
