@@ -2,7 +2,8 @@
 // REQ-2.10 sections, each once, in order, none empty, under a `## [P<n>/S-<nn>] <name>` heading
 // that names the title's slice. A section is `**<name>:**` at the start of a line (indent allowed);
 // its text is what follows the colon on that line, or the next non-blank line when that is not
-// itself a section. Anything inside a fenced code block is never a section or a heading. A
+// itself a required section or a heading. Anything inside a fenced code block (CommonMark fences)
+// or an HTML comment is never a section or a heading, and a comment is never section text. A
 // `[spec] ` / `[plan] ` title needs only the first three sections and no slice heading; a title
 // with no slice id leaves the heading to ci-title. Without --ci, or with no pull request, nothing.
 import { ID } from '../../ids.js';
@@ -28,20 +29,57 @@ const EXEMPT_SECTIONS = REQUIRED_SECTIONS.slice(0, 3);
 
 const SECTION = /^\s*\*\*([^*\n]+?):\*\*(.*)$/;
 const HEADING = new RegExp(`^## \\[(${ID.sliceAddr})\\] \\S`);
-const FENCE = /^\s*(```|~~~)/;
+// A CommonMark fence: up to three spaces, then three or more backticks or tildes.
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
 
-// Each line with whether it sits inside a fenced code block (a fence line counts as inside).
+// Each line as `{text, fenced}`. A fenced line (fence lines included) keeps its text and is never a
+// section or a heading. Outside a fence, text inside `<!-- ... -->` (across lines too) is removed,
+// so a line that is only a comment reads as blank. A leading byte order mark is dropped.
 function scan(body) {
   let fence = null;
-  return body.replace(/\r\n?/g, '\n').split('\n').map((text) => {
-    const m = FENCE.exec(text);
-    if (m) {
-      if (fence === null) fence = m[1];
-      else if (m[1] === fence) fence = null;
-      return { text, fenced: true };
+  let comment = false;
+  const out = [];
+  for (const raw of body.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')) {
+    if (fence !== null) {
+      const m = FENCE_CLOSE.exec(raw);
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
+      out.push({ text: raw, fenced: true });
+      continue;
     }
-    return { text, fenced: fence !== null };
-  });
+    if (!comment) {
+      const m = FENCE_OPEN.exec(raw);
+      if (m) {
+        fence = m[1];
+        out.push({ text: raw, fenced: true });
+        continue;
+      }
+    }
+    let text = '';
+    let rest = raw;
+    while (rest !== '') {
+      if (comment) {
+        const end = rest.indexOf('-->');
+        if (end === -1) rest = '';
+        else {
+          comment = false;
+          rest = rest.slice(end + 3);
+        }
+      } else {
+        const start = rest.indexOf('<!--');
+        if (start === -1) {
+          text += rest;
+          rest = '';
+        } else {
+          comment = true;
+          text += rest.slice(0, start);
+          rest = rest.slice(start + 4);
+        }
+      }
+    }
+    out.push({ text, fenced: false });
+  }
+  return out;
 }
 
 export function run(ctx) {
@@ -66,8 +104,15 @@ export function run(ctx) {
     if (!m) return;
     let filled = m[2].trim() !== '';
     if (!filled) {
+      // The next line with text decides: a required section or a heading ends this one empty.
       const next = lines.slice(i + 1).find((n) => n.text.trim() !== '');
-      filled = next !== undefined && (next.fenced || !SECTION.test(next.text));
+      const ends = (n) => {
+        if (n.fenced) return false;
+        if (/^ {0,3}#{1,6}(\s|$)/.test(n.text)) return true;
+        const sm = SECTION.exec(n.text);
+        return sm !== null && required.includes(sm[1].trim());
+      };
+      filled = next !== undefined && !ends(next);
     }
     found.push({ name: m[1].trim(), filled });
   });

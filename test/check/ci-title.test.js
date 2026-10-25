@@ -67,7 +67,7 @@ test('a slice at draft-pr or later passes', () => {
   withKit(({ root, cfg, run }) => {
     toDraftPr(root, cfg, 'P1/S-01');
     assert.deepEqual(run(titled('[P1/S-01] Fixture 1')), []);
-    writeSlice(root, cfg, { slice: 'P1/S-01', state: 'merged' });
+    writeSlice(root, cfg, { slice: 'P1/S-01', state: 'ci-green' });
     assert.deepEqual(run(titled('[P1/S-01] Fixture 1')), []);
   });
 });
@@ -147,4 +147,14 @@ test('readCiEvent refuses a pull request without a string title', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Fix round 1: a merged or released slice is finished; a change after merge needs its own slice.
+test('a merged or released slice is a finding', () => {
+  withKit(({ root, cfg, run }) => {
+    for (const state of ['merged', 'released']) {
+      writeSlice(root, cfg, { slice: 'P1/S-01', state });
+      assert.deepEqual(run(titled('[P1/S-01] Fixture 1')).map((f) => f.message), [`slice P1/S-01 is ${state}; a change after merge needs its own slice`]);
+    }
+  });
 });

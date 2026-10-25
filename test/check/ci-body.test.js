@@ -132,3 +132,31 @@ test('the event file wins over the local override', () => {
   const env = { GITHUB_EVENT_PATH: path.join(events, 'pr-complete.json'), SLICEKIT_PR_TITLE: TITLE, SLICEKIT_PR_BODY: '' };
   assert.deepEqual(run(env), []);
 });
+
+// Fix round 1: fences follow CommonMark, comments hide text, a BOM is not text.
+test('a fence closes only on the same character with a run at least as long', () => {
+  const b = ['## [P1/S-03] Thing', '````', '```', 'inside', '````', ...REQUIRED_SECTIONS.map((n) => `**${n}:** x`)].join('\n');
+  assert.deepEqual(local(b), []);
+});
+
+test('an empty section followed by a line that is not a required section is not empty', () => {
+  assert.deepEqual(local(body({ over: { Proof: '**Proof:**\n**Unit:** npm test' } })), []);
+});
+
+test('a section followed only by an HTML comment is empty', () => {
+  assert.deepEqual(messages(local(body({ over: { Proof: '**Proof:**\n<!-- todo -->' } }))), ['pull request body has an empty "Proof"']);
+});
+
+test('a section followed by a heading is empty', () => {
+  assert.deepEqual(messages(local(body({ over: { Proof: '**Proof:**\n## Notes' } }))), ['pull request body has an empty "Proof"']);
+});
+
+test('sections inside a multi-line HTML comment are missing', () => {
+  const b = ['## [P1/S-03] Thing', '<!--', ...REQUIRED_SECTIONS.map((n) => `**${n}:** x`), '-->'].join('\n');
+  assert.deepEqual(messages(local(b)), REQUIRED_SECTIONS.map((n) => `pull request body is missing "${n}"`));
+});
+
+test('a leading byte order mark is not text', () => {
+  const b = '\uFEFF' + body();
+  assert.deepEqual(local(b), []);
+});
