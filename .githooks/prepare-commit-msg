@@ -1,0 +1,70 @@
+#!/bin/sh
+# slicekit: refuses a commit on a protected branch, then adds the Slice trailer on a slice branch
+# (REQ-3.9, REQ-1.9). git runs this hook for commit, merge, cherry-pick, revert and rebase picks, and
+# a non-zero exit aborts the commit, so the check here covers what pre-commit never sees.
+# Arguments: <message file> [source [sha]].
+# >>> slicekit protected-branch check (identical in every slicekit hook)
+# The branch a commit lands on: HEAD's branch, or during a rebase the branch being rebased.
+slicekit_branch() {
+  git symbolic-ref --short -q HEAD && return 0
+  for slicekit_d in rebase-merge rebase-apply; do
+    slicekit_f=$(git rev-parse --git-path "$slicekit_d/head-name")
+    if [ -f "$slicekit_f" ]; then
+      sed -e 's#^refs/heads/##' "$slicekit_f"
+      return 0
+    fi
+  done
+  return 0
+}
+# The operation in progress, if any, so a refusal can say how to give up on it.
+slicekit_op() {
+  slicekit_g=$(git rev-parse --git-dir)
+  if [ -f "$slicekit_g/rebase-apply/applying" ]; then echo am
+  elif [ -d "$slicekit_g/rebase-merge" ] || [ -d "$slicekit_g/rebase-apply" ]; then echo rebase
+  elif [ -f "$slicekit_g/CHERRY_PICK_HEAD" ]; then echo cherry-pick
+  elif [ -f "$slicekit_g/REVERT_HEAD" ]; then echo revert
+  elif [ -f "$slicekit_g/MERGE_HEAD" ]; then echo merge
+  fi
+}
+# Refuses when that branch is in protectedBranches of .slicekit/config.json, or is main when node or
+# the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides. Entries are names, never
+# globs: globbing is off while they are compared.
+slicekit_check_protected() {
+  [ "$ALLOW_PROTECTED_COMMIT" = "1" ] && return 0
+  slicekit_b=$(slicekit_branch)
+  [ -n "$slicekit_b" ] || return 0
+  slicekit_p=main
+  if [ -f .slicekit/config.json ] && command -v node >/dev/null 2>&1; then
+    if slicekit_l=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^\uFEFF/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' .slicekit/config.json 2>/dev/null); then
+      slicekit_p=$slicekit_l
+    fi
+  fi
+  slicekit_hit=
+  set -f
+  for slicekit_n in $slicekit_p; do
+    [ "$slicekit_n" = "$slicekit_b" ] && slicekit_hit=1
+  done
+  set +f
+  [ -n "$slicekit_hit" ] || return 0
+  slicekit_o=$(slicekit_op)
+  slicekit_give_up=
+  [ -n "$slicekit_o" ] && slicekit_give_up="; to give up, run git $slicekit_o --abort"
+  echo "slicekit: $slicekit_b is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1$slicekit_give_up" >&2
+  return 1
+}
+# <<< slicekit protected-branch check
+slicekit_check_protected || exit 1
+
+# A merge message is left as git wrote it. A squash merge is an ordinary change on the branch, so
+# it is stamped like one.
+case "$2" in
+  merge) exit 0 ;;
+esac
+
+slice=$(slicekit_branch | sed -n 's#^slice/P\([0-9][0-9]*\)-S-\([0-9][0-9]\)\(-.*\)\{0,1\}$#P\1/S-\2#p')
+[ -n "$slice" ] || exit 0
+
+# The trailer joins the message's final trailer block as its first line, or starts one; a block
+# that already holds a Slice trailer is left alone, so an amend never adds a second. A `---` line
+# in the body is text, not a patch divider.
+exec git interpret-trailers --in-place --no-divider --where start --if-exists doNothing --trailer "Slice: $slice" "$1"

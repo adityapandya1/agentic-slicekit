@@ -184,3 +184,12 @@ test('an edited managed file is left untouched with a warning; a pristine one up
   assert.equal(again.find((r) => r.dest === '.claude/agents/developer.md').action, 'skipped');
   assert.equal(fs.readFileSync(edited, 'utf8'), before);
 });
+
+// M3: pre-edit covers every tool that writes a file, NotebookEdit included.
+test('the rendered pre-edit hook matches Edit, Write, MultiEdit and NotebookEdit', () => {
+  const root = tmp();
+  renderAll(root, cfgFor('backend'), { version: VERSION });
+  const settings = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'));
+  const group = settings.hooks.PreToolUse.find((g) => g.hooks.some((h) => h.command.endsWith(' hook pre-edit')));
+  assert.equal(group.matcher, 'Edit|Write|MultiEdit|NotebookEdit');
+});

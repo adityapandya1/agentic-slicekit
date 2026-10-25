@@ -83,6 +83,7 @@ async function run(args, io) {
   for (const rel of result.updated) io.stdout(`updated ${rel}\n`);
   for (const rel of result.skipped) io.stdout(`skipped ${rel}\n`);
   io.stdout(`hooks run: ${result.cli}\n`);
+  if (result.next) io.stdout(`${result.next}\n`);
   for (const warning of result.warnings) io.stderr(`slicekit: ${warning}\n`);
   // The not-installed warning already says the hooks will fail; the --version check would repeat it.
   if (!result.cliWarned) {

@@ -46,29 +46,28 @@ test('defaultConfig seeds banned phrases from templates/style.json', () => {
 
 test('default destructive patterns match their commands and spare benign ones', () => {
   const patterns = base().destructive.map((p) => new RegExp(p));
-  assert.equal(patterns.length, 5);
+  assert.equal(patterns.length, 4);
   const blocked = [
     'rm -rf /',
     'rm -rf ~',
     'rm -rf ..',
     'DROP TABLE x',
     'DROP DATABASE y',
-    'TRUNCATE users',
-    'git push origin main --force',
+    'TRUNCATE TABLE users',
     'git reset --hard origin/main',
   ];
   for (const cmd of blocked) assert.ok(patterns.some((re) => re.test(cmd)), `should match: ${cmd}`);
-  for (const cmd of ['rm -rf ./build', 'git push origin slice/x', 'git reset --soft HEAD~1']) {
+  for (const cmd of ['rm -rf ./build', 'git push origin slice/x', 'git reset --soft HEAD~1', 'truncate long titles']) {
     assert.ok(!patterns.some((re) => re.test(cmd)), `should not match: ${cmd}`);
   }
 });
 
 test('compileDestructive matches case-insensitively', () => {
   const patterns = compileDestructive(base());
-  assert.equal(patterns.length, 5);
+  assert.equal(patterns.length, 4);
   assert.ok(patterns.every((re) => re instanceof RegExp && re.flags.includes('i')));
   assert.ok(patterns.some((re) => re.test('drop database y')));
-  assert.ok(patterns.some((re) => re.test('Truncate users')));
+  assert.ok(patterns.some((re) => re.test('Truncate table users')));
   assert.ok(!patterns.some((re) => re.test('git push origin slice/x')));
 });
 

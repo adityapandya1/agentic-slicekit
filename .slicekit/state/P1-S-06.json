@@ -1,0 +1,33 @@
+{
+  "slice": "P1/S-06",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 6,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/6",
+    "headSha": "6a7d38a4daa572ce75dccc847967ac7be41389b3"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-25T13:33:41.781Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 6,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/6",
+          "headSha": "6a7d38a4daa572ce75dccc847967ac7be41389b3",
+          "title": "[P1/S-06] Hooks: session start, bash and edit guards, git hooks"
+        }
+      }
+    }
+  ]
+}

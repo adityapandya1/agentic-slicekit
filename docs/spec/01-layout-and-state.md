@@ -34,6 +34,8 @@ BUILD.md               the human-readable queue (REQ-1.6)
 .claude/               rendered adapter files inside managed-block markers (03 REQ-3.12)
 .github/workflows/slicekit.yml
 .githooks/prepare-commit-msg
+.githooks/pre-commit
+.githooks/pre-merge-commit
 ```
 
 Scenario: GIVEN an empty repository WHEN `slicekit init --shape backend` runs THEN every path above

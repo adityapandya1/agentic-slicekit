@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { init } from '../src/init.js';
-import { ConfigError, validateConfig } from '../src/config.js';
-import { git, GitError } from '../src/git.js';
+import { ConfigError, loadConfig, validateConfig } from '../src/config.js';
+import { buildContext } from '../src/check/context.js';
+import hooksRule from '../src/check/rules/hooks.js';
+import { git } from '../src/git.js';
 import { kitPaths } from '../src/paths.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { binPath, runCli } from './helpers/run-cli.js';
@@ -120,7 +122,8 @@ test('init on a repo with no commits', () => {
     const result = init(root, { name: 'demo', shape: 'fullstack', cli: 'slicekit' });
     assert.ok(result.created.includes('.slicekit/config.json'));
     assert.ok(isDir(root, '.githooks'));
-    assert.throws(() => git(root, ['config', '--local', 'core.hooksPath']), GitError);
+    // REQ-3.9: init now sets the hooks path that S-01 left unset.
+    assert.equal(git(root, ['config', '--local', 'core.hooksPath']), '.githooks');
     assert.deepEqual(result.warnings, []);
   }, { commits: 0 });
 });
@@ -197,28 +200,35 @@ test('cli: --docs is normalised to forward slashes without a trailing slash', ()
 });
 
 test('writes gitignore rule once', () => {
+  const rules = '.slicekit/graph/\n.slicekit/.subagent-*\n';
   withRepo((root) => {
     const opts = { name: 'demo', shape: 'backend' };
     const first = init(root, opts);
     assert.ok(first.created.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), '.slicekit/graph/\n');
+    assert.equal(read(root, '.gitignore'), rules);
     const second = init(root, opts);
     assert.ok(second.skipped.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), '.slicekit/graph/\n');
+    assert.equal(read(root, '.gitignore'), rules);
   });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend' });
     assert.ok(result.updated.includes('.gitignore'));
     assert.ok(!result.skipped.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), 'node_modules\n.slicekit/graph/\n');
+    assert.equal(read(root, '.gitignore'), `node_modules\n${rules}`);
   }, { files: { '.gitignore': 'node_modules' } });
   for (const form of ['/.slicekit/graph/', '.slicekit/graph']) {
     withRepo((root) => {
       const result = init(root, { name: 'demo', shape: 'backend' });
       assert.ok(result.skipped.includes('.gitignore'), form);
-      assert.equal(read(root, '.gitignore'), `${form}\n`);
-    }, { files: { '.gitignore': `${form}\n` } });
+      assert.equal(read(root, '.gitignore'), `${form}\n/.slicekit/.subagent-*\n`);
+    }, { files: { '.gitignore': `${form}\n/.slicekit/.subagent-*\n` } });
   }
+  // Each rule is added once when absent: with the graph rule present, only the subagent rule is appended.
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(result.updated.includes('.gitignore'));
+    assert.equal(read(root, '.gitignore'), '/.slicekit/graph\n.slicekit/.subagent-*\n');
+  }, { files: { '.gitignore': '/.slicekit/graph\n' } });
 });
 
 test('every kitPaths entry S-01 owns exists after init', () => {
@@ -343,4 +353,167 @@ test('cli: a hook command that does not answer warns on init and on update', () 
     assert.equal(u.code, 0);
     assert.equal(u.stderr, HOOK_WARNING(cli));
   });
+});
+
+const HOOKS = ['pre-commit', 'pre-merge-commit', 'prepare-commit-msg'];
+const template = (name) => fs.readFileSync(new URL(`../templates/githooks/${name}`, import.meta.url), 'utf8');
+
+// REQ-3.9: init writes both git hooks, executable, and points core.hooksPath at them.
+test('init installs the git hooks and sets core.hooksPath', () => {
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    for (const name of HOOKS) {
+      const rel = `.githooks/${name}`;
+      assert.ok(result.created.includes(rel), rel);
+      assert.equal(read(root, rel), template(name));
+      assert.ok(!read(root, rel).includes('\r'), rel);
+      if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(root, rel)).mode & 0o777, 0o755, rel);
+    }
+    assert.equal(git(root, ['config', 'core.hooksPath']), '.githooks');
+    assert.deepEqual(result.warnings, []);
+    const second = init(root, { name: 'demo', shape: 'backend' });
+    for (const name of HOOKS) assert.ok(second.skipped.includes(`.githooks/${name}`), name);
+    assert.deepEqual(second.warnings, []);
+  });
+});
+
+test('init leaves another core.hooksPath alone and says so', () => {
+  withRepo((root) => {
+    git(root, ['config', 'core.hooksPath', '.husky']);
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(git(root, ['config', 'core.hooksPath']), '.husky');
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /core\.hooksPath is \.husky/);
+  });
+});
+
+test('init warns that hooks in .git/hooks stop running', () => {
+  withRepo((root) => {
+    fs.writeFileSync(path.join(root, '.git', 'hooks', 'pre-push'), '#!/bin/sh\n');
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(git(root, ['config', 'core.hooksPath']), '.githooks');
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /\.git\/hooks\/pre-push/);
+    assert.match(result.warnings[0], /stop running/);
+  });
+});
+
+test('init never overwrites a team hook that differs from the template', () => {
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(read(root, '.githooks/pre-commit'), '#!/bin/sh\nexit 0\n');
+    assert.ok(result.skipped.includes('.githooks/pre-commit'));
+    assert.ok(result.created.includes('.githooks/prepare-commit-msg'));
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /\.githooks\/pre-commit/);
+  }, { files: { '.githooks/pre-commit': '#!/bin/sh\nexit 0\n' } });
+});
+
+test('init outside a repo writes the hooks and sets no hooks path', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
+  try {
+    const result = init(root, { name: 'demo', shape: 'data', cli: 'slicekit' });
+    assert.deepEqual(result.warnings, ['not a git repository']);
+    for (const name of HOOKS) assert.ok(result.created.includes(`.githooks/${name}`), name);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// R2: hooks checked out with CRLF break sh, so init pins .githooks/* to LF.
+test('init writes the .githooks eol rule to .gitattributes once', () => {
+  withRepo((root) => {
+    const first = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(first.created.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+    const second = init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(second.skipped.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+  });
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(result.updated.includes('.gitattributes'));
+    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\n');
+  }, { files: { '.gitattributes': '* text=auto\n' } });
+  withRepo((root) => {
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.ok(result.skipped.includes('.gitattributes'));
+  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n' } });
+});
+
+// M5: a CRLF file gets CRLF lines appended.
+test('init keeps a CRLF ignore or attributes file CRLF', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(read(root, '.gitignore'), 'node_modules\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
+  }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+  }, { files: { '.gitignore': 'a\r\nb' } });
+});
+
+// I3: on win32 a new file is staged 100644; init stages its hooks executable so the first commit
+// records 100755. D-19: init never commits.
+test('init stages the hooks it creates as executable, with or without commits', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    assert.equal(git(root, ['rev-list', '--count', 'HEAD']), '1');
+  }, { commits: 1 });
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    assert.equal(git(root, ['rev-list', '--all', '--count']), '0');
+  }, { commits: 0 });
+});
+
+// M2: the absolute path to .githooks is already installed.
+test('init treats another spelling of .githooks as installed', () => {
+  withRepo((root) => {
+    const abs = path.join(root, '.githooks').split(path.sep).join('/');
+    git(root, ['config', 'core.hooksPath', abs]);
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    assert.deepEqual(result.warnings, []);
+    assert.equal(git(root, ['config', 'core.hooksPath']), abs);
+  });
+});
+
+// ---- final fix wave ----
+
+// I1: in a fresh repository, the first `git add -A` keeps the hooks executable and check is clean.
+test('in a fresh repository the hooks stay executable through git add -A', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    git(root, ['add', '-A']);
+    const staged = git(root, ['ls-files', '-s', ...HOOKS.map((n) => `.githooks/${n}`)]).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    const ctx = buildContext(root, loadConfig(root));
+    assert.deepEqual(hooksRule.run(ctx), []);
+  }, { commits: 0 });
+});
+
+// M6
+const UNBORN_NEXT = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
+test('init on an unborn protected branch says how to make the first commit', () => {
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, UNBORN_NEXT);
+    const r = runCli(['init', '--shape', 'backend', '--name', 'demo', '--cli', 'slicekit'], { cwd: root });
+    assert.equal(r.stdout.split('\n').filter((l) => l === UNBORN_NEXT).length, 1);
+  }, { commits: 0 });
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  }, { commits: 0, branch: 'slice/P1-S-01-x' });
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  }, { commits: 1 });
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
+  try {
+    assert.equal(init(plain, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  } finally {
+    fs.rmSync(plain, { recursive: true, force: true });
+  }
 });

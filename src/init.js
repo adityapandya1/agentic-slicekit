@@ -3,16 +3,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
-import { isRepo } from './git.js';
+import { currentBranch, git, GitError, hasCommits, isRepo } from './git.js';
+import { GITHOOKS, HOOKS_PATH, hooksPathValue, isInstalledHooksPath } from './githooks.js';
 import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
-const GRAPH_RULE = '.slicekit/graph/';
-const GRAPH_FORMS = new Set(['.slicekit/graph/', '/.slicekit/graph/', '.slicekit/graph', '/.slicekit/graph']);
+const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
+// Each ignore rule init owns, with every spelling of it that already counts as present.
+const IGNORE_RULES = [
+  { rule: '.slicekit/graph/', forms: new Set(['.slicekit/graph/', '/.slicekit/graph/', '.slicekit/graph', '/.slicekit/graph']) },
+  { rule: '.slicekit/.subagent-*', forms: new Set(['.slicekit/.subagent-*', '/.slicekit/.subagent-*']) },
+];
+// Hooks checked out with CRLF break sh (REQ-3.9).
+const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];
 const NOT_A_REPO = 'not a git repository';
+const UNBORN_PROTECTED = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
 
 // Each template file maps to a kitPaths destination; nothing else names a destination.
 const TEMPLATE_DEST = {
@@ -50,16 +58,92 @@ function plan(cfg, paths) {
   return files;
 }
 
-function ensureGitignore(file) {
+// Each rule is added once, when no accepted spelling of it is already a line of the file (spacing
+// inside a line does not matter). Appended lines take the file's own line ending.
+function ensureLines(file, rules) {
   if (!exists(file)) {
-    writeText(file, `${GRAPH_RULE}\n`);
+    writeText(file, rules.map(({ rule }) => `${rule}\n`).join(''));
     return 'created';
   }
-  const text = readText(file);
-  if (text.split('\n').some((line) => GRAPH_FORMS.has(line.trim()))) return 'skipped';
-  const sep = text === '' || text.endsWith('\n') ? '' : '\n';
-  fs.appendFileSync(file, `${sep}${GRAPH_RULE}\n`);
+  const raw = fs.readFileSync(file, 'utf8');
+  const squash = (line) => line.trim().replace(/\s+/g, ' ');
+  const present = new Set(raw.split(/\r?\n/).map(squash));
+  const missing = rules.filter(({ forms }) => ![...forms].some((f) => present.has(squash(f))));
+  if (missing.length === 0) return 'skipped';
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const sep = raw === '' || raw.endsWith('\n') ? '' : eol;
+  fs.appendFileSync(file, `${sep}${missing.map(({ rule }) => `${rule}${eol}`).join('')}`);
   return 'updated';
+}
+
+// The slicekit git hooks (REQ-3.9), LF and executable. One that exists with other content is the
+// team's own hook: it is never overwritten, and the warning names it. Returns the files it created.
+function installHooks(paths, rel, lists, warnings) {
+  const created = [];
+  for (const name of GITHOOKS) {
+    const abs = path.join(paths.githooks, name);
+    const content = readText(path.join(GITHOOKS_DIR, name));
+    if (!exists(abs)) {
+      writeText(abs, content);
+      fs.chmodSync(abs, 0o755);
+      lists.created.push(rel(abs));
+      created.push(rel(abs));
+      continue;
+    }
+    lists.skipped.push(rel(abs));
+    if (readText(abs) !== content) warnings.push(`${rel(abs)} differs from the slicekit hook; left as is`);
+  }
+  return created;
+}
+
+// A new file is staged 100644 on win32, where there is no mode bit; staging the hooks init created
+// with +x makes the team's first commit record them executable. In an empty repository this creates
+// the index; it is never a commit (D-19).
+function stageHooks(root, files, warnings) {
+  if (files.length === 0) return;
+  try {
+    git(root, ['add', '--chmod=+x', '--', ...files]);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    warnings.push(`could not stage ${files.join(', ')} as executable: ${e.stderr}`);
+  }
+}
+
+// The pre-commit hook init just installed refuses the first commit of a repository whose HEAD is
+// unborn on a protected branch: the line that says how to make it, or null.
+function firstCommitHint(root, cfg) {
+  if (hasCommits(root)) return null;
+  let branch;
+  try {
+    branch = currentBranch(root);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+  return branch !== null && cfg.protectedBranches.includes(branch) ? UNBORN_PROTECTED : null;
+}
+
+// Points core.hooksPath at .githooks, unless it already names something else: that is left alone
+// and reported. Hooks in .git/hooks stop running once the path is set, so they are named first.
+function setHooksPath(root, warnings) {
+  const current = hooksPathValue(root);
+  if (isInstalledHooksPath(root, current)) return;
+  if (current !== null) {
+    warnings.push(`core.hooksPath is ${current}; left as is, so the slicekit git hooks in ${HOOKS_PATH}/ do not run`);
+    return;
+  }
+  const dir = path.join(git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']), 'hooks');
+  const live = exists(dir)
+    ? fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isFile() && !e.name.endsWith('.sample'))
+        .map((e) => `.git/hooks/${e.name}`)
+        .sort()
+    : [];
+  if (live.length > 0) {
+    warnings.push(`${live.join(', ')} stop running once core.hooksPath is set to ${HOOKS_PATH}; move them into ${HOOKS_PATH}/ to keep them`);
+  }
+  git(root, ['config', 'core.hooksPath', HOOKS_PATH]);
 }
 
 // An existing config.json is the truth: a flag may repeat its shape, docsRoot or cli, never change them.
@@ -102,16 +186,23 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
       lists.created.push(rel(abs));
     }
   }
-  lists[ensureGitignore(paths.gitignore)].push(rel(paths.gitignore));
+  lists[ensureLines(paths.gitignore, IGNORE_RULES)].push(rel(paths.gitignore));
+  const attributes = path.join(root, '.gitattributes');
+  lists[ensureLines(attributes, ATTRIBUTE_RULES)].push(rel(attributes));
 
-  const warnings = isRepo(root) ? [] : [NOT_A_REPO];
+  const repo = isRepo(root);
+  const warnings = repo ? [] : [NOT_A_REPO];
   if (cliWarning) warnings.push(cliWarning);
+  const hooks = installHooks(paths, rel, lists, warnings);
+  if (repo) {
+    stageHooks(root, hooks, warnings);
+    setHooksPath(root, warnings);
+  }
   for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
     lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);
     if (warning) warnings.push(warning);
   }
 
-  // core.hooksPath is S-06's to set, with its own guards; S-01 only creates .githooks/.
   return {
     created: lists.created.sort(),
     updated: lists.updated.sort(),
@@ -119,5 +210,6 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
     warnings,
     cli: cfg.cli,
     cliWarned: cliWarning !== null,
+    next: repo ? firstCommitHint(root, cfg) : null,
   };
 }
