@@ -39,7 +39,7 @@ jobs:
         run: git config core.hooksPath .githooks
       - name: No runtime dependencies (REQ-5.3)
         run: |
-          node -e "const d = require('./package.json').dependencies || {}; const n = Object.keys(d); if (n.length) { console.error('package.json has dependencies: ' + n.join(', ')); process.exit(1) }"
+          node -e "const p = require('./package.json'); const bad = ['dependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies', 'peerDependencies'].flatMap((f) => { const v = p[f]; const n = v === true ? ['true'] : Array.isArray(v) ? v : Object.keys(v || {}); return n.length ? [f + ': ' + n.join(', ')] : []; }); if (bad.length) { console.error('package.json has runtime dependencies: ' + bad.join('; ')); process.exit(1) }"
       - name: slicekit check
         run: node bin/slicekit.js check --ci
       - name: The workflow matches the generator

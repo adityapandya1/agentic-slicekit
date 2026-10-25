@@ -30,11 +30,13 @@ const VALUE_KEYS = [
 // The team's own text: a mapping value holding one is filled, then quoted as a whole.
 const FREE_TEXT_KEYS = ['cli', 'defaultBranch'];
 
-// REQ-5.3 for the kit's own repository: fails naming each runtime dependency.
+// REQ-5.3 for the kit's own repository: fails naming each non-empty field that installs a package
+// with the kit (devDependencies are allowed) and its entries. `bundleDependencies: true` bundles all.
+const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies', 'peerDependencies'];
 const NO_DEPENDENCIES = [
   '      - name: No runtime dependencies (REQ-5.3)',
   '        run: |',
-  `          node -e "const d = require('./package.json').dependencies || {}; const n = Object.keys(d); if (n.length) { console.error('package.json has dependencies: ' + n.join(', ')); process.exit(1) }"`,
+  `          node -e "const p = require('./package.json'); const bad = [${DEPENDENCY_FIELDS.map((f) => `'${f}'`).join(', ')}].flatMap((f) => { const v = p[f]; const n = v === true ? ['true'] : Array.isArray(v) ? v : Object.keys(v || {}); return n.length ? [f + ': ' + n.join(', ')] : []; }); if (bad.length) { console.error('package.json has runtime dependencies: ' + bad.join('; ')); process.exit(1) }"`,
 ];
 
 export function loadPins() {

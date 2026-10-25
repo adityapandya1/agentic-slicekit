@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
@@ -151,7 +152,7 @@ test('matrix puts only cmd-test on three operating systems', () => {
   assert.ok(t.includes('fail-fast: false'), 'every operating system reports, one failing leg does not cancel the others');
   assert.ok(jobBlock(yml, 'cmd-lint').includes('runs-on: ubuntu-latest'));
   assert.equal((yml.match(/matrix\.os/g) || []).length, 1);
-  assert.ok(jobBlock(yml, 'gate').includes("require('./package.json').dependencies"), 'REQ-5.3 dependency check');
+  assert.ok(jobBlock(yml, 'gate').includes('No runtime dependencies (REQ-5.3)'), 'REQ-5.3 dependency check');
   assert.ok(!renderWorkflow(exampleConfig(), loadPins()).includes('package.json'), 'off without matrix');
 });
 
@@ -402,4 +403,42 @@ test('sync stages its paths, then commits only when they changed (M1)', () => {
     ),
     step,
   );
+});
+
+test('the no-dependencies step fails on any dependency field, naming it (M6)', () => {
+  const cfg = exampleConfig();
+  cfg.ci.matrix = true;
+  const gate = jobBlock(renderWorkflow(cfg, loadPins()), 'gate');
+  const lines = gate.split('\n');
+  const at = lines.indexOf('      - name: No runtime dependencies (REQ-5.3)');
+  assert.notEqual(at, -1, gate);
+  assert.equal(lines[at + 1], '        run: |');
+  const m = /^ {10}node -e "(.*)"$/.exec(lines[at + 2]);
+  assert.ok(m, lines[at + 2]);
+  const script = m[1];
+  const dir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? process.env.TEMP ?? '.', 'slicekit-deps-'));
+  const runWith = (pkg) => {
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg));
+    const r = spawnSync(process.execPath, ['-e', script], { cwd: dir, encoding: 'utf8' });
+    return { code: r.status, stderr: r.stderr };
+  };
+  try {
+    assert.equal(runWith({ name: 'x' }).code, 0);
+    assert.equal(runWith({ name: 'x', dependencies: {}, peerDependencies: {}, bundleDependencies: [] }).code, 0);
+    assert.equal(runWith({ name: 'x', devDependencies: { a: '1' } }).code, 0, 'dev dependencies are allowed');
+    for (const [field, value, named] of [
+      ['dependencies', { a: '1', b: '2' }, 'a, b'],
+      ['optionalDependencies', { c: '1' }, 'c'],
+      ['bundleDependencies', ['d'], 'd'],
+      ['bundledDependencies', ['e'], 'e'],
+      ['peerDependencies', { f: '1' }, 'f'],
+      ['bundleDependencies', true, 'true'],
+    ]) {
+      const r = runWith({ name: 'x', [field]: value });
+      assert.equal(r.code, 1, field);
+      assert.ok(r.stderr.includes(`${field}: ${named}`), `${field}: ${r.stderr}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
