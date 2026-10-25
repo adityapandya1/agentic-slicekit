@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { frontMatter, headings, lines, tables } from './markdown.js';
+import { frontMatter, headings, lines, prose, tables } from './markdown.js';
 import { parseSliceAddr } from './ids.js';
 import { kitPaths } from './paths.js';
 
@@ -157,6 +157,17 @@ export function parsePhaseFile(text) {
     if (h.level !== 1) continue;
     const m = /^Phase\s+(\d+)\s*(?:—|-|:)\s*(.+)$/.exec(h.text);
     if (m) return { id: `P${m[1]}`, name: m[2].replace(/\s*:\s*implementation plan\s*$/i, '').trim() };
+  }
+  return null;
+}
+
+// The phase file's `**Order:** <step>; <step>; …` line, the first one outside fenced code: each
+// step a list of groups that run in parallel, split on `;` and then `,`, trimmed. Null without
+// one. S-13 validates it; S-14 and S-16 follow it.
+export function parseOrder(phaseText) {
+  for (const [line] of prose(phaseText)) {
+    const m = /^\*\*Order:\*\*\s*(.+)$/.exec(line);
+    if (m) return m[1].split(';').map((step) => step.split(',').map((g) => g.trim()));
   }
   return null;
 }

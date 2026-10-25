@@ -32,3 +32,18 @@ export function makeRepo({ commits = 0, branch = 'main', files = {} } = {}) {
   };
   return { root, cleanup };
 }
+
+// A bare repository in its own temp directory, added to `root` as `origin`.
+export function makeRemote(root) {
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-remote-'));
+  run(remote, ['init', '--bare', '-b', 'main']);
+  run(root, ['remote', 'add', 'origin', remote]);
+  const cleanup = () => {
+    try {
+      fs.rmSync(remote, { recursive: true, force: true });
+    } catch {
+      // Windows can hold handles briefly; the OS temp cleaner takes it.
+    }
+  };
+  return { remote, cleanup };
+}

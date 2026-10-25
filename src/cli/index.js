@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { baselineCommand } from './baseline.js';
+import { branchCommand } from './branch.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
@@ -7,6 +8,7 @@ import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
+import { stageCommand } from './stage.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
 import { updateCommand } from './update.js';
@@ -15,6 +17,7 @@ import { workflowCommand } from './workflow.js';
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string, subcommands?: string[] } }
 export const COMMANDS = {
   baseline: baselineCommand,
+  branch: branchCommand,
   check: checkCommand,
   decide: decideCommand,
   init: initCommand,
@@ -22,6 +25,7 @@ export const COMMANDS = {
   hook: hookCommand,
   journal: journalCommand,
   'ready-label': readyLabelCommand,
+  stage: stageCommand,
   state: stateCommand,
   status: statusCommand,
   update: updateCommand,
