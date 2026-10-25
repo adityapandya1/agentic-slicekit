@@ -4,9 +4,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultConfig, validateConfig } from '../src/config.js';
+import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
+import { init } from '../src/init.js';
 import { kitPaths } from '../src/paths.js';
-import { PINS_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { makeRepo } from './helpers/tmp-repo.js';
+import { runCli } from './helpers/run-cli.js';
 
 const GOLDEN = fileURLToPath(new URL('./fixtures/golden/workflow/backend.yml', import.meta.url));
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -277,4 +280,68 @@ test('checkout does not keep the token except in sync (M8)', () => {
     assert.ok(jobBlock(yml, id).includes('          persist-credentials: false\n'), id);
   }
   assert.ok(!jobBlock(yml, 'sync').includes('persist-credentials'));
+});
+
+// REQ-5.5: the kit's own CI is the generator's output for the kit's own config, byte for byte.
+test("the kit's own workflow matches the generator (REQ-5.5)", () => {
+  const kitRoot = fileURLToPath(new URL('..', import.meta.url));
+  const cfg = loadConfig(kitRoot);
+  assert.equal(cfg.ci.matrix, true, 'the kit tests on three operating systems (REQ-5.2)');
+  const own = fs.readFileSync(path.join(kitRoot, WORKFLOW_PATH), 'utf8');
+  assert.ok(!own.includes('\r'), 'the workflow is LF');
+  assert.equal(own, renderWorkflow(cfg, loadPins()));
+});
+
+function withKitRepo(fn) {
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js', commands: { test: 'node --test' } });
+    return fn(repo.root);
+  } finally {
+    repo.cleanup();
+  }
+}
+
+test('cli workflow prints the render, --write writes it, --check finds drift', () => {
+  withKitRepo((root) => {
+    const file = path.join(root, WORKFLOW_PATH);
+    const expected = renderWorkflow(loadConfig(root), loadPins());
+    const printed = runCli(['workflow'], { cwd: root });
+    assert.equal(printed.code, 0, printed.stderr);
+    assert.equal(printed.stdout, expected);
+
+    fs.rmSync(file, { force: true });
+    const missing = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(missing.code, 1);
+    assert.match(missing.stderr, /slicekit workflow --write/);
+
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.equal(fs.readFileSync(file, 'utf8'), expected);
+    assert.equal(runCli(['workflow', '--check'], { cwd: root }).code, 0);
+
+    fs.writeFileSync(file, expected.replace('node-version: 22', 'node-version: 20'));
+    const drift = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(drift.code, 1);
+    assert.match(drift.stderr, /\.github\/workflows\/slicekit\.yml differs from the generator/);
+
+    assert.equal(runCli(['workflow', '--write', '--check'], { cwd: root }).code, 2);
+    assert.equal(runCli(['workflow', 'extra'], { cwd: root }).code, 2);
+  });
+});
+
+test('init writes the workflow when absent and never overwrites one (REQ-3.11)', () => {
+  withKitRepo((root) => {
+    const file = path.join(root, WORKFLOW_PATH);
+    assert.equal(fs.readFileSync(file, 'utf8'), renderWorkflow(loadConfig(root), loadPins()));
+    const same = init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(same.skipped.includes(WORKFLOW_PATH));
+    assert.deepEqual(same.warnings.filter((w) => w.includes('workflow')), []);
+
+    fs.writeFileSync(file, 'name: ours\n');
+    const again = init(root, { name: 'demo', shape: 'backend' });
+    assert.equal(fs.readFileSync(file, 'utf8'), 'name: ours\n');
+    assert.ok(again.skipped.includes(WORKFLOW_PATH));
+    assert.ok(again.warnings.some((w) => w.includes(WORKFLOW_PATH) && w.includes('slicekit workflow')), again.warnings.join('\n'));
+  });
 });

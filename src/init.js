@@ -9,6 +9,7 @@ import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
+import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from './workflow.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
@@ -197,6 +198,15 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
   if (repo) {
     stageHooks(root, hooks, warnings);
     setHooksPath(root, warnings);
+  }
+  // The CI workflow (REQ-3.11): written when absent; an existing one is the team's and stays as is.
+  const workflow = workflowState(root, cfg);
+  if (workflow.current === null) {
+    writeText(workflow.file, workflow.expected);
+    lists.created.push(WORKFLOW_PATH);
+  } else {
+    lists.skipped.push(WORKFLOW_PATH);
+    if (workflow.current !== workflow.expected) warnings.push(`${WORKFLOW_DRIFT}; left as is`);
   }
   for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
     lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);

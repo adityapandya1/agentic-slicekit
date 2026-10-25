@@ -6,11 +6,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GITHUB_EXPRESSION, LINE_SEPARATOR } from './config.js';
+import { readText } from './fs.js';
 import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
 
 export const WORKFLOW_TEMPLATE = fileURLToPath(new URL('../templates/workflow/slicekit.yml', import.meta.url));
 export const PINS_PATH = fileURLToPath(new URL('../templates/workflow/pins.json', import.meta.url));
+// Where the workflow lands in a repository, relative to its root.
+export const WORKFLOW_PATH = '.github/workflows/slicekit.yml';
+export const WORKFLOW_DRIFT = `${WORKFLOW_PATH} differs from the generator; run slicekit workflow --write to regenerate it`;
 
 const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact' };
 const COMMAND_ORDER = ['test', 'lint', 'build', 'e2e'];
@@ -157,4 +161,12 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
     out.push(fillFreeText(substitute(line, vars, VALUE_KEYS), free));
   }
   return out.join('\n');
+}
+
+// The rendered workflow and the repository's copy of it (null when absent), line endings normalised.
+export function workflowState(root, cfg, pins = loadPins()) {
+  const expected = renderWorkflow(cfg, pins);
+  const file = path.join(root, WORKFLOW_PATH);
+  const current = fs.existsSync(file) ? readText(file) : null;
+  return { file, expected, current };
 }
