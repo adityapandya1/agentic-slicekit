@@ -9,6 +9,7 @@ import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
+import { specCommand } from './spec.js';
 import { stageCommand } from './stage.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
@@ -27,6 +28,7 @@ export const COMMANDS = {
   journal: journalCommand,
   pr: prCommand,
   'ready-label': readyLabelCommand,
+  spec: specCommand,
   stage: stageCommand,
   state: stateCommand,
   status: statusCommand,
