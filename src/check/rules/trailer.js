@@ -6,7 +6,12 @@
 // reads the trailers (`%(trailers)`), so what counts as a trailer block, a folded value or a key's
 // case is git's rule, not a parser of ours. No branch, a branch that is not a slice branch, or no
 // commits at all: nothing to judge.
-import { assertRef, git, GitError } from '../../git.js';
+//
+// Under --ci on a pull request, actions/checkout leaves a detached merge commit whose first parent is
+// the base: the branch is GITHUB_HEAD_REF and the tip judged is the pull request's head, from the
+// event's head sha (or the merge commit's second parent when the event has none).
+import { assertRef, git, GitError, resolveCommit } from '../../git.js';
+import { readCiEvent } from '../ci-event.js';
 import { sliceFromBranch } from '../../ids.js';
 
 export const id = 'trailer';
@@ -25,16 +30,28 @@ const refExists = (root, ref) => {
   }
 };
 
+// The pull request's branch and head under --ci, or null outside a pull_request run.
+function pullRequestTip(ctx) {
+  const ref = ctx.env?.GITHUB_HEAD_REF;
+  if (!ctx.ci || typeof ref !== 'string' || ref === '') return null;
+  const headSha = readCiEvent(ctx.env)?.headSha;
+  const tip = (headSha && /^[0-9a-f]{7,40}$/.test(headSha) && resolveCommit(ctx.root, headSha)) || resolveCommit(ctx.root, 'HEAD^2') || 'HEAD';
+  return { branch: ref, tip };
+}
+
 export function run(ctx) {
   const { root, cfg } = ctx;
-  const branch = ctx.git?.branch;
-  if (!ctx.git?.isRepo || !ctx.git.hasCommits || !branch) return [];
+  if (!ctx.git?.isRepo || !ctx.git.hasCommits) return [];
+  const pr = pullRequestTip(ctx);
+  const branch = pr?.branch ?? ctx.git.branch;
+  const tip = pr?.tip ?? 'HEAD';
+  if (!branch) return [];
   const slice = sliceFromBranch(branch);
   if (!slice) return [];
 
   const def = assertRef(cfg.defaultBranch ?? 'main');
   const exclude = [`refs/heads/${def}`, `refs/remotes/origin/${def}`].filter((ref) => refExists(root, ref)).map((ref) => `^${ref}`);
-  const log = git(root, ['log', '--first-parent', FORMAT, '--end-of-options', 'HEAD', ...exclude, '--']);
+  const log = git(root, ['log', '--first-parent', FORMAT, '--end-of-options', tip, ...exclude, '--']);
   const out = [];
   for (const rec of log.split('\x1e')) {
     const [sha, parents = '', slices = ''] = rec.replace(/^\n/, '').split('\x1f');

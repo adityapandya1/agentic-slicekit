@@ -51,9 +51,14 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, c
     freezeTests: true,
     style: { banned: seedBanned() },
     destructive: [...DESTRUCTIVE],
-    ci: { observabilitySteps: [] },
+    ci: { matrix: false, observabilitySteps: [], botActors: [...DEFAULT_BOT_ACTORS], timeoutMinutes: DEFAULT_TIMEOUT_MINUTES },
   };
 }
+
+// D-37: pull requests these actors open skip ci-title and ci-body.
+export const DEFAULT_BOT_ACTORS = Object.freeze(['dependabot[bot]', 'renovate[bot]']);
+// The timeout of each generated gate, command and observability job, in minutes.
+export const DEFAULT_TIMEOUT_MINUTES = 30;
 
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
@@ -67,6 +72,54 @@ function docsRootError(d) {
   return null;
 }
 
+const STEP_KEYS = ['name', 'run', 'env'];
+// A ${{ … }} inside a run: line is expanded by GitHub before the shell sees it, so a pull request title
+// could become a command; values reach a command through env: instead (REQ-3.11).
+export const GITHUB_EXPRESSION = /\$\{\{/;
+// The line breaks YAML honours beyond CR and LF; the workflow cannot carry them in a command.
+export const LINE_SEPARATOR = /[\u0085\u2028\u2029]/;
+
+// Errors for text that lands in the generated workflow; expression false where ${{ … }} is the intended use (env).
+function workflowTextErrors(at, value, { expression = true } = {}) {
+  if (typeof value !== 'string') return [];
+  const errors = [];
+  if (expression && GITHUB_EXPRESSION.test(value)) errors.push(`${at}: contains a GitHub expression; pass values through env:`);
+  if (LINE_SEPARATOR.test(value)) errors.push(`${at}: contains a line separator YAML cannot carry`);
+  return errors;
+}
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
+
+// ci.matrix is optional (absent reads as false), ci.botActors and ci.timeoutMinutes too (absent
+// reads as the default); each observability step renders as one CI job (REQ-3.11).
+function ciErrors(ci) {
+  if (!isObject(ci)) return ['ci: must be an object'];
+  const errors = [];
+  if (ci.matrix !== undefined && typeof ci.matrix !== 'boolean') errors.push('ci.matrix: must be a boolean');
+  if (ci.botActors !== undefined && !(isStringArray(ci.botActors) && ci.botActors.every(nonEmpty))) {
+    errors.push('ci.botActors: must be an array of non-empty strings');
+  }
+  const t = ci.timeoutMinutes;
+  if (t !== undefined && !(Number.isInteger(t) && t >= 1 && t <= 360)) errors.push('ci.timeoutMinutes: must be an integer from 1 to 360');
+  if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
+  ci.observabilitySteps.forEach((step, i) => {
+    const at = `ci.observabilitySteps[${i}]`;
+    if (!isObject(step)) return errors.push(`${at}: must be an object`);
+    for (const key of ['name', 'run']) if (!nonEmpty(step[key])) errors.push(`${at}.${key}: must be a non-empty string`);
+    errors.push(...workflowTextErrors(`${at}.name`, step.name, { expression: false }));
+    errors.push(...workflowTextErrors(`${at}.run`, step.run));
+    if (step.env !== undefined) {
+      const ok = isObject(step.env) && Object.entries(step.env).every(([k, v]) => ENV_NAME.test(k) && typeof v === 'string');
+      if (!ok) errors.push(`${at}.env: must map names to strings`);
+      else if (Object.values(step.env).some((v) => LINE_SEPARATOR.test(v))) errors.push(`${at}.env: contains a line separator YAML cannot carry`);
+    }
+    for (const key of Object.keys(step)) {
+      if (!STEP_KEYS.includes(key)) errors.push(`${at}.${key}: unknown key; use ${STEP_KEYS.join(', ')}`);
+    }
+  });
+  return errors;
+}
+
 export function validateConfig(cfg) {
   if (!isObject(cfg)) return ['config: must be an object'];
   const errors = [];
@@ -74,6 +127,7 @@ export function validateConfig(cfg) {
   for (const key of ['name', 'docsRoot', 'defaultBranch', 'cli']) {
     if (typeof cfg[key] !== 'string' || cfg[key] === '') errors.push(`${key}: must be a non-empty string`);
   }
+  errors.push(...workflowTextErrors('cli', cfg.cli));
   if (typeof cfg.docsRoot === 'string' && cfg.docsRoot !== '') {
     const error = docsRootError(cfg.docsRoot);
     if (error) errors.push(error);
@@ -94,6 +148,7 @@ export function validateConfig(cfg) {
   } else {
     for (const key of COMMAND_KEYS) {
       if (typeof cfg.commands[key] !== 'string') errors.push(`commands.${key}: must be a string`);
+      errors.push(...workflowTextErrors(`commands.${key}`, cfg.commands[key]));
     }
     for (const key of Object.keys(cfg.commands)) {
       if (!COMMAND_KEYS.includes(key)) errors.push(`commands.${key}: unknown command; use ${COMMAND_KEYS.join(', ')}`);
@@ -119,7 +174,7 @@ export function validateConfig(cfg) {
       }
     });
   }
-  if (!isObject(cfg.ci) || !isStringArray(cfg.ci.observabilitySteps)) errors.push('ci.observabilitySteps: must be an array of strings');
+  errors.push(...ciErrors(cfg.ci));
   return errors;
 }
 

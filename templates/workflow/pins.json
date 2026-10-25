@@ -1,0 +1,6 @@
+{
+  "resolved": "2026-10-25",
+  "actions/checkout": { "tag": "v4.2.2", "sha": "11bd71901bbe5b1630ceea73d27597364c9af683" },
+  "actions/setup-node": { "tag": "v4.1.0", "sha": "39370e3970a6d050c480ffad4ff0ed4d3fdee5af" },
+  "actions/upload-artifact": { "tag": "v4.4.3", "sha": "b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882" }
+}

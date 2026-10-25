@@ -166,15 +166,16 @@ Transitions and their mechanical preconditions:
 | draft-pr → in-review | a verdict file exists for round 1 |
 | in-review → changes-requested | the latest verdict has open blockers |
 | in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA |
-| ci-green → ready | an independent verdict on the current head SHA exists with zero open blockers, or config sets it optional |
+| ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35) |
 | in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
+| draft-pr, in-review, changes-requested or ci-green → merged | the git host reports the recorded pull request merged; only `slicekit status --sync` makes this move, and the history records the real previous state and `by: sync`. A slice in `todo`, `tests-red` or `building` whose recorded pull request is merged is reported, not moved |
 | merged → released | the phase's release record names the pull request |
 
 Scenario: GIVEN a slice at `building` WHEN the command tries to open a pull request while the test
 command exits 1 THEN the transition is refused and the failing test summary is printed.
 
-Cites: D-10, D-18, D-22.
+Cites: D-10, D-18, D-22, D-35.
 
 Enforced by: `slicekit state set` (the only writer), which checks the precondition and refuses
 otherwise.

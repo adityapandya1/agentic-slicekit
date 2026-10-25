@@ -1,0 +1,11 @@
+{
+  "pull_request": {
+    "number": 21,
+    "title": "Bump actions/checkout from 4.1.0 to 4.2.0",
+    "body": "Bumps actions/checkout from 4.1.0 to 4.2.0.",
+    "draft": false,
+    "head": { "sha": "1111111111111111111111111111111111111111" },
+    "labels": [{ "name": "dependencies" }],
+    "user": { "login": "dependabot[bot]" }
+  }
+}

@@ -1,18 +1,18 @@
 {
   "slice": "P1/S-05",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 5,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/5",
-    "headSha": "9247a064c2f610ddf201da9b0220f1baa6b464a3"
+    "headSha": "065f7898bdfb2fc0305a95c5c5b17332e56e2cb3"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-24T14:31:32Z",
   "handoff": null,
   "history": [
     {
@@ -27,6 +27,21 @@
           "headSha": "9247a064c2f610ddf201da9b0220f1baa6b464a3",
           "title": "[P1/S-05] Check: citations, coverage, queue, commands, layout, managed"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-25T14:21:28.763Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-24T14:31:32Z",
+        "pr": {
+          "number": 5,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/5",
+          "headSha": "065f7898bdfb2fc0305a95c5c5b17332e56e2cb3"
+        },
+        "source": "host"
       }
     }
   ]

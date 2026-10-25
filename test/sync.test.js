@@ -8,7 +8,7 @@ import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
 import { kitPaths } from '../src/paths.js';
 import { stateFileName } from '../src/ids.js';
-import { readSlice, writeSlice } from '../src/state/index.js';
+import { TransitionError, readSlice, setState, writeSlice } from '../src/state/index.js';
 import { syncFromHost } from '../src/state/sync.js';
 import { getHost } from '../src/adapters/githost/index.js';
 import { reduceRuns } from '../src/adapters/githost/gh-json.js';
@@ -67,14 +67,136 @@ test('an unmerged PR leaves ready alone', () => {
   });
 });
 
-test('sync never touches a slice that is not ready', () => {
+// A slice parked in any state with a recorded pull request.
+function parkAt(root, cfg, id, state, pr) {
+  writeSlice(root, cfg, { ...readSlice(root, cfg, id), state, pr });
+}
+
+const MERGED_AT = '2026-10-20T09:30:00Z';
+const merged = (n) => ({ number: n, url: `https://github.com/acme/demo/pull/${n}`, headSha: 'abc1234def5678', mergedAt: MERGED_AT });
+
+test('a host merge moves a draft-pr slice to merged, recorded as a sync from draft-pr', () => {
   withKit((root, cfg, ids) => {
-    writeSlice(root, cfg, { ...readSlice(root, cfg, ids[0]), state: 'ci-green', pr: pr14 });
+    parkAt(root, cfg, ids[0], 'draft-pr', pr14);
+    const { changes, warnings } = syncFromHost(root, cfg, getHost(cfg, fixtureEnv));
+    assert.deepEqual(changes, [{ id: ids[0], from: 'draft-pr', to: 'merged', pr: 14 }]);
+    assert.deepEqual(warnings, []);
+    const s = readSlice(root, cfg, ids[0]);
+    assert.equal(s.state, 'merged');
+    assert.equal(s.mergedAt, MERGED_AT);
+    const h = s.history.at(-1);
+    assert.equal(h.from, 'draft-pr');
+    assert.equal(h.to, 'merged');
+    assert.equal(h.by, 'sync');
+  });
+});
+
+test('every pre-merge state with a pull request reaches merged on a host merge', () => {
+  const states = ['draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready'];
+  withKit((root, cfg, ids) => {
+    states.forEach((st, i) => parkAt(root, cfg, ids[i], st, { number: 20 + i, headSha: 'abc1234' }));
     const asked = [];
-    const host = { getPullRequest: (n) => (asked.push(n), { number: n, mergedAt: '2026-10-20T09:30:00Z' }) };
-    assert.deepEqual(syncFromHost(root, cfg, host).changes, []);
+    const host = { getPullRequest: (n) => (asked.push(n), merged(n)) };
+    const { changes, warnings } = syncFromHost(root, cfg, host);
+    assert.deepEqual(warnings, []);
+    assert.deepEqual(changes, states.map((st, i) => ({ id: ids[i], from: st, to: 'merged', pr: 20 + i })));
+    assert.deepEqual(asked, [20, 21, 22, 23, 24]);
+    for (const [i, st] of states.entries()) {
+      const s = readSlice(root, cfg, ids[i]);
+      assert.equal(s.state, 'merged', st);
+      assert.deepEqual([s.history.at(-1).from, s.history.at(-1).by], [st, 'sync']);
+    }
+  }, { slices: 5 });
+});
+
+test('a host merge needs host evidence for the recorded pull request', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'in-review', pr14);
+    const refused = (ev) => assert.throws(() => setState(root, cfg, ids[0], 'merged', ev), TransitionError);
+    // No host flag: the graph has no in-review → merged edge.
+    refused({ mergedAt: MERGED_AT, pr: { number: 14 } });
+    // Host flag but another pull request.
+    refused({ mergedAt: MERGED_AT, pr: { number: 15 }, source: 'host' });
+    // Host flag but no merge time or no pull request.
+    refused({ pr: { number: 14 }, source: 'host' });
+    refused({ mergedAt: MERGED_AT, source: 'host' });
+    // Any other source is not accepted.
+    refused({ mergedAt: MERGED_AT, pr: { number: 14 }, source: 'person' });
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'in-review');
+    const s = setState(root, cfg, ids[0], 'merged', { mergedAt: MERGED_AT, pr: { number: 14 }, source: 'host' });
+    assert.equal(s.state, 'merged');
+  });
+});
+
+test('a slice before draft-pr with a merged pull request is warned, not moved', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'todo', pr14);
+    parkAt(root, cfg, ids[1], 'building', pr14);
+    const files = ids.map((id) => path.join(kitPaths(root, cfg).state, stateFileName(id)));
+    const before = files.map((f) => fs.readFileSync(f, 'utf8'));
+    const { changes, warnings } = syncFromHost(root, cfg, getHost(cfg, fixtureEnv));
+    assert.deepEqual(changes, []);
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0], new RegExp(`^${ids[0]} is todo but pull request 14 is merged`));
+    assert.match(warnings[1], new RegExp(`^${ids[1]} is building but pull request 14 is merged`));
+    assert.deepEqual(files.map((f) => fs.readFileSync(f, 'utf8')), before);
+  });
+});
+
+test('a host answer for another pull request is warned and skipped', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'draft-pr', { number: 40, headSha: 'abc1234' });
+    parkAt(root, cfg, ids[1], 'draft-pr', { number: 41, headSha: 'abc1234' });
+    const host = { getPullRequest: (n) => merged(n === 40 ? 99 : n) };
+    const { changes, warnings } = syncFromHost(root, cfg, host);
+    assert.deepEqual(changes, [{ id: ids[1], from: 'draft-pr', to: 'merged', pr: 41 }]);
+    assert.deepEqual(warnings, [`${ids[0]}: the host answered pull request 40 with pull request 99; skipped`]);
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'draft-pr');
+  });
+});
+
+test('a host merge time that is not a date is warned and skipped; the sync goes on', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'draft-pr', { number: 42, headSha: 'abc1234' });
+    parkAt(root, cfg, ids[1], 'ready', { number: 43, headSha: 'abc1234' });
+    const host = { getPullRequest: (n) => ({ ...merged(n), mergedAt: n === 42 ? 'yesterday' : MERGED_AT }) };
+    const { changes, warnings } = syncFromHost(root, cfg, host);
+    assert.deepEqual(changes, [{ id: ids[1], from: 'ready', to: 'merged', pr: 43 }]);
+    assert.deepEqual(warnings, [`${ids[0]}: pull request 42 has a merge time that is not a date ('yesterday'); skipped`]);
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'draft-pr');
+  });
+});
+
+test('a slice before draft-pr with no pull request is not asked about', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'tests-red', null);
+    const asked = [];
+    const host = { getPullRequest: (n) => (asked.push(n), merged(n)) };
+    assert.deepEqual(syncFromHost(root, cfg, host), { changes: [], warnings: [] });
     assert.deepEqual(asked, []);
-    assert.equal(readSlice(root, cfg, ids[0]).state, 'ci-green');
+  });
+});
+
+test('a host failure after a draft-pr change keeps the change on disk and in the error', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'draft-pr', { number: 30, headSha: 'abc1234' });
+    parkAt(root, cfg, ids[1], 'in-review', { number: 31, headSha: 'abc1234' });
+    const host = {
+      getPullRequest: (n) => {
+        if (n === 31) throw new GitHostError('gh auth login required');
+        return merged(n);
+      },
+    };
+    let err;
+    try {
+      syncFromHost(root, cfg, host);
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err instanceof GitHostError);
+    assert.deepEqual(err.partial, { changes: [{ id: ids[0], from: 'draft-pr', to: 'merged', pr: 30 }], warnings: [] });
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'merged');
+    assert.equal(readSlice(root, cfg, ids[1]).state, 'in-review');
   });
 });
 

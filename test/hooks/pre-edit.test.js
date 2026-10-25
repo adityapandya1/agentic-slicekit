@@ -149,11 +149,15 @@ test('win32 Git Bash /c/ form matches', { skip: !WIN && 'win32 only' }, () => {
   }
 });
 
-test('case difference matches on win32 only', () => {
+// A path that differs only in case names the frozen file wherever the filesystem folds case (win32,
+// and macOS's default APFS), and a different file where it does not (Linux).
+test('case difference matches where the filesystem folds case', () => {
   const { root, cleanup } = sliceRepo();
   try {
+    const folds = fs.existsSync(path.join(root, 'TEST', 'A.test.js'));
+    if (WIN) assert.ok(folds, 'win32 folds case');
     const r = decide(root, 'TEST/A.test.js', { tool: 'Edit' });
-    if (WIN) assertDeny(r, FROZEN);
+    if (folds) assertDeny(r, FROZEN);
     else assertAllow(r);
   } finally {
     cleanup();

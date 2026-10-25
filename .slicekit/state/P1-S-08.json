@@ -1,0 +1,33 @@
+{
+  "slice": "P1/S-08",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 7,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/7",
+    "headSha": "312cdccc34915a15c7c536b6bed397fca5fca24f"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-25T14:46:14.079Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 7,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/7",
+          "headSha": "312cdccc34915a15c7c536b6bed397fca5fca24f",
+          "title": "[P1/S-08] CI workflow generator"
+        }
+      }
+    }
+  ]
+}

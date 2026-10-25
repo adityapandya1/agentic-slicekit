@@ -1,0 +1,110 @@
+# slicekit: the pull request gate and the state sync (REQ-3.11). Every action is pinned by SHA.
+name: slicekit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [{{defaultBranchItem}}]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slicekit-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: {{timeoutMinutes}}
+    steps:
+      - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The default branch is present
+        run: git rev-parse --verify --quiet refs/remotes/origin/{{defaultBranch}}
+      - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Use the repository's git hooks
+        run: git config core.hooksPath .githooks
+{{gateExtraSteps}}
+      - name: slicekit check
+        run: {{cli}} check --ci
+      - name: The workflow matches the generator
+        run: {{cli}} workflow --check
+      - name: Upload the graph
+        if: always() && hashFiles('.slicekit/graph/graph.json') != ''
+        uses: actions/upload-artifact@{{uploadArtifactSha}} # {{uploadArtifactTag}}
+        with:
+          name: slicekit-graph
+          path: .slicekit/graph/graph.json
+{{commandJobs}}
+{{observabilityJobs}}
+
+  ready-label:
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
+    needs: [{{readyNeeds}}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Ready label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+        run: {{cli}} ready-label
+
+  sync:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Use the repository's git hooks
+        run: git config core.hooksPath .githooks
+      - name: Sync state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: {{cli}} status --sync --write
+      - name: Commit state
+        env:
+          ALLOW_PROTECTED_COMMIT: '1'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- {{syncPaths}}
+          git diff --cached --quiet || { git commit -m 'chore(slicekit): sync state [skip ci]' && git push; }

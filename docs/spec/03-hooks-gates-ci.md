@@ -105,6 +105,8 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
 | journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
+| ci-title | with `--ci`, the pull request title does not begin with `[P<n>/S-<nn>]` (a `[spec] ` or `[plan] ` title is exempt), or that slice has no slice file, no state file, a state before `draft-pr`, or a state of `merged` or `released` (a change after merge needs its own slice) (REQ-3.11); a pull request opened by an actor in `ci.botActors` is exempt (D-37); a pull request event file that is named but cannot be read fails the run |
+| ci-body | with `--ci`, the pull request body lacks the `## [P<n>/S-<nn>]` heading naming the title's slice, or a REQ-2.10 section is missing, empty, repeated or out of order; text inside a fenced code block does not count, and a `[spec]` or `[plan]` body needs only Done when, Proof and Decisions; a phrase from the filler list in the body is one finding per phrase (REQ-3.10); a pull request opened by an actor in `ci.botActors` is exempt (D-37) |
 
 For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
 
@@ -186,22 +188,25 @@ Init SHALL write a GitHub Actions workflow that, on every pull request: runs `sl
 runs the team's test, lint, build and e2e commands as declared; runs the observability steps listed in
 `observability.md` and config as additional jobs (D-20); fails if the title lacks a slice ID or the
 slice's state is before `draft-pr`; fails if the body lacks a section from REQ-2.10; and grants the
-`ready` label only when the latest verdict file has zero open blockers and, if required, an
-independent verdict exists (REQ-2.8). On merge to the default branch it SHALL run
+`ready` label only when the latest verdict on the pull request's current head has zero open
+blockers and, if required, the latest independent verdict on it has none either (REQ-2.8); a
+verdict given on an earlier head counts when every later commit touches only the kit's own
+bookkeeping (D-35). A pull request opened by an actor in `ci.botActors` is exempt from the title
+and body rules (D-37). On merge to the default branch it SHALL run
 `slicekit status --sync --write` and commit the state and `BUILD.md` change as a bot commit (D-12).
 Actions SHALL be pinned by SHA.
 
 Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must
 begin with [P<n>/S-<nn>]".
 
-Cites: D-12, D-18, D-20.
+Cites: D-12, D-18, D-20, D-35, D-37.
 
 Enforced by: the generated workflow; `slicekit check --ci`.
 
 ## REQ-3.12 Rendered files and updates
 
 Every file the kit renders into `.claude/`, `.githooks/` and
-`.github/workflows/` SHALL carry the <!-- slicekit:pending P1/S-08 -->
+`.github/workflows/` SHALL carry the
 kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
 that front matter and is managed whole, because Claude Code reads front matter only when it starts on
 line 1, so no marker may come before it. Any other file SHALL sit between

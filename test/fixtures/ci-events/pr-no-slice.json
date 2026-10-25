@@ -1,0 +1,14 @@
+{
+  "action": "opened",
+  "number": 7,
+  "pull_request": {
+    "number": 7,
+    "title": "Fix billing",
+    "body": "nothing",
+    "draft": false,
+    "head": {
+      "sha": "0123456789abcdef0123456789abcdef01234567"
+    },
+    "labels": []
+  }
+}

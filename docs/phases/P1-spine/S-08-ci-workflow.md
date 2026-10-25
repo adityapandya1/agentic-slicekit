@@ -4,13 +4,13 @@ name: CI workflow generator
 repo: .
 group: C
 runbook: no
-requirements: [REQ-3.11, REQ-2.10, REQ-5.2, REQ-5.3, REQ-5.5]
-decisions: [D-12, D-09]
+requirements: [REQ-3.11, REQ-2.10, REQ-5.2, REQ-5.3, REQ-5.5, REQ-1.8]
+decisions: [D-12, D-09, D-18, D-30, D-35, D-37]
 ---
 
 ## Done when
 
-1. `init` writes `.github/workflows/slicekit.yml` with SHA-pinned actions, a `gate` job running `slicekit check --ci`, one job per non-empty team command, a `title-body` job, a `ready-label` job, and a `sync` job on push to the default branch that commits state and `BUILD.md` as a bot. <!-- slicekit:pending P1/S-08 -->
+1. `init` writes `.github/workflows/slicekit.yml` with SHA-pinned actions, a `gate` job running `slicekit check --ci`, one job per non-empty team command (the pull request title and body rules run inside the `gate` job through `check --ci`, so there is no separate title or body job), a `ready-label` job, and a `sync` job on push to the default branch that commits state and `BUILD.md` as a bot.
 2. `slicekit check --ci` adds the `ci-title` and `ci-body` rules reading the pull request title and body from `GITHUB_EVENT_PATH`.
 3. The kit's own repository runs this workflow on Windows, macOS and Linux and is green; `package.json` has no dependencies and CI fails if one appears.
 4. Observability steps from `cfg.ci.observabilitySteps` render as additional jobs (the full wiring from `observability.md` is S-22; the shape is fixed here).
@@ -42,7 +42,7 @@ decisions: [D-12, D-09]
 
 **Interfaces:**
 - `pins.json`: `{ "actions/checkout": {"tag": "v4.2.2", "sha": "<40 hex>"}, "actions/setup-node": {"tag": "v4.1.0", "sha": "<40 hex>"}, "actions/upload-artifact": {"tag":"v4.4.3","sha":"<40 hex>"} }` — resolve each SHA at implementation time with `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha` (dereference annotated tags with `git/tags/<sha>` when `object.type` is `tag`), paste the values, and note the date in a comment key `"resolved": "YYYY-MM-DD"`.
-- `renderWorkflow(cfg, pins) → string` from the template with placeholders `{{checkoutSha}}`, `{{setupNodeSha}}`, `{{defaultBranch}}`, and generated job blocks: `gate` (checkout, setup-node 22, `npm ci` when a lockfile exists, then `{{cli}} check --ci` where `{{cli}}` is the team's configured hook command (D-30: never a registry fetch; a team without a local install sets `cli` to its own path), upload `.slicekit/graph/graph.json` if present); `cmd-<name>` for each non-empty command (`run: <command>`); `obs-<n>` per `cfg.ci.observabilitySteps[]` (`{name, run, env?}`); `ready-label` (needs gate and every cmd job; `{{cli}} ready-label` with `GH_TOKEN`); `sync` on `push` to `defaultBranch` (`{{cli}} status --sync --write`, commit `chore(slicekit): sync state [skip ci]` as `github-actions[bot]` when there is a diff). Triggers: `pull_request` and `push` to the default branch. `permissions: contents: write, pull-requests: write`. <!-- slicekit:example -->
+- `renderWorkflow(cfg, pins) → string` from the template with placeholders `{{checkoutSha}}`, `{{setupNodeSha}}`, `{{defaultBranch}}`, and generated job blocks: `gate` (checkout, setup-node 22, `npm ci` when a lockfile exists, then `{{cli}} check --ci` where `{{cli}}` is the team's configured hook command (D-30: never a registry fetch; a team without a local install sets `cli` to its own path), then `{{cli}} workflow --check` so a hand-edited or stale workflow fails the gate, upload `.slicekit/graph/graph.json` if present); `cmd-<name>` for each non-empty command (`run: <command>`); `obs-<n>` per `cfg.ci.observabilitySteps[]` (`{name, run, env?}`); `ready-label` (needs gate and every cmd job; `{{cli}} ready-label` with `GH_TOKEN`); `sync` on `push` to `defaultBranch` (`{{cli}} status --sync --write`, commit `chore(slicekit): sync state [skip ci]` as `github-actions[bot]` when the staged state or `BUILD.md` changed). Triggers: `pull_request` and `push` to the default branch. Every job has `timeout-minutes`: `ci.timeoutMinutes` (default 30) for gate, command and observability jobs, 10 for `ready-label` and `sync`. Top-level `permissions: contents: read`; the `sync` job adds `contents: write` and `pull-requests: read`, the `ready-label` job `issues: write` and `pull-requests: write` (it creates the `ready` label when the repository lacks it). <!-- slicekit:example -->
 - The kit's own workflow is the same template with `cmd-test` as a matrix over `ubuntu-latest, windows-latest, macos-latest` and an extra step `node -e "if (require('./package.json').dependencies) process.exit(1)"` (REQ-5.3); generated with `cfg.ci.matrix = true`.
 
 - [ ] **Step 1: Failing tests** — the four `workflow.test.js` render cases; `pins.json has 40-hex shas`.
@@ -71,7 +71,7 @@ decisions: [D-12, D-09]
 
 **Files:** Create `.github/workflows/slicekit.yml` by running the generator with `ci.matrix = true`; `test/workflow.test.js » the kit's own workflow matches the generator`.
 
-- [ ] **Step 1:** Add the failing golden test comparing `.github/workflows/slicekit.yml` with `renderWorkflow(kitCfg, pins)`. <!-- slicekit:pending P1/S-08 -->
+- [ ] **Step 1:** Add the failing golden test comparing `.github/workflows/slicekit.yml` with `renderWorkflow(kitCfg, pins)`.
 - [ ] **Step 2:** Generate the file; create the GitHub repository `adityapandya1/agentic-slicekit` as private (D-28) with `gh repo create --private --source . --push` from the author's account, or ask the author to run it; push the slice branch; open the pull request with the REQ-2.10 body.
 - [ ] **Step 3:** Watch the run: `gh run watch`; fix Windows path failures in the test suite until all three legs pass. Quote the final `gh run view` summary in the pull request's Proof line.
 - [ ] **Step 4:** Commit `ci: the kit runs its own workflow`.

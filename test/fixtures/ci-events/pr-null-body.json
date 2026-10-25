@@ -1,0 +1,14 @@
+{
+  "action": "opened",
+  "number": 8,
+  "pull_request": {
+    "number": 8,
+    "title": "[P1/S-01] Fixture 1",
+    "body": null,
+    "draft": true,
+    "head": {
+      "sha": "0123456789abcdef0123456789abcdef01234567"
+    },
+    "labels": []
+  }
+}

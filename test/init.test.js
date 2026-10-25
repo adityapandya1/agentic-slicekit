@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { init } from '../src/init.js';
+import { bareCliWarning, init } from '../src/init.js';
 import { ConfigError, loadConfig, validateConfig } from '../src/config.js';
 import { buildContext } from '../src/check/context.js';
 import hooksRule from '../src/check/rules/hooks.js';
@@ -119,7 +119,7 @@ test('second run skips everything and overwrites nothing', () => {
 
 test('init on a repo with no commits', () => {
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'fullstack', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'fullstack', cli: 'node bin/slicekit.js' });
     assert.ok(result.created.includes('.slicekit/config.json'));
     assert.ok(isDir(root, '.githooks'));
     // REQ-3.9: init now sets the hooks path that S-01 left unset.
@@ -133,11 +133,11 @@ test('init outside a git repo', () => {
   try {
     const r = runCli(['init', '--shape', 'data', '--name', 'demo'], { cwd: root });
     assert.equal(r.code, 0);
-    assert.equal(r.stderr, 'slicekit: not a git repository\n');
+    assert.equal(r.stderr, `slicekit: not a git repository\n${BARE('slicekit')}`);
     assert.match(r.stdout, /^created \.slicekit\/config\.json$/m);
     assert.equal(fs.existsSync(path.join(root, '.git')), false);
     const direct = init(root, { name: 'demo', shape: 'data' });
-    assert.deepEqual(direct.warnings, ['not a git repository']);
+    assert.deepEqual(direct.warnings, ['not a git repository'], 'the workflow exists: no second bare-cli warning');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -155,7 +155,7 @@ test('cli: init from a subdirectory exits 2 and writes nothing', () => {
     assert.deepEqual(fs.readdirSync(sub), []);
     const top = runCli(['init', '--shape', 'backend'], { cwd: root });
     assert.equal(top.code, 0);
-    assert.equal(top.stderr, '');
+    assert.equal(top.stderr, BARE('slicekit'));
   });
 });
 
@@ -319,6 +319,9 @@ test('cli: a corrupt .claude/settings.json exits 2 and nothing else is created',
   }
 });
 
+// The M4 warning as the CLI prints it.
+const BARE = (cli) => `slicekit: ${bareCliWarning(cli)}\n`;
+
 const HOOK_WARNING = (cli) =>
   `slicekit: hook command "${cli}" did not answer; hooks will report errors on every tool call until .slicekit/config.json cli is fixed\n`;
 
@@ -328,7 +331,7 @@ test('cli: init prints the hook command it chose and checks that it answers', ()
     assert.equal(r.code, 0, r.stderr);
     const cli = JSON.parse(read(root, '.slicekit/config.json')).cli;
     assert.equal(r.stdout.split('\n').filter((l) => l === `hooks run: ${cli}`).length, 1);
-    assert.equal(r.stderr, '');
+    assert.equal(r.stderr, BARE(cli));
   });
 });
 
@@ -346,7 +349,8 @@ test('cli: init with slicekit neither local nor on PATH warns once, never names 
     assert.equal(r.code, 0, r.stderr);
     assert.equal(
       r.stderr,
-      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)\n',
+      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)\n' +
+        BARE('slicekit'),
     );
     assert.match(r.stdout, /^hooks run: slicekit$/m);
     assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, 'slicekit');
@@ -384,7 +388,7 @@ const template = (name) => fs.readFileSync(new URL(`../templates/githooks/${name
 // REQ-3.9: init writes both git hooks, executable, and points core.hooksPath at them.
 test('init installs the git hooks and sets core.hooksPath', () => {
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     for (const name of HOOKS) {
       const rel = `.githooks/${name}`;
       assert.ok(result.created.includes(rel), rel);
@@ -403,7 +407,7 @@ test('init installs the git hooks and sets core.hooksPath', () => {
 test('init leaves another core.hooksPath alone and says so', () => {
   withRepo((root) => {
     git(root, ['config', 'core.hooksPath', '.husky']);
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.equal(git(root, ['config', 'core.hooksPath']), '.husky');
     assert.equal(result.warnings.length, 1);
     assert.match(result.warnings[0], /core\.hooksPath is \.husky/);
@@ -413,7 +417,7 @@ test('init leaves another core.hooksPath alone and says so', () => {
 test('init warns that hooks in .git/hooks stop running', () => {
   withRepo((root) => {
     fs.writeFileSync(path.join(root, '.git', 'hooks', 'pre-push'), '#!/bin/sh\n');
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.equal(git(root, ['config', 'core.hooksPath']), '.githooks');
     assert.equal(result.warnings.length, 1);
     assert.match(result.warnings[0], /\.git\/hooks\/pre-push/);
@@ -423,7 +427,7 @@ test('init warns that hooks in .git/hooks stop running', () => {
 
 test('init never overwrites a team hook that differs from the template', () => {
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.equal(read(root, '.githooks/pre-commit'), '#!/bin/sh\nexit 0\n');
     assert.ok(result.skipped.includes('.githooks/pre-commit'));
     assert.ok(result.created.includes('.githooks/prepare-commit-msg'));
@@ -435,7 +439,7 @@ test('init never overwrites a team hook that differs from the template', () => {
 test('init outside a repo writes the hooks and sets no hooks path', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
   try {
-    const result = init(root, { name: 'demo', shape: 'data', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'data', cli: 'node bin/slicekit.js' });
     assert.deepEqual(result.warnings, ['not a git repository']);
     for (const name of HOOKS) assert.ok(result.created.includes(`.githooks/${name}`), name);
   } finally {
@@ -446,7 +450,7 @@ test('init outside a repo writes the hooks and sets no hooks path', () => {
 // R2: hooks checked out with CRLF break sh, so init pins .githooks/* to LF.
 test('init writes the .githooks eol rule to .gitattributes once', () => {
   withRepo((root) => {
-    const first = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const first = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(first.created.includes('.gitattributes'));
     assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
     const second = init(root, { name: 'demo', shape: 'backend' });
@@ -454,12 +458,12 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
     assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
   });
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.updated.includes('.gitattributes'));
     assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\n');
   }, { files: { '.gitattributes': '* text=auto\n' } });
   withRepo((root) => {
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.skipped.includes('.gitattributes'));
   }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n' } });
 });
@@ -467,13 +471,13 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
 // M5: a CRLF file gets CRLF lines appended.
 test('init keeps a CRLF ignore or attributes file CRLF', () => {
   withRepo((root) => {
-    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n';
     assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
     assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
-    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
@@ -482,13 +486,13 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
 // records 100755. D-19: init never commits.
 test('init stages the hooks it creates as executable, with or without commits', () => {
   withRepo((root) => {
-    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
     assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
     assert.equal(git(root, ['rev-list', '--count', 'HEAD']), '1');
   }, { commits: 1 });
   withRepo((root) => {
-    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
     assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
     assert.equal(git(root, ['rev-list', '--all', '--count']), '0');
@@ -500,7 +504,7 @@ test('init treats another spelling of .githooks as installed', () => {
   withRepo((root) => {
     const abs = path.join(root, '.githooks').split(path.sep).join('/');
     git(root, ['config', 'core.hooksPath', abs]);
-    const result = init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.deepEqual(result.warnings, []);
     assert.equal(git(root, ['config', 'core.hooksPath']), abs);
   });
@@ -511,7 +515,7 @@ test('init treats another spelling of .githooks as installed', () => {
 // I1: in a fresh repository, the first `git add -A` keeps the hooks executable and check is clean.
 test('in a fresh repository the hooks stay executable through git add -A', () => {
   withRepo((root) => {
-    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     git(root, ['add', '-A']);
     const staged = git(root, ['ls-files', '-s', ...HOOKS.map((n) => `.githooks/${n}`)]).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
     assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
@@ -529,15 +533,35 @@ test('init on an unborn protected branch says how to make the first commit', () 
     assert.equal(r.stdout.split('\n').filter((l) => l === UNBORN_NEXT).length, 1);
   }, { commits: 0 });
   withRepo((root) => {
-    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' }).next, null);
   }, { commits: 0, branch: 'slice/P1-S-01-x' });
   withRepo((root) => {
-    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' }).next, null);
   }, { commits: 1 });
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
   try {
-    assert.equal(init(plain, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+    assert.equal(init(plain, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' }).next, null);
   } finally {
     fs.rmSync(plain, { recursive: true, force: true });
+  }
+});
+
+// M4: CI has no global install, so a bare cli in the generated workflow would not run.
+test('init warns when the workflow it writes names a bare cli', () => {
+  const bare = (w) => w.includes('CI has no global install');
+  for (const cli of ['slicekit', 'npx --no-install slicekit']) {
+    withRepo((root) => {
+      const result = init(root, { name: 'demo', shape: 'backend', cli });
+      const found = result.warnings.filter(bare);
+      assert.equal(found.length, 1, cli);
+      assert.ok(found[0].includes(`cli is "${cli}"`), found[0]);
+      assert.ok(found[0].includes('set cli in .slicekit/config.json to a repository path or add an install step'), found[0]);
+      assert.deepEqual(init(root, { name: 'demo', shape: 'backend' }).warnings.filter(bare), [], 'an existing workflow is the team\'s');
+    });
+  }
+  for (const cli of ['node bin/slicekit.js', 'node_modules/.bin/slicekit', 'tools\\slicekit.cmd', 'node "C:/x/slicekit.js"']) {
+    withRepo((root) => {
+      assert.deepEqual(init(root, { name: 'demo', shape: 'backend', cli }).warnings.filter(bare), [], cli);
+    });
   }
 });

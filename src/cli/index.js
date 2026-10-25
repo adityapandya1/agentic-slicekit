@@ -4,9 +4,11 @@ import { checkCommand } from './check.js';
 import { initCommand } from './init.js';
 import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
+import { readyLabelCommand } from './ready-label.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
 import { updateCommand } from './update.js';
+import { workflowCommand } from './workflow.js';
 
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string } }
 export const COMMANDS = {
@@ -15,9 +17,11 @@ export const COMMANDS = {
   init: initCommand,
   hook: hookCommand,
   journal: journalCommand,
+  'ready-label': readyLabelCommand,
   state: stateCommand,
   status: statusCommand,
   update: updateCommand,
+  workflow: workflowCommand,
 };
 
 function readVersion() {

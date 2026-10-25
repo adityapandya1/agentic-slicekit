@@ -130,3 +130,16 @@ test('cli is a non-empty string, default slicekit', () => {
   assert.deepEqual(validateConfig({ ...cfg, cli: '' }), ['cli: must be a non-empty string']);
   assert.deepEqual(validateConfig({ ...cfg, cli: 3 }), ['cli: must be a non-empty string']);
 });
+
+// D-37: the bots whose pull requests skip the title and body rules.
+test('ci.botActors defaults to dependabot and renovate and is validated', () => {
+  assert.deepEqual(base().ci.botActors, ['dependabot[bot]', 'renovate[bot]']);
+  const withBots = (botActors) => validateConfig({ ...base(), ci: { ...base().ci, botActors } });
+  assert.deepEqual(withBots([]), []);
+  assert.deepEqual(withBots(['my-bot[bot]']), []);
+  const { botActors, ...absent } = base().ci;
+  assert.deepEqual(validateConfig({ ...base(), ci: absent }), [], 'absent reads as the default');
+  for (const bad of ['dependabot[bot]', [''], [1], ['a', ' ']]) {
+    assert.ok(withBots(bad).includes('ci.botActors: must be an array of non-empty strings'), JSON.stringify(bad));
+  }
+});

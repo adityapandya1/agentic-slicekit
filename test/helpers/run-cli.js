@@ -28,11 +28,21 @@ function withShim(env) {
   return out;
 }
 
+// The pull request a CI runner is building, as check --ci reads it. A test that wants an event
+// passes one in env; by default the CLI under test never sees the runner's own.
+const CI_PULL_REQUEST = ['GITHUB_EVENT_PATH', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'SLICEKIT_PR_TITLE', 'SLICEKIT_PR_BODY'];
+function hermetic(env) {
+  const out = { ...env };
+  for (const k of Object.keys(out)) if (CI_PULL_REQUEST.includes(k.toUpperCase())) delete out[k];
+  return out;
+}
+
 export function runCli(args, { cwd, stdin, env, shim: useShim = true } = {}) {
+  const base = env ?? hermetic(process.env);
   const r = spawnSync(process.execPath, [binPath, ...args], {
     cwd,
     input: stdin,
-    env: useShim ? withShim(env ?? process.env) : (env ?? process.env),
+    env: useShim ? withShim(base) : base,
     encoding: 'utf8',
   });
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };

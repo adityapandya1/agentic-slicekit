@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDate, isSha, sameSha } from '../evidence.js';
+import { headCovers } from './covers.js';
 
 export const STATES = [
   'todo',
@@ -29,9 +30,26 @@ const isStr = (s) => typeof s === 'string' && s !== '';
 const present = (root, rel) => fs.existsSync(path.resolve(root, rel));
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// The verdicts given on the pull request head as it stands now. A verdict on an earlier head
-// reviewed code that a fix push has since replaced.
-const onHead = (current) => current.verdicts.filter((v) => current.pr && v.headSha === current.pr.headSha);
+// The verdicts that hold on the pull request head as it stands now: those given on it, and, with a
+// repository to look in, those given on an earlier head whose later commits are only the kit's own
+// bookkeeping (D-35). Any other earlier head reviewed code a fix push has since replaced. `head`
+// defaults to the head the state recorded; a caller holding the live head (a CI event) passes it.
+// No head, no verdicts.
+export function verdictsOnHead(current, head = current.pr?.headSha, root) {
+  return (current.verdicts ?? []).filter(
+    (v) => sameSha(v.headSha, head) || (root !== undefined && headCovers(root, v.headSha, head)),
+  );
+}
+const onHead = (current, ctx) => verdictsOnHead(current, current.pr?.headSha, ctx.root);
+
+// The independent-review rule `ready` and the ready label share: the latest independent verdict on
+// the head decides, so a later independent verdict with blockers is not hidden by an earlier clean one.
+export function independentProblem(verdicts) {
+  const ind = verdicts.filter((v) => v.independent).at(-1);
+  if (!ind) return 'independent review missing';
+  if (ind.blockers !== 0) return `independent review found ${ind.blockers} blocker${ind.blockers === 1 ? '' : 's'}`;
+  return null;
+}
 
 const SHA_SHAPE = '7 to 40 lowercase hex characters';
 
@@ -43,6 +61,7 @@ export function validateEvidence(ev) {
   }
   if (ev.commit !== undefined && !isSha(ev.commit)) return bad('commit', SHA_SHAPE);
   if (ev.mergedAt !== undefined && !isDate(ev.mergedAt)) return bad('mergedAt', 'an ISO date');
+  if (ev.source !== undefined && ev.source !== 'host') return bad('source', "'host'");
   for (const k of ['testExit', 'checkExit']) {
     if (ev[k] !== undefined && !isInt(ev[k])) return bad(k, 'a non-negative integer');
   }
@@ -162,8 +181,8 @@ export const TRANSITIONS = {
   'changes-requested': {
     from: ['in-review'],
     required: [],
-    check(current) {
-      const v = last(onHead(current));
+    check(current, _ev, ctx) {
+      const v = last(onHead(current, ctx));
       return v && v.blockers > 0 ? null : 'changes-requested needs a latest verdict on the current head sha with open blockers';
     },
     apply: () => ({}),
@@ -171,8 +190,8 @@ export const TRANSITIONS = {
   'ci-green': {
     from: ['in-review'],
     required: ['ci'],
-    check(current, ev) {
-      const v = last(onHead(current));
+    check(current, ev, ctx) {
+      const v = last(onHead(current, ctx));
       if (!v || v.blockers !== 0) return 'ci-green needs a latest verdict on the current head sha with no blockers';
       if (!ev.ci || ev.ci.status !== 'success') return 'ci-green needs the CI status to be success (--ci-status)';
       if (!isStr(ev.ci.sha)) return 'ci-green needs the CI sha (--ci-sha)';
@@ -187,17 +206,28 @@ export const TRANSITIONS = {
     from: ['ci-green'],
     required: [],
     check(current, _ev, ctx) {
-      if (ctx.cfg.review.independent === 'optional') return null;
-      return onHead(current).some((v) => v.independent && v.blockers === 0)
-        ? null
-        : 'ready needs an independent review verdict with no blockers on the current head sha';
+      if (ctx.cfg.review?.independent === 'optional') return null;
+      const problem = independentProblem(onHead(current, ctx));
+      return problem ? `ready needs an independent review verdict with no blockers on the current head sha: ${problem}` : null;
     },
     apply: () => ({}),
   },
+  // A merge the git host reports is a fact, whatever pre-merge state the slice was in: `hostFrom`
+  // reaches merged only with `source: 'host'` evidence naming the recorded pull request (the sync
+  // supplies it; the state CLI cannot). The `ready` path is the ordinary one.
   merged: {
     from: ['ready'],
+    hostFrom: ['draft-pr', 'in-review', 'changes-requested', 'ci-green'],
     required: ['mergedAt'],
-    check: (_current, ev) => (ev.mergedAt ? null : 'merged needs mergedAt (--merged-at)'),
+    check(current, ev) {
+      if (!ev.mergedAt) return 'merged needs mergedAt (--merged-at)';
+      if (current.state === 'ready') return null;
+      if (ev.source !== 'host') return `${current.state} reaches merged only on a merge the git host reports`;
+      const n = current.pr?.number;
+      if (!Number.isInteger(n)) return 'a host merge needs a recorded pull request number';
+      if (ev.pr?.number !== n) return `a host merge must name the recorded pull request #${n}`;
+      return null;
+    },
     apply: (current, ev) => ({
       mergedAt: ev.mergedAt,
       ...(ev.pr ? { pr: { ...(current.pr ?? {}), ...ev.pr } } : {}),
@@ -223,4 +253,13 @@ export const TRANSITIONS = {
 
 export function nextStates(from) {
   return STATES.filter((to) => TRANSITIONS[to]?.from.includes(from));
+}
+
+// The states a merge the host reports moves to merged.
+export const HOST_MERGE_FROM = [...TRANSITIONS.merged.hostFrom, ...TRANSITIONS.merged.from];
+
+// Whether from → to is an edge for this evidence: the graph's own, or a host-only edge with host evidence.
+export function allowedMove(from, to, ev) {
+  if (nextStates(from).includes(to)) return true;
+  return ev.source === 'host' && Boolean(TRANSITIONS[to]?.hostFrom?.includes(from));
 }

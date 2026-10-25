@@ -153,6 +153,20 @@ export function findStyle(docs, banned, seed) {
   return findings;
 }
 
+// The configured phrases found in one markdown text (a pull request body), in list order, each once.
+// Matched as the doc rule matches: whole words, any case, across a hard wrap, never inside a fenced
+// block, a code span, a link target or a URL.
+export function bannedPhrasesIn(text, banned) {
+  const texts = runs([...prose(text)], new Set()).map((r) => r.text);
+  return phrases(banned).filter((p) => {
+    const re = matcher(p);
+    return texts.some((t) => {
+      re.lastIndex = 0;
+      return re.test(t);
+    });
+  });
+}
+
 export function run(ctx) {
   // A pinned intake file is frozen (REQ-1.2): a quoted phrase there is the author's words, never
   // rewritten. An unpinned one is matched like any doc.

@@ -44,6 +44,7 @@
     "git\\s+reset\\s+--hard\\s+origin/"
   ],
   "ci": {
+    "matrix": true,
     "observabilitySteps": []
   }
 }

@@ -9,6 +9,7 @@ import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
+import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from './workflow.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
@@ -176,6 +177,13 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
   return { cfg, cliWarning: probed.warning };
 }
 
+// M4: a cli with no path separator that is not `node <file>` is looked up on PATH, and a CI runner
+// has no global slicekit, so the workflow init writes could not run it.
+export function bareCliWarning(cli) {
+  if (/[\\/]/.test(cli) || /^node\s/.test(cli)) return null;
+  return `cli is "${cli}", a bare command, and CI has no global install, so ${WORKFLOW_PATH} cannot run it; set cli in .slicekit/config.json to a repository path or add an install step`;
+}
+
 export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
   const { cfg, cliWarning } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
@@ -202,6 +210,17 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
   if (repo) {
     stageHooks(root, hooks, warnings);
     setHooksPath(root, warnings);
+  }
+  // The CI workflow (REQ-3.11): written when absent; an existing one is the team's and stays as is.
+  const workflow = workflowState(root, cfg);
+  if (workflow.current === null) {
+    writeText(workflow.file, workflow.expected);
+    lists.created.push(WORKFLOW_PATH);
+    const bare = bareCliWarning(cfg.cli);
+    if (bare) warnings.push(bare);
+  } else {
+    lists.skipped.push(WORKFLOW_PATH);
+    if (workflow.current !== workflow.expected) warnings.push(`${WORKFLOW_DRIFT}; left as is`);
   }
   for (const { dest, action, warning } of renderAll(root, cfg, { version: kitVersion() })) {
     lists[action === 'unchanged' || action === 'skipped' ? 'skipped' : action].push(dest);
