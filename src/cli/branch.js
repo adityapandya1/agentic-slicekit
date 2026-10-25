@@ -41,7 +41,8 @@ async function run(args, io) {
       io.stderr('slicekit: commit or stash your changes first\n');
       return 1;
     }
-    let from = base;
+    // The full ref: a tag named like the default branch must not be what the branch is cut from.
+    let from = `refs/heads/${base}`;
     if (hasRemote(root, 'origin')) {
       try {
         git(root, ['fetch', '-q', 'origin', base]);

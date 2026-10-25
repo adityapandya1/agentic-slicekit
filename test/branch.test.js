@@ -20,6 +20,7 @@ import {
 import { commit, makeRemote, makeRepo } from './helpers/tmp-repo.js';
 
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
+const pushOpts = { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch };
 
 async function cli(root, args) {
   let stdout = '';
@@ -55,7 +56,7 @@ function pushFromElsewhere(remote, branch) {
     git(other, ['config', 'user.email', 'other@example.com']);
     git(other, ['config', 'commit.gpgsign', 'false']);
     git(other, ['switch', '-q', branch]);
-    commit(other, 'from elsewhere');
+    commit(other, `from elsewhere on ${branch}`);
     git(other, ['push', '-q', 'origin', branch]);
   } finally {
     fs.rmSync(other, { recursive: true, force: true });
@@ -129,13 +130,13 @@ test('pushBranch sets an upstream, then pushes HEAD to the upstream branch by na
     async (root, remote) => {
       switchBranch(root, 'spec/demo', { create: true, from: 'main' });
       commit(root, 'spec');
-      assert.deepEqual(pushBranch(root), { branch: 'spec/demo', remoteRef: 'refs/heads/spec/demo' });
+      assert.deepEqual(pushBranch(root, pushOpts), { branch: 'spec/demo', remoteRef: 'refs/heads/spec/demo' });
       assert.equal(git(remote, ['rev-parse', 'refs/heads/spec/demo']), sha(root, 'HEAD'));
       // A local branch whose upstream has another name: a plain push would refuse.
       switchBranch(root, 'work', { create: true, from: 'HEAD' });
       git(root, ['branch', '--set-upstream-to=origin/spec/demo']);
       commit(root, 'more');
-      assert.deepEqual(pushBranch(root), { branch: 'work', remoteRef: 'refs/heads/spec/demo' });
+      assert.deepEqual(pushBranch(root, pushOpts), { branch: 'work', remoteRef: 'refs/heads/spec/demo' });
       assert.equal(git(remote, ['rev-parse', 'refs/heads/spec/demo']), sha(root, 'HEAD'));
     },
     { remote: true },
@@ -147,13 +148,13 @@ test('pushBranch never pushes to a protected branch or from a detached head', as
     async (root, remote) => {
       const before = git(remote, ['rev-parse', 'refs/heads/main']);
       commit(root, 'local');
-      assert.throws(() => pushBranch(root, { protectedBranches: ['main'] }), /protected/);
+      assert.throws(() => pushBranch(root, pushOpts), /protected/);
       // A work branch that tracks main is refused too.
       switchBranch(root, 'spec/x', { create: true, from: 'HEAD' });
       git(root, ['branch', '--set-upstream-to=origin/main']);
-      assert.throws(() => pushBranch(root), /protected/);
+      assert.throws(() => pushBranch(root, pushOpts), /protected/);
       git(root, ['switch', '-q', '--detach', 'HEAD']);
-      assert.throws(() => pushBranch(root), GitError);
+      assert.throws(() => pushBranch(root, pushOpts), GitError);
       assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
     },
     { remote: true },
@@ -167,7 +168,7 @@ test('a tag named like the branch does not hide main from pushBranch or currentB
       git(root, ['tag', 'main']);
       commit(root, 'local');
       assert.equal(currentBranch(root), 'main');
-      assert.throws(() => pushBranch(root), /protected/);
+      assert.throws(() => pushBranch(root, pushOpts), /protected/);
       assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
     },
     { remote: true },
@@ -181,13 +182,13 @@ test('a push mapping in the config cannot redirect pushBranch onto main', async 
       git(root, ['config', 'remote.origin.push', 'refs/heads/work:refs/heads/main']);
       switchBranch(root, 'work', { create: true, from: 'main' });
       commit(root, 'work');
-      assert.deepEqual(pushBranch(root), { branch: 'work', remoteRef: 'refs/heads/work' });
+      assert.deepEqual(pushBranch(root, pushOpts), { branch: 'work', remoteRef: 'refs/heads/work' });
       assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
       assert.equal(git(remote, ['rev-parse', 'refs/heads/work']), sha(root, 'HEAD'));
       assert.equal(git(root, ['rev-parse', '--abbrev-ref', '@{u}']), 'origin/work');
       // With the upstream set, the second push goes by explicit refspec too.
       commit(root, 'work 2');
-      assert.deepEqual(pushBranch(root), { branch: 'work', remoteRef: 'refs/heads/work' });
+      assert.deepEqual(pushBranch(root, pushOpts), { branch: 'work', remoteRef: 'refs/heads/work' });
       assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), before);
       assert.equal(git(remote, ['rev-parse', 'refs/heads/work']), sha(root, 'HEAD'));
     },
@@ -207,11 +208,40 @@ test('pushBranch refuses the default branch even when it is not listed as protec
   );
 });
 
+test('pushBranch needs the protected branches and the default branch from the config', async () => {
+  await withRepo(
+    async (root, remote) => {
+      switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+      const message = 'pushBranch needs {protectedBranches, defaultBranch} from the config';
+      for (const opts of [undefined, {}, { protectedBranches: ['main'] }, { defaultBranch: 'main' }, { protectedBranches: 'main', defaultBranch: 'main' }, { protectedBranches: ['main'], defaultBranch: '' }]) {
+        assert.throws(() => pushBranch(root, opts), (e) => e instanceof TypeError && e.message === message, JSON.stringify(opts));
+      }
+      assert.throws(() => git(remote, ['rev-parse', '--verify', 'refs/heads/spec/demo']), GitError);
+    },
+    { remote: true },
+  );
+});
+
+test('branch without origin, or after a failed fetch, cuts from the default branch, not a tag of that name', async () => {
+  await withRepo(async (root) => {
+    git(root, ['tag', 'main']);
+    commit(root, 'after the tag');
+    assert.equal((await cli(root, ['branch', 'plan', 'p4'])).code, 0);
+    assert.equal(sha(root, 'HEAD'), sha(root, 'refs/heads/main'));
+    assert.notEqual(sha(root, 'HEAD'), sha(root, 'refs/tags/main'));
+    git(root, ['switch', '-q', 'main']);
+    git(root, ['remote', 'add', 'origin', path.join(os.tmpdir(), 'slicekit-no-such-remote')]);
+    const r = await cli(root, ['branch', 'plan', 'p5']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(sha(root, 'HEAD'), sha(root, 'refs/heads/main'));
+  });
+});
+
 test('behindUpstream is 0 once the upstream branch is deleted on the remote', async () => {
   await withRepo(
     async (root, remote) => {
       switchBranch(root, 'spec/demo', { create: true, from: 'main' });
-      pushBranch(root);
+      pushBranch(root, pushOpts);
       pushFromElsewhere(remote, 'spec/demo');
       assert.equal(behindUpstream(root), 1);
       git(remote, ['update-ref', '-d', 'refs/heads/spec/demo']);
@@ -276,7 +306,7 @@ test('behindUpstream counts commits on the upstream not in HEAD', async () => {
     async (root, remote) => {
       switchBranch(root, 'spec/demo', { create: true, from: 'main' });
       assert.equal(behindUpstream(root), 0);
-      pushBranch(root);
+      pushBranch(root, pushOpts);
       assert.equal(behindUpstream(root), 0);
       pushFromElsewhere(remote, 'spec/demo');
       assert.equal(behindUpstream(root), 1);

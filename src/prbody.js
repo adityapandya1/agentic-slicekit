@@ -170,6 +170,9 @@ export function renderPrBody({ slice, name, sections }) {
   if (slice !== null && (typeof slice !== 'string' || !SLICE_ADDR.test(slice))) {
     throw new PrBodyError(`slice must be null or P<n>/S-<nn>, got ${JSON.stringify(slice)}`);
   }
+  if (slice !== null && (typeof name !== 'string' || name.trim() === '')) {
+    throw new PrBodyError(`a slice body needs the slice's name, got ${JSON.stringify(name)}`);
+  }
   const names = slice === null ? EXEMPT_SECTIONS : REQUIRED_SECTIONS;
   const out = slice === null ? [] : [`## [${slice}] ${name}`];
   for (const n of names) {

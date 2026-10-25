@@ -180,9 +180,13 @@ export function pushTarget(root) {
 // upstream branch on origin when there is one (a plain push refuses when the names differ under
 // push.default=simple), else the current branch, and then `-u` sets the upstream. An explicit
 // refspec also keeps a `remote.origin.push` mapping from redirecting the push. Refuses a target in
-// `protectedBranches` or equal to `defaultBranch` before anything is sent; callers pass the config's
-// values.
-export function pushBranch(root, { protectedBranches = ['main'], defaultBranch } = {}) {
+// `protectedBranches` or equal to `defaultBranch` before anything is sent. Both are required, from the
+// config: a default here would quietly guard the wrong branch in a repository that names it otherwise.
+export function pushBranch(root, opts) {
+  const { protectedBranches, defaultBranch } = opts ?? {};
+  if (!Array.isArray(protectedBranches) || typeof defaultBranch !== 'string' || defaultBranch === '') {
+    throw new TypeError('pushBranch needs {protectedBranches, defaultBranch} from the config');
+  }
   const { branch, target, tracked } = pushTarget(root);
   if (protectedBranches.includes(target) || target === defaultBranch) {
     throw new GitError(['push'], `refusing to push to ${target}: it is protected; push from a work branch`);

@@ -34,7 +34,7 @@ decisions: [D-07, D-15, D-17]
 **Files:** Create `src/spec-verify.js`, `src/cli/spec.js`, `test/commands/specify.test.js`. Modify `src/cli/index.js`.
 
 **Interfaces:**
-- Consumes (S-09): `reqBlocks` from `src/stage.js`; `readDecisions` from `src/decisions.js`. From Phase 1: `programStage`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `reqBlocks` from `src/stage.js`; `readDecisions` from `src/decisions.js`. From Phase 1: `programStage`.
 - `unsupportedReqs(root, cfg) → [{req, file, line}]` (`file` and `line` from `reqBlocks`): a REQ block whose `Cites:` entries name no D row present in `decisions.md` and no file that exists under `<docsRoot>/intake/` (an entry resolves against the spec file's directory, then the root).
 - `verifySpec(root, cfg) → {findings: [{file, line, message}], counts: {reqs, contracts, markers}, markers: [{file, line, text}]}`. Findings, in order: each blocker of `programStage(root, cfg, {upTo: 'specify'})` when it stops before `specify`, as `-:0 <stage> not done: <blocker>`; each unsupported REQ as `<REQ> cites nothing that exists; write [NEEDS CLARIFICATION: <question>] instead of a guess`; the interfaces without a contract (Task 2). A `[NEEDS CLARIFICATION: …]` marker is listed, never a finding: specify may leave them, plan refuses them (S-13).
 - CLI `spec verify`: exit 0 and first line `spec verified: <r> REQ, <c> contracts, <m> clarification markers`, then one `<file>:<line> <marker>` per marker; exit 1 and one `<file>:<line> <message>` per finding. `subcommands = ['verify']`.
@@ -50,7 +50,7 @@ decisions: [D-07, D-15, D-17]
 **Files:** Modify `src/spec-verify.js`, `test/commands/specify.test.js`.
 
 **Interfaces:**
-- Consumes (S-09): `interfacesWithoutContract` from `src/decisions.js` (the register S-10 writes through `intake answer --interface`). <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `interfacesWithoutContract` from `src/decisions.js` (the register S-10 writes through `intake answer --interface`).
 - Each row of `interfacesWithoutContract` is a `verifySpec` finding at its line in `decisions.md`: `interface <name> (<D-ID>) has no contract under <docsRoot>/spec/contracts/`.
 - `counts.contracts` is the number of `.md` files under `<docsRoot>/spec/contracts/`.
 

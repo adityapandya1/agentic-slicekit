@@ -95,6 +95,9 @@ test('every value either renders so ci-body passes or is refused naming why', ()
   for (const [over, why] of refused) {
     assert.throws(() => render(over), (e) => e instanceof PrBodyError && why.test(e.message), JSON.stringify(over));
   }
+  for (const name of [undefined, '', '   ', null, 7]) {
+    assert.throws(() => renderPrBody({ slice: 'P1/S-03', name, sections }), (e) => e instanceof PrBodyError && /name/.test(e.message), String(name));
+  }
   for (const slice of ['nope', undefined, 'P1/S-3']) {
     assert.throws(() => renderPrBody({ slice, name: 'Thing', sections }), (e) => e instanceof PrBodyError && /slice/.test(e.message), String(slice));
   }
