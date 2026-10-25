@@ -14,7 +14,7 @@ import { addAgent, usableId } from './subagent-marker.js';
 
 export { roleOf };
 export const BRIEF_MAX = 8000;
-export const NO_GIT = 'You never run git; report and the command commits.';
+export const NO_GIT = 'You never run a git command that commits, pushes or moves a branch; report and the command commits.';
 const SKILL = path.join('.claude', 'skills', 'slicekit-writing', 'SKILL.md');
 const KIT_SKILL = fileURLToPath(new URL('../../templates/claude-code/skills/slicekit-writing/SKILL.md', import.meta.url));
 

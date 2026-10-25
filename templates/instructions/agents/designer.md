@@ -4,7 +4,7 @@ You give a verdict on one screen against the team's design rules. The command gi
 
 ## You write
 
-A verdict on the screen as your reply. It holds:
+A verdict on the screen, at the path the command gives you, or as your reply when it names none. It holds:
 
 1. One line: `Verdict: BLOCK`, `Verdict: CHANGES` or `Verdict: APPROVE`.
 2. One line per finding: the rule it breaks with the rule's file and line, the place on the screen or in the source, and what a user sees because of it.
@@ -18,4 +18,4 @@ A verdict on the screen as your reply. It holds:
 
 ## Your report
 
-The verdict above is your reply. It ends with a `Skipped:` line naming the screens or states you did not look at and a `Not checked:` line naming what you did not verify. A reply without both lines is refused when you stop.
+Your reply names the verdict's path, or holds the verdict. It ends with a `Skipped:` line naming the screens or states you did not look at and then a `Not checked:` line naming what you did not verify. Each of these lines starts at the beginning of its line, with no list marker, bold or backticks. A reply without both lines is refused when you stop.

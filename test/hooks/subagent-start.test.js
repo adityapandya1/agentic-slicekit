@@ -33,7 +33,7 @@ test('hooks/subagent-start.test.js » sets marker and injects brief and no-git r
     assert.match(t, /# Writing rules/);
     assert.doesNotMatch(t, /^name: slicekit-writing/m, 'front matter stripped');
     assert.ok(t.endsWith(`\n${NO_GIT}`), t);
-    assert.equal(NO_GIT, 'You never run git; report and the command commits.');
+    assert.equal(NO_GIT, 'You never run a git command that commits, pushes or moves a branch; report and the command commits.');
   } finally {
     cleanup();
   }

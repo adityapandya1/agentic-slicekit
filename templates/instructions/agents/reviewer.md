@@ -24,7 +24,14 @@ Verdict: BLOCK
 - The CI run; it had not finished.
 ```
 
-- The first line is the verdict and the file holds no other `Verdict:` line: `Verdict: BLOCK` when any blocker is open, `Verdict: CHANGES` when there is no blocker and at least one should-have, `Verdict: APPROVE` when there is no blocker.
+The first line is the verdict, and the file holds no other `Verdict:` line. Choose it by these rules:
+
+- `Verdict: BLOCK` when any blocker is open.
+- `Verdict: CHANGES` when there is no blocker and at least one should-have.
+- `Verdict: APPROVE` when there is no blocker and no should-have you want fixed.
+
+The rest of the file:
+
 - A blocker's ID is `B-<n>` and a should-have's ID is `H-<n>`, each used once.
 - Every finding names its file and line, what is wrong, why it matters and how you verified it: the command you ran and its output, or `read only`. A finding with no "How verified" entry is refused.
 - `## Checklists run` lists each checklist you ran, one item per line; at least one.
@@ -39,4 +46,4 @@ Verdict: BLOCK
 
 ## Your report
 
-Your reply names the verdict file's path and its verdict line, then ends with a `Skipped:` line and a `Not checked:` line. When you stop, the newest verdict file of this slice is checked against the shape above; a missing or malformed file is refused.
+Your reply names the verdict file's path and its verdict line. It ends with a `Skipped:` line and then a `Not checked:` line. Each of these lines starts at the beginning of its line, with no list marker, bold or backticks. When you stop, the newest verdict file of this slice is checked against the shape above; a missing or malformed file is refused.

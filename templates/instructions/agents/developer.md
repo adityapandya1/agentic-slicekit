@@ -17,12 +17,21 @@ You build one slice in its worktree. You write the slice's tests first, see them
 
 ## Your report
 
-Your reply is your report. It holds, in this order:
+Your reply is your report. Write one `ran: <command> → exit <code>` line for each command you ran, followed by the command's summary line. Include the run that showed the tests failing before the code existed and the run that showed them passing after. Then name the files you changed, and any file outside the slice's expected set with the reason. End with a `Skipped:` line naming what you did not do and a `Not checked:` line naming what you did not verify; write `nothing` when there is nothing. Each of these lines starts at the beginning of its line, with no list marker, bold or backticks.
 
-1. One line per command you ran, in the form `ran: <command> → exit <code>`, followed by the command's summary line. Name the run that showed the tests failing before the code existed, and the run that showed them passing after.
-2. The files you changed, one per line.
-3. Any file outside the slice's expected set, with the reason.
-4. A `Skipped:` line naming what you did not do, or `Skipped: nothing`.
-5. A `Not checked:` line naming what you did not verify, or `Not checked: nothing`.
+A reply in this shape passes the check:
 
-The reply ends with the `Skipped:` and `Not checked:` lines. A reply without a `ran:` line, a `Skipped:` line or a `Not checked:` line is refused when you stop.
+```
+ran: node --test test/parser.test.js → exit 1
+# fail 2
+ran: node --test test/parser.test.js → exit 0
+# pass 2
+
+Changed: src/parser.js, test/parser.test.js
+Outside the expected set: none
+
+Skipped: nothing
+Not checked: the parser on files over 1 MB
+```
+
+A reply without a `ran:` line, a `Skipped:` line or a `Not checked:` line is refused when you stop.

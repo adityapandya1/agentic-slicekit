@@ -50,12 +50,12 @@ Enforced by: `slicekit hook pre-edit`.
 
 SHALL record the agent in the session's started-agents record (the subagent marker; once per agent,
 since SubagentStart also fires when an agent resumes) and inject the role's brief from
-`slicekit instructions <role>`, the writing rules, and the sentence "You never run git; report and
-the command commits."
+`slicekit instructions <role> --summary`, the writing rules, and the sentence "You never run a git
+command that commits, pushes or moves a branch; report and the command commits."
 
 Scenario: GIVEN the build command spawns the developer WHEN SubagentStart fires THEN the developer
-is in the started-agents record and the injected context ends with "You never run git; report and
-the command commits."
+is in the started-agents record and the injected context ends with "You never run a git command
+that commits, pushes or moves a branch; report and the command commits."
 
 Cites: D-05, D-19.
 

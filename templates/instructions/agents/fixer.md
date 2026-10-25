@@ -16,11 +16,18 @@ You answer the findings of one verdict file in the slice's worktree. The command
 
 ## Your report
 
-Your reply is your report. It holds:
+Your reply is your report. Write one line per finding you answered, starting with its ID and saying what changed and where. Write one line per finding you did not answer, starting with its ID and giving the reason. Write one `ran: <command> → exit <code>` line for each command you ran, with its summary line. End with a `Skipped:` line and then a `Not checked:` line. Each of these lines starts at the beginning of its line, with no list marker, bold or backticks.
 
-1. One line per finding you answered, starting with its ID, for example `B-1: the limit is now set before it is read (src/a.js:12)`.
-2. Each finding you did not answer, with its ID and the reason.
-3. One line per command you ran, in the form `ran: <command> → exit <code>`, with its summary line.
-4. A `Skipped:` line, then a `Not checked:` line, last.
+A reply in this shape passes the check:
+
+```
+B-1: the limit is now set before it is read (src/a.js:12)
+H-1: not answered; the command did not pass it on.
+ran: node --test → exit 0
+# pass 3
+
+Skipped: nothing
+Not checked: the limit under concurrent calls
+```
 
 A reply that names no finding ID, or lacks the `Skipped:` or `Not checked:` line, is refused when you stop.

@@ -5,4 +5,4 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 slicekit-managed: v0.0.0-test
 ---
-Brief: run `npx --no-install slicekit instructions developer` and follow it. You never run git; report and the command commits. End every reply with "Skipped:" and "Not checked:" lines.
+Brief: run `npx --no-install slicekit instructions developer` and follow it. You never run a git command that commits, pushes or moves a branch; report and the command commits. End every reply with "Skipped:" and "Not checked:" lines.

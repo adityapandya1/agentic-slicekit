@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { defaultConfig } from '../src/config.js';
 import { PROCEDURES, TEMPLATES, renderBrief } from '../src/instructions.js';
 import { briefProblems } from './helpers/brief-lint.js';
+import { shapeProblems } from '../src/hooks/shapes.js';
+import { NO_GIT } from '../src/hooks/subagent-start.js';
+import { parseVerdict, verdictProblems } from '../src/verdict.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 
 const ROLES = ['developer', 'reviewer', 'fixer', 'auditor', 'ops', 'designer'];
@@ -123,4 +126,67 @@ test('briefs » the lint names each problem', () => {
   ]);
   assert.deepEqual(briefProblems('Write tests.\n', { kind: 'command' }), [], 'a procedure needs no footer');
   assert.deepEqual(briefProblems('Run `{{cli}} x`.', { kind: 'command', commands: { x: { run() {} } }, banned: [] }), []);
+});
+
+// The first fenced block of a text, without its fence lines.
+const firstFence = (text) => {
+  const m = /^```[^\n]*\n([\s\S]*?)\n```$/m.exec(text);
+  assert.ok(m, 'a fenced example');
+  return m[1];
+};
+
+// The examples a brief shows pass the checks the stop hook runs on what the agent writes.
+test('briefs » each example in a brief passes the shape check it shows', () => {
+  const brief = (r) => read(path.join(TEMPLATES, 'agents', `${r}.md`));
+  assert.deepEqual(verdictProblems(parseVerdict(firstFence(brief('reviewer')), 'x.md')), []);
+  for (const role of ['developer', 'fixer']) {
+    assert.deepEqual(shapeProblems(role, firstFence(brief(role)), { root: '/nowhere' }), [], role);
+  }
+});
+
+test('briefs » each brief says the checked lines carry no list marker, bold or backticks', () => {
+  const sentence = 'Each of these lines starts at the beginning of its line, with no list marker, bold or backticks.';
+  for (const r of ROLES) {
+    const t = read(path.join(TEMPLATES, 'agents', `${r}.md`));
+    assert.ok(t.includes(sentence), r);
+    // The report section shows no checked line as a list item.
+    const report = t.slice(t.indexOf('## Your report'));
+    assert.doesNotMatch(report, /^\s*(?:[-*+]|\d+[.)])\s+.*(?:`ran:|`Skipped:`|`Not checked:`)/m, r);
+  }
+});
+
+test('briefs » the auditor marks each claim holds, drifted or unverifiable', () => {
+  const t = read(path.join(TEMPLATES, 'agents', 'auditor.md'));
+  for (const w of ['`holds`', '`drifted`', '`unverifiable`']) assert.ok(t.includes(w), w);
+});
+
+test('briefs » the reviewer brief gives one verdict rule per sentence', () => {
+  const t = read(path.join(TEMPLATES, 'agents', 'reviewer.md'));
+  assert.match(t, /^- `Verdict: BLOCK` when any blocker is open\.$/m);
+  assert.match(t, /^- `Verdict: CHANGES` when there is no blocker and at least one should-have\.$/m);
+  assert.match(t, /^- `Verdict: APPROVE` when there is no blocker and no should-have you want fixed\.$/m);
+});
+
+// The agent definitions: the no-git sentence names the git a subagent may not run, and every role
+// that writes a file holds the Write tool.
+test('briefs » the agent definitions carry the no-git sentence and the tools their role needs', () => {
+  assert.equal(NO_GIT, 'You never run a git command that commits, pushes or moves a branch; report and the command commits.');
+  for (const r of ROLES) {
+    const t = read(path.join(KIT, 'claude-code', 'agents', `${r}.md`));
+    assert.ok(t.includes(NO_GIT), r);
+    const tools = /^tools: (.*)$/m.exec(t)[1].split(',').map((s) => s.trim());
+    assert.ok(tools.includes('Write'), `${r}: ${tools}`);
+  }
+});
+
+test('briefs » the lint reads never per sentence and the footer from the report section', () => {
+  const footer = '\n\n## Your report\n\nEnd with a `Skipped:` line and a `Not checked:` line.\n';
+  const agent = (t) => briefProblems(`${t}${footer}`, { kind: 'agent' });
+  assert.deepEqual(agent('Never guess. Run `git push` after.'), ['brief tells an agent to run git: Never guess. Run `git push` after.']);
+  assert.deepEqual(agent('Run the tests. You never run `git push`.'), []);
+  // A mention of the labels outside the report section does not count as requiring them.
+  assert.deepEqual(briefProblems('Mention `Skipped:` and `Not checked:` here.\n\n## Your report\n\nA list.\n', { kind: 'agent' }), [
+    'brief does not require "Skipped:"',
+    'brief does not require "Not checked:"',
+  ]);
 });

@@ -12,10 +12,13 @@ export const REVIEW_WINDOW_MS = 30 * 60 * 1000;
 export const NO_OUTPUT = 'no output to check';
 export const NO_VERDICT = 'no verdict file in .slicekit/reviews/ from this run';
 
-const SKIPPED = /^\s*Skipped:/m;
-const NOT_CHECKED = /^\s*Not checked:/m;
+// Agents format replies: a checked label may follow a list marker (`- `, `4. `, `2) `) and open with
+// bold or a backtick (`**Skipped:** x`, `` `ran: npm test → exit 0` ``). Fenced lines never count.
+const LEAD = /^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:\*\*|`)?/.source;
+const SKIPPED = new RegExp(`${LEAD}Skipped:`, 'm');
+const NOT_CHECKED = new RegExp(`${LEAD}Not checked:`, 'm');
 // Agents type ASCII: `->` stands for `→`. pre-compact reads the last such line from the transcript.
-export const RAN = /^\s*ran: .+ (?:→|->) exit \d+/m;
+export const RAN = new RegExp(`${LEAD}ran:(?:\\*\\*)? .+ (?:→|->) exit \\d+`, 'm');
 const FINDING_ID = /\b[BH]-[1-9]\d*\b/;
 
 const VERDICT_NAME = /^(P\d+-S-\d+)[a-z]?-r\d+\.md$/;
