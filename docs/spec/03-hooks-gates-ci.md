@@ -36,8 +36,8 @@ Enforced by: `slicekit hook pre-bash`.
 SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
-an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or
-`.slicekit/journal.log` by anything other than the CLI. <!-- slicekit:pending P1/S-07 -->
+an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
+directory (`.slicekit/journal/<branch>.log`, REQ-3.8) by anything other than the CLI.
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
@@ -102,7 +102,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
-| journal | the hash chain in `journal.log` is broken |
+| journal | the hash chain in any `.slicekit/journal/<branch>.log` is broken |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 
 For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
@@ -121,15 +121,17 @@ Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
 ## REQ-3.8 SessionEnd — fail open: the journal
 
-SHALL append one line to `.slicekit/journal.log` in the form <!-- slicekit:example -->
-`<iso time> <actor> <slice or "-"> <stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
-The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is appended by the CLI only
+SHALL append one line to the current branch's file, `.slicekit/journal/<branch>.log` (`/` in the
+branch name becomes `__`), in the form <!-- slicekit:example -->
+`<iso time> actor=<actor> slice=<slice or "-"> stage=<stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
+There is one file per branch, each its own chain whose first line's `prev` is `genesis`, because two
+branches appending to one file would both chain from the same line and break it at merge (D-34). CI SHALL verify the chain. The file is appended by the CLI only
 (REQ-3.3). A broken chain is a check failure and a reviewer blocker; it is never auto-repaired.
 
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
-chain broken at line <n>".
+chain broken at line <n> of <file>".
 
-Cites: D-32, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-32, D-34, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 
