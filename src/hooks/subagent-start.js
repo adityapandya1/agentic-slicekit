@@ -1,6 +1,7 @@
 // subagent-start (REQ-3.4): records the agent in the session's started-agents record (once per agent:
 // SubagentStart fires on spawn and again on resume), which subagent-stop checks, and injects its role
-// brief, then the writing rules (once, even when `slicekit instructions` gave a brief holding them) and
+// brief in its short form, then the writing rules (once, though `slicekit instructions --summary` gives
+// a text holding them) and
 // the no-git rule. Fails open through io.js. pre-bash keeps git out of the subagent by the agent_id
 // Claude Code puts on every tool call made inside it, not by the record.
 import fs from 'node:fs';
@@ -38,16 +39,17 @@ function writingRules(root) {
   return { text: '', file: null };
 }
 
-// `slicekit instructions <role>` when that command exists (S-09) and succeeds, else the P1 placeholder.
-// -> {text, fromKit}: fromKit when the text came from the command, whose brief carries the writing
-// rules under `## Writing rules`.
+// `slicekit instructions <role> --summary` when that command exists (S-09) and succeeds, else the P1
+// placeholder. The summary is the role template, the writing rules, the slice's ids and the command
+// that prints the full brief. -> {text, fromKit}: fromKit when the text came from the command, whose
+// summary carries the writing rules under `## Writing rules`.
 async function roleBrief(role, root, env, commands) {
   const placeholder = { text: `Brief: role ${role}.`, fromKit: false };
   const cmd = Object.hasOwn(commands, 'instructions') ? commands.instructions : undefined;
   if (!cmd) return placeholder;
   let out = '';
   try {
-    const code = await cmd.run([role], { cwd: root, env, stdout: (s) => { out += s; }, stderr: () => {}, stdin: async () => '' });
+    const code = await cmd.run([role, '--summary'], { cwd: root, env, stdout: (s) => { out += s; }, stderr: () => {}, stdin: async () => '' });
     return code === 0 && out.trim() !== '' ? { text: out.trim(), fromKit: true } : placeholder;
   } catch {
     return placeholder;

@@ -8,6 +8,7 @@ import { handle, roleOf, BRIEF_MAX, NO_GIT } from '../../src/hooks/subagent-star
 import { agentsPath, hasAgent } from '../../src/hooks/subagent-marker.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
+import { COMMANDS } from '../../src/cli/index.js';
 
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
 const SESSION = 'sess-start-1';
@@ -135,7 +136,7 @@ test('subagent-start » uses `slicekit instructions <role>` when that command ex
       },
     };
     const t = text(await start(root, { agent_type: 'reviewer' }, { commands }));
-    assert.deepEqual(seen, [['reviewer']]);
+    assert.deepEqual(seen, [['reviewer', '--summary']]);
     assert.ok(t.startsWith('Role brief for reviewer.\n'), t);
     // A failing command falls back to the placeholder.
     const failing = { instructions: { run: async () => 1 } };
@@ -202,6 +203,28 @@ test('subagent-start » a long brief from instructions is cut and still ends wit
     assert.match(t, /\(brief truncated; full text in npx slicekit instructions developer\)/);
     assert.ok(t.indexOf('(brief truncated') < t.indexOf(rule), 'the rules follow the cut brief');
     assert.ok(t.endsWith(`\n${NO_GIT}`));
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12: the hook injects the summary form of the kit's own brief: the rules once, the no-git
+// sentence last, and a line naming the full brief.
+test('subagent-start » the kit brief is injected in its summary form with the rules once and the no-git rule last', async () => {
+  const kitCfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(kitCfg, null, 2)}\n` } });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    for (const role of ['developer', 'reviewer', 'fixer', 'auditor', 'ops']) {
+      const t = text(await start(root, { agent_type: role, agent_id: `a-${role}` }, { commands: COMMANDS, cfg: kitCfg }));
+      assert.ok(t.startsWith(`# Brief: ${role}\n`), t.slice(0, 200));
+      assert.equal(t.split('\n').filter((l) => l === rule).length, 1, t);
+      assert.match(t, /^No active slice\.$/m);
+      assert.match(t, new RegExp(`^Full brief: npx slicekit instructions ${role}$`, 'm'));
+      assert.doesNotMatch(t, /brief truncated/);
+      assert.ok(t.length < BRIEF_MAX, String(t.length));
+      assert.ok(t.endsWith(`\n${NO_GIT}`), t.slice(-200));
+    }
   } finally {
     cleanup();
   }

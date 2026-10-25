@@ -7,7 +7,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { defaultConfig } from '../src/config.js';
 import { main } from '../src/cli/index.js';
-import { InstructionsError, PROCEDURES, briefSlice, renderBrief, renderProcedure } from '../src/instructions.js';
+import { InstructionsError, PROCEDURES, SUMMARY_MAX, briefSlice, renderBrief, renderProcedure, renderSummary } from '../src/instructions.js';
 import { prose } from '../src/markdown.js';
 import { reqBlocks } from '../src/stage.js';
 import { makeRepo } from './helpers/tmp-repo.js';
@@ -292,15 +292,27 @@ test('instructions » no active slice, an unknown slice, the project writing rul
 test('instructions » the CLI prints a brief for a slice given as an argument', async () => {
   const { root, cleanup } = project('backend');
   try {
-    // The kit's agent templates arrive in Task 3; until then a missing template is a refusal, not a crash.
     const r = await cli(root, ['instructions', 'developer', 'P1/S-01', '--worktree', 'wt']);
-    if (r.code === 0) {
-      assert.match(r.stdout, /^## Slice P1\/S-01$/m);
-      assert.ok(r.stdout.includes(`Work only under ${path.resolve(root, 'wt').split(path.sep).join('/')}; use absolute paths.`));
-    } else {
-      assert.equal(r.code, 1, r.stderr);
-      assert.match(r.stderr, /^slicekit: /);
-    }
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, '');
+    assert.ok(r.stdout.startsWith('# Brief: developer\n'), r.stdout);
+    const tops = [...prose(r.stdout)].map(([l]) => l).filter((l) => /^## /.test(l));
+    assert.deepEqual(tops, [
+      '## You write',
+      '## You never',
+      '## Your report',
+      '## Writing rules',
+      '## Requirements',
+      '## Decisions',
+      '## Slice P1/S-01',
+      '## Team commands',
+      '## Where',
+      '## Tasks',
+    ]);
+    assert.ok(r.stdout.includes('- D-01 (Decision): Which runtime? → Node'), r.stdout);
+    assert.match(r.stdout, /^#### REQ-1\.1 The first requirement$/m);
+    assert.match(r.stdout, /^- test: npm test$/m);
+    assert.ok(r.stdout.includes(`Work only under ${path.resolve(root, 'wt').split(path.sep).join('/')}; use absolute paths.`));
     assert.equal((await cli(root, ['instructions', 'developer', 'nope'])).code, 2);
   } finally {
     cleanup();
@@ -341,6 +353,58 @@ test('instructions » usage errors name their reason; the role is checked before
     const missing = await cli(root, ['instructions', 'developer', 'P1/S-07']);
     assert.equal(missing.code, 2);
     assert.equal(missing.stderr, 'slicekit: unknown slice P1/S-07\n');
+  } finally {
+    cleanup();
+  }
+});
+
+// The short form subagent-start injects: the role template, the rules, the slice's ids, and where the
+// full brief is.
+test('instructions » --summary prints the template, the rules, the slice ids and the full brief command', async () => {
+  const { root, cfg, cleanup } = project('backend');
+  const dir = templates();
+  try {
+    const t = renderSummary(root, cfg, 'reviewer', 'P1/S-01', { templatesDir: dir });
+    assert.ok(t.startsWith('# Brief: reviewer\n'), t);
+    assert.match(t, /Run `npx slicekit check`\./);
+    assert.match(t, /^## Writing rules$/m);
+    assert.equal(t.split('\n').filter((l) => l === RULE).length, 1, t);
+    const tail = t.split('\n').slice(-3);
+    assert.deepEqual(tail, ['Requirements: REQ-1.1, REQ-9.9', 'Decisions: D-01, D-77', 'Full brief: npx slicekit instructions reviewer P1/S-01']);
+    assert.doesNotMatch(t, /The tool SHALL work|## Tasks|## Team commands/, 'the long parts stay in the full brief');
+    const none = renderSummary(root, cfg, 'reviewer', null, { templatesDir: dir });
+    assert.deepEqual(none.split('\n').slice(-2), ['No active slice.', 'Full brief: npx slicekit instructions reviewer']);
+    assert.equal(codeOf(() => renderSummary(root, cfg, 'reviewer', 'P1/S-07', { templatesDir: dir })).code, 2);
+    const fromBranch = renderSummary(root, cfg, 'reviewer', 'P1/S-07', { templatesDir: dir, fromBranch: true });
+    assert.ok(fromBranch.endsWith('No active slice. (branch names P1/S-07, which has no slice file)\nFull brief: npx slicekit instructions reviewer'), fromBranch);
+    // The CLI form.
+    const r = await cli(root, ['instructions', 'developer', 'P1/S-01', '--summary']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.startsWith('# Brief: developer\n'), r.stdout);
+    assert.ok(r.stdout.endsWith('Full brief: npx slicekit instructions developer P1/S-01\n'), r.stdout);
+    const both = await cli(root, ['instructions', 'developer', '--summary', '--worktree', 'wt']);
+    assert.equal(both.code, 2);
+    assert.match(both.stderr, /^slicekit: --summary takes no --worktree\n/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('instructions » a summary stays under its cap for a slice naming hundreds of ids', () => {
+  const { root, cfg, cleanup } = project('backend');
+  try {
+    const reqs = Array.from({ length: 600 }, (_, i) => `REQ-1.${i + 1}`);
+    const ds = Array.from({ length: 600 }, (_, i) => `D-${i + 1}`);
+    const file = path.join(root, 'docs/phases/P1-x/S-01-first.md');
+    fs.writeFileSync(file, SLICE.replace('[REQ-1.1, REQ-9.9]', `[${reqs.join(', ')}]`).replace('[D-01, D-77]', `[${ds.join(', ')}]`));
+    assert.ok(SUMMARY_MAX <= 6000, String(SUMMARY_MAX));
+    for (const role of ROLES.filter((r) => r !== 'designer')) {
+      const t = renderSummary(root, cfg, role, 'P1/S-01');
+      assert.ok(t.length <= SUMMARY_MAX, `${role}: ${t.length}`);
+      assert.match(t, /^Requirements: REQ-1\.1, REQ-1\.2, .*, and \d+ more$/m);
+      assert.match(t, /^Decisions: D-1, D-2, .*, and \d+ more$/m);
+      assert.ok(t.endsWith(`Full brief: npx slicekit instructions ${role} P1/S-01`), t.slice(-100));
+    }
   } finally {
     cleanup();
   }

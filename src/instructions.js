@@ -165,16 +165,23 @@ export function checkRole(cfg, role) {
   if (role === 'designer' && cfg.shape !== 'fullstack') throw new InstructionsError(2, `designer is not installed for shape ${cfg.shape}`);
 }
 
-// The whole brief of `role` for `sliceId` (null: no active slice). The essentials come first and the
-// slice's Tasks section last, so a reader that cuts the text from its end loses the least. With
-// `worktree` it names where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2).
-// `fromBranch`: the id came from the branch, so a missing slice file is no active slice, not an error.
-export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES, worktree, fromBranch = false } = {}) {
+// The slice file of `sliceId` (null: none) and the role's template with `{{cli}}` filled in, after
+// the role and the slice are checked.
+function briefHead(root, cfg, role, sliceId, templatesDir, fromBranch) {
   checkRole(cfg, role);
   const slice = sliceId ? sliceFile(root, cfg, sliceId) : null;
   if (sliceId && !slice && !fromBranch) throw new InstructionsError(2, `unknown slice ${sliceId}`);
   const file = path.join(templatesDir, 'agents', `${role}.md`);
   const head = fill(template(file, `the ${role} brief is not built in this version: ${posix(file)} is missing`), { cli: cfg.cli });
+  return { slice, head };
+}
+
+// The whole brief of `role` for `sliceId` (null: no active slice). The essentials come first and the
+// slice's Tasks section last, so a reader that cuts the text from its end loses the least. With
+// `worktree` it names where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2).
+// `fromBranch`: the id came from the branch, so a missing slice file is no active slice, not an error.
+export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES, worktree, fromBranch = false } = {}) {
+  const { slice, head } = briefHead(root, cfg, role, sliceId, templatesDir, fromBranch);
   const none = sliceId && !slice ? `No active slice. (branch names ${sliceId}, which has no slice file)` : 'No active slice.';
   const parts = [head.trim(), `## Writing rules\n\n${writingRules(root)}`.trim()];
   parts.push(`## Requirements\n\n${slice ? requirements(root, cfg, asList(slice.data.requirements)) : none}`);
@@ -185,6 +192,37 @@ export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES
   const tasks = slice ? sliceSections(slice.body).get('tasks') : undefined;
   if (tasks) parts.push(`## Tasks\n\n${demote(tasks.text)}`.trim());
   return parts.join('\n\n');
+}
+
+// The cap on a summary with the kit's writing rules, and on each of its two id lines: the hook that
+// injects a summary has 8000 characters for it, its own copy of the rules and the no-git sentence.
+export const SUMMARY_MAX = 6000;
+const ID_LINE_MAX = 600;
+
+// `<label>: a, b, c`, or as many ids as fit in ID_LINE_MAX followed by `, and <n> more`.
+function idLine(label, ids) {
+  const full = `${label}: ${ids.length > 0 ? ids.join(', ') : 'none'}`;
+  if (full.length <= ID_LINE_MAX) return full;
+  const kept = [];
+  for (const id of ids) {
+    const next = `${label}: ${[...kept, id].join(', ')}, and ${ids.length - kept.length - 1} more`;
+    if (next.length > ID_LINE_MAX) break;
+    kept.push(id);
+  }
+  return `${label}: ${kept.join(', ')}, and ${ids.length - kept.length} more`;
+}
+
+// The short form of a brief, for the SubagentStart hook: the role template, the writing rules, the
+// slice's REQ and D ids, and last the command that prints the full brief. The build procedure gives
+// the developer the full brief in its prompt; every other agent reads it with that command.
+export function renderSummary(root, cfg, role, sliceId, { templatesDir = TEMPLATES, fromBranch = false } = {}) {
+  const { slice, head } = briefHead(root, cfg, role, sliceId, templatesDir, fromBranch);
+  const ids = slice
+    ? [idLine('Requirements', asList(slice.data.requirements)), idLine('Decisions', asList(slice.data.decisions))]
+    : [sliceId ? `No active slice. (branch names ${sliceId}, which has no slice file)` : 'No active slice.'];
+  const full = `Full brief: ${cfg.cli} instructions ${role}${slice ? ` ${sliceId}` : ''}`;
+  const heading = `## Slice${slice ? ` ${sliceId}` : ''}`;
+  return [head.trim(), `## Writing rules\n\n${writingRules(root)}`.trim(), `${heading}\n\n${[...ids, full].join('\n')}`].join('\n\n');
 }
 
 // The procedure of `/slicekit <name>` with `{{cli}}` and `{{args}}` filled in.

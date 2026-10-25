@@ -1,9 +1,9 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
-import { InstructionsError, briefSlice, checkRole, renderBrief, renderProcedure } from '../instructions.js';
+import { InstructionsError, briefSlice, checkRole, renderBrief, renderProcedure, renderSummary } from '../instructions.js';
 
 const USAGE =
-  'instructions <role> [P<n>/S-<nn>] [--worktree <path>]\n' +
+  'instructions <role> [P<n>/S-<nn>] [--worktree <path> | --summary]\n' +
   '  slicekit instructions --command <name> [args...]';
 
 const usage = (io, why) => {
@@ -11,7 +11,8 @@ const usage = (io, why) => {
   return 2;
 };
 
-// Prints an agent's brief or a command's procedure (REQ-2.12). Everything after `--command <name>`
+// Prints an agent's brief, its short form (`--summary`, which subagent-start injects) or a command's
+// procedure (REQ-2.12). Everything after `--command <name>`
 // goes to the procedure unparsed. Exit 1 when the template is not built, 2 on usage or an unknown name.
 async function run(args, io) {
   let produce;
@@ -23,18 +24,23 @@ async function run(args, io) {
     let values;
     let positionals;
     try {
-      ({ values, positionals } = parseArgs({ args, options: { worktree: { type: 'string' } }, allowPositionals: true }));
+      ({ values, positionals } = parseArgs({ args, options: { worktree: { type: 'string' }, summary: { type: 'boolean' } }, allowPositionals: true }));
     } catch (e) {
       return usage(io, e.message);
     }
     if (positionals.length === 0) return usage(io, 'missing role');
     if (positionals.length > 2) return usage(io, `unexpected argument ${positionals[2]}`);
     if (values.worktree !== undefined && values.worktree.trim() === '') return usage(io, '--worktree needs a path');
+    if (values.summary && values.worktree !== undefined) return usage(io, '--summary takes no --worktree');
     const [role, slice] = positionals;
     // The role is checked before the slice is resolved, so a bad role is the error a caller sees.
     produce = (cfg) => {
       checkRole(cfg, role);
-      return renderBrief(io.cwd, cfg, role, briefSlice(io.cwd, slice), { worktree: values.worktree, fromBranch: slice === undefined });
+      const id = briefSlice(io.cwd, slice);
+      const fromBranch = slice === undefined;
+      return values.summary
+        ? renderSummary(io.cwd, cfg, role, id, { fromBranch })
+        : renderBrief(io.cwd, cfg, role, id, { worktree: values.worktree, fromBranch });
     };
   }
   try {
