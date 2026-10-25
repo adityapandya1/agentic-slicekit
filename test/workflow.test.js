@@ -362,3 +362,28 @@ test('the gate reports a workflow that differs from the generator, after check (
   assert.notEqual(check, -1, gate);
   assert.ok(drift > check, gate);
 });
+
+test('every job has a timeout: ci.timeoutMinutes, and 10 for ready-label and sync (I5)', () => {
+  const yml = renderWorkflow(exampleConfig(), loadPins());
+  for (const id of ['gate', 'cmd-test', 'cmd-lint', 'obs-1']) assert.ok(jobBlock(yml, id).includes('    timeout-minutes: 30\n'), id);
+  for (const id of ['ready-label', 'sync']) assert.ok(jobBlock(yml, id).includes('    timeout-minutes: 10\n'), id);
+  const cfg = exampleConfig();
+  cfg.ci.timeoutMinutes = 45;
+  cfg.ci.matrix = true;
+  const longer = renderWorkflow(cfg, loadPins());
+  for (const id of ['gate', 'cmd-test', 'cmd-lint', 'obs-1']) assert.ok(jobBlock(longer, id).includes('    timeout-minutes: 45\n'), id);
+  for (const id of ['ready-label', 'sync']) assert.ok(jobBlock(longer, id).includes('    timeout-minutes: 10\n'), id);
+  for (const id of jobIds(longer)) assert.equal(jobBlock(longer, id).match(/timeout-minutes/g).length, 1, id);
+  const { timeoutMinutes, ...absent } = exampleConfig().ci;
+  assert.ok(jobBlock(renderWorkflow({ ...exampleConfig(), ci: absent }, loadPins()), 'gate').includes('    timeout-minutes: 30\n'), 'absent reads as 30');
+});
+
+test('config: ci.timeoutMinutes is an integer from 1 to 360 (I5)', () => {
+  const cfg = exampleConfig();
+  assert.equal(cfg.ci.timeoutMinutes, 30);
+  const errs = (timeoutMinutes) => validateConfig({ ...cfg, ci: { ...cfg.ci, timeoutMinutes } });
+  for (const ok of [1, 30, 360]) assert.deepEqual(errs(ok), [], String(ok));
+  for (const bad of [0, 361, 1.5, '30', null]) {
+    assert.ok(errs(bad).includes('ci.timeoutMinutes: must be an integer from 1 to 360'), String(bad));
+  }
+});

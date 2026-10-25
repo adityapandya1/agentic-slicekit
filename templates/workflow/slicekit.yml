@@ -21,6 +21,7 @@ defaults:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    timeout-minutes: {{timeoutMinutes}}
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
@@ -54,6 +55,7 @@ jobs:
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     needs: [{{readyNeeds}}]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: write
@@ -78,6 +80,7 @@ jobs:
   sync:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: read

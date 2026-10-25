@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GITHUB_EXPRESSION, LINE_SEPARATOR } from './config.js';
+import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR } from './config.js';
 import { readText } from './fs.js';
 import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
@@ -24,7 +24,7 @@ const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
 // Filled as written: values the kit computes or validates to a safe shape.
 const VALUE_KEYS = [
-  'defaultBranchItem', 'readyNeeds', 'syncPaths',
+  'defaultBranchItem', 'readyNeeds', 'syncPaths', 'timeoutMinutes',
   ...Object.keys(ACTIONS).flatMap((k) => [`${k}Sha`, `${k}Tag`]),
 ];
 // The team's own text: a mapping value holding one is filled, then quoted as a whole.
@@ -105,15 +105,15 @@ function runStep(name, run, env) {
   return lines;
 }
 
-function commandJob(name, command, v, matrix) {
+function commandJob(name, command, v, matrix, timeout) {
   const head = matrix
     ? ['    strategy:', '      fail-fast: false', '      matrix:', `        os: [${MATRIX_OS.join(', ')}]`, '    runs-on: ${{ matrix.os }}']
     : ['    runs-on: ubuntu-latest'];
-  return ['', `  cmd-${name}:`, ...head, '    steps:', ...setupSteps(v), ...runStep(name, command)];
+  return ['', `  cmd-${name}:`, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...runStep(name, command)];
 }
 
-function observabilityJob(n, step, v) {
-  return ['', `  obs-${n}:`, `    name: ${yamlScalar(step.name, 4)}`, '    runs-on: ubuntu-latest', '    steps:', ...setupSteps(v), ...runStep(step.name, step.run, step.env)];
+function observabilityJob(n, step, v, timeout) {
+  return ['', `  obs-${n}:`, `    name: ${yamlScalar(step.name, 4)}`, '    runs-on: ubuntu-latest', `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...runStep(step.name, step.run, step.env)];
 }
 
 // One pass over the value, so text inside cli is never itself read as a placeholder.
@@ -135,20 +135,23 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   if (/[\r\n]/.test(cfg.cli)) throw new Error('cli: must be one line to render the workflow');
   const v = checkPins(pins);
   const matrix = cfg.ci?.matrix === true;
+  const timeout = cfg.ci?.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES;
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 360) throw new Error('ci.timeoutMinutes: must be an integer from 1 to 360');
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
   const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
   if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
   const blocks = {
     gateExtraSteps: matrix ? NO_DEPENDENCIES : [],
-    commandJobs: commands.flatMap((name) => commandJob(name, cfg.commands[name], v, matrix && name === 'test')),
-    observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v)),
+    commandJobs: commands.flatMap((name) => commandJob(name, cfg.commands[name], v, matrix && name === 'test', timeout)),
+    observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v, timeout)),
   };
   const vars = {
     ...v,
     defaultBranchItem: yamlScalar(cfg.defaultBranch),
     readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`), ...steps.map((_s, i) => `obs-${i + 1}`)].join(', '),
     syncPaths: syncPaths(cfg),
+    timeoutMinutes: String(timeout),
   };
   const free = { cli: cfg.cli, defaultBranch: cfg.defaultBranch };
   const out = [];

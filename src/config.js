@@ -51,12 +51,14 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, c
     freezeTests: true,
     style: { banned: seedBanned() },
     destructive: [...DESTRUCTIVE],
-    ci: { matrix: false, observabilitySteps: [], botActors: [...DEFAULT_BOT_ACTORS] },
+    ci: { matrix: false, observabilitySteps: [], botActors: [...DEFAULT_BOT_ACTORS], timeoutMinutes: DEFAULT_TIMEOUT_MINUTES },
   };
 }
 
 // D-37: pull requests these actors open skip ci-title and ci-body.
 export const DEFAULT_BOT_ACTORS = Object.freeze(['dependabot[bot]', 'renovate[bot]']);
+// The timeout of each generated gate, command and observability job, in minutes.
+export const DEFAULT_TIMEOUT_MINUTES = 30;
 
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringArray = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
@@ -88,7 +90,8 @@ function workflowTextErrors(at, value, { expression = true } = {}) {
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
-// ci.matrix is optional (absent reads as false), ci.botActors too (absent reads as the default list); each observability step renders as one CI job (REQ-3.11).
+// ci.matrix is optional (absent reads as false), ci.botActors and ci.timeoutMinutes too (absent
+// reads as the default); each observability step renders as one CI job (REQ-3.11).
 function ciErrors(ci) {
   if (!isObject(ci)) return ['ci: must be an object'];
   const errors = [];
@@ -96,6 +99,8 @@ function ciErrors(ci) {
   if (ci.botActors !== undefined && !(isStringArray(ci.botActors) && ci.botActors.every(nonEmpty))) {
     errors.push('ci.botActors: must be an array of non-empty strings');
   }
+  const t = ci.timeoutMinutes;
+  if (t !== undefined && !(Number.isInteger(t) && t >= 1 && t <= 360)) errors.push('ci.timeoutMinutes: must be an integer from 1 to 360');
   if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
   ci.observabilitySteps.forEach((step, i) => {
     const at = `ci.observabilitySteps[${i}]`;
