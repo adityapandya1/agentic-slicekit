@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { assertDate, assertSha } from '../../evidence.js';
 import { GitHostError, GitHostNotFound } from './errors.js';
-import { assertLabel, assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import { assertLabel, assertLabelColor, assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
 
 // C-1 for GitHub through the `gh` CLI. This file owns only the spawn; the JSON mapping is gh-json.js.
 
@@ -64,6 +64,13 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertPrNumber(n);
       assertLabel(name);
       gh(exec, ['pr', 'edit', String(n), present ? '--add-label' : '--remove-label', name], { env, cwd: root });
+    },
+    // Creates the label, or with --force updates its colour and description: safe to run every time.
+    ensureLabel(name, { color, description }) {
+      assertLabel(name);
+      assertLabelColor(color);
+      assertLabel(description);
+      gh(exec, ['label', 'create', name, '--color', color, '--description', description, '--force'], { env, cwd: root });
     },
   };
 }

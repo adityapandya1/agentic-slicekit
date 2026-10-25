@@ -346,3 +346,11 @@ test('init writes the workflow when absent and never overwrites one (REQ-3.11)',
     assert.ok(again.warnings.some((w) => w.includes(WORKFLOW_PATH) && w.includes('slicekit workflow')), again.warnings.join('\n'));
   });
 });
+
+// Final fix wave (whole-branch review of 71e9ae0).
+
+
+test('ready-label may create the label: issues write as well as pull requests (I2)', () => {
+  const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
+  assert.ok(ready.includes('    permissions:\n      contents: read\n      issues: write\n      pull-requests: write\n'), ready);
+});

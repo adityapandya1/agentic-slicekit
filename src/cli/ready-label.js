@@ -10,10 +10,13 @@ import { kitPaths } from '../paths.js';
 import { EXEMPT_TITLE, readCiEvent } from '../check/ci-event.js';
 import { titleSlice } from '../check/rules/ci-title.js';
 import { readSlice } from '../state/index.js';
-import { READY_LABEL, decideReady } from '../ready-label.js';
+import { READY_LABEL, READY_LABEL_COLOR, READY_LABEL_DESCRIPTION, decideReady } from '../ready-label.js';
 import { getHost } from '../adapters/githost/index.js';
 
 const USAGE = 'ready-label';
+
+// A workflow command's message: GitHub reads %, CR and LF as escapes, so they are written escaped.
+const annotation = (text) => text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 
 const tryConfig = (root) => {
   try {
@@ -77,11 +80,34 @@ async function run(args, io) {
     io.stdout('ready-label: the event carries no pull request number; label left unchanged\n');
     return 0;
   }
+  // A label call that fails is reported on stderr and as a GitHub warning annotation on stdout.
+  const warn = (what, e) => {
+    const message = `could not ${what} the label: ${e.message}`;
+    io.stderr(`ready-label: ${message}\n`);
+    io.stdout(`::warning title=slicekit ready-label::${annotation(message)}\n`);
+  };
+  const action = d.ready ? 'add' : 'remove';
+  let host;
   try {
-    getHost(tryConfig(root), env, root).setLabel(pr.number, READY_LABEL, d.ready);
+    host = getHost(tryConfig(root), env, root);
+  } catch (e) {
+    warn(action, e);
+    return 0;
+  }
+  // The repository may not have the label yet: create it first (idempotent). Adding is tried even
+  // when that fails, since the label may already be there.
+  if (d.ready) {
+    try {
+      host.ensureLabel(READY_LABEL, { color: READY_LABEL_COLOR, description: READY_LABEL_DESCRIPTION });
+    } catch (e) {
+      warn('create', e);
+    }
+  }
+  try {
+    host.setLabel(pr.number, READY_LABEL, d.ready);
     io.stdout(d.ready ? `ready-label: added label ${READY_LABEL} to #${pr.number}\n` : `ready-label: removed label ${READY_LABEL} from #${pr.number}\n`);
   } catch (e) {
-    io.stderr(`ready-label: could not ${d.ready ? 'add' : 'remove'} the label: ${e.message}\n`);
+    warn(action, e);
   }
   return 0;
 }

@@ -6,6 +6,9 @@
 import { independentProblem, verdictsOnHead } from './state/transitions.js';
 
 export const READY_LABEL = 'ready';
+// What the label looks like when the CLI has to create it (I2): GitHub green, and who set it.
+export const READY_LABEL_COLOR = '0e8a16';
+export const READY_LABEL_DESCRIPTION = 'slicekit: reviewed and green';
 
 // The states in which a pull request is open and under review.
 const REVIEW_STATES = ['draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready'];

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
 import { TransitionError, readSlice, setState, writeSlice } from '../src/state/index.js';
-import { decideReady } from '../src/ready-label.js';
+import { READY_LABEL_COLOR, READY_LABEL_DESCRIPTION, decideReady } from '../src/ready-label.js';
 import { githubHost } from '../src/adapters/githost/github.js';
 import { fixtureHost } from '../src/adapters/githost/fixture.js';
 import { GitHostError } from '../src/adapters/githost/errors.js';
@@ -203,7 +203,7 @@ test('ready-label: grants the label when the decision is ready, removes it when 
     assert.equal(r.code, 0);
     assert.match(r.stdout, new RegExp(`${ids[0]} ready`));
     assert.match(r.stdout, /added label ready to #9/);
-    assert.deepEqual(calls(), [{ number: 9, name: 'ready', present: true }]);
+    assert.deepEqual(calls(), [CREATE, { number: 9, name: 'ready', present: true }]);
 
     park(root, cfg, ids[0], [verdict(1, 0, { independent: true }), verdict(2, 1, { independent: true })]);
     r = run(event(`[${ids[0]}] Fixture`, { labels: ['ready'] }), { GH_TOKEN: 't' });
@@ -273,6 +273,81 @@ test('ready-label: a host error is reported and still exits 0', () => {
     const r = run(event(`[${ids[0]}] Fixture`), { GH_TOKEN: 't' });
     assert.equal(r.code, 0);
     assert.match(r.stderr, /'ready' not found/);
+    // I2: a GitHub annotation on stdout, so the failure shows on the run's summary page.
+    assert.match(r.stdout, /^::warning title=slicekit ready-label::could not add the label: gh pr edit failed: could not add label: 'ready' not found$/m);
+  });
+});
+
+const CREATE = { create: 'ready', color: '0e8a16', description: 'slicekit: reviewed and green' };
+
+test('the ready label is created green with a fixed description (I2)', () => {
+  assert.equal(READY_LABEL_COLOR, '0e8a16');
+  assert.equal(READY_LABEL_DESCRIPTION, 'slicekit: reviewed and green');
+});
+
+test('githubHost.ensureLabel runs gh label create --force', () => {
+  const calls = [];
+  const host = githubHost({}, '/the/project', (cmd, args, opts) => {
+    calls.push({ cmd, args, cwd: opts.cwd });
+    return '';
+  });
+  host.ensureLabel('ready', { color: '0e8a16', description: 'slicekit: reviewed and green' });
+  assert.deepEqual(calls, [
+    {
+      cmd: 'gh',
+      args: ['label', 'create', 'ready', '--color', '0e8a16', '--description', 'slicekit: reviewed and green', '--force'],
+      cwd: '/the/project',
+    },
+  ]);
+  assert.throws(() => host.ensureLabel('', { color: '0e8a16', description: 'd' }), /label/);
+  assert.throws(() => host.ensureLabel('ready', { color: 'green', description: 'd' }), /color/);
+  const failing = githubHost({}, '/p', () => {
+    const e = new Error('exit 1');
+    e.status = 1;
+    e.stderr = 'HTTP 403: Resource not accessible by integration';
+    throw e;
+  });
+  assert.throws(() => failing.ensureLabel('ready', { color: '0e8a16', description: 'd' }), (e) => e instanceof GitHostError && /gh label create failed: HTTP 403/.test(e.message));
+});
+
+test('fixtureHost.ensureLabel records the call, or refuses as gh would', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-labels-'));
+  try {
+    const host = fixtureHost(dir);
+    host.ensureLabel('ready', { color: '0e8a16', description: 'slicekit: reviewed and green' });
+    assert.deepEqual(readCalls(dir), [CREATE]);
+    fs.writeFileSync(path.join(dir, 'label-create-error.txt'), 'HTTP 403');
+    assert.throws(() => host.ensureLabel('ready', { color: '0e8a16', description: 'd' }), (e) => e instanceof GitHostError && /gh label create failed: HTTP 403/.test(e.message));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ready-label: a failed label create is a warning, and adding is still tried (I2)', () => {
+  withCli(({ root, cfg, ids, event, run, calls, hostDir }) => {
+    park(root, cfg, ids[0], [verdict(1, 0, { independent: true })]);
+    fs.writeFileSync(path.join(hostDir, 'label-create-error.txt'), 'HTTP 403: Resource not accessible by integration');
+    const r = run(event(`[${ids[0]}] Fixture`), { GH_TOKEN: 't' });
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /^::warning title=slicekit ready-label::could not create the label: gh label create failed: HTTP 403: Resource not accessible by integration$/m);
+    assert.deepEqual(calls(), [{ number: 9, name: 'ready', present: true }]);
+  });
+});
+
+test('ready-label: removing the label creates nothing', () => {
+  withCli(({ root, cfg, ids, event, run, calls }) => {
+    park(root, cfg, ids[0], [verdict(1, 2, { independent: true })]);
+    run(event(`[${ids[0]}] Fixture`, { labels: ['ready'] }), { GH_TOKEN: 't' });
+    assert.deepEqual(calls(), [{ number: 9, name: 'ready', present: false }]);
+  });
+});
+
+test('ready-label: a warning annotation escapes what would end or break it', () => {
+  withCli(({ root, cfg, ids, event, run, hostDir }) => {
+    park(root, cfg, ids[0], [verdict(1, 0, { independent: true })]);
+    fs.writeFileSync(path.join(hostDir, 'label-error.txt'), '100% wrong\r\nnext');
+    const r = run(event(`[${ids[0]}] Fixture`), { GH_TOKEN: 't' });
+    assert.match(r.stdout, /^::warning title=slicekit ready-label::could not add the label: gh pr edit failed: 100%25 wrong%0D%0Anext$/m);
   });
 });
 
