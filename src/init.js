@@ -12,10 +12,15 @@ import { readSettings } from './render/settings.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
-// Each ignore rule init owns, with every spelling of it that already counts as present.
+// Each ignore rule init owns, with every spelling of it that already counts as present. Missing rules
+// are appended at the end, so the journal un-ignores come after any `*.log` rule and win (later rules
+// win in git): journal files are committed, their locks are not.
 const IGNORE_RULES = [
   { rule: '.slicekit/graph/', forms: new Set(['.slicekit/graph/', '/.slicekit/graph/', '.slicekit/graph', '/.slicekit/graph']) },
   { rule: '.slicekit/.subagent-*', forms: new Set(['.slicekit/.subagent-*', '/.slicekit/.subagent-*']) },
+  { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
+  { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
+  { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
 const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];

@@ -200,7 +200,9 @@ test('cli: --docs is normalised to forward slashes without a trailing slash', ()
 });
 
 test('writes gitignore rule once', () => {
-  const rules = '.slicekit/graph/\n.slicekit/.subagent-*\n';
+  const JOURNAL = '!.slicekit/journal/\n!.slicekit/journal/*.log\n.slicekit/journal/*.lock\n';
+  const ROOTED = '!/.slicekit/journal/\n!/.slicekit/journal/*.log\n/.slicekit/journal/*.lock\n';
+  const rules = `.slicekit/graph/\n.slicekit/.subagent-*\n${JOURNAL}`;
   withRepo((root) => {
     const opts = { name: 'demo', shape: 'backend' };
     const first = init(root, opts);
@@ -220,15 +222,36 @@ test('writes gitignore rule once', () => {
     withRepo((root) => {
       const result = init(root, { name: 'demo', shape: 'backend' });
       assert.ok(result.skipped.includes('.gitignore'), form);
-      assert.equal(read(root, '.gitignore'), `${form}\n/.slicekit/.subagent-*\n`);
-    }, { files: { '.gitignore': `${form}\n/.slicekit/.subagent-*\n` } });
+      assert.equal(read(root, '.gitignore'), `${form}\n/.slicekit/.subagent-*\n${ROOTED}`);
+    }, { files: { '.gitignore': `${form}\n/.slicekit/.subagent-*\n${ROOTED}` } });
   }
-  // Each rule is added once when absent: with the graph rule present, only the subagent rule is appended.
+  // Each rule is added once when absent: with the graph rule present, only the others are appended.
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend' });
     assert.ok(result.updated.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), '/.slicekit/graph\n.slicekit/.subagent-*\n');
+    assert.equal(read(root, '.gitignore'), `/.slicekit/graph\n.slicekit/.subagent-*\n${JOURNAL}`);
   }, { files: { '.gitignore': '/.slicekit/graph\n' } });
+});
+
+// Whole-branch I2: a project that ignores *.log still commits its journal files; their locks stay ignored.
+test('init un-ignores journal files after a *.log rule and ignores their locks', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend' });
+    const ignored = (rel) => {
+      const file = path.join(root, ...rel.split('/'));
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '');
+      try {
+        git(root, ['check-ignore', '--quiet', rel]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    assert.equal(ignored('.slicekit/journal/main--0123abcd.log'), false);
+    assert.equal(ignored('.slicekit/journal/main--0123abcd.log.lock'), true);
+    assert.equal(ignored('build/other.log'), true);
+  }, { files: { '.gitignore': 'node_modules\n*.log\n' } });
 });
 
 test('every kitPaths entry S-01 owns exists after init', () => {
@@ -445,12 +468,13 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
 test('init keeps a CRLF ignore or attributes file CRLF', () => {
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
-    assert.equal(read(root, '.gitignore'), 'node_modules\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+    const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n';
+    assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
     assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
-    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n');
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
 
