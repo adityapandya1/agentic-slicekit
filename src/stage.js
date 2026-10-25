@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exists, listFiles, readText } from './fs.js';
 import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
+import { readDecisions } from './decisions.js';
 import { headings, lines, refs, tables } from './markdown.js';
 import { re } from './ids.js';
 import { kitPaths } from './paths.js';
@@ -84,24 +85,34 @@ function intake(root, cfg) {
   return blockers;
 }
 
+// The Types of an open row that do not stop clarify: work only a person can do, or a fact still
+// being gathered.
+const PENDING_TYPES = ['Action', 'Information'];
+
+// A row is open when it sits in the Open table, whatever its Type (REQ-1.4). An open Action or
+// Information row is listed as pending. Any other open row blocks: Decision, Open, Counsel (an
+// expert view not yet given), and an unknown or empty Type, so a typo never passes silently.
 function clarify(root, cfg) {
   const p = kitPaths(root, cfg);
   if (!exists(p.decisions)) return [`${rel(root, p.decisions)} is missing`];
-  const open = new Set();
-  for (const t of tables(readText(p.decisions))) {
-    const type = t.header.findIndex((h) => h.toLowerCase() === 'type');
-    if (type === -1) continue;
-    for (const row of t.rows) if (row[type] === 'Open' && row[0]) open.add(row[0]);
-  }
+  const rows = readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open');
+  const open = new Map(rows.map((r) => [r.id, r.type]));
   const cited = new Set();
   for (const f of filesUnder(p.spec, '.md')) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);
   }
-  return [...cited].sort().map((id) => `${id} is Open and cited by the spec`);
+  const ids = [...cited].sort();
+  const blocks = (id) => !PENDING_TYPES.includes(open.get(id));
+  return {
+    blockers: ids.filter(blocks).map((id) => `${id} is Open and cited by the spec`),
+    pending: ids.filter((id) => !blocks(id)).map((id) => `${id} is Open (${open.get(id)}) and cited by the spec; it does not block`),
+  };
 }
 
-// Every REQ heading in the spec, with its block of text up to the next heading of the same or a higher level.
-function reqBlocks(root, cfg) {
+// Every REQ heading in the spec: its ID, its file (relative to root, forward slashes), the 1-based
+// line of the heading, and the text after the heading up to the next heading of the same or a higher
+// level. S-11 and S-12 report findings at `file:line`.
+export function reqBlocks(root, cfg) {
   const out = [];
   for (const f of filesUnder(kitPaths(root, cfg).spec, '.md')) {
     const text = readText(f);
@@ -111,7 +122,7 @@ function reqBlocks(root, cfg) {
       const m = h.level >= 2 && h.level <= 3 ? new RegExp(`^(${re('req').source})\\b`).exec(h.text) : null;
       if (!m) return;
       const next = hs.slice(i + 1).find((n) => n.level <= h.level);
-      out.push({ id: m[1], block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
+      out.push({ id: m[1], file: rel(root, f), line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
     });
   }
   return out;
@@ -240,11 +251,17 @@ const CHECKS = { intake, clarify, specify, 'spec-review': specReview, 'gap-scan'
 export function programStage(root, cfg, { upTo = 'release' } = {}) {
   const last = STAGES.indexOf(upTo);
   if (last === -1) throw new Error(`unknown stage ${upTo}`);
+  // A check returns its blockers, or `{blockers, pending}` when it also lists rows that do not
+  // block. The result carries `pending` only when something is pending.
+  const pending = [];
+  const result = (r) => (pending.length > 0 ? { ...r, pending } : r);
   for (const stage of STAGES.slice(0, last + 1)) {
-    const blockers = CHECKS[stage](root, cfg);
-    if (blockers.length > 0) return { stage, complete: false, blockers };
+    const out = CHECKS[stage](root, cfg);
+    const blockers = Array.isArray(out) ? out : out.blockers;
+    if (!Array.isArray(out)) pending.push(...out.pending);
+    if (blockers.length > 0) return result({ stage, complete: false, blockers });
   }
-  return { stage: upTo, complete: true, blockers: [] };
+  return result({ stage: upTo, complete: true, blockers: [] });
 }
 
 // requireStage(X) means X and every stage before it are complete; it throws for the first that is not.

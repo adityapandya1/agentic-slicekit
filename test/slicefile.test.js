@@ -8,6 +8,7 @@ import {
   parseSliceFile,
   findSliceFiles,
   parsePhaseFile,
+  parseOrder,
   SliceFileError,
 } from '../src/slicefile.js';
 
@@ -192,4 +193,12 @@ test('parses every real slice file in docs/phases/P1-spine', () => {
     assert.ok(s.evaluation.length >= 1, f);
     assert.ok(s.doneWhen.length >= 1, f);
   }
+});
+
+test('parseOrder reads steps and parallel groups', () => {
+  assert.deepEqual(parseOrder('# Phase 2 — Loop\n\n**Order:** A; B, C; D\n'), [['A'], ['B', 'C'], ['D']]);
+  assert.equal(parseOrder('# Phase 2 — Loop\n\nNo order here.\n'), null);
+  // A line inside a fence is an example, not the order; the first line outside one counts.
+  const fenced = '```\n**Order:** X; Y\n```\n\n**Order:**  A ,B ;C\n\n**Order:** Z\n';
+  assert.deepEqual(parseOrder(fenced), [['A', 'B'], ['C']]);
 });

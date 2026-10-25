@@ -6,7 +6,11 @@
 # >>> slicekit protected-branch check (identical in every slicekit hook)
 # The branch a commit lands on: HEAD's branch, or during a rebase the branch being rebased.
 slicekit_branch() {
-  git symbolic-ref --short -q HEAD && return 0
+  # The full ref, stripped here: --short says heads/main when a tag main exists.
+  if slicekit_r=$(git symbolic-ref -q HEAD); then
+    case $slicekit_r in refs/heads/*) printf '%s\n' "${slicekit_r#refs/heads/}" ;; esac
+    return 0
+  fi
   for slicekit_d in rebase-merge rebase-apply; do
     slicekit_f=$(git rev-parse --git-path "$slicekit_d/head-name")
     if [ -f "$slicekit_f" ]; then

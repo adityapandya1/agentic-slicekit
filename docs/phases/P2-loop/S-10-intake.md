@@ -53,7 +53,7 @@ decisions: [D-08, D-17, D-20]
 **Files:** Modify `src/intake.js`, `src/cli/intake.js`, `test/commands/intake.test.js`.
 
 **Interfaces:**
-- Consumes (S-09): `addDecision`, `readDecisions` from `src/decisions.js`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `addDecision`, `readDecisions` from `src/decisions.js`.
 - The session lives in `interview.json` under `.slicekit`: `{startedAt, specFiles, pending, asked}`, where `specFiles` lists the files under `<docsRoot>/spec/` when the first question was asked, `pending` is `{pass, topic, question}` or null, and `asked` holds `{pass, topic, question, decision}` per answered question.
 - `ask(root, cfg, {pass, topic, question}) → {n}`: `pass` is `product` or `platform` (else code 2); a pending question → code 1 `answer the last question first: "<question>" has no decision row`; a product question after any platform question → code 1 `the product pass is closed; ask platform questions now`.
 - `answer(root, cfg, {answer, type = 'Decision', who, open, why, recommendation, iface}) → {id}`: no pending question → code 1 `no question is waiting for an answer`; writes the row through `addDecision` with the pending question (an `open` answer writes an Open row with `why` and `recommendation`), then clears `pending`.
@@ -71,7 +71,7 @@ decisions: [D-08, D-17, D-20]
 **Files:** Create `templates/instructions/commands/intake.md`. Modify `test/commands/intake.test.js`.
 
 **Interfaces:**
-- Consumes (S-09): `briefProblems` from `test/helpers/brief-lint.js`; `{{cli}} branch spec <slug>`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `briefProblems` from `test/helpers/brief-lint.js`; `{{cli}} branch spec <slug>`.
 - The procedure's steps, in order: (1) `{{cli}} branch spec <slug>` with the slug of `cfg.name` (lower-cased, each run of characters other than `a-z0-9` a `-`, trimmed to 60), the rule `snapshot` uses; (2) `{{cli}} intake snapshot {{args}}`; (3) read the snapshot; (4) the product pass, one topic per question in this order: purpose, users, components, existing systems, constraints, out of scope, interfaces between components or repositories, offering choices where choices exist; each question is preceded by `{{cli}} intake ask --pass product …` and followed by `{{cli}} intake answer …`; each interface is answered with `--interface <name> --source <snapshot>:<line>` when the snapshot names it; a question the human cannot answer is recorded with `--open`; (5) the platform pass over the sections REQ-1.11 lists for `platform.md` and `observability.md`, writing each answer into its section with the D-ID and leaving "Not yet known" where there is none; (6) `{{cli}} intake done` and print the open questions it lists. It states that the command writes no file under `<docsRoot>/spec/`, and that every git step is in the CLI.
 
 - [ ] **Step 1: Failing test** — `the procedure passes the brief lint`: `briefProblems(text, {kind: 'command'})` is `[]`, and the text holds `intake ask`, `intake answer`, `intake done`, `--interface` and the sentence naming `<docsRoot>/spec/`.

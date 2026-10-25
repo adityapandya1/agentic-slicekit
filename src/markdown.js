@@ -57,7 +57,14 @@ export function frontMatter(text) {
   return { data, body: all.slice(end + 1).join('\n') };
 }
 
-const cells = (row) => row.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+// A table row's cells. A `\|` is a pipe inside its cell, not a cell break, and is read as `|`.
+export const tableCells = (row) =>
+  row
+    .replace(/^\s*\|/, '')
+    .replace(/(?<!\\)\|\s*$/, '')
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/\\\|/g, '|'));
+const cells = tableCells;
 const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
 const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
 

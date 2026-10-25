@@ -358,3 +358,22 @@ test('subagent-stop » a fresh verdict from another slice does not satisfy the r
     cleanup();
   }
 });
+
+// Agents format replies: a list marker, bold or backticks around a checked label is still that line.
+test('shapes » a list marker, bold or backticks around a checked label is accepted', () => {
+  const root = '/nowhere';
+  for (const [skipped, notChecked, ran] of [
+    ['4. Skipped: x', '5. Not checked: y', '1. ran: npm test → exit 0'],
+    ['- Skipped: x', '* Not checked: y', '+ ran: npm test → exit 0'],
+    ['2) Skipped: x', '3) Not checked: y', '1) ran: npm test -> exit 1'],
+    ['**Skipped:** x', '**Not checked:** y', '**ran:** npm test → exit 0'],
+    ['`Skipped:` x', '`Not checked:` y', '`ran: npm test → exit 0`'],
+    ['- **Skipped:** x', '- `Not checked:` y', '- `ran: npm test → exit 0`'],
+  ]) {
+    assert.deepEqual(shapeProblems('developer', `${ran}\n\n${skipped}\n${notChecked}\n`, { root }), [], `${skipped} | ${ran}`);
+  }
+  // Still not inside a fenced block, and still a label, not a word inside a sentence.
+  assert.deepEqual(shapeProblems('developer', '```\n- ran: x → exit 0\n**Skipped:** x\n- Not checked: y\n```\n', { root }),
+    ['no "Skipped:" line', 'no "Not checked:" line', 'no "ran: <command> → exit <code>" line']);
+  assert.deepEqual(shapeProblems('auditor', 'I Skipped: x\nWe Not checked: y\n', { root }), ['no "Skipped:" line', 'no "Not checked:" line']);
+});

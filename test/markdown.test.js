@@ -38,6 +38,12 @@ test('markdown » tables', () => {
   assert.deepEqual(t, [{ line: 3, header: ['A', 'B'], rows: [['1', '2'], ['3', '4']] }]);
 });
 
+// REQ-1.4: decision cells hold `|` written as `\|`; later readers take Why and Answer cells from tables().
+test('markdown » tables keeps an escaped pipe inside its cell', () => {
+  const t = tables('| A | B | C |\n|---|---|---|\n| a\\|b | `x \\| y` | c\\| |\n');
+  assert.deepEqual(t[0].rows, [['a|b', '`x | y`', 'c|']]);
+});
+
 test('markdown » refs handles titles, parentheses, URLs, placeholders and reference links', () => {
   const paths = (text) => refs(text).filter((r) => r.kind === 'path').map((r) => r.value);
   assert.deepEqual(paths('[t](x.md "title")'), ['x.md']);

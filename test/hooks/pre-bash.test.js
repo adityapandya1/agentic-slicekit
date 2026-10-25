@@ -323,6 +323,13 @@ test('shell keywords and grouping do not hide a commit or push on main', () => o
   assertDeny(decide(root, 'while true; do git commit -m x; done'), PROTECTED_COMMIT);
 }));
 
+// S-09 fix round 1, C1: `symbolic-ref --short` says heads/main when a tag main exists.
+test('a tag named like the branch does not hide main', () => onMain((root) => {
+  run(root, ['tag', 'main']);
+  assertDeny(decide(root, 'git push'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'git commit -m x'), PROTECTED_COMMIT);
+}));
+
 // C2
 test('an msys drive path resolves to the repository it names', { skip: process.platform !== 'win32' }, () => {
   const main = repoOn('main');

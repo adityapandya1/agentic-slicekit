@@ -8,6 +8,7 @@ import { handle, roleOf, BRIEF_MAX, NO_GIT } from '../../src/hooks/subagent-star
 import { agentsPath, hasAgent } from '../../src/hooks/subagent-marker.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
+import { COMMANDS } from '../../src/cli/index.js';
 
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
 const SESSION = 'sess-start-1';
@@ -32,7 +33,7 @@ test('hooks/subagent-start.test.js » sets marker and injects brief and no-git r
     assert.match(t, /# Writing rules/);
     assert.doesNotMatch(t, /^name: slicekit-writing/m, 'front matter stripped');
     assert.ok(t.endsWith(`\n${NO_GIT}`), t);
-    assert.equal(NO_GIT, 'You never run git; report and the command commits.');
+    assert.equal(NO_GIT, 'You never run a git command that commits, pushes or moves a branch; report and the command commits.');
   } finally {
     cleanup();
   }
@@ -135,7 +136,7 @@ test('subagent-start » uses `slicekit instructions <role>` when that command ex
       },
     };
     const t = text(await start(root, { agent_type: 'reviewer' }, { commands }));
-    assert.deepEqual(seen, [['reviewer']]);
+    assert.deepEqual(seen, [['reviewer', '--summary']]);
     assert.ok(t.startsWith('Role brief for reviewer.\n'), t);
     // A failing command falls back to the placeholder.
     const failing = { instructions: { run: async () => 1 } };
@@ -152,6 +153,78 @@ test('subagent-start » outside a git repository the started-agents record is un
     fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
     await start(root);
     assert.equal(fs.readFileSync(path.join(root, '.slicekit', `.agents-${SESSION}`), 'utf8'), 'a1\n');
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12: the brief `slicekit instructions` prints already carries the writing rules.
+test('hooks/subagent-start.test.js » a brief from instructions is not followed by a second copy of the writing rules', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    const commands = {
+      instructions: {
+        run: async (args, io) => {
+          io.stdout(`# Brief: ${args[0]}\n\n## Writing rules\n\n${rule}\n`);
+          return 0;
+        },
+      },
+    };
+    const t = text(await start(root, {}, { commands }));
+    assert.ok(t.startsWith('# Brief: developer\n'), t);
+    assert.equal(t.split(rule).length - 1, 1, t);
+    assert.ok(t.endsWith(`\n${NO_GIT}`), t);
+    // The placeholder path still adds the rules.
+    const p = text(await start(root, { agent_id: 'a2' }));
+    assert.equal(p.split(rule).length - 1, 1, p);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12: a brief over the cap is cut from its end; the writing rules and the no-git sentence stay whole.
+test('subagent-start » a long brief from instructions is cut and still ends with the rules and the no-git rule', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    const commands = {
+      instructions: {
+        run: async (args, io) => {
+          io.stdout(`# Brief: ${args[0]}\n\n## Writing rules\n\n${rule}\n\n## Requirements\n\n${'y'.repeat(20000)}\n`);
+          return 0;
+        },
+      },
+    };
+    const t = text(await start(root, {}, { commands, cfg: defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' }) }));
+    assert.ok(t.length <= BRIEF_MAX, String(t.length));
+    assert.ok(t.startsWith('# Brief: developer\n'), t.slice(0, 100));
+    assert.equal(t.split(rule).length - 1, 1);
+    assert.match(t, /\(brief truncated; full text in npx slicekit instructions developer\)/);
+    assert.ok(t.indexOf('(brief truncated') < t.indexOf(rule), 'the rules follow the cut brief');
+    assert.ok(t.endsWith(`\n${NO_GIT}`));
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.12: the hook injects the summary form of the kit's own brief: the rules once, the no-git
+// sentence last, and a line naming the full brief.
+test('subagent-start » the kit brief is injected in its summary form with the rules once and the no-git rule last', async () => {
+  const kitCfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(kitCfg, null, 2)}\n` } });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    for (const role of ['developer', 'reviewer', 'fixer', 'auditor', 'ops']) {
+      const t = text(await start(root, { agent_type: role, agent_id: `a-${role}` }, { commands: COMMANDS, cfg: kitCfg }));
+      assert.ok(t.startsWith(`# Brief: ${role}\n`), t.slice(0, 200));
+      assert.equal(t.split('\n').filter((l) => l === rule).length, 1, t);
+      assert.match(t, /^No active slice\.$/m);
+      assert.match(t, new RegExp(`^Full brief: npx slicekit instructions ${role}$`, 'm'));
+      assert.doesNotMatch(t, /brief truncated/);
+      assert.ok(t.length < BRIEF_MAX, String(t.length));
+      assert.ok(t.endsWith(`\n${NO_GIT}`), t.slice(-200));
+    }
   } finally {
     cleanup();
   }

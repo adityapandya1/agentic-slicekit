@@ -37,7 +37,7 @@ decisions: [D-17, D-20]
 **Files:** Create `src/gaps.js`, `src/cli/gaps.js`, `test/commands/gaps.test.js`. Modify `src/cli/index.js`.
 
 **Interfaces:**
-- Consumes (S-09): `readDecisions` from `src/decisions.js`, `reqBlocks` from `src/stage.js`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `readDecisions` from `src/decisions.js`, `reqBlocks` from `src/stage.js`.
 - `CLASSES = ['missing','unsupported','contradiction','unknown','unrequested']`; `class GapError extends Error` with `code` 1 or 2.
 - `readGaps(text) → {rows: [{id, n, cls, where, what, closedBy, line}], next}` from the table `# | Class | Where | What | Closed by` (the init template's `gaps.md`); `next` as `readDecisions` computes it, with `G-`.
 - `addGap(root, cfg, {cls, where, what}) → {id, added}`: an unknown class → code 2 `unknown class '<c>'; one of missing, unsupported, contradiction, unknown, unrequested`; a line break in a field → code 2 `<field> must be one line`; `|` written as `\|`; a row with the same class, where and what → that row's ID and `added: false`.
@@ -55,7 +55,7 @@ decisions: [D-17, D-20]
 **Files:** Modify `src/gaps.js`, `src/cli/gaps.js`, `test/commands/gaps.test.js`.
 
 **Interfaces:**
-- Consumes (S-09): `interfacesWithoutContract`, `readDecisions` from `src/decisions.js`; `reqBlocks` from `src/stage.js`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `interfacesWithoutContract`, `readDecisions` from `src/decisions.js`; `reqBlocks` from `src/stage.js`.
 - `scanGaps(root, cfg) → [{id, added}]`, through `addGap`, so a second run adds nothing. Candidates, in this order:
   1. `unknown`, where `<docsRoot>/<file>:<line>`, what `<section> not yet known`: each `##` section of `platform.md`, `observability.md` and `runbook.md` whose body is the single line `Not yet known`.
   2. `unknown`, where `<docsRoot>/decisions.md:<line>`, what `<D-ID> is open: <question>`: each Open-table row.

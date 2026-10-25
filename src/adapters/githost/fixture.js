@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GitHostError, GitHostNotFound } from './errors.js';
 import { assertDate, assertSha } from '../../evidence.js';
-import { assertLabel, assertLabelColor, assertPrNumber, filterMergedSince, mapPullRequest, reduceRuns } from './gh-json.js';
+import { redact } from '../../redact.js';
+import { assertBranch, assertLabel, assertLabelColor, assertPrNumber, assertTitle, filterMergedSince, mapPullRequest, pickBranchPullRequest, reduceRuns } from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
 //   pr-<n>.json          what `gh pr view <n> --json ...` prints
@@ -10,6 +11,10 @@ import { assertLabel, assertLabelColor, assertPrNumber, filterMergedSince, mapPu
 //   ci-<sha>.json        what `gh run list --commit <sha> --json ...` prints (an array)
 //   label-error.txt, label-create-error.txt   gh refusing `pr edit`, `label create`
 //   label-calls.jsonl    written: one line per label call, in order
+//   pr-create-error.txt  gh refusing `pr create`
+//   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready)
+// openPullRequest writes pr-<n>.json (n one above the highest there, else 1); updatePullRequestBody
+// and markReady rewrite it, so a later getPullRequest or pullRequestForBranch sees the change.
 // A missing file is what the real host says for "not there"; an unreadable one is a host failure.
 function readJson(file) {
   try {
@@ -28,10 +33,34 @@ function refuse(dir, file, call) {
   } catch (e) {
     if (e.code !== 'ENOENT') throw new GitHostError(`git host fixture ${dir}: ${e.message}`);
   }
-  if (refusal !== undefined) throw new GitHostError(`${call} failed: ${refusal}`, { stderr: refusal });
+  if (refusal !== undefined) throw new GitHostError(`${call} failed: ${redact(refusal)}`, { stderr: refusal });
 }
 
 const record = (dir, call) => fs.appendFileSync(path.join(dir, 'label-calls.jsonl'), `${JSON.stringify(call)}\n`);
+const recordPr = (dir, call) => fs.appendFileSync(path.join(dir, 'pr-calls.jsonl'), `${JSON.stringify(call)}\n`);
+
+// The numbers of the pull requests the fixture holds, ascending.
+function prNumbers(dir) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch (e) {
+    throw new GitHostError(`git host fixture ${dir}: ${e.message}`);
+  }
+  return names
+    .map((n) => /^pr-(\d+)\.json$/.exec(n)?.[1])
+    .filter((n) => n !== undefined)
+    .map(Number)
+    .sort((a, b) => a - b);
+}
+
+const prFile = (dir, n) => path.join(dir, `pr-${n}.json`);
+const writePr = (dir, raw) => fs.writeFileSync(prFile(dir, raw.number), `${JSON.stringify(raw, null, 2)}\n`);
+function readPr(dir, n) {
+  const raw = readJson(prFile(dir, n));
+  if (raw === undefined) throw new GitHostNotFound(`pull request ${n} not found`);
+  return raw;
+}
 
 export function fixtureHost(dir) {
   return {
@@ -62,6 +91,40 @@ export function fixtureHost(dir) {
       assertLabel(description);
       refuse(dir, 'label-create-error.txt', 'gh label create');
       record(dir, { create: name, color, description });
+    },
+    openPullRequest({ branch, base, title, body, draft }) {
+      assertBranch(branch);
+      assertBranch(base);
+      assertTitle(title);
+      refuse(dir, 'pr-create-error.txt', 'gh pr create');
+      const number = (prNumbers(dir).at(-1) ?? 0) + 1;
+      const url = `https://example.test/pull/${number}`;
+      const isDraft = Boolean(draft);
+      const text = String(body ?? '');
+      writePr(dir, { number, url, state: 'OPEN', isDraft, headRefName: branch, baseRefName: base, title, body: text, headRefOid: null, labels: [] });
+      recordPr(dir, { op: 'openPullRequest', branch, base, title, body: text, draft: isDraft });
+      return { number, url };
+    },
+    updatePullRequestBody(n, body) {
+      assertPrNumber(n);
+      const raw = readPr(dir, n);
+      const text = String(body ?? '');
+      writePr(dir, { ...raw, body: text });
+      recordPr(dir, { op: 'updatePullRequestBody', number: n, body: text });
+    },
+    markReady(n) {
+      assertPrNumber(n);
+      const raw = readPr(dir, n);
+      writePr(dir, { ...raw, isDraft: false });
+      recordPr(dir, { op: 'markReady', number: n });
+    },
+    // As the GitHub host: the open pull requests with that head, a fork's (isCrossRepository) dropped.
+    pullRequestForBranch(branch, { base } = {}) {
+      assertBranch(branch);
+      const open = prNumbers(dir)
+        .map((n) => readJson(prFile(dir, n)))
+        .filter((raw) => raw?.state === 'OPEN');
+      return pickBranchPullRequest(open, branch, base);
     },
   };
 }
