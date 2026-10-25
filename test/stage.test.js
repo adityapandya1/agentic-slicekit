@@ -96,20 +96,40 @@ test('clarify blocks on an Open decision that the spec cites', () => {
   });
 });
 
-// REQ-1.4: "Open" means a row of the Open table, whatever its Type.
-test('clarify counts an Open-table row of type Action as open', () => {
+// REQ-1.4: an Open-table row of type Action or Information is work in progress, not a choice the
+// spec waits on, so it is listed as pending and does not stop clarify.
+test('an Open-table Action row does not block clarify', () => {
   withPoint(PLAN, (root) => {
-    edit(root, 'docs/decisions.md', (t) => `${t}| D-02 | Action | Reserve the name? | matters | publish |
-`);
-    edit(root, 'docs/spec/a.md', (t) => t.replace('D-01.', 'D-01, D-02.'));
+    edit(root, 'docs/decisions.md', (t) => `${t}| D-02 | Action | Reserve the name? | matters | publish |\n| D-03 | Information | More phrases? | seed | add them |\n`);
+    edit(root, 'docs/spec/a.md', (t) => t.replace('D-01.', 'D-01, D-02, D-03.'));
+    // The spec edit is uncommitted, so stop at clarify; spec-review would block on it.
+    const r = programStage(root, cfg, { upTo: 'clarify' });
+    assert.equal(r.stage, 'clarify');
+    assert.equal(r.complete, true);
+    assert.deepEqual(r.blockers, []);
+    assert.deepEqual(r.pending, [
+      'D-02 is Open (Action) and cited by the spec; it does not block',
+      'D-03 is Open (Information) and cited by the spec; it does not block',
+    ]);
+  });
+  // A Settled row whose Type is Open is answered, so it is neither blocking nor pending.
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/decisions.md', (t) => t.replace('| D-01 | Decision |', '| D-01 | Open |'));
+    const r = programStage(root, cfg);
+    assert.equal(r.stage, 'build');
+    assert.equal(r.pending, undefined);
+  });
+});
+
+// REQ-1.4
+test('an Open-table Decision row blocks clarify', () => {
+  withPoint(PLAN, (root) => {
+    edit(root, 'docs/decisions.md', (t) => `${t}| D-02 | Decision | Which port? | matters | 80 |\n| D-03 | Action | Reserve the name? | matters | publish |\n`);
+    edit(root, 'docs/spec/a.md', (t) => t.replace('D-01.', 'D-01, D-02, D-03.'));
     const r = programStage(root, cfg);
     assert.equal(r.stage, 'clarify');
     assert.deepEqual(r.blockers, ['D-02 is Open and cited by the spec']);
-  });
-  // A Settled row whose Type is Open is answered, so it does not block.
-  withPoint(PLAN, (root) => {
-    edit(root, 'docs/decisions.md', (t) => t.replace('| D-01 | Decision |', '| D-01 | Open |'));
-    assert.equal(programStage(root, cfg).stage, 'build');
+    assert.deepEqual(r.pending, ['D-03 is Open (Action) and cited by the spec; it does not block']);
   });
 });
 

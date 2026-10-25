@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exists, listFiles, readText } from './fs.js';
 import { git } from './git.js';
-import { headings, prose } from './markdown.js';
+import { headings, prose, tableCells as cells } from './markdown.js';
 import { kitPaths } from './paths.js';
 
 export const TYPES = ['Decision', 'Action', 'Information', 'Counsel', 'Open'];
@@ -22,12 +22,6 @@ export class DecisionError extends Error {
 
 const SECTIONS = { settled: 'Settled', open: 'Open' };
 const ID = /^D-(\d+)$/;
-
-// Splits a table row on each `|` that is not escaped, then reads `\|` as `|`.
-function cells(line) {
-  const body = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '');
-  return body.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
-}
 
 const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
 const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);

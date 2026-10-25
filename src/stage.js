@@ -85,16 +85,27 @@ function intake(root, cfg) {
   return blockers;
 }
 
+// The Types of an open row that stop clarify.
+const BLOCKING_TYPES = ['Decision', 'Open'];
+
+// A row is open when it sits in the Open table, whatever its Type (REQ-1.4). An open Decision or
+// Open row blocks. An open Action, Information or Counsel row is work the spec does not wait on,
+// so it is listed as pending.
 function clarify(root, cfg) {
   const p = kitPaths(root, cfg);
   if (!exists(p.decisions)) return [`${rel(root, p.decisions)} is missing`];
-  // A row is open when it sits in the Open table, whatever its Type (REQ-1.4).
-  const open = new Set(readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open').map((r) => r.id));
+  const rows = readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open');
+  const open = new Map(rows.map((r) => [r.id, r.type]));
   const cited = new Set();
   for (const f of filesUnder(p.spec, '.md')) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);
   }
-  return [...cited].sort().map((id) => `${id} is Open and cited by the spec`);
+  const ids = [...cited].sort();
+  const blocks = (id) => BLOCKING_TYPES.includes(open.get(id));
+  return {
+    blockers: ids.filter(blocks).map((id) => `${id} is Open and cited by the spec`),
+    pending: ids.filter((id) => !blocks(id)).map((id) => `${id} is Open (${open.get(id)}) and cited by the spec; it does not block`),
+  };
 }
 
 // Every REQ heading in the spec, with its block of text up to the next heading of the same or a higher level.
@@ -237,11 +248,17 @@ const CHECKS = { intake, clarify, specify, 'spec-review': specReview, 'gap-scan'
 export function programStage(root, cfg, { upTo = 'release' } = {}) {
   const last = STAGES.indexOf(upTo);
   if (last === -1) throw new Error(`unknown stage ${upTo}`);
+  // A check returns its blockers, or `{blockers, pending}` when it also lists rows that do not
+  // block. The result carries `pending` only when something is pending.
+  const pending = [];
+  const result = (r) => (pending.length > 0 ? { ...r, pending } : r);
   for (const stage of STAGES.slice(0, last + 1)) {
-    const blockers = CHECKS[stage](root, cfg);
-    if (blockers.length > 0) return { stage, complete: false, blockers };
+    const out = CHECKS[stage](root, cfg);
+    const blockers = Array.isArray(out) ? out : out.blockers;
+    if (!Array.isArray(out)) pending.push(...out.pending);
+    if (blockers.length > 0) return result({ stage, complete: false, blockers });
   }
-  return { stage: upTo, complete: true, blockers: [] };
+  return result({ stage: upTo, complete: true, blockers: [] });
 }
 
 // requireStage(X) means X and every stage before it are complete; it throws for the first that is not.
