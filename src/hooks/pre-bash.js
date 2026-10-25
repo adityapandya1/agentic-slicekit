@@ -12,8 +12,9 @@
 // gets through, and the git hooks (S-06's .githooks) are the backstop for commits and pushes.
 // Known gaps: `--git-dir` / `GIT_DIR` pointing at another repository are not followed (the branch is
 // read from the shell's directory); a command substitution inside double quotes (`echo "$(git ...)"`)
-// is not split out; the default destructive list misses `rm -fr /` spellings and absolute paths inside
-// the worktree.
+// is not split out; `echo '...' | bash` (a piped string, not a here-document) and a shell function
+// (`function f { ...; }; f`) are not followed; the default destructive list misses `rm -fr /`
+// spellings and absolute paths inside the worktree.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,9 +30,9 @@ import { activeMarker } from './subagent-marker.js';
 const SEPARATORS = new Set([';', '\n', '|', '&', '(', ')', '`']);
 const DELIM_END = /[\s;&|()<>`]/;
 
-// -> [{toks: [{v, b}], heredocs: [string]}]: one entry per simple command. `v` is the word with quotes
-// removed; `b` is only its unquoted characters. Here-document bodies are data, attached to the command
-// that opened them.
+// -> [{toks: [{v, b}], heredocs: [string], stdin?}]: one entry per simple command. `v` is the word with
+// quotes removed; `b` is only its unquoted characters. Here-document bodies are data, attached to the
+// command that opened them; `stdin` is the command piped into this one.
 function lex(command) {
   const s = String(command);
   const out = [];
@@ -50,8 +51,10 @@ function lex(command) {
   };
   const endSegment = () => {
     endWord();
+    const ended = cur;
     if (cur.toks.length) out.push(cur);
     cur = { toks: [], heredocs: [] };
+    return ended;
   };
   let i = 0;
   while (i < s.length) {
@@ -78,7 +81,25 @@ function lex(command) {
     } else if (c === '\\') {
       if (i + 1 < s.length && s[i + 1] !== '\n') add(s[i + 1], false);
       i += 2;
-    } else if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+    } else if (c === '<' && s[i + 1] === '<' && s[i + 2] === '<') {
+      // A here-string: a redirect, its operand is the next word.
+      endWord();
+      cur.toks.push({ v: '<<<', b: '<<<' });
+      i += 3;
+    } else if (c === '(' && s[i + 1] === '(') {
+      // Arithmetic, `((...))` or `$((...))`: one word, never a here-document or a subshell.
+      let depth = 0;
+      let j = i;
+      for (; j < s.length; j++) {
+        if (s[j] === '(') depth += 1;
+        else if (s[j] === ')') {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+      }
+      add(s.slice(i, j + 1), false);
+      i = j + 1;
+    } else if (c === '<' && s[i + 1] === '<') {
       // A here-document: `<<WORD`, `<<-WORD`, `<<'WORD'`. Its body starts at the next newline.
       endWord();
       let j = i + 2;
@@ -106,7 +127,9 @@ function lex(command) {
       endWord();
       i += 1;
     } else if (SEPARATORS.has(c)) {
-      endSegment();
+      const ended = endSegment();
+      if (c === '|' && s[i + 1] === '|') i += 1;
+      else if (c === '|') cur.stdin = ended;
       i += 1;
       if (c === '\n' && pending.length) {
         for (const p of pending) {
@@ -338,22 +361,33 @@ function parseStage(op, args) {
 
 // The branch a later commit in the same command will be on, if this changes it. UNKNOWN for `-`.
 export const UNKNOWN = Symbol('unknown');
+// `created` is true when the name is certainly the new branch; otherwise the evaluator carries the name
+// only when it is protected or names an existing local branch (else it was a path or a commit).
 function parseSwitch(sub, args) {
-  const NEW = sub === 'switch' ? new Set(['-c', '-C', '--create', '--force-create']) : new Set(['-b', '-B', '--orphan']);
+  const NEW = sub === 'switch'
+    ? new Set(['-c', '-C', '--create', '--force-create', '--orphan'])
+    : new Set(['-b', '-B', '--orphan']);
+  const NOT_SWITCH = new Set(['-p', '--patch', '--ours', '--theirs', '-m', '--merge', '--pathspec-from-file']);
+  let track = false;
   const positionals = [];
   for (let k = 0; k < args.length; k++) {
     const a = args[k];
     if (a === '--') return { kind: 'other' };
-    if (NEW.has(a)) return args[k + 1] === undefined ? { kind: 'other' } : { kind: 'switch', to: args[k + 1] };
+    if (NOT_SWITCH.has(a.split('=')[0])) return { kind: 'other' };
+    if (NEW.has(a)) return args[k + 1] === undefined ? { kind: 'other' } : { kind: 'switch', to: args[k + 1], created: true };
     const eq = a.indexOf('=');
-    if (eq > 0 && NEW.has(a.slice(0, eq))) return { kind: 'switch', to: a.slice(eq + 1) };
-    if (a === '--detach' || a === '-d') return { kind: 'switch', to: null };
-    if (!a.startsWith('-')) positionals.push(a);
-    else if (a === '-') positionals.push(a);
+    if (eq > 0 && NEW.has(a.slice(0, eq))) return { kind: 'switch', to: a.slice(eq + 1), created: true };
+    if (a === '--track' || a.startsWith('--track=') || a === '-t') track = true;
+    else if (a === '--detach' || a === '-d') return { kind: 'switch', to: null, created: true };
+    else if (!a.startsWith('-') || a === '-') positionals.push(a);
   }
   // `git checkout <b> <paths>` restores files and stays put.
   if (positionals.length !== 1) return { kind: 'other' };
-  return { kind: 'switch', to: positionals[0] === '-' ? UNKNOWN : positionals[0] };
+  const p = positionals[0];
+  if (p === '-') return { kind: 'switch', to: UNKNOWN, created: true };
+  // --track origin/main creates main.
+  if (track) return { kind: 'switch', to: p.includes('/') ? p.slice(p.indexOf('/') + 1) : p, created: true };
+  return { kind: 'switch', to: p, created: false };
 }
 
 // From a subagent, every gh pr subcommand but these is a write.
@@ -388,8 +422,10 @@ function classifyGh(w) {
 
 // Commands that only read or print their arguments.
 const READERS = new Set(['echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg']);
-// Database clients: their quoted arguments and here-documents are the statements they run.
+// Database clients: their here-documents are the statements they run.
 const DB_CLIENTS = new Set(['psql', 'mysql', 'sqlite3', 'sqlcmd']);
+// Commands that read a path without changing it: naming intake there is not changing it.
+const MENTION_READERS = new Set(['cat', 'ls', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'find', 'stat', 'wc']);
 const MESSAGE_OPTS = new Set(['-m', '-F', '--message', '--file']);
 
 // Index of git's subcommand, past its global options.
@@ -399,11 +435,11 @@ function gitSubIndex(w) {
   return k;
 }
 
-// -> the segment's command text with quoted strings and commit messages removed; null to skip it.
+// -> the segment's command text (quotes removed, their content kept) without commit messages; null to
+// skip a command that only reads or prints its arguments.
 function destructiveText(toks, heredocs) {
   const b = base(toks[0].v);
   if (READERS.has(b)) return null;
-  if (DB_CLIENTS.has(b)) return [...toks.map((t) => t.v), ...heredocs].join(' ');
   let keep = toks;
   if (b === 'git') {
     const w = toks.map((t) => t.v);
@@ -419,7 +455,8 @@ function destructiveText(toks, heredocs) {
       }
     }
   }
-  return keep.map((t) => t.b).filter((x) => x !== '').join(' ');
+  const words = keep.map((t) => t.v);
+  return (DB_CLIENTS.has(b) ? [...words, ...heredocs] : words).join(' ');
 }
 
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
@@ -429,7 +466,9 @@ function walk(seg, state, acc) {
   const w = toks.map((t) => t.v);
   const text = destructiveText(toks, seg.heredocs);
   if (text !== null) acc.texts.push(text);
-  if (state.cwd !== null) {
+  const head = base(w[0]);
+  const ownCommit = head === 'git' && w[gitSubIndex(w)] === 'commit';
+  if (state.cwd !== null && !MENTION_READERS.has(head) && !ownCommit) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
   }
   const b = base(w[0]);
@@ -456,7 +495,10 @@ function walk(seg, state, acc) {
   }
   if (SHELLS.has(b)) {
     const k = w.findIndex((x, idx) => idx > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(x));
-    const bodies = k !== -1 && w[k + 1] !== undefined ? [w[k + 1]] : seg.heredocs;
+    let bodies;
+    if (k !== -1 && w[k + 1] !== undefined) bodies = [w[k + 1]];
+    else if (seg.heredocs.length) bodies = seg.heredocs;
+    else bodies = seg.stdin ? seg.stdin.heredocs : [];
     for (const body of bodies) {
       const inner = { cwd: state.cwd, label: state.label, stack: [] };
       for (const s of lex(body)) walk(s, inner, acc);
@@ -553,6 +595,7 @@ const real = (p) => {
   }
 };
 const toPosix = (p) => p.split(path.sep).join('/');
+const localBranch = (dir, name) => quiet(() => (git(dir, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`]), true), false);
 const topOf = (dir) => (dir === null ? null : quiet(() => real(git(dir, ['rev-parse', '--show-toplevel'])), null));
 
 // ---- rule 4: frozen intake ----
@@ -627,7 +670,10 @@ export function handle(input, { root, cfg }) {
       continue;
     }
     const key = topOf(inv.dir) ?? inv.dir;
-    if (inv.kind === 'switch') switched.set(key, inv.to);
+    if (inv.kind === 'switch') {
+      const named = inv.created || protectedSet.has(inv.to) || localBranch(inv.dir, inv.to);
+      if (named) switched.set(key, inv.to);
+    }
     else inv.branch = switched.has(key) ? switched.get(key) : branchIn(inv.dir);
   }
 

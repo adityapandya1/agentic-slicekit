@@ -521,3 +521,78 @@ test('a commit with pathspecs judges only those paths', () => {
     cleanup();
   }
 });
+
+// ---- fix round 2 ----
+
+// N1
+test('a here-string or an arithmetic shift does not open a here-document', () => onMain((root) => {
+  assertDeny(decide(root, 'cat <<< x\ngit push origin main'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'cat <<<x\ngit commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'grep a <<< "$v"\ngit commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'echo $((1<<2))\ngit push origin main'), PROTECTED_PUSH);
+  assertDeny(decide(root, '(( x = 1 << 2 ))\ngit commit -m x'), PROTECTED_COMMIT);
+}));
+
+// N2
+test('a checkout carries a branch forward only when it names one', () => {
+  onMain((root) => {
+    for (const cmd of [
+      'git checkout BUILD.md && git commit -m x',
+      'git checkout . && git commit -am x',
+      'git checkout HEAD && git commit -m x',
+      'git checkout --ours BUILD.md && git commit -m x',
+      'git checkout -p slice/x && git commit -m x',
+    ]) assertDeny(decide(root, cmd), PROTECTED_COMMIT);
+  });
+  const { root, cleanup } = repoOn('slice/P1-S-06-x');
+  try {
+    assertDeny(decide(root, 'git checkout --track origin/main && git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git checkout -t origin/main && git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git switch --track origin/main && git commit -m x'), PROTECTED_COMMIT);
+    assertAllow(decide(root, 'git checkout -b slice/P1-S-06-y && git commit -m x'));
+    // An existing non-protected branch is carried; an unknown word is not.
+    run(root, ['branch', 'slice/other']);
+    assertAllow(decide(root, 'git checkout slice/other && git commit -m x'));
+  } finally {
+    cleanup();
+  }
+});
+
+// N3
+test('destructive patterns see quoted arguments of ordinary commands', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  const RM = 'destructive command refused by rule \\brm\\s+-rf\\s+(/|~|\\.\\.)';
+  const DROP = 'destructive command refused by rule \\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b';
+  try {
+    assertDeny(decide(root, "eval 'rm -rf /'"), RM);
+    assertDeny(decide(root, "ssh h 'rm -rf /'"), RM);
+    assertDeny(decide(root, "su -c 'rm -rf /'"), RM);
+    assertDeny(decide(root, "docker exec db psql -c 'DROP TABLE users'"), DROP);
+    assertDeny(decide(root, `node -e "db.query('DROP TABLE users')"`), DROP);
+    assertDeny(decide(root, 'rm -rf "/"'), RM);
+    assertDeny(decide(root, '"rm" -rf /'), RM);
+  } finally {
+    cleanup();
+  }
+});
+
+// N4
+test('a here-document piped into a shell is commands', () => onMain((root) => {
+  assertDeny(decide(root, 'cat <<EOF | bash\ngit push origin main\nEOF\n'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'cat <<EOF | sh -s\ngit push origin main\nEOF\n'), PROTECTED_PUSH);
+  assertAllow(decide(root, 'cat <<EOF | cat\ngit push origin main\nEOF\n'));
+}));
+
+// N5
+test('reading an intake file or naming it in a message is not changing it', () => {
+  const snap = 'docs/intake/old.md';
+  const { root, cleanup } = repoOn('slice/x', { [snap]: 'one\n', 'src/a.js': 'a\n' });
+  try {
+    assertAllow(decide(root, `cat ${snap} && git commit -am x`));
+    assertAllow(decide(root, 'ls docs/intake; git commit -a -m x'));
+    assertAllow(decide(root, `git commit -am ${snap}`));
+    assertDeny(decide(root, `rm ${snap} && git commit -am x`), `intake snapshot ${snap} is frozen; add a new snapshot`);
+  } finally {
+    cleanup();
+  }
+});
