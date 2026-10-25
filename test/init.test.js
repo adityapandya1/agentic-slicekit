@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { init } from '../src/init.js';
-import { ConfigError, validateConfig } from '../src/config.js';
+import { ConfigError, loadConfig, validateConfig } from '../src/config.js';
+import { buildContext } from '../src/check/context.js';
+import hooksRule from '../src/check/rules/hooks.js';
 import { git } from '../src/git.js';
 import { kitPaths } from '../src/paths.js';
 import { makeRepo } from './helpers/tmp-repo.js';
@@ -454,7 +456,7 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
 
 // I3: on win32 a new file is staged 100644; init stages its hooks executable so the first commit
 // records 100755. D-19: init never commits.
-test('init stages the hooks it creates as executable in a repo with commits', () => {
+test('init stages the hooks it creates as executable, with or without commits', () => {
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
     const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
@@ -463,7 +465,9 @@ test('init stages the hooks it creates as executable in a repo with commits', ()
   }, { commits: 1 });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
-    assert.equal(git(root, ['ls-files', '-s', '.githooks']), '');
+    const staged = git(root, ['ls-files', '-s', '.githooks']).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    assert.equal(git(root, ['rev-list', '--all', '--count']), '0');
   }, { commits: 0 });
 });
 
@@ -476,4 +480,40 @@ test('init treats another spelling of .githooks as installed', () => {
     assert.deepEqual(result.warnings, []);
     assert.equal(git(root, ['config', 'core.hooksPath']), abs);
   });
+});
+
+// ---- final fix wave ----
+
+// I1: in a fresh repository, the first `git add -A` keeps the hooks executable and check is clean.
+test('in a fresh repository the hooks stay executable through git add -A', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' });
+    git(root, ['add', '-A']);
+    const staged = git(root, ['ls-files', '-s', ...HOOKS.map((n) => `.githooks/${n}`)]).split('\n').map((l) => [l.split('\t')[1], l.split(' ')[0]]);
+    assert.deepEqual(staged, HOOKS.map((n) => [`.githooks/${n}`, '100755']));
+    const ctx = buildContext(root, loadConfig(root));
+    assert.deepEqual(hooksRule.run(ctx), []);
+  }, { commits: 0 });
+});
+
+// M6
+const UNBORN_NEXT = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
+test('init on an unborn protected branch says how to make the first commit', () => {
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, UNBORN_NEXT);
+    const r = runCli(['init', '--shape', 'backend', '--name', 'demo', '--cli', 'slicekit'], { cwd: root });
+    assert.equal(r.stdout.split('\n').filter((l) => l === UNBORN_NEXT).length, 1);
+  }, { commits: 0 });
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  }, { commits: 0, branch: 'slice/P1-S-01-x' });
+  withRepo((root) => {
+    assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  }, { commits: 1 });
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
+  try {
+    assert.equal(init(plain, { name: 'demo', shape: 'backend', cli: 'slicekit' }).next, null);
+  } finally {
+    fs.rmSync(plain, { recursive: true, force: true });
+  }
 });

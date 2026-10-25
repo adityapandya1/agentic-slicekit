@@ -34,7 +34,7 @@ test('hooksPath unset is a finding', () => {
   withInit((root) => {
     git(root, ['config', '--unset', 'core.hooksPath']);
     assert.deepEqual(run(root), [
-      { file: '.githooks', line: 0, message: 'core.hooksPath is not set; run slicekit init' },
+      { file: '.githooks', line: 0, message: 'core.hooksPath is not set (must be .githooks); run slicekit init' },
     ]);
   });
 });

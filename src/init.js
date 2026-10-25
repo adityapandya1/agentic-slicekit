@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
-import { git, GitError, hasCommits, isRepo } from './git.js';
+import { currentBranch, git, GitError, hasCommits, isRepo } from './git.js';
 import { GITHOOKS, HOOKS_PATH, hooksPathValue, isInstalledHooksPath } from './githooks.js';
 import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
@@ -20,6 +20,7 @@ const IGNORE_RULES = [
 // Hooks checked out with CRLF break sh (REQ-3.9).
 const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];
 const NOT_A_REPO = 'not a git repository';
+const UNBORN_PROTECTED = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
 
 // Each template file maps to a kitPaths destination; nothing else names a destination.
 const TEMPLATE_DEST = {
@@ -96,17 +97,30 @@ function installHooks(paths, rel, lists, warnings) {
 }
 
 // A new file is staged 100644 on win32, where there is no mode bit; staging the hooks init created
-// with +x makes the team's first commit record them executable. Only in a repository that already has
-// commits or an index, and never a commit (D-19).
+// with +x makes the team's first commit record them executable. In an empty repository this creates
+// the index; it is never a commit (D-19).
 function stageHooks(root, files, warnings) {
   if (files.length === 0) return;
-  if (!hasCommits(root) && !exists(git(root, ['rev-parse', '--path-format=absolute', '--git-path', 'index']))) return;
   try {
     git(root, ['add', '--chmod=+x', '--', ...files]);
   } catch (e) {
     if (!(e instanceof GitError)) throw e;
     warnings.push(`could not stage ${files.join(', ')} as executable: ${e.stderr}`);
   }
+}
+
+// The pre-commit hook init just installed refuses the first commit of a repository whose HEAD is
+// unborn on a protected branch: the line that says how to make it, or null.
+function firstCommitHint(root, cfg) {
+  if (hasCommits(root)) return null;
+  let branch;
+  try {
+    branch = currentBranch(root);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+  return branch !== null && cfg.protectedBranches.includes(branch) ? UNBORN_PROTECTED : null;
 }
 
 // Points core.hooksPath at .githooks, unless it already names something else: that is left alone
@@ -196,5 +210,6 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
     warnings,
     cli: cfg.cli,
     cliWarned: cliWarning !== null,
+    next: repo ? firstCommitHint(root, cfg) : null,
   };
 }

@@ -40,7 +40,7 @@ export function run(ctx) {
   const out = [];
   const value = hooksPathValue(ctx.root);
   if (value === null) {
-    out.push({ file: HOOKS_PATH, line: 0, message: 'core.hooksPath is not set; run slicekit init' });
+    out.push({ file: HOOKS_PATH, line: 0, message: `core.hooksPath is not set (must be ${HOOKS_PATH}); run slicekit init` });
   } else if (!isInstalledHooksPath(ctx.root, value)) {
     out.push({ file: HOOKS_PATH, line: 0, message: `core.hooksPath is ${value}, not ${HOOKS_PATH}; set it to ${HOOKS_PATH} or run slicekit init` });
   }
