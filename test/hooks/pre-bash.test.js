@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { handle, classifyGit, segments } from '../../src/hooks/pre-bash.js';
@@ -154,7 +155,7 @@ test('denies destructive pattern from config', () => {
 // REQ-2.1
 test('denies git from a subagent', () => {
   const { root, cleanup } = repoOn('slice/P1-S-06-x');
-  const msg = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)';
+  const msg = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)';
   try {
     enter(root, SESSION);
     assertDeny(decide(root, 'git commit -m x'), msg);
@@ -267,7 +268,7 @@ test('runs through the dispatcher and fails closed on a missing command', async 
 
 // ---- subagent marker ----
 
-test('subagent marker counts nested entries and stays inside .slicekit', () => {
+test('subagent marker counts nested entries and stays inside the git common directory', () => {
   const { root, cleanup } = makeRepo();
   try {
     assert.equal(subagentActive(root, SESSION), false);
@@ -283,8 +284,8 @@ test('subagent marker counts nested entries and stays inside .slicekit', () => {
     assert.equal(subagentActive(root, SESSION), false);
 
     const evil = markerPath(root, '../../etc/passwd');
-    assert.equal(path.dirname(evil), path.join(root, '.slicekit'));
-    assert.match(path.basename(evil), /^\.subagent-[A-Za-z0-9_-]+$/);
+    assert.equal(path.dirname(evil), path.join(fs.realpathSync.native(path.join(root, '.git')), 'slicekit'));
+    assert.match(path.basename(evil), /^subagent-[A-Za-z0-9_-]+$/);
     assert.throws(() => markerPath(root, ''));
     assert.throws(() => markerPath(root, undefined));
     assert.equal(subagentActive(root, undefined), false);
@@ -433,7 +434,7 @@ test('destructive patterns judge parsed commands, not quoted text or messages', 
 
 // ---- fix round 1: subagent and minors ----
 
-const AGENT = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)';
+const AGENT = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)';
 
 // I5
 test('a subagent may only read pull requests and the API', () => {
@@ -466,7 +467,7 @@ test('an empty session id with any marker present counts as a subagent', () => {
     assertAllow(any(''));
     assertAllow(any(undefined));
     enter(root, 'other-session');
-    const msg = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-other-session)';
+    const msg = 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-other-session)';
     assertDeny(any(''), msg);
     assertDeny(any(undefined), msg);
     assertAllow(any(SESSION));
@@ -594,5 +595,65 @@ test('reading an intake file or naming it in a message is not changing it', () =
     assertDeny(decide(root, `rm ${snap} && git commit -am x`), `intake snapshot ${snap} is frozen; add a new snapshot`);
   } finally {
     cleanup();
+  }
+});
+
+// ---- final fix wave ----
+
+// I2: a main checkout on a slice branch with a linked worktree on another.
+function withLinkedWorktree(fn) {
+  const repo = repoOn('slice/P1-S-06-main');
+  const wt = path.join(repo.root, '.worktrees', 'other');
+  run(repo.root, ['worktree', 'add', '-b', 'slice/P1-S-06-other', wt]);
+  try {
+    fn(repo.root, wt);
+  } finally {
+    try {
+      run(repo.root, ['worktree', 'remove', '--force', wt]);
+    } catch {
+      // the temp cleaner takes it
+    }
+    repo.cleanup();
+  }
+}
+const agentDeny = (r) => {
+  assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `expected a deny, got ${JSON.stringify(r)}`);
+  assert.match(reason(r), /^agents do not run git; report and let the command commit \(marker .*slicekit\/subagent-sess-1\)$/);
+};
+
+// I2
+test('a marker entered from the main checkout guards a linked worktree', () => withLinkedWorktree((main, wt) => {
+  enter(main, SESSION);
+  agentDeny(decide(wt, 'git commit -m x', { cwd: wt }));
+  agentDeny(decide(main, 'git commit -m x', { cwd: wt }));
+  assert.equal(subagentActive(wt, SESSION), true);
+  leave(wt, SESSION);
+  assertAllow(decide(wt, 'git commit -m x', { cwd: wt }));
+}));
+
+// I2
+test('a marker entered from a linked worktree guards the main checkout', () => withLinkedWorktree((main, wt) => {
+  enter(wt, SESSION);
+  assertDeny(decide(main, 'git commit -m x'), 'agents do not run git; report and let the command commit (marker .git/slicekit/subagent-sess-1)');
+  // M9's rule over the new location: no session id, any marker.
+  assert.equal(handle({ tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: main }, { root: main, cfg: cfgFor(), env: {} })
+    .hookSpecificOutput?.permissionDecision, 'deny');
+  leave(main, SESSION);
+  assertAllow(decide(main, 'git commit -m x'));
+}));
+
+// I2
+test('outside a git repository the marker falls back to .slicekit', () => {
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
+  try {
+    enter(plain, SESSION);
+    assert.equal(path.dirname(markerPath(plain, SESSION)), path.join(plain, '.slicekit'));
+    assert.equal(fs.readFileSync(path.join(plain, '.slicekit', '.subagent-sess-1'), 'utf8').trim(), '1');
+    assertDeny(decide(plain, 'git commit -m x'), 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)');
+    assertDeny(decide(plain, 'git push', { session: '' }), 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)');
+    leave(plain, SESSION);
+    assert.equal(subagentActive(plain, SESSION), false);
+  } finally {
+    fs.rmSync(plain, { recursive: true, force: true });
   }
 });

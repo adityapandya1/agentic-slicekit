@@ -1,16 +1,39 @@
-// The subagent marker (REQ-2.1): `.slicekit/.subagent-<sessionId>` holds how many subagents are open in
-// that session. SubagentStart enters, SubagentStop leaves; pre-bash reads it to keep git out of agents.
+// The subagent marker (REQ-2.1): a file that holds how many subagents are open in a session.
+// SubagentStart enters, SubagentStop leaves; pre-bash reads it to keep git out of agents.
+//
+// Inside a git repository the marker is `<git-common-dir>/slicekit/subagent-<sessionId>`: every worktree
+// of the repository shares the common directory, so a marker entered from the main checkout is found
+// from a linked worktree and the other way round. Outside a repository it is
+// `<root>/.slicekit/.subagent-<sessionId>`.
 import fs from 'node:fs';
 import path from 'node:path';
+import { GitError, git } from '../git.js';
+import { real, toPosix } from './paths.js';
 
 const MAX_ID = 200;
+const REPO_PREFIX = 'subagent-';
+const LOCAL_PREFIX = '.subagent-';
 
-// The session id is mapped to [A-Za-z0-9_-] so the file can never land outside .slicekit/.
+// -> {dir, prefix}: where the markers for root live and how their names start.
+function markerHome(root) {
+  try {
+    const common = git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    return { dir: path.join(real(path.resolve(common)), 'slicekit'), prefix: REPO_PREFIX };
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    return { dir: path.join(root, '.slicekit'), prefix: LOCAL_PREFIX };
+  }
+}
+
+const usable = (id) => typeof id === 'string' && id !== '' && id.length <= MAX_ID;
+
+// The session id is mapped to [A-Za-z0-9_-] so the file can never land outside the marker directory.
 export function markerPath(root, sessionId) {
-  if (typeof sessionId !== 'string' || sessionId === '' || sessionId.length > MAX_ID) {
+  if (!usable(sessionId)) {
     throw new Error('subagent marker: session id must be a non-empty string of at most 200 characters');
   }
-  return path.join(root, '.slicekit', `.subagent-${sessionId.replace(/[^A-Za-z0-9_-]/g, '_')}`);
+  const { dir, prefix } = markerHome(root);
+  return path.join(dir, `${prefix}${sessionId.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 }
 
 // null when there is no marker; NaN when it exists but is unreadable as a count.
@@ -41,25 +64,31 @@ export function leave(root, sessionId) {
   else fs.writeFileSync(file, `${next}\n`);
 }
 
-const usable = (id) => typeof id === 'string' && id !== '' && id.length <= MAX_ID;
+// A marker as the deny message names it: relative to root when it lies inside root, else absolute.
+function shown(root, file) {
+  const abs = real(file);
+  const rel = path.relative(real(path.resolve(root)), abs);
+  return rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? toPosix(abs) : toPosix(rel);
+}
 
-// -> the active marker as a root-relative path ('.slicekit/.subagent-<id>'), or null.
+// -> the active marker's path as shown(), or null.
 // A marker that exists but cannot be read as a count reads as active: the guard fails closed.
 // With no usable session id, any session's marker counts: the hook cannot tell whose call this is.
 export function activeMarker(root, sessionId) {
   if (usable(sessionId)) {
     const file = markerPath(root, sessionId);
     const count = readCount(file);
-    return count === null || count === 0 ? null : `.slicekit/${path.basename(file)}`;
+    return count === null || count === 0 ? null : shown(root, file);
   }
+  const { dir, prefix } = markerHome(root);
   let names;
   try {
-    names = fs.readdirSync(path.join(root, '.slicekit'));
+    names = fs.readdirSync(dir);
   } catch {
     return null;
   }
-  const hit = names.filter((n) => n.startsWith('.subagent-')).sort()[0];
-  return hit === undefined ? null : `.slicekit/${hit}`;
+  const hit = names.filter((n) => n.startsWith(prefix)).sort()[0];
+  return hit === undefined ? null : shown(root, path.join(dir, hit));
 }
 
 export const subagentActive = (root, sessionId) => activeMarker(root, sessionId) !== null;

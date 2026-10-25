@@ -374,3 +374,18 @@ test('detached HEAD has no active slice; kit-owned files still denied', () => {
     cleanup();
   }
 });
+
+// ---- final fix wave ----
+
+// I2: the marker now lives in the git common directory, outside the work tree.
+test('the subagent marker in the git common directory is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/subagent-abc'), '.git/slicekit/subagent-abc is written only by the slicekit CLI');
+    const bare = path.join(fs.realpathSync.native(os.tmpdir()), 'repo.git', 'slicekit', 'subagent-abc');
+    assertDeny(decide(root, bare), `${bare.split(path.sep).join('/')} is written only by the slicekit CLI`);
+    assertAllow(decide(root, 'src/slicekit/subagent-abc.js'));
+  } finally {
+    cleanup();
+  }
+});

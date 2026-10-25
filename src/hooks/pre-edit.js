@@ -3,7 +3,8 @@
 //
 // Every path the tool names (`file_path`, `notebook_path`) is judged; any deny wins. Rules, first deny
 // wins: (3) a kit-owned file — a path with a `.slicekit/journal.log`, `.slicekit/state/`,
-// `.slicekit/baselines/` or `.slicekit/.subagent-*` segment, under any root — always; then, only while
+// `.slicekit/baselines/` or `.slicekit/.subagent-*` segment under any root, or a `slicekit/subagent-*`
+// marker in a git directory (`.git` or `*.git`) — always; then, only while
 // the file's own root has an active slice (a `slice/*` branch with a state file) in `tests-red` or
 // `building`: (1) a frozen test of that slice, unless `unfrozen` lists it; (2) a file under the docs root
 // that does not exist yet (only a create can name a missing file), except the runbook and anything in
@@ -56,14 +57,16 @@ export function normalise(filePath, root, cwd) {
   return relInside(real(path.resolve(root)), absolute(filePath, root, cwd));
 }
 
-// A kit-owned segment anywhere in the path, whatever root it belongs to.
+// A kit-owned segment anywhere in the path, whatever root it belongs to; the subagent marker in a git
+// directory (`<.git>/slicekit/subagent-*`) counts too, though it lies outside every work tree.
 function kitOwned(abs) {
   const segs = toPosix(abs).split('/').map(key);
   return segs.some((s, i) => {
     if (s !== '.slicekit' || i + 1 >= segs.length) return false;
     const next = segs[i + 1];
     return next === 'journal.log' || next === 'state' || next === 'baselines' || next.startsWith('.subagent-');
-  });
+  }) || segs.some((s, i) => i > 0 && (segs[i - 1] === '.git' || segs[i - 1].endsWith('.git'))
+    && s === 'slicekit' && segs[i + 1]?.startsWith('subagent-'));
 }
 
 // The file's own root: the deeper of the nearest `.slicekit/config.json` above it and its git top
