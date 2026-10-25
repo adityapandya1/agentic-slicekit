@@ -19,8 +19,8 @@ Enforced by: `slicekit hook session-start`.
 ## REQ-3.2 PreToolUse on Bash — fail closed
 
 SHALL deny: a commit on a protected branch; a push to a protected branch; any force push; a commit
-that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued while a subagent marker
-is active (REQ-2.1); and any command matching the destructive list in config (default: recursive
+that changes a file under `<docsRoot>/intake/`; `git commit`, `git push` or `gh pr` issued from inside a subagent, which
+the hook knows by the `agent_id` field Claude Code sends on every tool call a subagent makes (REQ-2.1); and any command matching the destructive list in config (default: recursive
 delete outside the worktree, database drop and truncate statements, history rewrites on shared
 branches). Each denial SHALL state the rule and the file or command.
 
@@ -36,8 +36,8 @@ Enforced by: `slicekit hook pre-bash`.
 SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
-an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or
-`.slicekit/journal.log` by anything other than the CLI. <!-- slicekit:pending P1/S-07 -->
+an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
+directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI.
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
@@ -48,13 +48,14 @@ Enforced by: `slicekit hook pre-edit`.
 
 ## REQ-3.4 SubagentStart — fail open
 
-SHALL set the subagent marker for the session and inject the role's brief from
+SHALL record the agent in the session's started-agents record (the subagent marker; once per agent,
+since SubagentStart also fires when an agent resumes) and inject the role's brief from
 `slicekit instructions <role>`, the writing rules, and the sentence "You never run git; report and
 the command commits."
 
-Scenario: GIVEN the build command spawns the developer WHEN SubagentStart fires THEN the subagent
-marker is set and the injected context ends with "You never run git; report and the command
-commits."
+Scenario: GIVEN the build command spawns the developer WHEN SubagentStart fires THEN the developer
+is in the started-agents record and the injected context ends with "You never run git; report and
+the command commits."
 
 Cites: D-05, D-19.
 
@@ -102,7 +103,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
-| journal | the hash chain in `journal.log` is broken |
+| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 | ci-title | with `--ci`, the pull request title does not begin with `[P<n>/S-<nn>]` (a `[spec] ` or `[plan] ` title is exempt), or that slice has no slice file, no state file, or a state before `draft-pr` (REQ-3.11); a pull request event file that is named but cannot be read fails the run |
 | ci-body | with `--ci`, the pull request body lacks the `## [P<n>/S-<nn>]` heading naming the title's slice, or a REQ-2.10 section is missing, empty, repeated or out of order; text inside a fenced code block does not count, and a `[spec]` or `[plan]` body needs only Done when, Proof and Decisions |
@@ -123,15 +124,23 @@ Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
 ## REQ-3.8 SessionEnd — fail open: the journal
 
-SHALL append one line to `.slicekit/journal.log` in the form <!-- slicekit:example -->
-`<iso time> <actor> <slice or "-"> <stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
-The first line's `prev` is `genesis`. CI SHALL verify the chain. The file is appended by the CLI only
-(REQ-3.3). A broken chain is a check failure and a reviewer blocker; it is never auto-repaired.
+SHALL append one line to this clone's file for the current branch, `.slicekit/journal/<branch>--<clone-id>.log`, in the form <!-- slicekit:example -->
+`<iso time> actor=<actor> slice=<slice or "-"> stage=<stage> commits=<shas> verdicts=<ids> decisions=<ids> prev=<hash> hash=<sha256 of this line without the hash field>`.
+The branch part is the name with `/` as `__` and other unsafe characters as `_`, cut to 60 characters
+with an 8-hex hash of the raw name when that changed it or it is over 80; the clone id is 8 random hex
+characters kept in the git common directory. There is one file per branch per clone, each its own chain
+whose first line's `prev` is `genesis`, because two branches or two clones appending to one file would
+both chain from the same line and conflict or break at merge (D-34, D-36). CI SHALL verify the chain, and that
+every journal file committed at the merge base with the default branch is still there as a byte prefix
+of the current file. The protection is exactly this: a mid-chain edit is caught by the chain; shortening
+or removing a committed file is caught against the default branch; lines not yet committed are not
+protected. The file is appended by the CLI only (REQ-3.3). A broken chain is a check failure and a
+reviewer blocker; it is never auto-repaired.
 
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
-chain broken at line <n>".
+chain broken at line <n> of <file>".
 
-Cites: D-32, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-32, D-34, D-36, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 

@@ -8,6 +8,27 @@ import { readSlice } from '../state/index.js';
 
 export const toPosix = (p) => p.split(path.sep).join('/');
 
+// The lines of a transcript's last `bytes` bytes, oldest first, without the cut first line when the
+// read starts mid-file; null when file is not a regular file or cannot be read.
+export function transcriptTail(file, bytes) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return null;
+    const start = Math.max(0, st.size - bytes);
+    const buf = Buffer.alloc(st.size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    const lines = buf.toString('utf8').split('\n');
+    if (start > 0) lines.shift();
+    return lines;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
 // Git Bash's `/c/...` spelling of a Windows path as `C:/...`; unchanged off win32.
 export function fromGitBash(p) {
   if (process.platform !== 'win32') return p;

@@ -11,7 +11,7 @@ decisions: [D-10, D-19]
 ## Done when
 
 1. `echo '<json>' | slicekit hook pre-bash` denies a commit on `main`, a push to `main`, a force push, a commit touching `docs/intake/*`, a destructive command from config, and `git commit`/`git push`/`gh pr` while a subagent marker is active; allows everything else; denies with "could not read hook input" on bad stdin.
-2. `slicekit hook pre-edit` denies an edit to a frozen test of the active slice (branch-derived), a new file under the docs root while the slice is `tests-red` or `building` (except the runbook), and any edit to `.slicekit/{journal.log,baselines,state}`.
+2. `slicekit hook pre-edit` denies an edit to a frozen test of the active slice (branch-derived), a new file under the docs root while the slice is `tests-red` or `building` (except the runbook), and any edit to `.slicekit/{journal,baselines,state}/`.
 3. `slicekit hook session-start` prints divergence and the active slice, re-injects the brief on `compact`, and exits 0 with no network.
 4. `init` installs `.githooks/prepare-commit-msg` and `pre-commit`; a commit on `slice/P1-S-06-x` gains `Slice: P1/S-06`; `check` gains the `hooks` and `trailer` rules.
 
@@ -76,7 +76,7 @@ decisions: [D-10, D-19]
 **Interfaces:**
 - Input `{session_id, tool_name:'Edit'|'Write'|'MultiEdit', tool_input:{file_path}, cwd}`; `normalise(file_path, root) → POSIX relative path` (handles backslashes and absolute paths).
 - Active slice: `sliceFromBranch(currentBranch(root))`; its state via `readSlice`.
-- Denies: (1) path ∈ `state.frozenTests` and `cfg.freezeTests` and `state.state ∈ {tests-red, building}` and not `state.unfrozen?.includes(path)` → `frozen for <slice>; amend the slice file to change the evaluation set`; (2) `tool_name === 'Write'` and path under `<docsRoot>/` and the file does not exist and `state.state ∈ {tests-red, building}` and path is not the runbook and not under `<docsRoot>/phases/<P>/` → `no slice starts a document; a document changes only when this slice's code made it wrong`; (3) path is `.slicekit/journal.log` or under `.slicekit/baselines/` or `.slicekit/state/` → `<path> is written only by the slicekit CLI`. <!-- slicekit:pending P1/S-07 -->
+- Denies: (1) path ∈ `state.frozenTests` and `cfg.freezeTests` and `state.state ∈ {tests-red, building}` and not `state.unfrozen?.includes(path)` → `frozen for <slice>; amend the slice file to change the evaluation set`; (2) `tool_name === 'Write'` and path under `<docsRoot>/` and the file does not exist and `state.state ∈ {tests-red, building}` and path is not the runbook and not under `<docsRoot>/phases/<P>/` → `no slice starts a document; a document changes only when this slice's code made it wrong`; (3) path is in the journal directory (`.slicekit/journal/<branch>--<clone-id>.log`, since S-07, D-34, D-36) or under `.slicekit/baselines/` or `.slicekit/state/` → `<path> is written only by the slicekit CLI`.
 
 - [ ] **Step 1: Failing tests** — the three `pre-edit.test.js` cases, with `backslash path matches frozen file` passing `C:\\repo\\test\\a.test.js` against frozen `test/a.test.js`. <!-- slicekit:example -->
 - [ ] **Step 2–5:** FAIL → implement → PASS → commit `feat(hooks): pre-edit guard`.

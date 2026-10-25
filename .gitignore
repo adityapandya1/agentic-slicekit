@@ -1,7 +1,9 @@
 node_modules/
 .slicekit/graph/
 *.log
-!.slicekit/journal.log
+!.slicekit/journal/
+!.slicekit/journal/*.log
+.slicekit/journal/*.lock
 .DS_Store
 .slicekit/state/*.lock
 *.tmp-*

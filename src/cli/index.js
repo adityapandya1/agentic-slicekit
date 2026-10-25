@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { baselineCommand } from './baseline.js';
 import { checkCommand } from './check.js';
 import { initCommand } from './init.js';
+import { journalCommand } from './journal.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
 import { stateCommand } from './state.js';
@@ -15,6 +16,7 @@ export const COMMANDS = {
   check: checkCommand,
   init: initCommand,
   hook: hookCommand,
+  journal: journalCommand,
   'ready-label': readyLabelCommand,
   state: stateCommand,
   status: statusCommand,

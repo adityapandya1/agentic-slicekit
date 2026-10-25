@@ -1,0 +1,33 @@
+{
+  "slice": "P1/S-07",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 8,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/8",
+    "headSha": "9d71d137b3b63c5f9624a805816750a275964855"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-25T15:30:59.472Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 8,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/8",
+          "headSha": "9d71d137b3b63c5f9624a805816750a275964855",
+          "title": "[P1/S-07] Hooks: subagent shape, compaction handoff, journal"
+        }
+      }
+    }
+  ]
+}

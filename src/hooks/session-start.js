@@ -8,6 +8,10 @@
 //
 // Text from the state file is untrusted: every value goes through oneLine and every handoff line is
 // prefixed `handoff: `, so it can never print a line the hook itself prints.
+//
+// It also sweeps the per-session files subagent-start and subagent-stop leave in
+// `<git-common-dir>/slicekit/` (`agents-*`, `retry-*`) once they are older than LEFTOVER_MS: a session
+// that ended with a subagent open never removes its own. The clone id there is never touched.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,9 +22,39 @@ import { context, oneLine } from './io.js';
 import { activeSlice } from './paths.js';
 
 export const FETCH_TIMEOUT_MS = 15_000;
+export const LEFTOVER_MS = 24 * 60 * 60 * 1000;
+const LEFTOVER_PREFIXES = ['agents-', 'retry-'];
 const REASON_MAX = 120;
 const HANDOFF_MAX = 4000;
 const WIN = process.platform === 'win32';
+
+// Removes regular `agents-*` and `retry-*` files older than LEFTOVER_MS from the kit's directory in the
+// git common directory. Best effort: a file that cannot be read or removed is left.
+function sweepLeftovers(root) {
+  let dir;
+  try {
+    dir = path.join(path.resolve(root, git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir'])), 'slicekit');
+  } catch (e) {
+    if (e instanceof GitError) return;
+    throw e;
+  }
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - LEFTOVER_MS;
+  for (const name of names.filter((n) => LEFTOVER_PREFIXES.some((p) => n.startsWith(p)))) {
+    const file = path.join(dir, name);
+    try {
+      const st = fs.lstatSync(file);
+      if (st.isFile() && st.mtimeMs < cutoff) fs.rmSync(file, { force: true });
+    } catch {
+      // gone already, or not ours to remove
+    }
+  }
+}
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -149,6 +183,7 @@ function capped(lines, root, cfg, id) {
 
 export async function handle(input, { root, cfg, env = process.env, fetchTimeoutMs = FETCH_TIMEOUT_MS }) {
   if (!isRepo(root)) return context('SessionStart', 'slicekit: not a git repository\nno active slice');
+  sweepLeftovers(root);
   const source = ['startup', 'resume', 'clear', 'compact'].includes(input?.source) ? input.source : 'startup';
   let branch;
   try {

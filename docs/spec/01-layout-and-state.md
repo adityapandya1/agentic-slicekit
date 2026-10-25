@@ -14,7 +14,7 @@ from config (default `docs/`, D-24):
                        review {independent: required|optional} · freezeTests · style (phrase list)
   state/<P>-<S>.json   one file per slice (D-22); only the CLI writes here
   baselines/           ratchet counts: references.json, style.json
-  journal.log          append-only, hash-chained session journal (03, REQ-3.8)
+  journal/<branch>--<clone-id>.log  append-only, hash-chained session journal, one per branch per clone (03, REQ-3.8)
   graph/               built, never committed (04)
   workspace.json       present only in a program repo that spans repositories (D-15)
 <docsRoot>/

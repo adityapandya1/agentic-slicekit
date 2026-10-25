@@ -84,12 +84,25 @@ test('new doc during build is denied, runbook allowed', () => {
   }
 });
 
+// REQ-3.3, REQ-3.8, D-34: every file in the per-branch journal directory is the CLI's.
+test('any file under .slicekit/journal/ is denied', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    for (const rel of ['.slicekit/journal/slice__P1-S-07-x.log', '.slicekit/journal/main.log.lock', '.slicekit/journal/notes.txt']) {
+      assertDeny(decide(root, rel, { tool: 'Write' }), `${rel} is written only by the slicekit CLI`);
+    }
+    assertAllow(decide(root, '.slicekit/journalist.md', { tool: 'Write' }));
+  } finally {
+    cleanup();
+  }
+});
+
 // REQ-3.3
 test('kit-owned files are denied', () => {
   const { root, cleanup } = sliceRepo({ state: 'todo' });
   try {
     for (const tool of ['Edit', 'Write', 'MultiEdit']) {
-      assertDeny(decide(root, '.slicekit/journal.log', { tool }), '.slicekit/journal.log is written only by the slicekit CLI');
+      assertDeny(decide(root, '.slicekit/journal/main.log', { tool }), '.slicekit/journal/main.log is written only by the slicekit CLI');
     }
     assertDeny(decide(root, '.slicekit/state/P1-S-06.json'), '.slicekit/state/P1-S-06.json is written only by the slicekit CLI');
     assertDeny(decide(root, '.slicekit/baselines/coverage.json'), '.slicekit/baselines/coverage.json is written only by the slicekit CLI');
@@ -118,7 +131,7 @@ test('path outside root is allowed', () => {
   try {
     assertAllow(decide(root, path.join(os.tmpdir(), 'elsewhere', 'a.test.js')));
     // Kit-owned names are refused whatever root they sit under.
-    assert.equal(decide(root, '../outside/.slicekit/journal.log').hookSpecificOutput?.permissionDecision, 'deny');
+    assert.equal(decide(root, '../outside/.slicekit/journal/main.log').hookSpecificOutput?.permissionDecision, 'deny');
     assert.equal(normalise(path.join(root, '..', 'x.js'), root), null);
   } finally {
     cleanup();
@@ -156,8 +169,8 @@ test('NotebookEdit notebook_path is guarded', () => {
   try {
     assertDeny(decide(root, 'test/nb.ipynb', { tool: 'NotebookEdit', key: 'notebook_path' }), FROZEN);
     assertDeny(decide(root, 'docs/new.ipynb', { tool: 'NotebookEdit', key: 'notebook_path' }), NEW_DOC);
-    assertDeny(decide(root, '.slicekit/journal.log', { tool: 'NotebookEdit', key: 'notebook_path' }),
-      '.slicekit/journal.log is written only by the slicekit CLI');
+    assertDeny(decide(root, '.slicekit/journal/main.log', { tool: 'NotebookEdit', key: 'notebook_path' }),
+      '.slicekit/journal/main.log is written only by the slicekit CLI');
   } finally {
     cleanup();
   }
@@ -192,7 +205,7 @@ test('no active slice allows a frozen-looking file', () => {
   try {
     assertAllow(decide(onMain.root, 'test/a.test.js', { tool: 'Edit' }));
     assertAllow(decide(onMain.root, 'docs/new.md'));
-    assertDeny(decide(onMain.root, '.slicekit/journal.log'), '.slicekit/journal.log is written only by the slicekit CLI');
+    assertDeny(decide(onMain.root, '.slicekit/journal/main.log'), '.slicekit/journal/main.log is written only by the slicekit CLI');
   } finally {
     onMain.cleanup();
   }
@@ -283,8 +296,8 @@ test('a nested worktree on a slice branch is guarded from a main-root session', 
       assertDeny(decide(root, '.worktrees/S-06/test/a.test.js', { tool: 'Edit' }), FROZEN);
       assertDeny(decide(root, '.worktrees/S-06/.slicekit/state/P1-S-06.json', { tool: 'Edit' }),
         '.slicekit/state/P1-S-06.json is written only by the slicekit CLI');
-      assertDeny(decide(root, '.worktrees/S-06/.slicekit/journal.log', { tool: 'Edit' }),
-        '.slicekit/journal.log is written only by the slicekit CLI');
+      assertDeny(decide(root, '.worktrees/S-06/.slicekit/journal/main.log', { tool: 'Edit' }),
+        '.slicekit/journal/main.log is written only by the slicekit CLI');
       assertDeny(decide(root, '.worktrees/S-06/docs/new.md'), NEW_DOC);
       // The main checkout itself is on main: no active slice there.
       assertAllow(decide(root, 'test/a.test.js', { tool: 'Edit' }));
@@ -321,7 +334,7 @@ test('Windows stream names are refused', { skip: !WIN && 'win32 only' }, () => {
   const { root, cleanup } = sliceRepo({ state: 'todo' });
   try {
     assert.throws(() => decide(root, 'test/a.test.js::$DATA', { tool: 'Edit' }), /stream/);
-    assert.throws(() => decide(root, '.slicekit/journal.log::$DATA', { tool: 'Edit' }), /stream/);
+    assert.throws(() => decide(root, '.slicekit/journal/main.log::$DATA', { tool: 'Edit' }), /stream/);
     assert.throws(() => decide(root, `${root}\\test\\a.test.js:alt`, { tool: 'Edit' }), /stream/);
   } finally {
     cleanup();
@@ -373,7 +386,7 @@ test('detached HEAD has no active slice; kit-owned files still denied', () => {
     commit(root, 'seed', { allowEmpty: false });
     git(root, ['checkout', '--detach']);
     assertAllow(decide(root, 'test/a.test.js', { tool: 'Edit' }));
-    assertDeny(decide(root, '.slicekit/journal.log'), '.slicekit/journal.log is written only by the slicekit CLI');
+    assertDeny(decide(root, '.slicekit/journal/main.log'), '.slicekit/journal/main.log is written only by the slicekit CLI');
   } finally {
     cleanup();
   }
@@ -389,6 +402,32 @@ test('the subagent marker in the git common directory is kit-owned', () => {
     const bare = path.join(fs.realpathSync.native(os.tmpdir()), 'repo.git', 'slicekit', 'subagent-abc');
     assertDeny(decide(root, bare), `${bare.split(path.sep).join('/')} is written only by the slicekit CLI`);
     assertAllow(decide(root, 'src/slicekit/subagent-abc.js'));
+  } finally {
+    cleanup();
+  }
+});
+
+// S-07: the subagent-stop retry state sits next to the marker and is kit-owned too.
+test('the subagent-stop retry state is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/retry-s-a1'), '.git/slicekit/retry-s-a1 is written only by the slicekit CLI');
+    assertDeny(decide(root, '.slicekit/.retry-s-a1'), '.slicekit/.retry-s-a1 is written only by the slicekit CLI');
+    assertAllow(decide(root, 'src/slicekit/retry-s.js'));
+    // S-07 fix round 1: the started-agents record beside them.
+    assertDeny(decide(root, '.git/slicekit/agents-s'), '.git/slicekit/agents-s is written only by the slicekit CLI');
+    assertDeny(decide(root, '.slicekit/.agents-s'), '.slicekit/.agents-s is written only by the slicekit CLI');
+  } finally {
+    cleanup();
+  }
+});
+
+// Whole-branch M2: the clone id names this clone's journal files; only the CLI writes it.
+test('the clone id is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/clone-id'), '.git/slicekit/clone-id is written only by the slicekit CLI');
+    assertAllow(decide(root, 'src/slicekit/clone-id.js'));
   } finally {
     cleanup();
   }
