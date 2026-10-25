@@ -1,0 +1,14 @@
+#!/bin/sh
+# slicekit: adds the Slice trailer on a slice branch (REQ-1.9).
+# Arguments: <message file> [source [sha]]. A merge or squash message is left as git wrote it.
+case "$2" in
+  merge|squash) exit 0 ;;
+esac
+
+branch=$(git symbolic-ref --short -q HEAD) || exit 0
+slice=$(printf '%s\n' "$branch" | sed -n 's#^slice/P\([0-9][0-9]*\)-S-\([0-9][0-9]\)\(-.*\)\{0,1\}$#P\1/S-\2#p')
+[ -n "$slice" ] || exit 0
+
+# The trailer joins the message's final trailer block as its first line, or starts one; a block
+# that already holds a Slice trailer is left alone, so an amend never adds a second.
+exec git interpret-trailers --in-place --where start --if-exists doNothing --trailer "Slice: $slice" "$1"

@@ -1,0 +1,23 @@
+#!/bin/sh
+# slicekit: refuses a commit on a protected branch (REQ-3.9). ALLOW_PROTECTED_COMMIT=1 overrides.
+[ "$ALLOW_PROTECTED_COMMIT" = "1" ] && exit 0
+
+# A detached HEAD is on no branch, so no branch is protected.
+branch=$(git symbolic-ref --short -q HEAD) || exit 0
+
+# protectedBranches from .slicekit/config.json; main when node or the file is absent or unreadable.
+protected=main
+config=.slicekit/config.json
+if [ -f "$config" ] && command -v node >/dev/null 2>&1; then
+  if list=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^﻿/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' "$config" 2>/dev/null); then
+    protected=$list
+  fi
+fi
+
+for name in $protected; do
+  if [ "$name" = "$branch" ]; then
+    echo "slicekit: $branch is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1" >&2
+    exit 1
+  fi
+done
+exit 0
