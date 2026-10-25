@@ -34,7 +34,7 @@ test('hooksPath unset is a finding', () => {
   withInit((root) => {
     git(root, ['config', '--unset', 'core.hooksPath']);
     assert.deepEqual(run(root), [
-      { file: '.slicekit/config.json', line: 1, message: 'git hooks not installed; run slicekit init' },
+      { file: '.githooks', line: 0, message: 'core.hooksPath is not set; run slicekit init' },
     ]);
   });
 });
@@ -42,7 +42,9 @@ test('hooksPath unset is a finding', () => {
 test('a hooks path other than .githooks is a finding', () => {
   withInit((root) => {
     git(root, ['config', 'core.hooksPath', '.husky']);
-    assert.deepEqual(run(root).map((f) => f.message), ['git hooks not installed; run slicekit init']);
+    assert.deepEqual(run(root), [
+      { file: '.githooks', line: 0, message: 'core.hooksPath is .husky, not .githooks; set it to .githooks or run slicekit init' },
+    ]);
   });
 });
 
@@ -67,11 +69,32 @@ test('a hook that is not executable is a named finding', () => {
     else fs.chmodSync(file, 0o644);
     if (win) git(root, ['update-index', '--chmod=-x', '.githooks/prepare-commit-msg']);
     assert.deepEqual(run(root), [
-      { file: '.githooks/prepare-commit-msg', line: 1, message: '.githooks/prepare-commit-msg is not executable' },
+      { file: '.githooks/prepare-commit-msg', line: 1, message: '.githooks/prepare-commit-msg is not executable; run git update-index --chmod=+x .githooks/prepare-commit-msg' },
     ]);
     if (win) git(root, ['update-index', '--chmod=+x', '.githooks/prepare-commit-msg']);
     else fs.chmodSync(file, 0o755);
     assert.deepEqual(run(root), []);
+  });
+});
+
+test('pre-merge-commit is the third hook the rule expects', () => {
+  withInit((root) => {
+    fs.rmSync(path.join(root, '.githooks', 'pre-merge-commit'));
+    assert.deepEqual(run(root).map((f) => f.message), ['.githooks/pre-merge-commit is missing; run slicekit init']);
+  });
+});
+
+// M2: one normaliser, shared with init: a spelling that resolves to <root>/.githooks is installed.
+test('every spelling of the .githooks path counts as installed', () => {
+  withInit((root) => {
+    const spellings = ['./.githooks', '.githooks/', path.join(root, '.githooks'), path.join(root, '.githooks').split(path.sep).join('/')];
+    if (win) spellings.push('.GitHooks');
+    for (const value of spellings) {
+      git(root, ['config', 'core.hooksPath', value]);
+      assert.deepEqual(run(root), [], value);
+    }
+    git(root, ['config', 'core.hooksPath', 'sub/.githooks']);
+    assert.equal(run(root).length, 1);
   });
 });
 
