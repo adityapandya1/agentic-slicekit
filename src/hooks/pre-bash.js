@@ -232,16 +232,20 @@ const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
 
 // ---- directories ----
 
+// Git Bash's `/c/...` spelling of a Windows path as `C:/...`; unchanged off win32.
+export function fromGitBash(p) {
+  if (process.platform !== 'win32') return p;
+  const m = /^\/([A-Za-z])(\/.*)?$/.exec(p);
+  return m ? `${m[1].toUpperCase()}:/${(m[2] ?? '').slice(1)}` : p;
+}
+
 // A directory the hook cannot resolve is null: commits and pushes there refuse rather than pass.
 function resolveDir(from, target) {
   if (/[$`]/.test(target)) return null;
   let t = target;
   if (t === '~' || t.startsWith('~/')) t = path.join(os.homedir(), t.slice(1));
   else if (t.startsWith('~')) return null;
-  if (process.platform === 'win32') {
-    const m = /^\/([A-Za-z])(\/.*)?$/.exec(t);
-    if (m) t = `${m[1].toUpperCase()}:/${(m[2] ?? '').slice(1)}`;
-  }
+  t = fromGitBash(t);
   if (from === null && !path.isAbsolute(t)) return null;
   const abs = path.resolve(from ?? '', t);
   try {
