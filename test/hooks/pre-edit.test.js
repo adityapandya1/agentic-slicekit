@@ -6,7 +6,8 @@ import path from 'node:path';
 import { handle, normalise } from '../../src/hooks/pre-edit.js';
 import { runHook } from '../../src/hooks/io.js';
 import { defaultConfig } from '../../src/config.js';
-import { makeRepo } from '../helpers/tmp-repo.js';
+import { execFileSync, execSync } from 'node:child_process';
+import { makeRepo, commit } from '../helpers/tmp-repo.js';
 
 const WIN = process.platform === 'win32';
 const SLICE = 'P1/S-06';
@@ -66,7 +67,10 @@ test('new doc during build is denied, runbook allowed', () => {
       assertDeny(decide(root, 'docs/spec/new.md'), NEW_DOC);
       assertAllow(decide(root, 'docs/runbook.md'));
       assertAllow(decide(root, 'docs/spec/old.md'));
-      assertAllow(decide(root, 'docs/new.md', { tool: 'Edit' }));
+      assertAllow(decide(root, 'docs/spec/old.md', { tool: 'Edit' }));
+      // A missing file can only be created, whichever tool names it.
+      assertDeny(decide(root, 'docs/new.md', { tool: 'Edit' }), NEW_DOC);
+      assertDeny(decide(root, 'docs/new.md', { tool: 'MultiEdit' }), NEW_DOC);
       assertAllow(decide(root, 'src/new.js'));
     } finally {
       cleanup();
@@ -113,7 +117,8 @@ test('path outside root is allowed', () => {
   const { root, cleanup } = sliceRepo();
   try {
     assertAllow(decide(root, path.join(os.tmpdir(), 'elsewhere', 'a.test.js')));
-    assertAllow(decide(root, '../outside/.slicekit/journal.log'));
+    // Kit-owned names are refused whatever root they sit under.
+    assert.equal(decide(root, '../outside/.slicekit/journal.log').hookSpecificOutput?.permissionDecision, 'deny');
     assert.equal(normalise(path.join(root, '..', 'x.js'), root), null);
   } finally {
     cleanup();
@@ -242,6 +247,129 @@ test('a missing path or an unreadable state file fails closed through runHook', 
       stdin: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: 'src/x.js' }, cwd: root }), root,
     });
     assert.equal(JSON.parse(broken.stdout).hookSpecificOutput.permissionDecision, 'deny');
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- fix round 1 ----
+
+const git = (root, args) => execFileSync('git', args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+
+// A main checkout on `main` holding a nested worktree on the slice branch, the way slices are built.
+function mainWithWorktree(state = 'building', wtFiles = {}) {
+  const main = makeRepo({ branch: 'main', files: { 'test/a.test.js': 'x', 'docs/runbook.md': '# r' } });
+  git(main.root, ['add', '-A']);
+  commit(main.root, 'seed', { allowEmpty: false });
+  const wt = path.join(main.root, '.worktrees', 'S-06');
+  git(main.root, ['worktree', 'add', '-b', BRANCH, wt]);
+  writeState(wt, { state, frozenTests: ['test/a.test.js'] });
+  for (const [rel, content] of Object.entries(wtFiles)) {
+    fs.mkdirSync(path.dirname(path.join(wt, rel)), { recursive: true });
+    fs.writeFileSync(path.join(wt, rel), content);
+  }
+  return { ...main, wt };
+}
+
+// REQ-3.3: the file's own root decides, not the session's.
+test('a nested worktree on a slice branch is guarded from a main-root session', () => {
+  for (const state of ['tests-red', 'building']) {
+    const { root, cleanup } = mainWithWorktree(state);
+    try {
+      assertDeny(decide(root, '.worktrees/S-06/test/a.test.js', { tool: 'Edit' }), FROZEN);
+      assertDeny(decide(root, '.worktrees/S-06/.slicekit/state/P1-S-06.json', { tool: 'Edit' }),
+        '.slicekit/state/P1-S-06.json is written only by the slicekit CLI');
+      assertDeny(decide(root, '.worktrees/S-06/.slicekit/journal.log', { tool: 'Edit' }),
+        '.slicekit/journal.log is written only by the slicekit CLI');
+      assertDeny(decide(root, '.worktrees/S-06/docs/new.md'), NEW_DOC);
+      // The main checkout itself is on main: no active slice there.
+      assertAllow(decide(root, 'test/a.test.js', { tool: 'Edit' }));
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+test("a config in the main checkout does not stand in for the worktree's root", () => {
+  const { root, wt, cleanup } = mainWithWorktree('building');
+  try {
+    fs.mkdirSync(path.join(root, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'config.json'), JSON.stringify(cfgFor()));
+    assert.equal(fs.existsSync(path.join(wt, '.slicekit', 'config.json')), false);
+    assertDeny(decide(root, '.worktrees/S-06/test/a.test.js', { tool: 'Edit' }), FROZEN);
+  } finally {
+    cleanup();
+  }
+});
+
+test("a nested worktree's own config is used", () => {
+  const cfg = cfgFor({ docsRoot: 'handbook' });
+  const { root, cleanup } = mainWithWorktree('building', { '.slicekit/config.json': JSON.stringify(cfg) });
+  try {
+    assertDeny(decide(root, '.worktrees/S-06/handbook/new.md'), NEW_DOC);
+    assertAllow(decide(root, '.worktrees/S-06/docs/new.md'));
+  } finally {
+    cleanup();
+  }
+});
+
+test('Windows stream names are refused', { skip: !WIN && 'win32 only' }, () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assert.throws(() => decide(root, 'test/a.test.js::$DATA', { tool: 'Edit' }), /stream/);
+    assert.throws(() => decide(root, '.slicekit/journal.log::$DATA', { tool: 'Edit' }), /stream/);
+    assert.throws(() => decide(root, `${root}\\test\\a.test.js:alt`, { tool: 'Edit' }), /stream/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('an 8.3 short name of a frozen file is denied', { skip: !WIN && 'win32 only' }, (t) => {
+  const { root, cleanup } = sliceRepo();
+  try {
+    const long = path.join(root, 'test', 'a.test.js');
+    const short = execSync(`for %I in ("${long}") do @echo %~sI`, { shell: 'cmd.exe' }).toString().trim();
+    if (path.basename(short).toLowerCase() === 'a.test.js') {
+      t.skip('8.3 names are disabled on this volume');
+      return;
+    }
+    assertDeny(decide(root, short, { tool: 'Edit' }), FROZEN);
+    assertDeny(decide(root, `test/${path.basename(short)}`, { tool: 'Edit' }), FROZEN);
+  } finally {
+    cleanup();
+  }
+});
+
+test('every path key is checked', () => {
+  const { root, cleanup } = sliceRepo();
+  try {
+    const r = handle({ session_id: 's', tool_name: 'NotebookEdit', tool_input: { file_path: 'src/ok.ipynb', notebook_path: 'test/a.test.js' }, cwd: root },
+      { root, cfg: cfgFor(), env: {} });
+    assertDeny(r, FROZEN);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a state file whose lists are not arrays of strings fails closed', () => {
+  for (const bad of [{ frozenTests: 'test/a.test.js' }, { unfrozen: [3] }]) {
+    const { root, cleanup } = sliceRepo(bad);
+    try {
+      assert.throws(() => decide(root, 'src/x.js', { tool: 'Edit' }), /array of strings/);
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+test('detached HEAD has no active slice; kit-owned files still denied', () => {
+  const { root, cleanup } = sliceRepo();
+  try {
+    git(root, ['add', '-A']);
+    commit(root, 'seed', { allowEmpty: false });
+    git(root, ['checkout', '--detach']);
+    assertAllow(decide(root, 'test/a.test.js', { tool: 'Edit' }));
+    assertDeny(decide(root, '.slicekit/journal.log'), '.slicekit/journal.log is written only by the slicekit CLI');
   } finally {
     cleanup();
   }

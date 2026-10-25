@@ -1,18 +1,25 @@
 // pre-edit (REQ-3.3, D-10): the PreToolUse guard on Edit, Write, MultiEdit and NotebookEdit. Fails
 // closed through io.js.
 //
-// Rules, first deny wins: (3) a kit-owned file — `.slicekit/journal.log`, anything under
-// `.slicekit/baselines/` or `.slicekit/state/`, a `.slicekit/.subagent-*` marker — always; then, only
-// while a slice is active (a `slice/*` branch with a state file): (1) a frozen test of that slice while
-// it is `tests-red` or `building`, unless `unfrozen` lists it; (2) a new file under the docs root from
-// Write or NotebookEdit while the slice is `tests-red` or `building`, except the runbook and anything
-// in the slice's own phase directory.
+// Every path the tool names (`file_path`, `notebook_path`) is judged; any deny wins. Rules, first deny
+// wins: (3) a kit-owned file — a path with a `.slicekit/journal.log`, `.slicekit/state/`,
+// `.slicekit/baselines/` or `.slicekit/.subagent-*` segment, under any root — always; then, only while
+// the file's own root has an active slice (a `slice/*` branch with a state file) in `tests-red` or
+// `building`: (1) a frozen test of that slice, unless `unfrozen` lists it; (2) a file under the docs root
+// that does not exist yet (only a create can name a missing file), except the runbook and anything in
+// the slice's own phase directory.
 //
-// Limits: the guard sees the path the tool names. A Bash command that writes the same file is
-// pre-bash's business, and a symlink inside the repository pointing at a guarded file is not followed.
+// The file's own root is the nearest directory above it holding `.slicekit/config.json`, else its git
+// top level, else the session's root: a session in the main checkout editing a nested worktree is
+// judged by the worktree's branch, state and config. Paths are canonicalised through the real path of
+// their deepest existing ancestor, so 8.3 short names and links resolve; on win32 a `:` after the drive
+// (an NTFS stream name) is refused outright.
+//
+// Limits: a Bash command that writes the same file is pre-bash's business.
 import fs from 'node:fs';
 import path from 'node:path';
-import { GitError, currentBranch } from '../git.js';
+import { CONFIG_PATH, loadConfig } from '../config.js';
+import { GitError, currentBranch, git } from '../git.js';
 import { parseSliceAddr, sliceFromBranch } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { phaseOfDir } from '../slicefile.js';
@@ -22,7 +29,7 @@ import { fromGitBash } from './pre-bash.js';
 
 const WIN = process.platform === 'win32';
 const GUARDED_STATES = new Set(['tests-red', 'building']);
-const CREATES = new Set(['Write', 'NotebookEdit']);
+const PATH_KEYS = ['file_path', 'notebook_path'];
 
 const toPosix = (p) => p.split(path.sep).join('/');
 const key = (p) => (WIN ? p.toLowerCase() : p);
@@ -37,24 +44,80 @@ const real = (p) => {
   }
 };
 
+// The deepest existing ancestor of abs (abs itself when it exists).
+function existingAncestor(abs) {
+  let dir = abs;
+  while (!fs.existsSync(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return dir;
+}
+
+// abs with its existing part replaced by its real path, the missing segments re-appended.
+function canonical(abs) {
+  const existing = existingAncestor(abs);
+  const rest = path.relative(existing, abs);
+  return rest === '' ? real(existing) : path.join(real(existing), rest);
+}
+
 function relInside(root, abs) {
   const rel = path.relative(root, abs);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
   return toPosix(rel);
 }
 
-// -> the POSIX path relative to root, or null when it is outside root. Accepts absolute Windows paths
-// with either slash, Git Bash `/c/...` on win32, and relative paths (against cwd, else root).
-export function normalise(filePath, root, cwd) {
+// -> the canonical absolute path. Accepts absolute Windows paths with either slash, Git Bash `/c/...`
+// on win32, and relative paths (against cwd, else root). Throws on a win32 stream name.
+function absolute(filePath, root, cwd) {
   const p = fromGitBash(String(filePath).replace(/\\/g, '/'));
+  if (WIN && p.replace(/^[A-Za-z]:/, '').includes(':')) {
+    throw new Error(`${filePath}: a stream name is not a file path`);
+  }
   const base = typeof cwd === 'string' && cwd !== '' ? path.resolve(root, fromGitBash(cwd.replace(/\\/g, '/'))) : root;
-  const abs = path.resolve(base, p);
-  const rel = relInside(root, abs);
-  if (rel !== null) return rel;
-  // The tool may name the real path of a root reached through a link or a short name (or vice versa).
-  const realRoot = real(root);
-  return relInside(realRoot, real(abs)) ?? relInside(realRoot, abs);
+  return canonical(path.resolve(base, p));
 }
+
+// -> the POSIX path relative to root, or null when it is outside root.
+export function normalise(filePath, root, cwd) {
+  return relInside(canonical(path.resolve(root)), absolute(filePath, root, cwd));
+}
+
+// A kit-owned segment anywhere in the path, whatever root it belongs to.
+function kitOwned(abs) {
+  const segs = toPosix(abs).split('/').map(key);
+  return segs.some((s, i) => {
+    if (s !== '.slicekit' || i + 1 >= segs.length) return false;
+    const next = segs[i + 1];
+    return next === 'journal.log' || next === 'state' || next === 'baselines' || next.startsWith('.subagent-');
+  });
+}
+
+// The file's own root: the deeper of the nearest `.slicekit/config.json` above it and its git top
+// level (a config in the main checkout never stands in for a nested worktree); null for neither.
+function ownRoot(abs) {
+  let start = existingAncestor(abs);
+  if (!fs.statSync(start).isDirectory()) start = path.dirname(start);
+  let configured = null;
+  for (let dir = start; ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, CONFIG_PATH))) {
+      configured = canonical(dir);
+      break;
+    }
+    if (path.dirname(dir) === dir) break;
+  }
+  let top = null;
+  try {
+    top = canonical(path.resolve(git(start, ['rev-parse', '--show-toplevel'])));
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+  }
+  if (configured && (!top || under(toPosix(configured), toPosix(top)))) return { root: configured, config: true };
+  return top ? { root: top, config: false } : null;
+}
+
+const stringList = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
 
 // The active slice's id and state, or null when there is none.
 function activeSlice(root, cfg) {
@@ -67,38 +130,42 @@ function activeSlice(root, cfg) {
   }
   const id = branch ? sliceFromBranch(branch) : null;
   if (!id) return null;
+  let state;
   try {
-    return { id, state: readSlice(root, cfg, id) };
+    state = readSlice(root, cfg, id);
   } catch (e) {
     if (/^unknown slice /.test(e?.message ?? '')) return null;
     throw e;
   }
+  for (const field of ['frozenTests', 'unfrozen']) {
+    if (!stringList(state[field])) throw new Error(`${id} state: ${field} must be an array of strings`);
+  }
+  return { id, state };
 }
 
-function kitOwned(rel, root, cfg) {
-  const k = kitPaths(root, cfg);
-  const r = (abs) => toPosix(path.relative(root, abs));
-  if (same(rel, r(k.journal)) || under(rel, r(k.state)) || under(rel, r(k.baselines))) return true;
-  const kit = r(k.kit);
-  return same(path.posix.dirname(rel), kit) && key(path.posix.basename(rel)).startsWith('.subagent-');
-}
-
-// Whether rel lies in the slice's own phase directory, `<docs>/phases/P<n>[-name]/`.
+// Whether rel lies inside the slice's own phase directory, `<docs>/phases/P<n>[-name]/`.
 function inOwnPhase(rel, phasesRel, sliceId) {
   if (!under(rel, phasesRel) || same(rel, phasesRel)) return false;
-  const dir = rel.slice(phasesRel.length + 1).split('/')[0];
+  const [dir, ...inside] = rel.slice(phasesRel.length + 1).split('/');
   const phase = phaseOfDir(dir);
-  return phase !== null && phase.n === parseSliceAddr(sliceId).phase && rel.includes('/', phasesRel.length + 1);
+  return inside.length > 0 && phase !== null && phase.n === parseSliceAddr(sliceId).phase;
 }
 
-export function handle(input, { root, cfg }) {
-  const filePath = input?.tool_input?.file_path ?? input?.tool_input?.notebook_path;
-  if (typeof filePath !== 'string' || filePath === '') throw new Error('tool_input.file_path is missing');
-  const rel = normalise(filePath, root, input.cwd);
-  if (rel === null) return allow();
+function judge(filePath, input, hookRoot, hookCfg) {
+  const abs = absolute(filePath, hookRoot, input.cwd);
+  const hookCanon = canonical(path.resolve(hookRoot));
+  const own = ownRoot(abs);
+  let root = hookCanon;
+  let cfg = hookCfg;
+  if (own && !same(toPosix(own.root), toPosix(hookCanon))) {
+    root = own.root;
+    if (own.config) cfg = loadConfig(root);
+  }
+  const rel = relInside(root, abs);
 
   // (3)
-  if (kitOwned(rel, root, cfg)) return deny(`${rel} is written only by the slicekit CLI`);
+  if (kitOwned(abs)) return deny(`${rel ?? toPosix(abs)} is written only by the slicekit CLI`);
+  if (rel === null) return allow();
 
   const active = activeSlice(root, cfg);
   if (!active || !GUARDED_STATES.has(active.state.state)) return allow();
@@ -106,22 +173,31 @@ export function handle(input, { root, cfg }) {
 
   // (1)
   if (cfg.freezeTests) {
-    const listed = (list) => (Array.isArray(list) ? list : []).some((f) => typeof f === 'string' && same(rel, normalise(f, root) ?? ''));
+    const listed = (list) => list.some((f) => same(rel, normalise(f, root) ?? ''));
     if (listed(state.frozenTests) && !listed(state.unfrozen)) {
       return deny(`frozen for ${id}; amend the slice file to change the evaluation set`);
     }
   }
 
   // (2)
-  if (CREATES.has(input.tool_name)) {
-    const k = kitPaths(root, cfg);
-    const docs = toPosix(path.relative(root, k.docs));
-    const abs = path.join(root, ...rel.split('/'));
-    if (under(rel, docs) && !same(rel, docs) && !fs.existsSync(abs)
-      && !same(rel, toPosix(path.relative(root, k.runbook)))
-      && !inOwnPhase(rel, toPosix(path.relative(root, k.phases)), id)) {
-      return deny("no slice starts a document; a document changes only when this slice's code made it wrong");
-    }
+  const k = kitPaths(root, cfg);
+  const docs = toPosix(path.relative(root, k.docs));
+  if (under(rel, docs) && !same(rel, docs) && !fs.existsSync(abs)
+    && !same(rel, toPosix(path.relative(root, k.runbook)))
+    && !inOwnPhase(rel, toPosix(path.relative(root, k.phases)), id)) {
+    return deny("no slice starts a document; a document changes only when this slice's code made it wrong");
+  }
+  return allow();
+}
+
+export function handle(input, { root, cfg }) {
+  const given = PATH_KEYS.filter((k) => input?.tool_input?.[k] !== undefined);
+  if (!given.length) throw new Error('tool_input.file_path is missing');
+  for (const k of given) {
+    const p = input.tool_input[k];
+    if (typeof p !== 'string' || p === '') throw new Error(`tool_input.${k} is not a path`);
+    const r = judge(p, input, root, cfg);
+    if (r.hookSpecificOutput?.permissionDecision === 'deny') return r;
   }
   return allow();
 }
