@@ -1,4 +1,4 @@
-// The session journal (03 REQ-3.8, D-32, D-34): append-only, hash-chained files under
+// The session journal (03 REQ-3.8, D-32, D-34, D-36): append-only, hash-chained files under
 // `.slicekit/journal/`, one per branch per clone, named `<branch-part>--<clone-id>.log`, each its own
 // chain from `prev=genesis`. Two branches, or two clones on one branch, never append to the same file,
 // so merging never conflicts and never breaks a chain. One line per session end:

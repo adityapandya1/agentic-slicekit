@@ -127,7 +127,7 @@ The branch part is the name with `/` as `__` and other unsafe characters as `_`,
 with an 8-hex hash of the raw name when that changed it or it is over 80; the clone id is 8 random hex
 characters kept in the git common directory. There is one file per branch per clone, each its own chain
 whose first line's `prev` is `genesis`, because two branches or two clones appending to one file would
-both chain from the same line and conflict or break at merge (D-34). CI SHALL verify the chain, and that
+both chain from the same line and conflict or break at merge (D-34, D-36). CI SHALL verify the chain, and that
 every journal file committed at the merge base with the default branch is still there as a byte prefix
 of the current file. The protection is exactly this: a mid-chain edit is caught by the chain; shortening
 or removing a committed file is caught against the default branch; lines not yet committed are not
@@ -137,7 +137,7 @@ reviewer blocker; it is never auto-repaired.
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n> of <file>".
 
-Cites: D-32, D-34, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-32, D-34, D-36, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
 

@@ -1,4 +1,4 @@
-// session-end (REQ-3.8, D-32, D-34): appends one line to this clone's journal file for the current
+// session-end (REQ-3.8, D-32, D-34, D-36): appends one line to this clone's journal file for the current
 // branch, `.slicekit/journal/<branch-part>--<clone-id>.log`. Fails open through io.js: a refused append
 // (torn or unparseable last line, lock busy) is a stderr note and nothing is written.
 //
