@@ -130,7 +130,7 @@ test('check on an empty init\'d repo exits 0', () => {
     assert.ok(n >= 1);
     assert.equal(r.stdout, `check: 0 findings, 0 over baseline, 0 blocking, ${n} rules\n`);
     const j = runCli(['check', '--json', '--ci'], { cwd: repo.root });
-    assert.equal(j.code, 0, j.stderr);
+    assert.equal(j.code, 0, j.stdout + j.stderr);
     const out = JSON.parse(j.stdout);
     assert.deepEqual(out.findings, []);
     assert.equal(out.exitCode, 0);
