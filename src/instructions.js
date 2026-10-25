@@ -1,7 +1,7 @@
 // The one home of every agent brief and every command procedure (REQ-2.12). A brief is the role's
-// template followed by everything the agent needs inlined: the slice file, the REQ blocks and decision
-// rows it names, the team's commands and the writing rules. A procedure is a command's template with
-// its arguments filled in.
+// template followed by everything the agent needs inlined: the writing rules, the REQ blocks and
+// decision rows the slice names, the slice file's summary, the team's commands, and last the slice's
+// tasks. A procedure is a command's template with its arguments filled in.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { exists, readText } from './fs.js';
 import { GitError, currentBranch, isRepo } from './git.js';
 import { ROLES } from './hooks/shapes.js';
 import { parseSliceAddr, sliceFromBranch } from './ids.js';
-import { frontMatter, lines } from './markdown.js';
+import { frontMatter, headings, lines } from './markdown.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles } from './slicefile.js';
 import { reqBlocks } from './stage.js';
@@ -21,6 +21,7 @@ export const TEMPLATES = fileURLToPath(new URL('../templates/instructions', impo
 const KIT_SKILL = fileURLToPath(new URL('../templates/claude-code/skills/slicekit-writing/SKILL.md', import.meta.url));
 const SKILL = path.join('.claude', 'skills', 'slicekit-writing', 'SKILL.md');
 const TEAM_COMMANDS = ['test', 'lint', 'build', 'e2e'];
+const SUMMARY_SECTIONS = ['Done when', 'Evaluation set', 'Expected changes'];
 
 // code 1: refused (a template the kit does not ship yet); code 2: usage or an unknown name.
 export class InstructionsError extends Error {
@@ -33,6 +34,7 @@ export class InstructionsError extends Error {
 
 const posix = (p) => p.split(path.sep).join('/');
 const fill = (text, values) => text.replace(/\{\{(cli|args)\}\}/g, (m, k) => (k in values ? values[k] : m));
+const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [String(v)]);
 
 // The slice a brief is for: `arg` when it is a slice address, else the one the current branch names;
 // null outside a repository or off a slice branch.
@@ -51,17 +53,56 @@ export function briefSlice(root, arg) {
   }
 }
 
-// The slice file whose front matter names `id`, as {text, data}; null when none does.
+// Every heading outside a fenced block `by` levels lower (at most level 6), so inlined text sits under
+// the brief's own `##` sections. Every other line is kept as it is.
+export function demote(text, by = 1) {
+  let inFence = false;
+  return text
+    .split('\n')
+    .map((l) => {
+      if (/^\s*(```|~~~)/.test(l)) {
+        inFence = !inFence;
+        return l;
+      }
+      if (inFence) return l;
+      const m = /^(#{1,6})(\s.*)$/.exec(l);
+      return m ? '#'.repeat(Math.min(6, m[1].length + by)) + m[2] : l;
+    })
+    .join('\n');
+}
+
+// The slice file whose front matter names `id`, as {data, body}; null when none does.
 function sliceFile(root, cfg, id) {
   for (const f of findSliceFiles(root, cfg)) {
-    const text = readText(f.path);
-    const { data } = frontMatter(text);
-    if (String(data.slice ?? '') === id) return { text, data };
+    const { data, body } = frontMatter(readText(f.path));
+    if (String(data.slice ?? '') === id) return { data, body };
   }
   return null;
 }
 
-const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [String(v)]);
+// The level-2 sections of a slice file's body: lower-case title -> {title, text after the heading}.
+function sliceSections(body) {
+  const all = lines(body);
+  const hs = headings(body).filter((h) => h.level === 2);
+  return new Map(
+    hs.map((h, i) => {
+      const end = i + 1 < hs.length ? hs[i + 1].line - 1 : all.length;
+      return [h.text.toLowerCase(), { title: h.text, text: all.slice(h.line, end).join('\n').trim() }];
+    }),
+  );
+}
+
+// The front matter as a list, then Done when, Evaluation set and Expected changes, their headings one
+// level lower. The Tasks section goes last in the brief, on its own.
+function sliceSummary(slice) {
+  const parts = [Object.entries(slice.data).map(([k, v]) => `- ${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n')];
+  const sections = sliceSections(slice.body);
+  for (const title of SUMMARY_SECTIONS) {
+    const sec = sections.get(title.toLowerCase());
+    if (sec) parts.push(demote(`## ${sec.title}\n\n${sec.text}`.trim()));
+  }
+  return parts.filter((p) => p !== '').join('\n\n');
+}
 
 function requirements(root, cfg, ids) {
   if (ids.length === 0) return 'The slice names no requirement.';
@@ -72,7 +113,7 @@ function requirements(root, cfg, ids) {
       const b = blocks.find((x) => x.id === id);
       if (!b) return `${id}: not found under ${specDir}`;
       const heading = lines(readText(path.join(root, b.file)))[b.line - 1];
-      return `${heading}\n${b.block}`.trimEnd();
+      return demote(`${heading}\n${b.block}`.trimEnd());
     })
     .join('\n\n');
 }
@@ -94,7 +135,8 @@ function decisions(root, cfg, ids) {
 
 const stripFrontMatter = (text) => text.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
 
-// The project's rendered writing rules, else the kit's, without front matter or a `# Writing rules` heading.
+// The project's rendered writing rules, else the kit's, without front matter or the leading level-1
+// title (`# Writing rules` in the kit's), the other headings one level lower.
 function writingRules(root) {
   for (const file of [path.join(root, SKILL), KIT_SKILL]) {
     let text;
@@ -103,7 +145,7 @@ function writingRules(root) {
     } catch {
       continue;
     }
-    return stripFrontMatter(text).replace(/\r\n/g, '\n').replace(/^\s*# Writing rules[ \t]*\n/, '').trim();
+    return demote(stripFrontMatter(text).replace(/\r\n/g, '\n').replace(/^\s*# [^\n]*(?:\n|$)/, '').trim());
   }
   return '';
 }
@@ -117,28 +159,31 @@ function template(file, what) {
   }
 }
 
-// The whole brief of `role` for `sliceId` (null: no active slice). With `worktree` it opens by naming
-// where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2).
-export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES, worktree } = {}) {
+// Refuses a role that is not one of the six, and the designer outside a fullstack project.
+export function checkRole(cfg, role) {
   if (!ROLES.has(role)) throw new InstructionsError(2, `unknown role '${role}'; one of ${[...ROLES].join(', ')}`);
   if (role === 'designer' && cfg.shape !== 'fullstack') throw new InstructionsError(2, `designer is not installed for shape ${cfg.shape}`);
+}
+
+// The whole brief of `role` for `sliceId` (null: no active slice). The essentials come first and the
+// slice's Tasks section last, so a reader that cuts the text from its end loses the least. With
+// `worktree` it names where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2).
+// `fromBranch`: the id came from the branch, so a missing slice file is no active slice, not an error.
+export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES, worktree, fromBranch = false } = {}) {
+  checkRole(cfg, role);
   const slice = sliceId ? sliceFile(root, cfg, sliceId) : null;
-  if (sliceId && !slice) throw new InstructionsError(2, `unknown slice ${sliceId}`);
+  if (sliceId && !slice && !fromBranch) throw new InstructionsError(2, `unknown slice ${sliceId}`);
   const file = path.join(templatesDir, 'agents', `${role}.md`);
   const head = fill(template(file, `the ${role} brief is not built in this version: ${posix(file)} is missing`), { cli: cfg.cli });
-  const parts = [head.trim()];
-  if (worktree) parts.push(`## Where\n\nWork only under ${path.resolve(root, worktree)}; use absolute paths.`);
-  if (slice) {
-    parts.push(`## Slice ${sliceId}\n\n${slice.text.replace(/\r\n/g, '\n').replace(/^﻿/, '').trim()}`);
-  } else {
-    parts.push('## Slice\n\nNo active slice.');
-  }
-  const reqs = slice ? asList(slice.data.requirements) : [];
-  const ds = slice ? asList(slice.data.decisions) : [];
-  parts.push(`## Requirements\n\n${slice ? requirements(root, cfg, reqs) : 'No active slice.'}`);
-  parts.push(`## Decisions\n\n${slice ? decisions(root, cfg, ds) : 'No active slice.'}`);
+  const none = sliceId && !slice ? `No active slice. (branch names ${sliceId}, which has no slice file)` : 'No active slice.';
+  const parts = [head.trim(), `## Writing rules\n\n${writingRules(root)}`.trim()];
+  parts.push(`## Requirements\n\n${slice ? requirements(root, cfg, asList(slice.data.requirements)) : none}`);
+  parts.push(`## Decisions\n\n${slice ? decisions(root, cfg, asList(slice.data.decisions)) : none}`);
+  parts.push(slice ? `## Slice ${sliceId}\n\n${sliceSummary(slice)}` : `## Slice\n\n${none}`);
   parts.push(`## Team commands\n\n${TEAM_COMMANDS.map((k) => `- ${k}: ${cfg.commands?.[k] || 'not declared'}`).join('\n')}`);
-  parts.push(`## Writing rules\n\n${writingRules(root)}`.trim());
+  if (worktree) parts.push(`## Where\n\nWork only under ${posix(path.resolve(root, worktree))}; use absolute paths.`);
+  const tasks = slice ? sliceSections(slice.body).get('tasks') : undefined;
+  if (tasks) parts.push(`## Tasks\n\n${demote(tasks.text)}`.trim());
   return parts.join('\n\n');
 }
 

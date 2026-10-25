@@ -181,3 +181,28 @@ test('hooks/subagent-start.test.js » a brief from instructions is not followed 
     cleanup();
   }
 });
+
+// REQ-2.12: a brief over the cap is cut from its end; the writing rules and the no-git sentence stay whole.
+test('subagent-start » a long brief from instructions is cut and still ends with the rules and the no-git rule', async () => {
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const rule = '- State the fact, the consequence, the check. Not the importance.';
+    const commands = {
+      instructions: {
+        run: async (args, io) => {
+          io.stdout(`# Brief: ${args[0]}\n\n## Writing rules\n\n${rule}\n\n## Requirements\n\n${'y'.repeat(20000)}\n`);
+          return 0;
+        },
+      },
+    };
+    const t = text(await start(root, {}, { commands, cfg: defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' }) }));
+    assert.ok(t.length <= BRIEF_MAX, String(t.length));
+    assert.ok(t.startsWith('# Brief: developer\n'), t.slice(0, 100));
+    assert.equal(t.split(rule).length - 1, 1);
+    assert.match(t, /\(brief truncated; full text in npx slicekit instructions developer\)/);
+    assert.ok(t.indexOf('(brief truncated') < t.indexOf(rule), 'the rules follow the cut brief');
+    assert.ok(t.endsWith(`\n${NO_GIT}`));
+  } finally {
+    cleanup();
+  }
+});

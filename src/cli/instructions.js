@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
-import { InstructionsError, briefSlice, renderBrief, renderProcedure } from '../instructions.js';
+import { InstructionsError, briefSlice, checkRole, renderBrief, renderProcedure } from '../instructions.js';
 
 const USAGE =
   'instructions <role> [P<n>/S-<nn>] [--worktree <path>]\n' +
@@ -17,7 +17,7 @@ async function run(args, io) {
   let produce;
   if (args[0] === '--command') {
     const [, name, ...rest] = args;
-    if (name === undefined) return usage(io);
+    if (name === undefined) return usage(io, 'missing command name');
     produce = (cfg) => renderProcedure(io.cwd, cfg, name, rest);
   } else {
     let values;
@@ -27,9 +27,15 @@ async function run(args, io) {
     } catch (e) {
       return usage(io, e.message);
     }
-    if (positionals.length < 1 || positionals.length > 2) return usage(io);
+    if (positionals.length === 0) return usage(io, 'missing role');
+    if (positionals.length > 2) return usage(io, `unexpected argument ${positionals[2]}`);
+    if (values.worktree !== undefined && values.worktree.trim() === '') return usage(io, '--worktree needs a path');
     const [role, slice] = positionals;
-    produce = (cfg) => renderBrief(io.cwd, cfg, role, briefSlice(io.cwd, slice), { worktree: values.worktree });
+    // The role is checked before the slice is resolved, so a bad role is the error a caller sees.
+    produce = (cfg) => {
+      checkRole(cfg, role);
+      return renderBrief(io.cwd, cfg, role, briefSlice(io.cwd, slice), { worktree: values.worktree, fromBranch: slice === undefined });
+    };
   }
   try {
     const text = produce(loadConfig(io.cwd));

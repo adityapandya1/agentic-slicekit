@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { defaultConfig } from '../src/config.js';
 import { main } from '../src/cli/index.js';
 import { InstructionsError, PROCEDURES, briefSlice, renderBrief, renderProcedure } from '../src/instructions.js';
+import { prose } from '../src/markdown.js';
 import { reqBlocks } from '../src/stage.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 
@@ -33,6 +34,22 @@ decisions: [D-01, D-77]
 | Test | Kind | Covers |
 |---|---|---|
 | \`a.test.js » works\` | happy | REQ-1.1 |
+
+## Notes
+
+A section the brief leaves out.
+
+## Expected changes
+
+\`src/a.js\`.
+
+## Tasks
+
+### Task 1: The first
+
+\`\`\`
+## not a heading
+\`\`\`
 `;
 
 const SPEC = `# Spec
@@ -115,8 +132,14 @@ test("instructions.test.js » each role's brief inlines the slice file, its REQ 
         assert.ok(t.startsWith(`# Brief: ${role}\n`), t);
         assert.match(t, /Run `npx slicekit check`\./, '{{cli}} replaced');
         assert.match(t, /^## Slice P1\/S-01$/m);
-        assert.match(t, /^## Done when$/m);
-        assert.match(t, /^### REQ-1\.1 The first requirement$/m);
+        assert.match(t, /^- name: First$/m, 'front matter summary');
+        assert.match(t, /^### Done when$/m, 'slice headings demoted one level');
+        assert.match(t, /^### Evaluation set$/m);
+        assert.match(t, /^### Expected changes$/m);
+        assert.doesNotMatch(t, /Notes|A section the brief leaves out/, 'other slice sections are left out');
+        assert.match(t, /^#### Task 1: The first$/m);
+        assert.match(t, /^## not a heading$/m, 'fenced text verbatim');
+        assert.match(t, /^#### REQ-1\.1 The first requirement$/m, 'REQ heading demoted one level');
         assert.match(t, /The tool SHALL work\./);
         assert.doesNotMatch(t, /REQ-1\.2 The second/, 'only the named REQ');
         assert.match(t, /^REQ-9\.9: not found under docs\/spec\/$/m);
@@ -127,10 +150,14 @@ test("instructions.test.js » each role's brief inlines the slice file, its REQ 
         assert.match(t, /^## Writing rules$/m);
         assert.ok(t.split('\n').includes(RULE), t);
         assert.doesNotMatch(t, /^# Writing rules$/m, 'the template heading is removed');
+        assert.match(t, /^### Filler the check rejects$/m, 'rules headings demoted one level');
         assert.doesNotMatch(t, /^name: slicekit-writing/m, 'front matter removed');
-        const order = ['## Slice P1/S-01', '## Requirements', '## Decisions', '## Team commands', '## Writing rules'].map((h) => t.indexOf(`\n${h}\n`));
-        assert.deepEqual([...order].sort((a, b) => a - b), order, `sections in order: ${order}`);
-        assert.ok(order.every((n) => n > 0), String(order));
+        // The essentials first, the long Tasks section last; fenced lines are not headings.
+        const tops = (s) => [...prose(s)].map(([l]) => l).filter((l) => /^## /.test(l));
+        const base = ['## Writing rules', '## Requirements', '## Decisions', '## Slice P1/S-01', '## Team commands'];
+        assert.deepEqual(tops(t), [...base, '## Tasks'], t);
+        const w = renderBrief(root, cfg, role, 'P1/S-01', { templatesDir: dir, worktree: path.join(root, 'wt') });
+        assert.deepEqual(tops(w), [...base, '## Where', '## Tasks'], w);
       }
     } finally {
       cleanup();
@@ -167,8 +194,13 @@ test('instructions.test.js » the slice comes from the branch when no argument i
     assert.doesNotMatch(t, /## Where/);
     const wt = path.join(root, '.worktrees', 'P1-S-01');
     const w = renderBrief(root, cfg, 'developer', id, { templatesDir: dir, worktree: wt });
-    assert.ok(w.includes(`## Where\n\nWork only under ${wt}; use absolute paths.`), w);
-    assert.ok(w.indexOf('## Where') < w.indexOf('## Slice'), 'Where comes before the slice');
+    assert.ok(w.includes(`## Where\n\nWork only under ${wt.split(path.sep).join('/')}; use absolute paths.`), w);
+    assert.ok(w.indexOf('## Where') < w.indexOf('\n## Tasks\n'), 'Where comes before the tasks');
+    // M-3: a branch naming a slice with no slice file gives no active slice, not an error.
+    execFileSync('git', ['checkout', '-q', '-b', 'slice/P1-S-07-y'], { cwd: root });
+    const id7 = briefSlice(root, undefined);
+    const n = renderBrief(root, cfg, 'developer', id7, { templatesDir: dir, fromBranch: true });
+    assert.ok(n.includes('## Slice\n\nNo active slice. (branch names P1/S-07, which has no slice file)'), n);
   } finally {
     cleanup();
   }
@@ -251,7 +283,7 @@ test('instructions » no active slice, an unknown slice, the project writing rul
     fs.mkdirSync(path.dirname(skill), { recursive: true });
     fs.writeFileSync(skill, '---\nname: slicekit-writing\ndescription: x\n---\n# Writing rules\n\n- Project rule.\n');
     const p = renderBrief(root, cfg, 'reviewer', null, { templatesDir: dir });
-    assert.ok(p.endsWith('## Writing rules\n\n- Project rule.'), p.slice(-120));
+    assert.ok(p.includes('## Writing rules\n\n- Project rule.\n\n## Requirements'), p);
   } finally {
     cleanup();
   }
@@ -264,7 +296,7 @@ test('instructions » the CLI prints a brief for a slice given as an argument', 
     const r = await cli(root, ['instructions', 'developer', 'P1/S-01', '--worktree', 'wt']);
     if (r.code === 0) {
       assert.match(r.stdout, /^## Slice P1\/S-01$/m);
-      assert.ok(r.stdout.includes(`Work only under ${path.resolve(root, 'wt')}; use absolute paths.`));
+      assert.ok(r.stdout.includes(`Work only under ${path.resolve(root, 'wt').split(path.sep).join('/')}; use absolute paths.`));
     } else {
       assert.equal(r.code, 1, r.stderr);
       assert.match(r.stderr, /^slicekit: /);
@@ -284,6 +316,31 @@ test('stage » reqBlocks gives each REQ its file and the 1-based line of its hea
       { id: 'REQ-1.2', file: 'docs/spec/01-first.md', line: 7 },
     ]);
     assert.match(blocks[0].block, /The tool SHALL work\./);
+  } finally {
+    cleanup();
+  }
+});
+
+test('instructions » usage errors name their reason; the role is checked before the slice', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const none = await cli(root, ['instructions']);
+    assert.equal(none.code, 2);
+    assert.match(none.stderr, /^slicekit: missing role\nusage: /);
+    assert.match((await cli(root, ['instructions', '--command'])).stderr, /^slicekit: missing command name\nusage: /);
+    const extra = await cli(root, ['instructions', 'developer', 'P1/S-01', 'more']);
+    assert.equal(extra.code, 2);
+    assert.match(extra.stderr, /^slicekit: unexpected argument more\nusage: /);
+    const wt = await cli(root, ['instructions', 'developer', '--worktree', '']);
+    assert.equal(wt.code, 2);
+    assert.match(wt.stderr, /^slicekit: --worktree needs a path\n/);
+    const bad = await cli(root, ['instructions', 'tester', 'nope']);
+    assert.equal(bad.code, 2);
+    assert.match(bad.stderr, /^slicekit: unknown role 'tester'/);
+    // An explicit slice argument with no slice file is still exit 2.
+    const missing = await cli(root, ['instructions', 'developer', 'P1/S-07']);
+    assert.equal(missing.code, 2);
+    assert.equal(missing.stderr, 'slicekit: unknown slice P1/S-07\n');
   } finally {
     cleanup();
   }
