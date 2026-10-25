@@ -179,15 +179,17 @@ Init SHALL write a GitHub Actions workflow that, on every pull request: runs `sl
 runs the team's test, lint, build and e2e commands as declared; runs the observability steps listed in
 `observability.md` and config as additional jobs (D-20); fails if the title lacks a slice ID or the
 slice's state is before `draft-pr`; fails if the body lacks a section from REQ-2.10; and grants the
-`ready` label only when the latest verdict file has zero open blockers and, if required, an
-independent verdict exists (REQ-2.8). On merge to the default branch it SHALL run
+`ready` label only when the latest verdict on the pull request's current head has zero open
+blockers and, if required, the latest independent verdict on it has none either (REQ-2.8); a
+verdict given on an earlier head counts when every later commit touches only the kit's own
+bookkeeping (D-35). On merge to the default branch it SHALL run
 `slicekit status --sync --write` and commit the state and `BUILD.md` change as a bot commit (D-12).
 Actions SHALL be pinned by SHA.
 
 Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must
 begin with [P<n>/S-<nn>]".
 
-Cites: D-12, D-18, D-20.
+Cites: D-12, D-18, D-20, D-35.
 
 Enforced by: the generated workflow; `slicekit check --ci`.
 

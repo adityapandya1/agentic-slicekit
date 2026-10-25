@@ -70,7 +70,7 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   assert.ok(!yml.includes('npx'), 'never a registry fetch (D-30)');
 
   const ready = jobBlock(yml, 'ready-label');
-  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint]'));
+  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
   assert.ok(ready.includes('pull-requests: write'));
   assert.ok(ready.includes('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}'));
   assert.ok(ready.includes('slicekit.js ready-label'));
@@ -96,7 +96,7 @@ test('empty e2e command renders no job (REQ-3.11)', () => {
   assert.ok(!ids.includes('cmd-e2e'));
   assert.ok(!ids.includes('cmd-lint'), 'whitespace-only is empty');
   assert.deepEqual(ids.filter((id) => id.startsWith('cmd-')), ['cmd-test', 'cmd-build']);
-  assert.ok(jobBlock(yml, 'ready-label').includes('needs: [gate, cmd-test, cmd-build]'));
+  assert.ok(jobBlock(yml, 'ready-label').includes('needs: [gate, cmd-test, cmd-build, obs-1]'));
 });
 
 test('observability steps render as jobs (REQ-3.11)', () => {
@@ -200,8 +200,14 @@ test('ready-label still runs when a needed job failed, and is told so', () => {
   // A failed gate or command job must take the label away, so the job runs unless the run was
   // cancelled (a newer push superseded it), and passes the failure to the CLI.
   const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
-  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint]'));
-  assert.ok(ready.includes("          SLICEKIT_CHECKS_FAILED: ${{ contains(needs.*.result, 'failure') }}\n"), ready);
+  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
+  assert.ok(
+    ready.includes(
+      "          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}\n",
+    ),
+    ready,
+  );
+  assert.ok(!ready.includes('SLICEKIT_CHECKS_FAILED'));
   assert.ok(!ready.includes('always()'), 'always() would also run a cancelled, superseded run');
 });
 

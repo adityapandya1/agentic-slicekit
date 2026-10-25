@@ -1,5 +1,6 @@
 import { GitHostNotFound } from '../adapters/githost/errors.js';
 import { listSlices, setState } from './index.js';
+import { isDate } from '../evidence.js';
 import { HOST_MERGE_FROM } from './transitions.js';
 
 // Before a pull request exists in the state machine: a merged pull request recorded here means the
@@ -11,7 +12,8 @@ const BEFORE_DRAFT = ['todo', 'tests-red', 'building'];
 // draft-pr with a merged pull request is warned, not moved. Returns
 // { changes: [{ id, from, to, pr }], warnings: [string] }.
 //
-// A pull request the host cannot find is warned and skipped. Any other error stops the sync; it
+// A pull request the host cannot find, an answer about another pull request, and a merge time that
+// is not a date are each warned and skipped. Any other error stops the sync; it
 // carries what was already written as `error.partial = { changes, warnings }`, so a caller can
 // report every change that reached disk before the failure.
 export function syncFromHost(root, cfg, host) {
@@ -35,7 +37,15 @@ export function syncFromHost(root, cfg, host) {
         warnings.push(`${state.slice}: pull request ${number} could not be fetched: ${e.message}; skipped`);
         continue;
       }
+      if (pr.number !== number) {
+        warnings.push(`${state.slice}: the host answered pull request ${number} with pull request ${pr.number}; skipped`);
+        continue;
+      }
       if (!pr.mergedAt) continue;
+      if (!isDate(pr.mergedAt)) {
+        warnings.push(`${state.slice}: pull request ${number} has a merge time that is not a date ('${pr.mergedAt}'); skipped`);
+        continue;
+      }
       if (!syncable) {
         warnings.push(`${state.slice} is ${from} but pull request ${number} is merged; its record needs a human; skipped`);
         continue;

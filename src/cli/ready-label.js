@@ -31,14 +31,15 @@ function decide(root, env, pr) {
   }
   const slice = titleSlice(pr.title);
   if (!slice) return { slice: null, ready: false, reason: 'the title names no slice' };
-  if (env.SLICEKIT_CHECKS_FAILED === 'true') return { slice, ready: false, reason: 'a required check failed' };
+  // Fail closed: only the workflow's explicit report that every needed job passed counts.
+  if (env.SLICEKIT_CHECKS_OK !== 'true') return { slice, ready: false, reason: 'a required check did not pass' };
   try {
     const cfg = loadConfig(root);
     if (!fs.existsSync(path.join(kitPaths(root, cfg).state, stateFileName(slice)))) {
       return { slice, ready: false, reason: `slice ${slice} has no state file` };
     }
     const state = readSlice(root, cfg, slice);
-    return { slice, ...decideReady(state, cfg, { headSha: pr.headSha ?? undefined }) };
+    return { slice, ...decideReady(state, cfg, { headSha: pr.headSha ?? undefined, number: pr.number, root }) };
   } catch (e) {
     return { slice, ready: false, reason: e.message };
   }

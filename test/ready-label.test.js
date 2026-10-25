@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
-import { readSlice, writeSlice } from '../src/state/index.js';
+import { TransitionError, readSlice, setState, writeSlice } from '../src/state/index.js';
 import { decideReady } from '../src/ready-label.js';
 import { githubHost } from '../src/adapters/githost/github.js';
 import { fixtureHost } from '../src/adapters/githost/fixture.js';
@@ -43,8 +43,36 @@ test('label needs zero blockers and, when required, an independent verdict', () 
   // An independent verdict with blockers does not count.
   assert.deepEqual(decideReady(slice([verdict(1, 1, { independent: true }), verdict(2, 0)]), required), {
     ready: false,
-    reason: 'independent review missing',
+    reason: 'independent review found 1 blocker',
   });
+});
+
+test('the latest independent verdict on the head decides, not any earlier one', () => {
+  const vs = [verdict(1, 0, { independent: true }), verdict(2, 2, { independent: true }), verdict(3, 0)];
+  assert.deepEqual(decideReady(slice(vs), required), { ready: false, reason: 'independent review found 2 blockers' });
+  assert.equal(decideReady(slice(vs), optional).ready, true);
+});
+
+test('a missing review config counts as independent review required', () => {
+  assert.deepEqual(decideReady(slice([verdict(1, 0)]), {}), { ready: false, reason: 'independent review missing' });
+  assert.equal(decideReady(slice([verdict(1, 0, { independent: true })]), {}).ready, true);
+});
+
+test('a slice outside the review states, or another pull request, is not ready', () => {
+  const clean = [verdict(1, 0, { independent: true })];
+  for (const st of ['todo', 'tests-red', 'building', 'merged', 'released']) {
+    const d = decideReady({ ...slice(clean), state: st }, required);
+    assert.equal(d.ready, false, st);
+    assert.match(d.reason, new RegExp(`is ${st}`));
+  }
+  for (const st of ['draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready']) {
+    assert.equal(decideReady({ ...slice(clean), state: st }, required, { number: 9 }).ready, true, st);
+  }
+  assert.deepEqual(decideReady(slice(clean), required, { number: 10 }), {
+    ready: false,
+    reason: 'the state records pull request #9, not #10',
+  });
+  assert.equal(decideReady(slice(clean), required, { number: null }).ready, false);
 });
 
 test('only verdicts on the current head count', () => {
@@ -130,7 +158,7 @@ function withCli(fn) {
     const run = (eventFile, env = {}) =>
       runCli(['ready-label'], {
         cwd: repo.root,
-        env: { ...process.env, GH_TOKEN: '', GITHUB_EVENT_PATH: eventFile ?? '', SLICEKIT_GITHOST_FIXTURE: hostDir, SLICEKIT_CHECKS_FAILED: '', ...env },
+        env: { ...process.env, GH_TOKEN: '', GITHUB_EVENT_PATH: eventFile ?? '', SLICEKIT_GITHOST_FIXTURE: hostDir, SLICEKIT_CHECKS_OK: 'true', ...env },
       });
     return fn({ root: repo.root, cfg, ids, event, run, calls: () => readCalls(hostDir), hostDir });
   } finally {
@@ -186,13 +214,33 @@ test('ready-label: grants the label when the decision is ready, removes it when 
   });
 });
 
-test('ready-label: a failed check is not ready', () => {
+test('ready-label: unless the checks are reported as passed, it is not ready', () => {
   withCli(({ root, cfg, ids, event, run, calls }) => {
     park(root, cfg, ids[0], [verdict(1, 0, { independent: true })]);
-    const r = run(event(`[${ids[0]}] Fixture`, { labels: ['ready'] }), { GH_TOKEN: 't', SLICEKIT_CHECKS_FAILED: 'true' });
-    assert.equal(r.code, 0);
-    assert.match(r.stdout, /not ready: a required check failed/);
-    assert.deepEqual(calls(), [{ number: 9, name: 'ready', present: false }]);
+    // Fail closed: anything but the string true, including no value at all.
+    for (const ok of ['false', 'True', '', undefined]) {
+      const r = run(event(`[${ids[0]}] Fixture`, { labels: ['ready'] }), { GH_TOKEN: 't', SLICEKIT_CHECKS_OK: ok });
+      assert.equal(r.code, 0);
+      assert.match(r.stdout, /not ready: a required check did not pass/, String(ok));
+    }
+    assert.equal(calls().length, 4);
+    assert.ok(calls().every((c) => c.present === false));
+  });
+});
+
+test('ready-label: an event for another pull request than the one recorded is not ready', () => {
+  withCli(({ root, cfg, ids, event, run }) => {
+    park(root, cfg, ids[0], [verdict(1, 0, { independent: true })]);
+    const r = run(event(`[${ids[0]}] Fixture`, { number: 12 }));
+    assert.match(r.stdout, /not ready: the state records pull request #9, not #12/);
+  });
+});
+
+test('ready needs the latest independent verdict on the head to be clean', () => {
+  withCli(({ root, cfg, ids }) => {
+    const vs = [verdict(1, 0, { independent: true }), verdict(2, 2, { independent: true }), verdict(3, 0)];
+    writeSlice(root, cfg, { ...readSlice(root, cfg, ids[0]), state: 'ci-green', pr: { number: 9, headSha: HEAD }, verdicts: vs });
+    assert.throws(() => setState(root, cfg, ids[0], 'ready', {}), (e) => e instanceof TransitionError && /found 2 blockers/.test(e.message));
   });
 });
 

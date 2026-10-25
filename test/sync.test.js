@@ -143,6 +143,30 @@ test('a slice before draft-pr with a merged pull request is warned, not moved', 
   });
 });
 
+test('a host answer for another pull request is warned and skipped', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'draft-pr', { number: 40, headSha: 'abc1234' });
+    parkAt(root, cfg, ids[1], 'draft-pr', { number: 41, headSha: 'abc1234' });
+    const host = { getPullRequest: (n) => merged(n === 40 ? 99 : n) };
+    const { changes, warnings } = syncFromHost(root, cfg, host);
+    assert.deepEqual(changes, [{ id: ids[1], from: 'draft-pr', to: 'merged', pr: 41 }]);
+    assert.deepEqual(warnings, [`${ids[0]}: the host answered pull request 40 with pull request 99; skipped`]);
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'draft-pr');
+  });
+});
+
+test('a host merge time that is not a date is warned and skipped; the sync goes on', () => {
+  withKit((root, cfg, ids) => {
+    parkAt(root, cfg, ids[0], 'draft-pr', { number: 42, headSha: 'abc1234' });
+    parkAt(root, cfg, ids[1], 'ready', { number: 43, headSha: 'abc1234' });
+    const host = { getPullRequest: (n) => ({ ...merged(n), mergedAt: n === 42 ? 'yesterday' : MERGED_AT }) };
+    const { changes, warnings } = syncFromHost(root, cfg, host);
+    assert.deepEqual(changes, [{ id: ids[1], from: 'ready', to: 'merged', pr: 43 }]);
+    assert.deepEqual(warnings, [`${ids[0]}: pull request 42 has a merge time that is not a date ('yesterday'); skipped`]);
+    assert.equal(readSlice(root, cfg, ids[0]).state, 'draft-pr');
+  });
+});
+
 test('a slice before draft-pr with no pull request is not asked about', () => {
   withKit((root, cfg, ids) => {
     parkAt(root, cfg, ids[0], 'tests-red', null);

@@ -40,6 +40,7 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | D-31 | Decision | May a first adoption raise a baseline? | Yes, once: `slicekit baseline update --adopt` records higher counts, prints each one with its previous value, is refused in CI, and a reviewer treats an adopted raise like any other finding. | the build, 2026-10-24 |
 | D-32 | Decision | Is a hash-chained session journal wanted, or is the git log enough? | A per-session append-only journal of agent actions, each line carrying the hash of the previous one, so a tampered or truncated record is visible; the git log records commits, not what the agents did between them. | brainstorm with the author, 2026-10-24 |
 | D-33 | Decision | Does the kit version itself and migrate a team's config? | Semver on the package; `.slicekit/config.json` carries `configVersion`; a newer kit migrates an older config forward on first run and prints each change; a downgrade refuses. | brainstorm with the author, 2026-10-24 |
+| D-35 | Decision | Does a verdict still hold after the verdict and state files are committed? | Yes, when every commit after the reviewed head touches only the kit's own bookkeeping (state, reviews, journal, BUILD.md); any other change needs a new review. Without this the verdict commit itself makes every verdict stale. | the build, 2026-10-25 |
 
 ## Open
 

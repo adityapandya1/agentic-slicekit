@@ -143,7 +143,7 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   const vars = {
     ...v,
     defaultBranchItem: yamlScalar(cfg.defaultBranch),
-    readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`)].join(', '),
+    readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`), ...steps.map((_s, i) => `obs-${i + 1}`)].join(', '),
     syncPaths: syncPaths(cfg),
   };
   const free = { cli: cfg.cli, defaultBranch: cfg.defaultBranch };
