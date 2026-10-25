@@ -200,8 +200,8 @@ test('cli: --docs is normalised to forward slashes without a trailing slash', ()
 });
 
 test('writes gitignore rule once', () => {
-  const JOURNAL = '!.slicekit/journal/\n!.slicekit/journal/*.log\n.slicekit/journal/*.lock\n';
-  const ROOTED = '!/.slicekit/journal/\n!/.slicekit/journal/*.log\n/.slicekit/journal/*.lock\n';
+  const JOURNAL = '!.slicekit/journal/\n!.slicekit/journal/*.log\n.slicekit/journal/*.lock\n.worktrees/\n';
+  const ROOTED = '!/.slicekit/journal/\n!/.slicekit/journal/*.log\n/.slicekit/journal/*.lock\n/.worktrees\n';
   const rules = `.slicekit/graph/\n.slicekit/.subagent-*\n${JOURNAL}`;
   withRepo((root) => {
     const opts = { name: 'demo', shape: 'backend' };
@@ -472,13 +472,13 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
 test('init keeps a CRLF ignore or attributes file CRLF', () => {
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n';
+    const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n';
     assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
     assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n');
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
 

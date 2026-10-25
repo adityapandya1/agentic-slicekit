@@ -22,6 +22,8 @@ const IGNORE_RULES = [
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
+  // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
+  { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
 const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];

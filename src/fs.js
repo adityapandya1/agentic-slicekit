@@ -21,7 +21,7 @@ export function exists(p) {
   return fs.existsSync(p);
 }
 
-export function listFiles(dir, { ext, ignore = ['node_modules', '.git'] } = {}) {
+export function listFiles(dir, { ext, ignore = ['node_modules', '.git', '.worktrees'] } = {}) {
   const out = [];
   const walk = (abs, rel) => {
     for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {

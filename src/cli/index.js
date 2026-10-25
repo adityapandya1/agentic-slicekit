@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
+import { buildCommand } from './build.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
@@ -19,6 +20,7 @@ import { workflowCommand } from './workflow.js';
 export const COMMANDS = {
   baseline: baselineCommand,
   branch: branchCommand,
+  build: buildCommand,
   check: checkCommand,
   decide: decideCommand,
   init: initCommand,
