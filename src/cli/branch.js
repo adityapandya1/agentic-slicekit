@@ -46,6 +46,13 @@ async function run(args, io) {
       try {
         git(root, ['fetch', '-q', 'origin', base]);
         if (resolves(root, `refs/remotes/origin/${base}`)) from = `refs/remotes/origin/${base}`;
+        // The work branch too, so one pushed from another clone is found; origin not having it is
+        // the usual case for a new branch, not an error.
+        try {
+          git(root, ['fetch', '-q', 'origin', `+refs/heads/${target}:refs/remotes/origin/${target}`]);
+        } catch (e) {
+          if (!(e instanceof GitError)) throw e;
+        }
       } catch (e) {
         if (!(e instanceof GitError)) throw e;
         const lines = e.stderr.split('\n');

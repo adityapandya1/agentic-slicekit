@@ -1,16 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { assertDate, assertSha } from '../../evidence.js';
-import { assertRef } from '../../git.js';
 import { redact } from '../../redact.js';
 import { GitHostError, GitHostNotFound } from './errors.js';
 import {
+  assertBranch,
   assertLabel,
   assertLabelColor,
   assertPrNumber,
   assertTitle,
+  BRANCH_PR_FIELDS,
   filterMergedSince,
   mapPullRequest,
   parsePullRequestUrl,
+  pickBranchPullRequest,
   reduceRuns,
 } from './gh-json.js';
 
@@ -85,8 +87,8 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
     // pull request's url, and its number is read from `/pull/<n>`. Each value is one `--flag=value`
     // argument, so a title starting with "-" is not read as a flag.
     openPullRequest({ branch, base, title, body, draft }) {
-      assertRef(branch);
-      assertRef(base);
+      assertBranch(branch);
+      assertBranch(base);
       assertTitle(title);
       const args = ['pr', 'create', `--head=${branch}`, `--base=${base}`, `--title=${title}`, '--body-file', '-', ...(draft ? ['--draft'] : [])];
       const out = gh(exec, args, { env, cwd: root, input: String(body ?? '') });
@@ -102,12 +104,12 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertPrNumber(n);
       gh(exec, ['pr', 'ready', String(n)], { env, cwd: root });
     },
-    // The open pull request whose head is `branch`, as { number, url }, or null.
-    pullRequestForBranch(branch) {
-      assertRef(branch);
-      const list = ghJson(['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number,url', '--limit', '1']);
-      const pr = Array.isArray(list) ? list[0] : undefined;
-      return pr ? { number: pr.number, url: pr.url } : null;
+    // The open pull request whose head is `branch` in this repository, as { number, url, base }, or
+    // null. Every open one with that head name is listed (a fork's included), then filtered.
+    pullRequestForBranch(branch, { base } = {}) {
+      assertBranch(branch);
+      const list = ghJson(['pr', 'list', '--head', branch, '--state', 'open', '--json', BRANCH_PR_FIELDS]);
+      return pickBranchPullRequest(list, branch, base);
     },
     // Creates the label, or with --force updates its colour and description: safe to run every time.
     ensureLabel(name, { color, description }) {

@@ -47,11 +47,17 @@ async function run(args, io) {
   if (values.commit !== undefined && values.commit.trim() === '') return usage(io, '--commit needs a message');
 
   const root = io.cwd;
-  let body;
+  let bytes;
   try {
-    body = fs.readFileSync(path.resolve(root, values['body-file']), 'utf8');
+    bytes = fs.readFileSync(path.resolve(root, values['body-file']));
   } catch (e) {
     return usage(io, `cannot read the body file ${values['body-file']}: ${e.code ?? e.message}`);
+  }
+  let body;
+  try {
+    body = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return fail(io, `body file is not UTF-8: ${values['body-file']}`, 2);
   }
   try {
     const cfg = loadConfig(root);
@@ -59,10 +65,11 @@ async function run(args, io) {
     const r = openOrUpdate(root, cfg, host, {
       title: values.title,
       body,
-      base: values.base ?? cfg.defaultBranch,
+      base: values.base,
       draft: values.draft,
       commit: values.commit === undefined ? undefined : { message: values.commit, paths },
     });
+    if (r.committed === null) io.stderr(`slicekit: nothing to commit for ${paths.join(', ')}\n`);
     io.stdout(`${r.created ? '' : 'updated '}#${r.number} ${r.url}\n`);
     return 0;
   } catch (e) {

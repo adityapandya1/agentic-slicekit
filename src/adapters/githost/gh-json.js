@@ -1,5 +1,6 @@
 // gh's JSON shapes and the kit's view of them, shared by the GitHub host and the fixture host,
 // so a fixture exercises the same mapping the real host does.
+import { assertRef } from '../../git.js';
 
 const OK_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
 
@@ -23,6 +24,14 @@ export function assertLabel(name) {
   return name;
 }
 
+// A branch name as gh's --head takes it: a ref, and never `owner:branch` (git forbids ':' in a branch
+// name, and gh would read it as another repository's branch).
+export function assertBranch(name) {
+  assertRef(name);
+  if (name.includes(':')) throw new Error(`branch must be a branch of this repository, got ${JSON.stringify(name)}`);
+  return name;
+}
+
 // A pull request title as gh takes it: one non-empty line.
 export function assertTitle(title) {
   if (typeof title !== 'string' || title.trim() === '' || /[\r\n]/.test(title)) {
@@ -40,6 +49,20 @@ export function parsePullRequestUrl(out) {
     .find((l) => /^https?:\/\/\S+\/pull\/\d+$/.test(l));
   if (line === undefined) return null;
   return { number: Number(/\/pull\/(\d+)$/.exec(line)[1]), url: line };
+}
+
+// The fields `gh pr list --head` is asked for when finding a branch's pull request.
+export const BRANCH_PR_FIELDS = 'number,url,isCrossRepository,baseRefName,headRefName';
+
+// The open pull request of `branch` among `list` (open pull requests), as { number, url, base }, or
+// null. A pull request from a fork has the same head name but is not this repository's branch, so it
+// never matches. Of several, the one into `base` (when given) wins, else the newest.
+export function pickBranchPullRequest(list, branch, base) {
+  const same = (Array.isArray(list) ? list : [])
+    .filter((p) => p && p.isCrossRepository !== true && p.headRefName === branch && Number.isInteger(p.number))
+    .sort((a, b) => b.number - a.number);
+  const pr = (base !== undefined && same.find((p) => p.baseRefName === base)) || same[0];
+  return pr ? { number: pr.number, url: pr.url, base: pr.baseRefName ?? null } : null;
 }
 
 export function mapPullRequest(raw) {

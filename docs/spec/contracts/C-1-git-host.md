@@ -13,7 +13,7 @@ second file, not a second kit.
 | `updatePullRequestBody` | number, body | — |
 | `markReady` | number | — |
 | `setLabel` / `removeLabel` | number, label | — |
-| `pullRequestForBranch` | branch | number and url of its open pull request, or none |
+| `pullRequestForBranch` | branch, base (optional) | number, url and base of its open pull request in this repository (never a fork's; the one into base first, else the newest), or none |
 | `getPullRequest` | number | state, headSha, headRef, draft, mergedAt, url, title, body, labels |
 | `listMergedSince` | isoDate | pull requests merged at or after that instant |
 | `ciStatus` | sha | success, failure, pending, with run url |

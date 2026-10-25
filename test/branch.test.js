@@ -239,6 +239,38 @@ test('branch takes a work branch that exists only on origin and tracks it', asyn
   );
 });
 
+test('branch fetches the work branch itself, so one only on origin is found without a prior fetch', async () => {
+  await withRepo(
+    async (root, remote) => {
+      // Another clone made plan/p2 on origin after this clone last fetched.
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-clone-'));
+      try {
+        git(other, ['clone', '-q', remote, '.']);
+        git(other, ['config', 'user.name', 'Other']);
+        git(other, ['config', 'user.email', 'other@example.com']);
+        git(other, ['config', 'commit.gpgsign', 'false']);
+        git(other, ['switch', '-q', '-c', 'plan/p2']);
+        commit(other, 'plan from elsewhere');
+        git(other, ['push', '-q', 'origin', 'plan/p2']);
+      } finally {
+        fs.rmSync(other, { recursive: true, force: true });
+      }
+      const r = await cli(root, ['branch', 'plan', 'p2']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stderr, '');
+      assert.equal(git(root, ['log', '-1', '--format=%s']), 'plan from elsewhere');
+      assert.equal(git(root, ['rev-parse', '--abbrev-ref', '@{u}']), 'origin/plan/p2');
+      // A work branch origin does not have is not an error: it is cut from the default branch.
+      git(root, ['switch', '-q', 'main']);
+      const fresh = await cli(root, ['branch', 'gaps', 'new']);
+      assert.equal(fresh.code, 0, fresh.stderr);
+      assert.equal(fresh.stderr, '');
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+    },
+    { remote: true },
+  );
+});
+
 test('behindUpstream counts commits on the upstream not in HEAD', async () => {
   await withRepo(
     async (root, remote) => {

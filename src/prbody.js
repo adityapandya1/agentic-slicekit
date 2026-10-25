@@ -47,7 +47,7 @@ function scan(body) {
   let fence = null;
   let comment = false;
   const out = [];
-  for (const raw of body.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n')) {
+  for (const raw of body.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')) {
     if (fence !== null) {
       const m = FENCE_CLOSE.exec(raw);
       if (m && m[1][0] === fence[0] && m[1].length >= fence.length) fence = null;
@@ -153,17 +153,34 @@ function assertSection(name, text) {
   if (blank(text)) throw new PrBodyError(`section "${name}" is empty`);
 }
 
+const SLICE_ADDR = new RegExp(`^${ID.sliceAddr}$`);
+
+// A section's line, and its continuation lines when the text has more than one. A text that opens
+// with a fence starts on the line after the marker, since a fence only opens at the start of a line.
+function sectionLines(name, text) {
+  const t = text.trim();
+  return FENCE_OPEN.test(t.split(/\r\n|\r|\n/)[0]) ? `**${name}:**\n${t}` : `**${name}:** ${t}`;
+}
+
 // A body with every section in order: `## [<slice>] <name>` first, or, with `slice: null` (a
-// `[spec]` or `[plan]` pull request), no heading and only the first three sections.
+// `[spec]` or `[plan]` pull request), no heading and only the first three sections. The result is
+// judged as ci-body would judge it; a value that would make it fail (an unclosed fence or comment,
+// a line that reads as another section) is refused naming the problem.
 export function renderPrBody({ slice, name, sections }) {
+  if (slice !== null && (typeof slice !== 'string' || !SLICE_ADDR.test(slice))) {
+    throw new PrBodyError(`slice must be null or P<n>/S-<nn>, got ${JSON.stringify(slice)}`);
+  }
   const names = slice === null ? EXEMPT_SECTIONS : REQUIRED_SECTIONS;
   const out = slice === null ? [] : [`## [${slice}] ${name}`];
   for (const n of names) {
     const text = sections?.[n];
     assertSection(n, text);
-    out.push(`**${n}:** ${text.trim()}`);
+    out.push(sectionLines(n, text));
   }
-  return `${out.join('\n')}\n`;
+  const body = `${out.join('\n')}\n`;
+  const problems = prBodyProblems(slice === null ? '[spec] body' : `[${slice}] ${name}`, body, {});
+  if (problems.length > 0) throw new PrBodyError(`the body would fail the CI body rule: ${problems.join('; ')}`);
+  return body;
 }
 
 // The body as lines with the break that follows each, so an edit keeps every other byte.
@@ -175,8 +192,9 @@ function segments(body) {
 }
 
 // The section's line range [start, end) and its text, or null when the body has no such section.
-// Its text is the rest of its line and the lines that follow up to a blank line, a heading or
-// another required section; when its own line has no text, blank lines before the text are skipped.
+// Its text is the rest of its line and the lines that follow up to a blank line outside a fence, a
+// heading or another required section; when its own line has no text, blank lines before the text
+// are skipped.
 function locate(lines, name) {
   const start = lines.findIndex((l) => sectionName(l) === name);
   if (start === -1) return null;
@@ -188,7 +206,8 @@ function locate(lines, name) {
     while (k < lines.length && lines[k].text.trim() === '') k++;
     if (k < lines.length && !ends(lines[k], REQUIRED_SECTIONS)) end = k;
   }
-  while (end < lines.length && lines[end].text.trim() !== '' && !ends(lines[end], REQUIRED_SECTIONS)) {
+  // A fenced block is one piece of text, blank lines inside it included.
+  while (end < lines.length && (lines[end].fenced || (lines[end].text.trim() !== '' && !ends(lines[end], REQUIRED_SECTIONS)))) {
     text.push(lines[end].text);
     end++;
   }
@@ -201,15 +220,26 @@ export function getSection(body, name) {
 }
 
 // Writes `**<name>:** <text>` in place of the section and its text, keeping every other byte. An
-// absent section goes before the next required section the body has, else at the end.
+// absent section goes before the next required section the body has, else at the end. An edit that
+// gives the body a problem it did not have (judged under the slice its heading names) is refused.
 export function setSection(body, name, text) {
   assertSection(name, text);
+  const out = writeSection(body, name, text);
+  const slice = scan(body).map((l) => !l.fenced && HEADING.exec(l.text)?.[1]).find(Boolean);
+  const title = slice ? `[${slice}] body` : 'body';
+  const before = prBodyProblems(title, body, {});
+  const added = prBodyProblems(title, out, {}).filter((p) => !before.includes(p));
+  if (added.length > 0) throw new PrBodyError(`the section would break the body: ${added.join('; ')}`);
+  return out;
+}
+
+function writeSection(body, name, text) {
   const segs = segments(body);
   const lines = scan(body);
   const at = locate(lines, name);
   const eol = segs.find((s) => s.sep !== '')?.sep ?? '\n';
-  const fresh = `**${name}:** ${text.trim()}`.split(/\r\n|\r|\n/);
-  const bom = body.startsWith('﻿') ? '﻿' : '';
+  const fresh = sectionLines(name, text).split(/\r\n|\r|\n/);
+  const bom = body.startsWith('\uFEFF') ? '\uFEFF' : '';
   const join = (list) => list.map((s) => s.raw + s.sep).join('');
   if (at) {
     const sep = segs[at.end - 1].sep;

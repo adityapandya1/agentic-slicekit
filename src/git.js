@@ -136,9 +136,10 @@ export function switchBranch(root, name, { create = false, from, track = false }
 // has a change to commit; otherwise the new commit's SHA.
 export function commitPaths(root, paths, message) {
   if (!Array.isArray(paths) || paths.length === 0) throw new GitError(['commit'], 'no paths to commit');
-  git(root, ['add', '-A', '--', ...paths]);
-  if (succeeds(root, ['diff', '--cached', '--quiet', '--', ...paths])) return null;
-  git(root, ['commit', '-q', '-m', message, '--', ...paths]);
+  // --literal-pathspecs: a path is a path, never a glob or a magic pathspec such as `:/`.
+  git(root, ['--literal-pathspecs', 'add', '-A', '--', ...paths]);
+  if (succeeds(root, ['--literal-pathspecs', 'diff', '--cached', '--quiet', '--', ...paths])) return null;
+  git(root, ['--literal-pathspecs', 'commit', '-q', '-m', message, '--', ...paths]);
   return headSha(root);
 }
 
@@ -164,6 +165,17 @@ function branchOrThrow(root, what) {
   return branch;
 }
 
+// Where pushBranch would push, as { branch, target, tracked }, without sending anything: a caller
+// that commits first asks this, so a refused target is refused before the commit too.
+export function pushTarget(root) {
+  const branch = branchOrThrow(root, 'push');
+  const up = upstreamOf(root, branch);
+  const tracked = up !== null && up.remote === 'origin';
+  const target = tracked ? up.branch : branch;
+  assertRef(target);
+  return { branch, target, tracked };
+}
+
 // Pushes HEAD to origin, always by explicit refspec `HEAD:refs/heads/<target>`: the target is the
 // upstream branch on origin when there is one (a plain push refuses when the names differ under
 // push.default=simple), else the current branch, and then `-u` sets the upstream. An explicit
@@ -171,11 +183,7 @@ function branchOrThrow(root, what) {
 // `protectedBranches` or equal to `defaultBranch` before anything is sent; callers pass the config's
 // values.
 export function pushBranch(root, { protectedBranches = ['main'], defaultBranch } = {}) {
-  const branch = branchOrThrow(root, 'push');
-  const up = upstreamOf(root, branch);
-  const tracked = up !== null && up.remote === 'origin';
-  const target = tracked ? up.branch : branch;
-  assertRef(target);
+  const { branch, target, tracked } = pushTarget(root);
   if (protectedBranches.includes(target) || target === defaultBranch) {
     throw new GitError(['push'], `refusing to push to ${target}: it is protected; push from a work branch`);
   }

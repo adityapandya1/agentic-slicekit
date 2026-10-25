@@ -188,9 +188,6 @@ test('the GitHub host passes the body on stdin and reads the number from the url
   assert.deepEqual(seen[3].args, ['pr', 'ready', '42']);
   assert.equal(seen[3].opts.stdio[0], 'ignore');
 
-  answer = JSON.stringify([{ number: 42, url: 'https://github.com/o/r/pull/42' }]);
-  assert.deepEqual(host.pullRequestForBranch('spec/demo'), { number: 42, url: 'https://github.com/o/r/pull/42' });
-  assert.deepEqual(seen[4].args, ['pr', 'list', '--head', 'spec/demo', '--state', 'open', '--json', 'number,url', '--limit', '1']);
   answer = '[]';
   assert.equal(host.pullRequestForBranch('spec/demo'), null);
 
@@ -228,8 +225,141 @@ test('the fixture host marks a pull request ready and records it', async () => {
     host.markReady(1);
     const pr = host.getPullRequest(1);
     assert.deepEqual([pr.draft, pr.headRef, pr.state], [false, 'slice/x', 'OPEN']);
-    assert.deepEqual(host.pullRequestForBranch('slice/x'), { number: 1, url: 'https://example.test/pull/1' });
+    assert.deepEqual(host.pullRequestForBranch('slice/x'), { number: 1, url: 'https://example.test/pull/1', base: 'main' });
     assert.deepEqual(calls(fixture).map((c) => c.op), ['openPullRequest', 'markReady']);
     assert.throws(() => host.markReady(9), /not found/);
   });
+});
+
+// Fix round 1.
+const sliceBody = () => renderPrBody({ slice: 'P1/S-01', name: 'Thing', sections: Object.fromEntries(REQUIRED_SECTIONS.map((n) => [n, `text for ${n}`])) });
+
+test('a branch whose open pull request has another title is refused before the body is judged (I-3)', async () => {
+  await withRepo(async ({ root, fixture, bodies }) => {
+    switchBranch(root, 'slice/P1-S-01-thing', { create: true, from: 'main' });
+    commit(root, 'slice');
+    const first = await cli(root, fixture, ['pr', 'open', '--title', '[P1/S-01] Thing', '--body-file', bodyFile(bodies, 'slice', sliceBody())]);
+    assert.equal(first.code, 0, first.stderr);
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY)]);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, 'slicekit: pull request #1 is titled "[P1/S-01] Thing"; open one per kind of change\n');
+    assert.deepEqual(calls(fixture).map((c) => c.op), ['openPullRequest']);
+    assert.equal(readPr(fixture, 1).body, sliceBody());
+    // The same title judges the body as the pull request's own kind: a three-section body fails.
+    const short = await cli(root, fixture, ['pr', 'open', '--title', '[P1/S-01] Thing', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY)]);
+    assert.equal(short.code, 1);
+    assert.match(short.stderr, /missing "Runbook"/);
+  });
+});
+
+test('a --base other than the open pull request base is refused, and so is the branch itself (M-1, M-3)', async () => {
+  await withRepo(async ({ root, remote, fixture, bodies }) => {
+    switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+    commit(root, 'spec');
+    const file = bodyFile(bodies, 'spec', SPEC_BODY);
+    assert.equal((await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', file])).code, 0);
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', file, '--base', 'dev']);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, 'slicekit: pull request #1 targets main, not dev\n');
+    switchBranch(root, 'plan/p2', { create: true, from: 'main' });
+    const self = await cli(root, fixture, ['pr', 'open', '--title', '[plan] P2', '--body-file', file, '--base', 'plan/p2']);
+    assert.equal(self.code, 2);
+    assert.match(self.stderr, /--base plan\/p2 is the branch being pushed/);
+    assert.equal(remoteHas(remote, 'plan/p2'), null);
+  });
+});
+
+test('a fork pull request with the same head name is not this branch pull request (I-4)', async () => {
+  await withRepo(async ({ root, fixture, bodies }) => {
+    const fork = { number: 1, url: 'https://example.test/pull/1', state: 'OPEN', isDraft: false, isCrossRepository: true, headRefName: 'spec/demo', baseRefName: 'main', title: '[spec] demo', body: 'x', headRefOid: null, labels: [] };
+    fs.writeFileSync(path.join(fixture, 'pr-1.json'), JSON.stringify(fork));
+    switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+    commit(root, 'spec');
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY)]);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, '#2 https://example.test/pull/2\n');
+    assert.equal(readPr(fixture, 1).body, 'x');
+  });
+});
+
+test('--paths is literal and never the root; unrelated and staged files stay out (I-2)', async () => {
+  for (const [paths, code] of [['.', 2], ['sub/..', 2], ['../outside.txt', 2], [':/', 1], ['*.txt', 1]]) {
+    await withRepo(async ({ root, remote, fixture, bodies }) => {
+      switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+      fs.writeFileSync(path.join(root, 'unrelated.txt'), 'u');
+      fs.writeFileSync(path.join(root, 'staged.txt'), 's');
+      git(root, ['add', 'staged.txt']);
+      const head = git(root, ['rev-parse', 'HEAD']);
+      const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY), '--commit', 'm', '--paths', paths]);
+      assert.equal(r.code, code, `${paths}: ${r.stderr}`);
+      if (code === 2) assert.equal(r.stderr, 'slicekit: --paths must name files or folders inside the repository, not the root\n', paths);
+      assert.equal(git(root, ['rev-parse', 'HEAD']), head, paths);
+      assert.equal(git(root, ['status', '--porcelain']), 'A  staged.txt\n?? unrelated.txt', paths);
+      assert.equal(remoteHas(remote, 'spec/demo'), null, paths);
+    });
+  }
+});
+
+test('--commit with nothing to commit says so and still pushes', async () => {
+  await withRepo(async ({ root, remote, fixture, bodies }) => {
+    switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+    commit(root, 'spec');
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY), '--commit', 'm', '--paths', '.slicekit/config.json']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, 'slicekit: nothing to commit for .slicekit/config.json\n');
+    assert.equal(r.stdout, '#1 https://example.test/pull/1\n');
+    assert.equal(remoteHas(remote, 'spec/demo'), git(root, ['rev-parse', 'HEAD']));
+  });
+});
+
+test('a work branch that pushes to the default branch is refused before any commit (M-2)', async () => {
+  await withRepo(async ({ root, remote, fixture, bodies }) => {
+    switchBranch(root, 'feat', { create: true, from: 'origin/main', track: true });
+    fs.writeFileSync(path.join(root, 'a.txt'), 'a');
+    const head = git(root, ['rev-parse', 'HEAD']);
+    const before = remoteHas(remote, 'main');
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] x', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY), '--commit', 'm', '--paths', 'a.txt']);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, 'slicekit: open a pull request from a work branch, not main\n');
+    assert.equal(git(root, ['rev-parse', 'HEAD']), head);
+    assert.equal(remoteHas(remote, 'main'), before);
+    assert.equal(calls(fixture), null);
+  });
+});
+
+test('a body file that is not UTF-8 is exit 2 (M-4), and a host refusal never prints a token (M-5)', async () => {
+  await withRepo(async ({ root, remote, fixture, bodies }) => {
+    switchBranch(root, 'spec/demo', { create: true, from: 'main' });
+    const latin1 = path.join(bodies, 'latin1.md');
+    fs.writeFileSync(latin1, Buffer.concat([Buffer.from(SPEC_BODY), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a])]));
+    const r = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', latin1]);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /body file is not UTF-8/);
+    assert.equal(remoteHas(remote, 'spec/demo'), null);
+
+    fs.writeFileSync(path.join(fixture, 'pr-create-error.txt'), 'HTTP 401: Bad credentials (token ghp_abcdefghijklmnopqrstuvwxyz0123)\n');
+    const refused = await cli(root, fixture, ['pr', 'open', '--title', '[spec] demo', '--body-file', bodyFile(bodies, 'spec', SPEC_BODY)]);
+    assert.equal(refused.code, 1);
+    assert.match(refused.stderr, /Bad credentials/);
+    assert.doesNotMatch(refused.stderr, /ghp_/);
+  });
+});
+
+test('the GitHub host finds the branch pull request among same-repository ones only (I-4)', () => {
+  const seen = [];
+  let answer = '[]';
+  const host = githubHost({}, '/p', (cmd, args) => {
+    seen.push(args);
+    return answer;
+  });
+  const pr = (number, extra = {}) => ({ number, url: `https://github.com/o/r/pull/${number}`, isCrossRepository: false, baseRefName: 'main', headRefName: 'spec/demo', ...extra });
+  answer = JSON.stringify([pr(9, { isCrossRepository: true })]);
+  assert.equal(host.pullRequestForBranch('spec/demo'), null);
+  assert.deepEqual(seen[0], ['pr', 'list', '--head', 'spec/demo', '--state', 'open', '--json', 'number,url,isCrossRepository,baseRefName,headRefName']);
+  answer = JSON.stringify([pr(7, { baseRefName: 'dev' }), pr(5), pr(9, { isCrossRepository: true })]);
+  assert.deepEqual(host.pullRequestForBranch('spec/demo'), { number: 7, url: 'https://github.com/o/r/pull/7', base: 'dev' });
+  assert.deepEqual(host.pullRequestForBranch('spec/demo', { base: 'main' }), { number: 5, url: 'https://github.com/o/r/pull/5', base: 'main' });
+  assert.throws(() => host.pullRequestForBranch('o:spec/demo'), /branch of this repository/);
+  answer = JSON.stringify([pr(4, { headRefName: 'other' })]);
+  assert.equal(host.pullRequestForBranch('spec/demo'), null);
 });

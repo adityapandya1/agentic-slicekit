@@ -69,3 +69,46 @@ test('prBodyProblems gives the ci-body messages', () => {
   assert.deepEqual(prBodyProblems('[P1/S-04] x', renderPrBody({ slice: 'P1/S-03', name: 'Thing', sections }), {}), ['pull request body heading does not name P1/S-04']);
   assert.deepEqual(prBodyProblems(TITLE, renderPrBody({ slice: 'P1/S-03', name: 'Thing', sections: { ...sections, Proof: 'a robust proof' } }), { style: { banned: ['robust'] } }), ['pull request body uses banned phrase "robust"']);
 });
+
+// Fix round 1 (I-1, M-7): a value either renders so ci-body passes or is refused naming why.
+test('every value either renders so ci-body passes or is refused naming why', () => {
+  const render = (over, slice = 'P1/S-03') => renderPrBody({ slice, name: 'Thing', sections: { ...sections, ...over } });
+  const passes = {
+    'bold text inside': { Proof: 'see **X:** here' },
+    'pipe and backtick': { Proof: 'a | b `c`' },
+    'two lines': { Proof: 'line1\nline2' },
+    'a fence after text': { Proof: 'run:\n```\nnode x\n```' },
+    'a fence first': { Proof: '```js\nnode x\n```' },
+    'a fence with a blank line inside': { Proof: '```\na\n\nb\n```' },
+  };
+  for (const [label, over] of Object.entries(passes)) {
+    const body = render(over);
+    assert.deepEqual(ciMessages(TITLE, body), [], `${label}:\n${body}`);
+  }
+  assert.ok(render({ Proof: '```js\nnode x\n```' }).includes('**Proof:**\n```js\nnode x\n```\n'));
+  const refused = [
+    [{ Proof: 'run:\n```\nnode x' }, /missing "Decisions"/],
+    [{ Proof: 'a\n**Decisions:** b' }, /"Decisions" twice/],
+    [{ Proof: 'a <!-- b' }, /missing "Decisions"/],
+    [{ Proof: '<!-- hidden -->' }, /empty "Proof"/],
+  ];
+  for (const [over, why] of refused) {
+    assert.throws(() => render(over), (e) => e instanceof PrBodyError && why.test(e.message), JSON.stringify(over));
+  }
+  for (const slice of ['nope', undefined, 'P1/S-3']) {
+    assert.throws(() => renderPrBody({ slice, name: 'Thing', sections }), (e) => e instanceof PrBodyError && /slice/.test(e.message), String(slice));
+  }
+});
+
+test('setSection puts a fenced value on its own lines and refuses one that breaks the body', () => {
+  const body = renderPrBody({ slice: 'P1/S-03', name: 'Thing', sections });
+  const fenced = setSection(body, 'Proof', '```\nnpm test\n\n3 pass\n```');
+  assert.ok(fenced.includes('**Proof:**\n```\nnpm test\n\n3 pass\n```\n**Decisions:**'));
+  assert.deepEqual(prBodyProblems(TITLE, fenced, {}), []);
+  assert.equal(setSection(fenced, 'Proof', 'single'), setSection(body, 'Proof', 'single'));
+  assert.equal(setSection(setSection(body, 'Proof', 'multi\nline'), 'Proof', 'text for Proof'), body);
+  assert.throws(() => setSection(body, 'Proof', 'run:\n```\nnode x'), (e) => e instanceof PrBodyError && /missing "Decisions"/.test(e.message));
+  assert.throws(() => setSection(body, 'Proof', 'a\n**Runbook:** b'), (e) => e instanceof PrBodyError && /"Runbook" twice/.test(e.message));
+  // A body that was already short of sections may still be edited: only new problems refuse.
+  assert.equal(setSection('**Done when:** a\n', 'Decisions', 'none'), '**Done when:** a\n**Decisions:** none\n');
+});
