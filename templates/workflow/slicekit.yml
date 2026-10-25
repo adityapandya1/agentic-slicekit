@@ -58,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@{{setupNodeSha}} # {{setupNodeTag}}
         with:

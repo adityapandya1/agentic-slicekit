@@ -208,6 +208,8 @@ test('ready-label still runs when a needed job failed, and is told so', () => {
     ready,
   );
   assert.ok(!ready.includes('SLICEKIT_CHECKS_FAILED'));
+  // D-35: telling a bookkeeping-only commit from a code change needs the reviewed head in the clone.
+  assert.ok(ready.includes('          fetch-depth: 0\n'), 'ready-label checks out full history');
   assert.ok(!ready.includes('always()'), 'always() would also run a cancelled, superseded run');
 });
 
