@@ -107,7 +107,7 @@ function runStep(name, run, env) {
 
 function commandJob(name, command, v, matrix) {
   const head = matrix
-    ? ['    strategy:', '      matrix:', `        os: [${MATRIX_OS.join(', ')}]`, '    runs-on: ${{ matrix.os }}']
+    ? ['    strategy:', '      fail-fast: false', '      matrix:', `        os: [${MATRIX_OS.join(', ')}]`, '    runs-on: ${{ matrix.os }}']
     : ['    runs-on: ubuntu-latest'];
   return ['', `  cmd-${name}:`, ...head, '    steps:', ...setupSteps(v), ...runStep(name, command)];
 }

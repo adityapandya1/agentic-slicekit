@@ -148,6 +148,7 @@ test('matrix puts only cmd-test on three operating systems', () => {
   const t = jobBlock(yml, 'cmd-test');
   assert.ok(t.includes('os: [ubuntu-latest, windows-latest, macos-latest]'));
   assert.ok(t.includes('runs-on: ${{ matrix.os }}'));
+  assert.ok(t.includes('fail-fast: false'), 'every operating system reports, one failing leg does not cancel the others');
   assert.ok(jobBlock(yml, 'cmd-lint').includes('runs-on: ubuntu-latest'));
   assert.equal((yml.match(/matrix\.os/g) || []).length, 1);
   assert.ok(jobBlock(yml, 'gate').includes("require('./package.json').dependencies"), 'REQ-5.3 dependency check');

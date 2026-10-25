@@ -124,7 +124,7 @@ test('check on an empty init\'d repo exits 0', () => {
   const repo = initRepo();
   try {
     const r = runCli(['check'], { cwd: repo.root });
-    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
     // Counted against the registered rules, so a slice that adds a rule does not edit this test.
     const n = ALL_RULES.length;
     assert.ok(n >= 1);

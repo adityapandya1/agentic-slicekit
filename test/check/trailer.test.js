@@ -196,3 +196,63 @@ test('a stacked slice merged into the branch is not judged', () => {
     assert.deepEqual(run(root), []);
   });
 });
+
+// REQ-1.9 in CI: a pull_request run checks out a detached merge commit (first parent the base, second
+// the pull request's head), so the branch comes from GITHUB_HEAD_REF and the commits judged are the
+// head's, read from the event (or the merge commit's second parent when the event has no head sha).
+function prCheckout(root, messages) {
+  onSlice(root);
+  for (const m of messages) commit(root, m);
+  const head = git(root, ['rev-parse', 'HEAD']);
+  git(root, ['checkout', '-q', 'main']);
+  commit(root, 'main moves on');
+  git(root, ['checkout', '-q', '--detach', 'main']);
+  git(root, ['merge', '--no-ff', '-q', '-m', `Merge ${head} into main`, head]);
+  return head;
+}
+
+function ciEnv(root, event, headRef = BRANCH) {
+  const file = path.join(root, '.git', 'event.json');
+  fs.writeFileSync(file, JSON.stringify(event));
+  return { GITHUB_EVENT_PATH: file, GITHUB_HEAD_REF: headRef };
+}
+const runCi = (root, env, ci = true) => trailer.run(buildContext(root, loadConfig(root), { ci, env }));
+const prEvent = (headSha) => ({ pull_request: { number: 7, title: '[P1/S-03] x', body: '', head: headSha ? { sha: headSha } : {} } });
+
+test('--ci on a pull request judges the head commits under GITHUB_HEAD_REF', () => {
+  withRepo((root) => {
+    const head = prCheckout(root, ['with\n\nSlice: P1/S-03', 'without']);
+    assert.equal(git(root, ['branch', '--show-current']), '', 'detached, as actions/checkout leaves it');
+    assert.deepEqual(runCi(root, ciEnv(root, prEvent(head))), [
+      { file: BRANCH, line: 0, message: `commit ${sha7(root, head)} has no Slice trailer` },
+    ]);
+  });
+});
+
+test('--ci on a pull request whose commits all carry the trailer is clean', () => {
+  withRepo((root) => {
+    const head = prCheckout(root, ['one\n\nSlice: P1/S-03', 'two\n\nSlice: P1/S-03']);
+    assert.deepEqual(runCi(root, ciEnv(root, prEvent(head))), []);
+  });
+});
+
+test('--ci with no head sha in the event judges the merge commit\'s second parent', () => {
+  withRepo((root) => {
+    const head = prCheckout(root, ['without']);
+    assert.deepEqual(runCi(root, ciEnv(root, prEvent(null))).map((f) => f.message), [`commit ${sha7(root, head)} has no Slice trailer`]);
+  });
+});
+
+test('--ci with a GITHUB_HEAD_REF that is not a slice branch is not judged', () => {
+  withRepo((root) => {
+    const head = prCheckout(root, ['without']);
+    assert.deepEqual(runCi(root, ciEnv(root, prEvent(head), 'feature/x')), []);
+  });
+});
+
+test('GITHUB_HEAD_REF is read only under --ci', () => {
+  withRepo((root) => {
+    const head = prCheckout(root, ['without']);
+    assert.deepEqual(runCi(root, ciEnv(root, prEvent(head)), false), []);
+  });
+});
