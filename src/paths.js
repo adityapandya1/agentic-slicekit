@@ -9,7 +9,7 @@ export function kitPaths(root, cfg) {
     config: path.join(kit, 'config.json'),
     state: path.join(kit, 'state'),
     baselines: path.join(kit, 'baselines'),
-    journal: path.join(kit, 'journal.log'),
+    journalDir: path.join(kit, 'journal'),
     graph: path.join(kit, 'graph'),
     workspace: path.join(kit, 'workspace.json'),
     docs,

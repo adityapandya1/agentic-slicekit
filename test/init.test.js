@@ -56,7 +56,7 @@ test('creates the layout for shape backend', () => {
     assert.deepEqual(validateConfig(cfg), []);
     assert.equal(cfg.name, 'demo');
     assert.equal(cfg.shape, 'backend');
-    assert.equal(fs.existsSync(path.join(root, '.slicekit/journal.log')), false);
+    assert.equal(fs.existsSync(path.join(root, '.slicekit/journal')), false);
     assert.match(read(root, 'docs/runbook.md'), /^# Runbook: demo$/m);
     assert.match(read(root, 'BUILD.md'), /Spec: `docs\/spec\/`/);
     assert.match(read(root, 'docs/spec/00-overview.md'), /^Source: \.\.\/intake\/$/m);

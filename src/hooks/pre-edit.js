@@ -2,7 +2,7 @@
 // closed through io.js.
 //
 // Every path the tool names (`file_path`, `notebook_path`) is judged; any deny wins. Rules, first deny
-// wins: (3) a kit-owned file — a path with a `.slicekit/journal.log`, `.slicekit/state/`,
+// wins: (3) a kit-owned file — a path with a `.slicekit/journal/`, `.slicekit/state/`,
 // `.slicekit/baselines/`, `.slicekit/.subagent-*`, `.slicekit/.retry-*` or `.slicekit/.agents-*` segment
 // under any root, or a `slicekit/subagent-*` marker, `slicekit/retry-*` retry state or `slicekit/agents-*`
 // started-agents record in a git directory (`.git` or `*.git`)
@@ -67,7 +67,7 @@ function kitOwned(abs) {
   return segs.some((s, i) => {
     if (s !== '.slicekit' || i + 1 >= segs.length) return false;
     const next = segs[i + 1];
-    return next === 'journal.log' || next === 'state' || next === 'baselines' || next.startsWith('.subagent-')
+    return next === 'journal' || next === 'state' || next === 'baselines' || next.startsWith('.subagent-')
       || next.startsWith('.retry-') || next.startsWith('.agents-');
   }) || segs.some((s, i) => i > 0 && (segs[i - 1] === '.git' || segs[i - 1].endsWith('.git'))
     && s === 'slicekit' && ['subagent-', 'retry-', 'agents-'].some((p) => segs[i + 1]?.startsWith(p)));
