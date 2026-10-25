@@ -10,7 +10,7 @@ decisions: [D-12, D-09]
 
 ## Done when
 
-1. `init` writes `.github/workflows/slicekit.yml` with SHA-pinned actions, a `gate` job running `slicekit check --ci`, one job per non-empty team command, a `title-body` job, a `ready-label` job, and a `sync` job on push to the default branch that commits state and `BUILD.md` as a bot. <!-- slicekit:pending P1/S-08 -->
+1. `init` writes `.github/workflows/slicekit.yml` with SHA-pinned actions, a `gate` job running `slicekit check --ci`, one job per non-empty team command (the pull request title and body rules run inside the `gate` job through `check --ci`, so there is no separate title or body job), a `ready-label` job, and a `sync` job on push to the default branch that commits state and `BUILD.md` as a bot. <!-- slicekit:pending P1/S-08 -->
 2. `slicekit check --ci` adds the `ci-title` and `ci-body` rules reading the pull request title and body from `GITHUB_EVENT_PATH`.
 3. The kit's own repository runs this workflow on Windows, macOS and Linux and is green; `package.json` has no dependencies and CI fails if one appears.
 4. Observability steps from `cfg.ci.observabilitySteps` render as additional jobs (the full wiring from `observability.md` is S-22; the shape is fixed here).
