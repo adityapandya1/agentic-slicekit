@@ -140,7 +140,8 @@ Init SHALL write `.githooks/prepare-commit-msg` (adds the `Slice:` trailer from 
 same check runs in `prepare-commit-msg`, so cherry-pick, revert and rebase are covered), set `core.hooksPath` to `.githooks`,
 and `slicekit check` SHALL fail when the hooks path is not set, because git hooks do not survive a
 clone. The Claude Code PreToolUse guard covers tool-issued commands; the git hooks cover plain git.
-Each alone fails silently.
+Each alone fails silently. Because the protected-branch check also runs from `prepare-commit-msg`,
+`git commit --no-verify` does not bypass it; `ALLOW_PROTECTED_COMMIT=1` is the one escape.
 
 Scenario: GIVEN a fresh clone in which `core.hooksPath` is not set WHEN `slicekit check` runs THEN
 the hooks rule fails and says the hooks path is not `.githooks`.

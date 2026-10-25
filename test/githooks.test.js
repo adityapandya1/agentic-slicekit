@@ -250,3 +250,54 @@ test('a body with a --- line still ends in the trailer the rule reads', { skip: 
     assert.deepEqual(trailer.run(buildContext(root, loadConfig(root))), []);
   });
 });
+
+// REQ-1.9: a squash merge concluded by `git commit` is an ordinary commit on the slice branch, so it
+// is stamped like one (git gives the hook the source `squash` when the message is SQUASH_MSG).
+test('a squash merge committed on a slice branch carries the trailer', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['checkout', '-q', '-b', 'feature/x']);
+    change(root, 'f.txt');
+    assert.equal(commit(root, ['-m', 'on feature']).code, 0);
+    git(root, ['checkout', '-q', '-b', 'slice/P1-S-06-x', 'main']);
+    gitRun(root, ['merge', '--squash', 'feature/x']);
+    const r = commit(root, ['--no-edit']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(count(body(root), 'Slice: P1/S-06'), 1);
+    assert.deepEqual(trailer.run(buildContext(root, loadConfig(root))), []);
+  }, { branch: 'main', commits: 1 });
+});
+
+const setProtected = (root, list) => {
+  const file = path.join(root, '.slicekit', 'config.json');
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.protectedBranches = list;
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+};
+
+// A protectedBranches entry is a branch name, never a file glob: `*` is not expanded against the
+// files in the repository root.
+test('a glob character in protectedBranches is not matched against files', { skip: noSh }, () => {
+  withHooks((root) => {
+    setProtected(root, ['*', 'main']);
+    fs.writeFileSync(path.join(root, 'feature'), 'a file named like the branch');
+    const onMain = commit(root, ['-m', 'on main']);
+    assert.notEqual(onMain.code, 0);
+    assert.match(onMain.stderr, /main is protected/);
+    git(root, ['checkout', '-q', '-b', 'feature']);
+    const onFeature = commit(root, ['-m', 'on feature']);
+    assert.equal(onFeature.code, 0, onFeature.stderr);
+  }, { branch: 'main', commits: 1 });
+});
+
+test('a refused cherry-pick says how to give up', { skip: noSh }, () => {
+  withHooks((root) => {
+    git(root, ['checkout', '-q', '-b', 'feature/x']);
+    change(root, 'f.txt');
+    assert.equal(commit(root, ['-m', 'on feature']).code, 0);
+    git(root, ['checkout', '-q', 'main']);
+    const pick = gitRun(root, ['cherry-pick', 'feature/x']);
+    assert.notEqual(pick.code, 0);
+    const line = pick.stderr.split('\n').find((l) => l.startsWith('slicekit: '));
+    assert.equal(line, 'slicekit: main is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1; to give up, run git cherry-pick --abort');
+  }, { branch: 'main', commits: 1 });
+});

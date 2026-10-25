@@ -98,6 +98,20 @@ test('every spelling of the .githooks path counts as installed', () => {
   });
 });
 
+// A link that resolves to .githooks is installed: both sides are compared by their real paths.
+test('a junction or symlink to .githooks counts as installed', (t) => {
+  withInit((root) => {
+    try {
+      fs.symlinkSync(path.join(root, '.githooks'), path.join(root, 'hooks-link'), win ? 'junction' : 'dir');
+    } catch (e) {
+      t.skip(`cannot create a link here: ${e.code ?? e.message}`);
+      return;
+    }
+    git(root, ['config', 'core.hooksPath', 'hooks-link']);
+    assert.deepEqual(run(root), []);
+  });
+});
+
 test('not a repository is not a finding', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
   try {

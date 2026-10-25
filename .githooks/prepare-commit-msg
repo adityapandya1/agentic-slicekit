@@ -16,32 +16,49 @@ slicekit_branch() {
   done
   return 0
 }
+# The operation in progress, if any, so a refusal can say how to give up on it.
+slicekit_op() {
+  slicekit_g=$(git rev-parse --git-dir)
+  if [ -f "$slicekit_g/rebase-apply/applying" ]; then echo am
+  elif [ -d "$slicekit_g/rebase-merge" ] || [ -d "$slicekit_g/rebase-apply" ]; then echo rebase
+  elif [ -f "$slicekit_g/CHERRY_PICK_HEAD" ]; then echo cherry-pick
+  elif [ -f "$slicekit_g/REVERT_HEAD" ]; then echo revert
+  elif [ -f "$slicekit_g/MERGE_HEAD" ]; then echo merge
+  fi
+}
 # Refuses when that branch is in protectedBranches of .slicekit/config.json, or is main when node or
-# the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides.
+# the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides. Entries are names, never
+# globs: globbing is off while they are compared.
 slicekit_check_protected() {
   [ "$ALLOW_PROTECTED_COMMIT" = "1" ] && return 0
   slicekit_b=$(slicekit_branch)
   [ -n "$slicekit_b" ] || return 0
   slicekit_p=main
   if [ -f .slicekit/config.json ] && command -v node >/dev/null 2>&1; then
-    if slicekit_l=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^﻿/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' .slicekit/config.json 2>/dev/null); then
+    if slicekit_l=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^\uFEFF/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' .slicekit/config.json 2>/dev/null); then
       slicekit_p=$slicekit_l
     fi
   fi
+  slicekit_hit=
+  set -f
   for slicekit_n in $slicekit_p; do
-    if [ "$slicekit_n" = "$slicekit_b" ]; then
-      echo "slicekit: $slicekit_b is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1" >&2
-      return 1
-    fi
+    [ "$slicekit_n" = "$slicekit_b" ] && slicekit_hit=1
   done
-  return 0
+  set +f
+  [ -n "$slicekit_hit" ] || return 0
+  slicekit_o=$(slicekit_op)
+  slicekit_give_up=
+  [ -n "$slicekit_o" ] && slicekit_give_up="; to give up, run git $slicekit_o --abort"
+  echo "slicekit: $slicekit_b is protected; commit on a slice branch, or set ALLOW_PROTECTED_COMMIT=1$slicekit_give_up" >&2
+  return 1
 }
 # <<< slicekit protected-branch check
 slicekit_check_protected || exit 1
 
-# A merge or squash message is left as git wrote it.
+# A merge message is left as git wrote it. A squash merge is an ordinary change on the branch, so
+# it is stamped like one.
 case "$2" in
-  merge|squash) exit 0 ;;
+  merge) exit 0 ;;
 esac
 
 slice=$(slicekit_branch | sed -n 's#^slice/P\([0-9][0-9]*\)-S-\([0-9][0-9]\)\(-.*\)\{0,1\}$#P\1/S-\2#p')

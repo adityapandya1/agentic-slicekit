@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { git, GitError } from './git.js';
 
@@ -17,12 +18,20 @@ export function hooksPathValue(root) {
 }
 
 // Whether `value` names <root>/.githooks: git resolves a relative path against the worktree root, a
-// trailing slash is ignored, and on win32 the comparison ignores case.
+// trailing slash is ignored, on win32 the comparison ignores case, and when both paths exist their
+// real paths are compared, so a junction or symlink to .githooks counts.
 export function isInstalledHooksPath(root, value) {
   if (typeof value !== 'string' || value.trim() === '') return false;
-  const norm = (p) => {
-    const abs = path.resolve(root, p).replace(/[\\/]+$/, '');
-    return process.platform === 'win32' ? abs.toLowerCase() : abs;
+  const resolved = [value, HOOKS_PATH].map((p) => path.resolve(root, p));
+  let real;
+  try {
+    real = resolved.map((p) => fs.realpathSync.native(p));
+  } catch {
+    real = resolved;
+  }
+  const norm = (abs) => {
+    const trimmed = abs.replace(/[\\/]+$/, '');
+    return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed;
   };
-  return norm(value) === norm(HOOKS_PATH);
+  return norm(real[0]) === norm(real[1]);
 }
