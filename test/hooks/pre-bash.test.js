@@ -400,3 +400,33 @@ test('a here-document body is data, the line after its terminator is a command',
   assertDeny(decide(root, `${body}git commit -m x`), PROTECTED_COMMIT);
   assertDeny(decide(root, 'bash <<EOF\ngit commit -m x\nEOF\n'), PROTECTED_COMMIT);
 }));
+
+// ---- fix round 1: destructive rule and defaults ----
+
+// I3
+test('destructive patterns judge parsed commands, not quoted text or messages', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  const rule = (src) => `destructive command refused by rule ${src}`;
+  try {
+    for (const cmd of [
+      'git commit -m "truncate long titles"',
+      'git commit -m "fix && git push --force"',
+      'git commit -m truncate',
+      'grep -rn truncate src',
+      'node -e "s.truncate()"',
+      'grep -rn "git push --force" docs',
+      'echo "git push --force"',
+      'git log --grep "DROP TABLE"',
+      'printf "rm -rf /"',
+    ]) assertAllow(decide(root, cmd));
+    assertDeny(decide(root, "psql -c 'DROP TABLE users'"), rule('\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b'));
+    assertDeny(decide(root, "psql -c 'truncate table t'"), rule('\\bTRUNCATE\\s+TABLE\\b'));
+    assertDeny(decide(root, 'psql <<SQL\nDROP TABLE users;\nSQL\n'), rule('\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b'));
+    assertDeny(decide(root, 'bash -c "rm -rf /"'), rule('\\brm\\s+-rf\\s+(/|~|\\.\\.)'));
+    assertDeny(decide(root, 'git reset --hard origin/main'), rule('git\\s+reset\\s+--hard\\s+origin/'));
+    assertDeny(decide(root, 'rm -rf /'), rule('\\brm\\s+-rf\\s+(/|~|\\.\\.)'));
+    assertDeny(decide(root, 'sudo rm -rf ~'), rule('\\brm\\s+-rf\\s+(/|~|\\.\\.)'));
+  } finally {
+    cleanup();
+  }
+});

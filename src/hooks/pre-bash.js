@@ -351,10 +351,51 @@ function parseSwitch(sub, args) {
 
 const PR_WRITES = new Set(['create', 'merge', 'edit', 'ready', 'close', 'comment']);
 
+// ---- rule 6: the text a destructive pattern is matched against ----
+
+// Commands that only read or print their arguments.
+const READERS = new Set(['echo', 'printf', 'grep', 'egrep', 'fgrep', 'rg']);
+// Database clients: their quoted arguments and here-documents are the statements they run.
+const DB_CLIENTS = new Set(['psql', 'mysql', 'sqlite3', 'sqlcmd']);
+const MESSAGE_OPTS = new Set(['-m', '-F', '--message', '--file']);
+
+// Index of git's subcommand, past its global options.
+function gitSubIndex(w) {
+  let k = 1;
+  while (k < w.length && w[k].startsWith('-')) k += w[k] === '-C' || GIT_GLOBAL_VALUE.has(w[k]) ? 2 : 1;
+  return k;
+}
+
+// -> the segment's command text with quoted strings and commit messages removed; null to skip it.
+function destructiveText(toks, heredocs) {
+  const b = base(toks[0].v);
+  if (READERS.has(b)) return null;
+  if (DB_CLIENTS.has(b)) return [...toks.map((t) => t.v), ...heredocs].join(' ');
+  let keep = toks;
+  if (b === 'git') {
+    const w = toks.map((t) => t.v);
+    const k = gitSubIndex(w);
+    if (w[k] === 'grep' || w[k] === 'log') return null;
+    if (w[k] === 'commit') {
+      keep = [];
+      for (let j = 0; j < toks.length; j++) {
+        const v = toks[j].v;
+        if (j > k && (MESSAGE_OPTS.has(v) || /^-[^-]*[mF]$/.test(v))) j += 1;
+        else if (j > k && (/^--(message|file)=/.test(v) || /^-[^-]*[mF]./.test(v))) continue;
+        else keep.push(toks[j]);
+      }
+    }
+  }
+  return keep.map((t) => t.b).filter((x) => x !== '').join(' ');
+}
+
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
-function walk(seg, state, out) {
-  const w = stripPrefixes(seg.toks).map((t) => t.v);
-  if (!w.length) return;
+function walk(seg, state, acc) {
+  const toks = stripPrefixes(seg.toks);
+  if (!toks.length) return;
+  const w = toks.map((t) => t.v);
+  const text = destructiveText(toks, seg.heredocs);
+  if (text !== null) acc.texts.push(text);
   const b = base(w[0]);
   if (b === 'cd' || b === 'pushd') {
     const target = w.slice(1).find((x) => !x.startsWith('-') || x === '-');
@@ -382,12 +423,12 @@ function walk(seg, state, out) {
     const bodies = k !== -1 && w[k + 1] !== undefined ? [w[k + 1]] : seg.heredocs;
     for (const body of bodies) {
       const inner = { cwd: state.cwd, label: state.label, stack: [] };
-      for (const s of lex(body)) walk(s, inner, out);
+      for (const s of lex(body)) walk(s, inner, acc);
     }
     return;
   }
   if (b === 'gh') {
-    if (w[1] === 'pr' && PR_WRITES.has(w[2])) out.push({ kind: 'pr', dir: state.cwd, label: state.label });
+    if (w[1] === 'pr' && PR_WRITES.has(w[2])) acc.invs.push({ kind: 'pr', dir: state.cwd, label: state.label });
     return;
   }
   if (b !== 'git') return;
@@ -415,16 +456,19 @@ function walk(seg, state, out) {
   else if (sub === 'add' || sub === 'rm' || sub === 'mv' || sub === 'stage') inv = parseStage(sub === 'stage' ? 'add' : sub, args);
   else if (sub === 'checkout' || sub === 'switch') inv = parseSwitch(sub, args);
   else inv = { kind: 'other' };
-  out.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
+  acc.invs.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
 }
 
-// -> every git/gh invocation the command makes, in order. cwd null means unknown.
-export function invocations(command, cwd = process.cwd()) {
-  const out = [];
+// -> {invs, texts}: every git/gh invocation in order, and each command's text for rule 6.
+// cwd null means unknown.
+function parse(command, cwd) {
+  const acc = { invs: [], texts: [] };
   const state = { cwd, label: cwd, stack: [] };
-  for (const seg of lex(command)) walk(seg, state, out);
-  return out;
+  for (const seg of lex(command)) walk(seg, state, acc);
+  return acc;
 }
+
+export const invocations = (command, cwd = process.cwd()) => parse(command, cwd).invs;
 
 // -> {kind: 'commit'|'push'|'force-push'|'pr'|'other', branchArg?} for the first such invocation.
 export function classifyGit(command) {
@@ -517,7 +561,7 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const invs = invocations(command, start);
+  const { invs, texts } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // The branch each commit and push runs on, following checkouts earlier in the same command.
@@ -558,7 +602,7 @@ export function handle(input, { root, cfg }) {
   // (6)
   const patterns = compileDestructive(cfg);
   for (let k = 0; k < patterns.length; k++) {
-    if (patterns[k].test(command)) return deny(`destructive command refused by rule ${cfg.destructive[k]}`);
+    if (texts.some((t) => patterns[k].test(t))) return deny(`destructive command refused by rule ${cfg.destructive[k]}`);
   }
   return allow();
 }

@@ -11,11 +11,11 @@ const REVIEW_MODES = ['required', 'optional'];
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 // Matched case-insensitively: compileDestructive adds the i flag, so `drop table` is caught too.
+// No force-push entry: pre-bash's rule 3 refuses force pushes from the parsed command.
 const DESTRUCTIVE = [
   '\\brm\\s+-rf\\s+(/|~|\\.\\.)',
   '\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b',
-  '\\bTRUNCATE\\b',
-  'git\\s+push\\s+.*--force',
+  '\\bTRUNCATE\\s+TABLE\\b',
   'git\\s+reset\\s+--hard\\s+origin/',
 ];
 
