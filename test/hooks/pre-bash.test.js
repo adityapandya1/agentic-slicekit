@@ -154,7 +154,7 @@ test('denies destructive pattern from config', () => {
 // REQ-2.1
 test('denies git from a subagent', () => {
   const { root, cleanup } = repoOn('slice/P1-S-06-x');
-  const msg = 'agents do not run git; report and let the command commit';
+  const msg = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)';
   try {
     enter(root, SESSION);
     assertDeny(decide(root, 'git commit -m x'), msg);
@@ -426,6 +426,97 @@ test('destructive patterns judge parsed commands, not quoted text or messages', 
     assertDeny(decide(root, 'git reset --hard origin/main'), rule('git\\s+reset\\s+--hard\\s+origin/'));
     assertDeny(decide(root, 'rm -rf /'), rule('\\brm\\s+-rf\\s+(/|~|\\.\\.)'));
     assertDeny(decide(root, 'sudo rm -rf ~'), rule('\\brm\\s+-rf\\s+(/|~|\\.\\.)'));
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- fix round 1: subagent and minors ----
+
+const AGENT = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-sess-1)';
+
+// I5
+test('a subagent may only read pull requests and the API', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  try {
+    assertAllow(decide(root, 'gh api repos/o/r/pulls/5/merge -X PUT'));
+    assertAllow(decide(root, 'gh pr review 5 --approve'));
+    enter(root, SESSION);
+    assertDeny(decide(root, 'gh pr review 5 --approve'), AGENT);
+    assertDeny(decide(root, 'gh pr -R o/r merge 5'), AGENT);
+    assertDeny(decide(root, 'gh pr --repo=o/r reopen 5'), AGENT);
+    assertDeny(decide(root, 'gh api repos/o/r/pulls/5/merge -X PUT'), AGENT);
+    assertDeny(decide(root, 'gh api --method=post repos/o/r/issues'), AGENT);
+    assertDeny(decide(root, 'gh api -XDELETE repos/o/r/git/refs/heads/x'), AGENT);
+    for (const cmd of ['gh pr view 5', 'gh pr list', 'gh pr status', 'gh pr checks 5', 'gh pr diff 5', 'gh pr -R o/r view 5',
+      'gh api repos/o/r/pulls/5', 'gh api -X GET repos/o/r/pulls']) {
+      assertAllow(decide(root, cmd));
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// M8, M9
+test('an empty session id with any marker present counts as a subagent', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  const any = (session_id) => handle({ session_id, tool_name: 'Bash', tool_input: { command: 'git commit -m x' }, cwd: root },
+    { root, cfg: cfgFor(), env: {} });
+  try {
+    assertAllow(any(''));
+    assertAllow(any(undefined));
+    enter(root, 'other-session');
+    const msg = 'agents do not run git; report and let the command commit (marker .slicekit/.subagent-other-session)';
+    assertDeny(any(''), msg);
+    assertDeny(any(undefined), msg);
+    assertAllow(any(SESSION));
+    assertAllow(handle({ tool_name: 'Bash', tool_input: { command: 'npm test' }, cwd: root }, { root, cfg: cfgFor(), env: {} }));
+  } finally {
+    cleanup();
+  }
+});
+
+// M1
+test('@ as a push source means HEAD', () => onMain((root) => {
+  assertDeny(decide(root, 'git push origin @'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'git push origin @:refs/heads/main'), PROTECTED_PUSH);
+}));
+
+// M2
+test('cherry-pick, revert and am commit on a protected branch; merge, pull and rebase do not', () => onMain((root) => {
+  assertDeny(decide(root, 'git cherry-pick abc123'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'git revert HEAD'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'git am 0001.patch'), PROTECTED_COMMIT);
+  assertAllow(decide(root, 'git merge slice/x'));
+  assertAllow(decide(root, 'git pull'));
+  assertAllow(decide(root, 'git rebase origin/main'));
+}));
+
+// M5
+test('a commit -a after another command touches intake counts every intake file', () => {
+  const snap = 'docs/intake/old.md';
+  const { root, cleanup } = repoOn('slice/x', { [snap]: 'one\n', 'src/a.js': 'a\n' });
+  try {
+    assertDeny(decide(root, `rm ${snap} && git commit -am x`), `intake snapshot ${snap} is frozen; add a new snapshot`);
+    assertDeny(decide(root, `cd docs && rm intake/old.md && cd .. && git commit -am x`), `intake snapshot ${snap} is frozen; add a new snapshot`);
+    assertAllow(decide(root, 'rm src/a.js && git commit -am x'));
+  } finally {
+    cleanup();
+  }
+});
+
+// M6
+test('a commit with pathspecs judges only those paths', () => {
+  const snap = 'docs/intake/old.md';
+  const { root, cleanup } = repoOn('slice/x', { [snap]: 'one\n', 'src/a.js': 'a\n' });
+  try {
+    fs.writeFileSync(path.join(root, snap), 'two\n');
+    run(root, ['add', snap]);
+    assertAllow(decide(root, 'git commit -m x -- src'));
+    assertAllow(decide(root, 'git commit -m x src/a.js'));
+    assertDeny(decide(root, 'git commit -m x'), `intake snapshot ${snap} is frozen; add a new snapshot`);
+    assertDeny(decide(root, 'git commit -m x -- docs'), `intake snapshot ${snap} is frozen; add a new snapshot`);
+    assertDeny(decide(root, 'git commit -m x -i src'), `intake snapshot ${snap} is frozen; add a new snapshot`);
   } finally {
     cleanup();
   }

@@ -1,8 +1,8 @@
 // pre-bash (REQ-3.2, REQ-2.1, REQ-1.2): the PreToolUse guard on Bash. Fails closed through io.js.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
-// (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) commit, push or `gh pr`
-// writes from a subagent; (6) a command matching cfg.destructive.
+// (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) commit, push, cherry-pick/
+// revert/am, `gh pr` writes or a non-GET `gh api` from a subagent; (6) a command matching cfg.destructive.
 //
 // Limits: this reads the command as a shell would on its surface. It splits on operators outside
 // quotes, treats here-document bodies as data, strips shell keywords, env prefixes and wrappers
@@ -10,6 +10,10 @@
 // `bash -c "..."`. A directory it cannot resolve makes a commit or push refuse rather than pass.
 // It does not expand variables, aliases, eval, functions or encoded payloads: deliberate obfuscation
 // gets through, and the git hooks (S-06's .githooks) are the backstop for commits and pushes.
+// Known gaps: `--git-dir` / `GIT_DIR` pointing at another repository are not followed (the branch is
+// read from the shell's directory); a command substitution inside double quotes (`echo "$(git ...)"`)
+// is not split out; the default destructive list misses `rm -fr /` spellings and absolute paths inside
+// the worktree.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,7 +21,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { subagentActive } from './subagent-marker.js';
+import { activeMarker } from './subagent-marker.js';
 
 // ---- tokenising ----
 
@@ -273,7 +277,7 @@ function parsePush(args) {
     if (del) target = r;
     else if (r.includes(':')) target = r.slice(r.indexOf(':') + 1) || r.slice(0, r.indexOf(':'));
     else target = r;
-    if (target === 'HEAD') target = null;
+    if (target === 'HEAD' || target === '@') target = null;
     targets.push(target === null ? null : target.replace(/^refs\/heads\//, ''));
   }
   if (!refspecs.length && !all) targets.push(null);
@@ -286,6 +290,7 @@ function parseCommit(args) {
     '--author', '--date', '--cleanup', '--template', '--trailer']);
   let all = false;
   let whole = false;
+  let include = false;
   let endOpts = false;
   const paths = [];
   for (let k = 0; k < args.length; k++) {
@@ -295,11 +300,13 @@ function parseCommit(args) {
     } else if (!endOpts && a.startsWith('--')) {
       const name = a.split('=')[0];
       if (name === '--all') all = true;
+      else if (name === '--include') include = true;
       else if (name === '--pathspec-from-file') whole = true;
       if ((VALUE_LONG.has(name) || name === '--pathspec-from-file') && !a.includes('=')) k += 1;
     } else if (!endOpts && a.startsWith('-') && a.length > 1) {
       for (let j = 1; j < a.length; j++) {
         if (a[j] === 'a') all = true;
+        if (a[j] === 'i') include = true;
         if (VALUE_SHORT.includes(a[j])) {
           if (j === a.length - 1) k += 1;
           break;
@@ -309,7 +316,7 @@ function parseCommit(args) {
       paths.push(a);
     }
   }
-  return { kind: 'commit', all, whole: whole || all, paths };
+  return { kind: 'commit', all, include, whole: whole || all, paths };
 }
 
 // git add / rm / mv: what the command stages before a commit in the same line.
@@ -349,7 +356,33 @@ function parseSwitch(sub, args) {
   return { kind: 'switch', to: positionals[0] === '-' ? UNKNOWN : positionals[0] };
 }
 
-const PR_WRITES = new Set(['create', 'merge', 'edit', 'ready', 'close', 'comment']);
+// From a subagent, every gh pr subcommand but these is a write.
+const PR_READS = new Set(['view', 'list', 'status', 'checks', 'diff']);
+
+// gh pr <sub> that writes -> 'pr'; gh api with a method other than GET -> 'api-write'; else null.
+function classifyGh(w) {
+  let k = 1;
+  const skipFlags = () => {
+    while (k < w.length && w[k].startsWith('-')) k += w[k] === '-R' || w[k] === '--repo' ? 2 : 1;
+  };
+  skipFlags();
+  const group = w[k];
+  k += 1;
+  if (group === 'pr') {
+    skipFlags();
+    return w[k] !== undefined && !PR_READS.has(w[k]) ? 'pr' : null;
+  }
+  if (group === 'api') {
+    let method = 'GET';
+    for (let j = k; j < w.length; j++) {
+      if ((w[j] === '-X' || w[j] === '--method') && w[j + 1] !== undefined) method = w[j + 1];
+      else if (w[j].startsWith('--method=')) method = w[j].slice('--method='.length);
+      else if (/^-X./.test(w[j])) method = w[j].slice(2);
+    }
+    return method.toUpperCase() === 'GET' ? null : 'api-write';
+  }
+  return null;
+}
 
 // ---- rule 6: the text a destructive pattern is matched against ----
 
@@ -396,6 +429,9 @@ function walk(seg, state, acc) {
   const w = toks.map((t) => t.v);
   const text = destructiveText(toks, seg.heredocs);
   if (text !== null) acc.texts.push(text);
+  if (state.cwd !== null) {
+    for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
+  }
   const b = base(w[0]);
   if (b === 'cd' || b === 'pushd') {
     const target = w.slice(1).find((x) => !x.startsWith('-') || x === '-');
@@ -428,7 +464,8 @@ function walk(seg, state, acc) {
     return;
   }
   if (b === 'gh') {
-    if (w[1] === 'pr' && PR_WRITES.has(w[2])) acc.invs.push({ kind: 'pr', dir: state.cwd, label: state.label });
+    const kind = classifyGh(w);
+    if (kind) acc.invs.push({ kind, dir: state.cwd, label: state.label });
     return;
   }
   if (b !== 'git') return;
@@ -455,14 +492,18 @@ function walk(seg, state, acc) {
   else if (sub === 'push') inv = parsePush(args);
   else if (sub === 'add' || sub === 'rm' || sub === 'mv' || sub === 'stage') inv = parseStage(sub === 'stage' ? 'add' : sub, args);
   else if (sub === 'checkout' || sub === 'switch') inv = parseSwitch(sub, args);
+  // These make commits too: rule 1 holds them to the protected branches; rule 4 does not apply.
+  else if (sub === 'cherry-pick' || sub === 'revert' || sub === 'am') {
+    inv = { kind: 'commit', replay: true, all: false, include: false, whole: false, paths: [] };
+  }
   else inv = { kind: 'other' };
   acc.invs.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
 }
 
-// -> {invs, texts}: every git/gh invocation in order, and each command's text for rule 6.
+// -> {invs, texts, mentions}: every git/gh invocation in order, and each command's text for rule 6.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [] };
+  const acc = { invs: [], texts: [], mentions: [] };
   const state = { cwd, label: cwd, stack: [] };
   for (const seg of lex(command)) walk(seg, state, acc);
   return acc;
@@ -527,25 +568,39 @@ function covers(stager, file, top) {
   return false;
 }
 
-function frozenIntake(root, cfg, invs) {
+// Whether a word some command in the line names resolves under the intake directory.
+function namesIntake(mentions, intakeAbs) {
+  return mentions.some(({ dir, word }) => {
+    const rel = path.relative(intakeAbs, path.resolve(real(dir), word));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  });
+}
+
+function frozenIntake(root, cfg, invs, mentions) {
   const intakeAbs = kitPaths(real(root), cfg).intake;
-  for (const c of invs.filter((i) => i.kind === 'commit' && i.dir !== null)) {
+  for (const c of invs.filter((i) => i.kind === 'commit' && !i.replay && i.dir !== null)) {
     const top = topOf(c.dir);
     if (!top) continue;
     if (!quiet(() => (git(top, ['rev-parse', '--verify', 'HEAD']), true), false)) continue;
     const intake = toPosix(path.relative(top, intakeAbs));
     if (intake.startsWith('..') || path.isAbsolute(intake)) continue;
     const inHead = (f) => quiet(() => (git(top, ['cat-file', '-e', `HEAD:${f}`]), true), false);
-    const staged = lines(git(top, ['diff', '--cached', '--name-only', '--', intake]));
-    const hit = staged.find(inHead);
-    if (hit) return hit;
-    const stagers = invs.filter((i) => i.kind === 'stage' && i.dir !== null && topOf(i.dir) === top);
+    // A commit naming paths commits only those; the index counts too only with -i.
+    const onlyPaths = c.paths.length > 0 && !c.include;
+    if (!onlyPaths) {
+      const staged = lines(git(top, ['diff', '--cached', '--name-only', '--', intake]));
+      const hit = staged.find(inHead);
+      if (hit) return hit;
+    }
+    const stagers = onlyPaths ? [] : invs.filter((i) => i.kind === 'stage' && i.dir !== null && topOf(i.dir) === top);
     if (c.whole || c.paths.length) stagers.push(c);
     if (!stagers.length) continue;
     const changed = lines(git(top, ['diff', '--name-only', 'HEAD', '--', intake]));
     const tracked = lines(git(top, ['ls-tree', '-r', '--name-only', 'HEAD', '--', intake]));
+    // Another command in the line may change intake before -a reads the tree: every intake file counts.
+    const touched = c.all && namesIntake(mentions, intakeAbs);
     for (const s of stagers) {
-      const candidates = s.op === 'rm' || s.op === 'mv' ? tracked : changed;
+      const candidates = s.op === 'rm' || s.op === 'mv' || (s === c && touched) ? tracked : changed;
       const f = candidates.find((file) => covers(s, file, top) && inHead(file));
       if (f) return f;
     }
@@ -561,7 +616,7 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts } = parse(command, start);
+  const { invs, texts, mentions } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // The branch each commit and push runs on, following checkouts earlier in the same command.
@@ -594,11 +649,13 @@ export function handle(input, { root, cfg }) {
   // (3)
   if (pushes.some((p) => p.force)) return deny('force push refused');
   // (4)
-  const frozen = frozenIntake(root, cfg, invs);
+  const frozen = frozenIntake(root, cfg, invs, mentions);
   if (frozen) return deny(`intake snapshot ${frozen} is frozen; add a new snapshot`);
   // (5)
-  const writes = invs.some((i) => ['commit', 'push', 'force-push', 'pr'].includes(i.kind));
-  if (writes && subagentActive(root, input.session_id)) return deny('agents do not run git; report and let the command commit');
+  if (invs.some((i) => ['commit', 'push', 'force-push', 'pr', 'api-write'].includes(i.kind))) {
+    const marker = activeMarker(root, input.session_id);
+    if (marker) return deny(`agents do not run git; report and let the command commit (marker ${marker})`);
+  }
   // (6)
   const patterns = compileDestructive(cfg);
   for (let k = 0; k < patterns.length; k++) {

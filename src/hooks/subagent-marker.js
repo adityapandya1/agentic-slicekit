@@ -41,9 +41,25 @@ export function leave(root, sessionId) {
   else fs.writeFileSync(file, `${next}\n`);
 }
 
+const usable = (id) => typeof id === 'string' && id !== '' && id.length <= MAX_ID;
+
+// -> the active marker as a root-relative path ('.slicekit/.subagent-<id>'), or null.
 // A marker that exists but cannot be read as a count reads as active: the guard fails closed.
-export function subagentActive(root, sessionId) {
-  if (typeof sessionId !== 'string' || sessionId === '') return false;
-  const count = readCount(markerPath(root, sessionId));
-  return count === null ? false : !(count === 0);
+// With no usable session id, any session's marker counts: the hook cannot tell whose call this is.
+export function activeMarker(root, sessionId) {
+  if (usable(sessionId)) {
+    const file = markerPath(root, sessionId);
+    const count = readCount(file);
+    return count === null || count === 0 ? null : `.slicekit/${path.basename(file)}`;
+  }
+  let names;
+  try {
+    names = fs.readdirSync(path.join(root, '.slicekit'));
+  } catch {
+    return null;
+  }
+  const hit = names.filter((n) => n.startsWith('.subagent-')).sort()[0];
+  return hit === undefined ? null : `.slicekit/${hit}`;
 }
+
+export const subagentActive = (root, sessionId) => activeMarker(root, sessionId) !== null;
