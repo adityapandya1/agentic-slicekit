@@ -205,7 +205,7 @@ Enforced by: the generated workflow; `slicekit check --ci`.
 ## REQ-3.12 Rendered files and updates
 
 Every file the kit renders into `.claude/`, `.githooks/` and
-`.github/workflows/` SHALL carry the <!-- slicekit:pending P1/S-08 -->
+`.github/workflows/` SHALL carry the
 kit version in one of two forms. A file with front matter carries `slicekit-managed: v<version>` in
 that front matter and is managed whole, because Claude Code reads front matter only when it starts on
 line 1, so no marker may come before it. Any other file SHALL sit between
