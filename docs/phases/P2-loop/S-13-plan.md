@@ -4,14 +4,14 @@ name: `/slicekit plan`
 repo: .
 group: B
 runbook: no
-requirements: [REQ-2.5, REQ-1.5, REQ-1.6]
-decisions: [D-10, D-22]
+requirements: [REQ-2.5, REQ-1.5, REQ-1.6, REQ-2.7]
+decisions: [D-10, D-22, D-38]
 ---
 
 ## Done when
 
 1. `slicekit plan check` refuses, listing each one, while any `[NEEDS CLARIFICATION` marker is under the spec or the gap scan is not done ("gap scan not done" and the command that does it, REQ-1.7); otherwise it prints `ready to plan` (REQ-2.5).
-2. The `coverage` rule also fails, from the plan stage on, a slice whose evaluation set lacks a `happy` or a `negative` test, and a phase whose `**Order:**` line misses, repeats or invents a group; slices in different groups of one Order step are checked for overlap like slices of one group, since they run at the same time; REQ-3.7's coverage row says so.
+2. The `coverage` rule also fails, from the plan stage on, a slice whose evaluation set lacks a `happy` or a `negative` test, and a phase whose `**Order:**` line misses, repeats or invents a group; slices in different groups of one Order step are checked for overlap like slices of one group, since they run at the same time. REQ-1.5 defines the Order line and its default, REQ-2.7 speaks of one Order step, and REQ-3.7's coverage row says what the rule checks (D-38).
 3. The `/slicekit plan` procedure writes `stack.md` when it says nothing yet, the phases with their Order lines and the slice files (REQ-1.5), regenerates `BUILD.md` (REQ-1.6), runs `check` to `0 findings`, and opens the `[plan] <program name>` pull request.
 
 ## Evaluation set
@@ -27,7 +27,7 @@ decisions: [D-10, D-22]
 
 ## Expected changes
 
-`src/plan.js`, `src/cli/plan.js`, `src/check/rules/coverage.js`, `docs/spec/03-hooks-gates-ci.md`, `templates/instructions/commands/plan.md`, tests.
+`src/plan.js`, `src/cli/plan.js`, `src/check/rules/coverage.js`, `docs/spec/01-layout-and-state.md`, `docs/spec/02-commands-agents-loop.md`, `docs/spec/03-hooks-gates-ci.md`, `templates/instructions/commands/plan.md`, tests.
 
 ## Tasks
 
@@ -48,7 +48,7 @@ decisions: [D-10, D-22]
 
 ### Task 2: Evaluation-set and Order findings in `coverage`
 
-**Files:** Modify `src/check/rules/coverage.js`, `test/check/coverage.test.js`, `docs/spec/03-hooks-gates-ci.md`.
+**Files:** Modify `src/check/rules/coverage.js`, `test/check/coverage.test.js`, `docs/spec/01-layout-and-state.md`, `docs/spec/02-commands-agents-loop.md`, `docs/spec/03-hooks-gates-ci.md`.
 
 **Interfaces:**
 - Consumes (S-09): `parseOrder` from `src/slicefile.js`.
@@ -60,7 +60,7 @@ decisions: [D-10, D-22]
 
 - [ ] **Step 1: Failing tests** — `a slice with no negative test is a finding`: a planned fixture whose slice has only `happy` rows → `slice P1/S-01 has no negative test`. `an Order line missing a group is a finding`: slices in groups A and B under `**Order:** A` → `phase P1 Order line does not name group B`; `**Order:** A; B; B` → `names group B twice`. `slices in one Order step are checked for overlap`: S-01 in group B and S-02 in group C both expecting `src/x.js` under `**Order:** A; B, C` → `slices P1/S-01 and P1/S-02 in step B, C both expect src/x.js`; under `**Order:** A; B; C` → no finding. <!-- slicekit:example -->
 - [ ] **Step 2: Run** `node --test test/check/coverage.test.js` → FAIL.
-- [ ] **Step 3: Implement**; edit the REQ-3.7 row.
+- [ ] **Step 3: Implement**; edit the REQ-3.7 row; add to REQ-1.5 the sentence "A phase file MAY carry one line `**Order:** <step>; <step>; …`, each step a comma list of the groups that run at the same time; without it each group is its own step, in name order" and cite D-38 on its `Cites:` line; in REQ-2.7 replace "every `todo` slice in one parallel group" with "every runnable slice of one Order step" and "two slices in one parallel group" with "two slices of one Order step". D-38 is already in `decisions.md`.
 - [ ] **Step 4: Run** the same, `npm test` and `node bin/slicekit.js check` on the kit → PASS, `0 findings` (every kit slice has both kinds; only P2's phase file carries an Order line, and its step B, C has no shared path).
 - [ ] **Step 5: Commit** `feat(check): evaluation sets need a happy and a negative test; Order lines name every group`.
 

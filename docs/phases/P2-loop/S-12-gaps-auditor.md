@@ -55,11 +55,11 @@ decisions: [D-17, D-20]
 **Files:** Modify `src/gaps.js`, `src/cli/gaps.js`, `test/commands/gaps.test.js`.
 
 **Interfaces:**
-- Consumes (S-09): `interfacesWithoutContract` from `src/decisions.js`. <!-- slicekit:pending P2/S-09 -->
+- Consumes (S-09): `interfacesWithoutContract`, `readDecisions` from `src/decisions.js`; `reqBlocks` from `src/stage.js`. <!-- slicekit:pending P2/S-09 -->
 - `scanGaps(root, cfg) → [{id, added}]`, through `addGap`, so a second run adds nothing. Candidates, in this order:
   1. `unknown`, where `<docsRoot>/<file>:<line>`, what `<section> not yet known`: each `##` section of `platform.md`, `observability.md` and `runbook.md` whose body is the single line `Not yet known`.
   2. `unknown`, where `<docsRoot>/decisions.md:<line>`, what `<D-ID> is open: <question>`: each Open-table row.
-  3. `unknown`, where `<spec file>:<line>`, what `<REQ> rests on open <D-ID>`: each REQ whose `Cites:` names an Open row (REQ-1.4).
+  3. `unknown`, where `<file>:<line>` of the REQ heading (from `reqBlocks`), what `<REQ> rests on open <D-ID>`: each REQ whose `Cites:` names an Open-table row (REQ-1.4).
   4. `missing`, where the interface's intake line (its `Named at` source; the decision row's line when it has none), what `interface <name> named at intake has no contract`.
 - CLI `gaps scan` prints `<G-ID> <class> <what>` per added row, or `no new gaps`.
 
