@@ -12,10 +12,10 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { GitError, assertRef, currentBranch, git, hasCommits, isRepo } from '../git.js';
-import { sliceFromBranch, stateFileName } from '../ids.js';
+import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
-import { readSlice } from '../state/index.js';
 import { context, oneLine } from './io.js';
+import { activeSlice } from './paths.js';
 
 export const FETCH_TIMEOUT_MS = 15_000;
 const REASON_MAX = 120;
@@ -118,18 +118,6 @@ async function divergence(root, branch, cfg, env, timeoutMs) {
     : `slicekit: ${counts}`;
 }
 
-// -> {id, state} or null.
-function activeSlice(root, cfg, branch) {
-  const id = branch ? sliceFromBranch(branch) : null;
-  if (!id) return null;
-  try {
-    return { id, state: readSlice(root, cfg, id) };
-  } catch (e) {
-    if (/^unknown slice /.test(e?.message ?? '')) return null;
-    return { id, state: null, error: e?.message ?? String(e) };
-  }
-}
-
 const text = (v) => oneLine(typeof v === 'string' ? v : JSON.stringify(v) ?? String(v));
 
 function handoffLines(handoff) {
@@ -170,7 +158,7 @@ export async function handle(input, { root, cfg, env = process.env, fetchTimeout
     branch = null;
   }
   const out = [await divergence(root, branch, cfg, env, fetchTimeoutMs)];
-  const active = activeSlice(root, cfg, branch);
+  const active = activeSlice(root, cfg);
   if (!active) {
     out.push('no active slice');
   } else if (active.error) {

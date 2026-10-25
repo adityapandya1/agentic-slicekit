@@ -22,6 +22,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
+import { fromGitBash, real, toPosix } from './paths.js';
 import { activeMarker } from './subagent-marker.js';
 
 // ---- tokenising ----
@@ -231,13 +232,6 @@ function stripPrefixes(toks) {
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
 
 // ---- directories ----
-
-// Git Bash's `/c/...` spelling of a Windows path as `C:/...`; unchanged off win32.
-export function fromGitBash(p) {
-  if (process.platform !== 'win32') return p;
-  const m = /^\/([A-Za-z])(\/.*)?$/.exec(p);
-  return m ? `${m[1].toUpperCase()}:/${(m[2] ?? '').slice(1)}` : p;
-}
 
 // A directory the hook cannot resolve is null: commits and pushes there refuse rather than pass.
 function resolveDir(from, target) {
@@ -591,14 +585,6 @@ function branchIn(dir) {
 }
 
 const lines = (text) => (text === '' ? [] : text.split('\n'));
-const real = (p) => {
-  try {
-    return fs.realpathSync.native(p);
-  } catch {
-    return p;
-  }
-};
-const toPosix = (p) => p.split(path.sep).join('/');
 const localBranch = (dir, name) => quiet(() => (git(dir, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`]), true), false);
 const topOf = (dir) => (dir === null ? null : quiet(() => real(git(dir, ['rev-parse', '--show-toplevel'])), null));
 

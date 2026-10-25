@@ -19,48 +19,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, loadConfig } from '../config.js';
-import { GitError, currentBranch, git } from '../git.js';
-import { parseSliceAddr, sliceFromBranch } from '../ids.js';
+import { GitError, git } from '../git.js';
+import { parseSliceAddr } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { phaseOfDir } from '../slicefile.js';
-import { readSlice } from '../state/index.js';
 import { allow, deny } from './io.js';
-import { fromGitBash } from './pre-bash.js';
+import { activeSlice, existingAncestor, fromGitBash, real, toPosix } from './paths.js';
 
 const WIN = process.platform === 'win32';
 const GUARDED_STATES = new Set(['tests-red', 'building']);
 const PATH_KEYS = ['file_path', 'notebook_path'];
 
-const toPosix = (p) => p.split(path.sep).join('/');
 const key = (p) => (WIN ? p.toLowerCase() : p);
 const same = (a, b) => key(a) === key(b);
 const under = (p, dir) => same(p, dir) || key(p).startsWith(`${key(dir)}/`);
-
-const real = (p) => {
-  try {
-    return fs.realpathSync.native(p);
-  } catch {
-    return p;
-  }
-};
-
-// The deepest existing ancestor of abs (abs itself when it exists).
-function existingAncestor(abs) {
-  let dir = abs;
-  while (!fs.existsSync(dir)) {
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return dir;
-}
-
-// abs with its existing part replaced by its real path, the missing segments re-appended.
-function canonical(abs) {
-  const existing = existingAncestor(abs);
-  const rest = path.relative(existing, abs);
-  return rest === '' ? real(existing) : path.join(real(existing), rest);
-}
 
 function relInside(root, abs) {
   const rel = path.relative(root, abs);
@@ -76,12 +48,12 @@ function absolute(filePath, root, cwd) {
     throw new Error(`${filePath}: a stream name is not a file path`);
   }
   const base = typeof cwd === 'string' && cwd !== '' ? path.resolve(root, fromGitBash(cwd.replace(/\\/g, '/'))) : root;
-  return canonical(path.resolve(base, p));
+  return real(path.resolve(base, p));
 }
 
 // -> the POSIX path relative to root, or null when it is outside root.
 export function normalise(filePath, root, cwd) {
-  return relInside(canonical(path.resolve(root)), absolute(filePath, root, cwd));
+  return relInside(real(path.resolve(root)), absolute(filePath, root, cwd));
 }
 
 // A kit-owned segment anywhere in the path, whatever root it belongs to.
@@ -102,14 +74,14 @@ function ownRoot(abs) {
   let configured = null;
   for (let dir = start; ; dir = path.dirname(dir)) {
     if (fs.existsSync(path.join(dir, CONFIG_PATH))) {
-      configured = canonical(dir);
+      configured = real(dir);
       break;
     }
     if (path.dirname(dir) === dir) break;
   }
   let top = null;
   try {
-    top = canonical(path.resolve(git(start, ['rev-parse', '--show-toplevel'])));
+    top = real(path.resolve(git(start, ['rev-parse', '--show-toplevel'])));
   } catch (e) {
     if (!(e instanceof GitError)) throw e;
   }
@@ -118,30 +90,6 @@ function ownRoot(abs) {
 }
 
 const stringList = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
-
-// The active slice's id and state, or null when there is none.
-function activeSlice(root, cfg) {
-  let branch;
-  try {
-    branch = currentBranch(root);
-  } catch (e) {
-    if (e instanceof GitError) return null;
-    throw e;
-  }
-  const id = branch ? sliceFromBranch(branch) : null;
-  if (!id) return null;
-  let state;
-  try {
-    state = readSlice(root, cfg, id);
-  } catch (e) {
-    if (/^unknown slice /.test(e?.message ?? '')) return null;
-    throw e;
-  }
-  for (const field of ['frozenTests', 'unfrozen']) {
-    if (!stringList(state[field])) throw new Error(`${id} state: ${field} must be an array of strings`);
-  }
-  return { id, state };
-}
 
 // Whether rel lies inside the slice's own phase directory, `<docs>/phases/P<n>[-name]/`.
 function inOwnPhase(rel, phasesRel, sliceId) {
@@ -153,7 +101,7 @@ function inOwnPhase(rel, phasesRel, sliceId) {
 
 function judge(filePath, input, hookRoot, hookCfg) {
   const abs = absolute(filePath, hookRoot, input.cwd);
-  const hookCanon = canonical(path.resolve(hookRoot));
+  const hookCanon = real(path.resolve(hookRoot));
   const own = ownRoot(abs);
   let root = hookCanon;
   let cfg = hookCfg;
@@ -168,6 +116,12 @@ function judge(filePath, input, hookRoot, hookCfg) {
   if (rel === null) return allow();
 
   const active = activeSlice(root, cfg);
+  if (active?.error) throw new Error(active.error);
+  if (active) {
+    for (const field of ['frozenTests', 'unfrozen']) {
+      if (!stringList(active.state[field])) throw new Error(`${active.id} state: ${field} must be an array of strings`);
+    }
+  }
   if (!active || !GUARDED_STATES.has(active.state.state)) return allow();
   const { id, state } = active;
 
