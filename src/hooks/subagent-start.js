@@ -1,14 +1,14 @@
-// subagent-start (REQ-3.4): marks that a subagent is running (the session marker, and its agent_id in
-// the session's started-agents record, which subagent-stop checks) and injects its role brief, the
-// writing rules and the no-git rule. Fails open through io.js. pre-bash keeps git out of the subagent by
-// the agent_id Claude Code puts on every tool call made inside it, not by the marker.
+// subagent-start (REQ-3.4): records the agent in the session's started-agents record (once per agent:
+// SubagentStart fires on spawn and again on resume), which subagent-stop checks, and injects its role
+// brief, the writing rules and the no-git rule. Fails open through io.js. pre-bash keeps git out of the
+// subagent by the agent_id Claude Code puts on every tool call made inside it, not by the record.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { context } from './io.js';
 import { toPosix } from './paths.js';
 import { roleOf } from './shapes.js';
-import { addAgent, enter, usableId } from './subagent-marker.js';
+import { addAgent, usableId } from './subagent-marker.js';
 
 export { roleOf };
 export const BRIEF_MAX = 8000;
@@ -68,10 +68,7 @@ function assemble(brief, rules, role) {
 
 export async function handle(input, { root, env = process.env, commands }) {
   // Only an agent that can be named at its stop is recorded: the stop hook acts for recorded agents.
-  if (usableId(input?.session_id) && usableId(input?.agent_id)) {
-    enter(root, input.session_id);
-    addAgent(root, input.session_id, input.agent_id);
-  }
+  if (usableId(input?.session_id) && usableId(input?.agent_id)) addAgent(root, input.session_id, input.agent_id);
   const role = roleOf(input?.agent_type);
   const brief = await roleBrief(role, root, env, commands ?? await cliCommands());
   return context('SubagentStart', assemble(brief, writingRules(root), role));

@@ -10,7 +10,7 @@ decisions: [D-19]
 
 ## Done when
 
-1. `slicekit hook subagent-start` sets the marker and injects the role brief, the writing rules and the no-git sentence; `subagent-stop` clears the marker and blocks once, with the missing parts named, when the agent's output lacks its required shape.
+1. `slicekit hook subagent-start` records the agent in the session's started-agents record (the marker, once per agent) and injects the role brief, the writing rules and the no-git sentence; `subagent-stop` drops it from that record and blocks once, with the missing parts named, when the agent's output lacks its required shape.
 2. `slicekit hook pre-compact` writes a handoff into the active slice's state file; `session-start` on `compact` prints it (S-06).
 3. `slicekit hook session-end` appends a hash-chained line to this clone's file for the current branch, `.slicekit/journal/<branch>--<clone-id>.log`; `slicekit journal verify` and the `journal` check rule fail on a hand-edited line and never repair it.
 4. `slicekit hook stop` runs `check` and blocks with the first ten findings when it fails.

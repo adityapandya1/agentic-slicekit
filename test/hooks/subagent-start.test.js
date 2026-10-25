@@ -1,11 +1,11 @@
-// REQ-3.4: SubagentStart marks that a subagent is running and injects its role brief, the writing
+// REQ-3.4: SubagentStart records the agent in the session's started-agents record and injects its role brief, the writing
 // rules and the no-git rule. Fails open through io.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { handle, roleOf, BRIEF_MAX, NO_GIT } from '../../src/hooks/subagent-start.js';
-import { markerPath, subagentActive } from '../../src/hooks/subagent-marker.js';
+import { agentsPath, hasAgent } from '../../src/hooks/subagent-marker.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 
@@ -25,8 +25,8 @@ test('hooks/subagent-start.test.js » sets marker and injects brief and no-git r
   try {
     const r = await start(root);
     assert.equal(r.hookSpecificOutput?.hookEventName, 'SubagentStart');
-    assert.equal(subagentActive(root, SESSION), true);
-    assert.equal(fs.readFileSync(markerPath(root, SESSION), 'utf8').trim(), '1');
+    assert.equal(hasAgent(root, SESSION, 'a1'), true);
+    assert.equal(fs.readFileSync(agentsPath(root, SESSION), 'utf8'), 'a1\n');
     const t = text(r);
     assert.ok(t.startsWith('Brief: role developer.\n'), t);
     assert.match(t, /# Writing rules/);
@@ -59,12 +59,14 @@ test('subagent-start » unknown role gets the placeholder for other', async () =
   }
 });
 
-test('subagent-start » two starts count two', async () => {
+// SubagentStart fires on spawn and on resume: a resumed agent is recorded once.
+test('subagent-start » two agents are recorded once each, a resume adds nothing', async () => {
   const { root, cleanup } = makeRepo({ commits: 1 });
   try {
     await start(root);
     await start(root, { agent_id: 'a2' });
-    assert.equal(fs.readFileSync(markerPath(root, SESSION), 'utf8').trim(), '2');
+    await start(root);
+    assert.equal(fs.readFileSync(agentsPath(root, SESSION), 'utf8'), 'a1\na2\n');
   } finally {
     cleanup();
   }
@@ -144,12 +146,12 @@ test('subagent-start » uses `slicekit instructions <role>` when that command ex
   }
 });
 
-test('subagent-start » outside a git repository the marker is under .slicekit', async () => {
+test('subagent-start » outside a git repository the started-agents record is under .slicekit', async () => {
   const { root, cleanup } = makeRepo();
   try {
     fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
     await start(root);
-    assert.ok(fs.existsSync(path.join(root, '.slicekit', `.subagent-${SESSION}`)));
+    assert.equal(fs.readFileSync(path.join(root, '.slicekit', `.agents-${SESSION}`), 'utf8'), 'a1\n');
   } finally {
     cleanup();
   }

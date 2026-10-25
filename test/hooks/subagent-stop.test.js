@@ -1,4 +1,4 @@
-// REQ-3.5, REQ-2.11, REQ-2.12: SubagentStop clears the subagent marker and blocks the subagent once
+// REQ-3.5, REQ-2.11, REQ-2.12: SubagentStop drops the agent from the started-agents record and blocks the subagent once
 // when its output lacks its role's shape. Fails closed through io.js.
 //
 // Payloads follow Claude Code's hook documentation: SubagentStop carries session_id, agent_id,
@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { handle } from '../../src/hooks/subagent-stop.js';
 import { handle as startHook } from '../../src/hooks/subagent-start.js';
 import { shapeProblems } from '../../src/hooks/shapes.js';
-import { markerPath, retryPath, subagentActive } from '../../src/hooks/subagent-marker.js';
+import { agentsPath, hasAgent, retryPath } from '../../src/hooks/subagent-marker.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 
@@ -35,13 +35,15 @@ const start = (root, input = {}) => startHook(
   { root, cfg, env: {}, commands: {} },
 );
 const isBlock = (r) => r.decision === 'block' && typeof r.reason === 'string';
-const count = (root) => {
+// The agents the started-agents record holds for SESSION.
+const agents = (root) => {
   try {
-    return fs.readFileSync(markerPath(root, SESSION), 'utf8').trim();
+    return fs.readFileSync(agentsPath(root, SESSION), 'utf8').split('\n').filter((l) => l !== '');
   } catch {
-    return 'none';
+    return [];
   }
 };
+const open = (root) => hasAgent(root, SESSION, AGENT);
 
 function writeReview(root, name, body, ageMs = 0) {
   const file = path.join(root, '.slicekit', 'reviews', name);
@@ -72,8 +74,8 @@ test('hooks/subagent-stop.test.js » reviewer without verdict file blocks naming
     assert.match(r.reason, /^output shape: /);
     assert.match(r.reason, /no verdict file in \.slicekit\/reviews\/ from this run/);
     assert.match(r.reason, /\. Add the missing parts and finish\.$/);
-    // First failure: the subagent goes on, so the marker stays.
-    assert.equal(subagentActive(root, SESSION), true);
+    // First failure: the subagent goes on, so it stays recorded.
+    assert.equal(open(root), true);
   } finally {
     cleanup();
   }
@@ -104,7 +106,7 @@ test('hooks/subagent-stop.test.js » developer without Skipped/Not checked block
     assert.ok(fs.existsSync(retryPath(root, SESSION, AGENT)), 'retry state written');
     const second = await stop(root, { last_assistant_message: DEV_OK, stop_hook_active: true });
     assert.deepEqual(second, {});
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(open(root), false);
     assert.equal(fs.existsSync(retryPath(root, SESSION, AGENT)), false, 'retry state removed on pass');
   } finally {
     cleanup();
@@ -115,11 +117,11 @@ test('hooks/subagent-stop.test.js » developer without Skipped/Not checked block
 test('hooks/subagent-stop.test.js » well-formed output clears the marker and allows', async () => {
   const { root, cleanup } = await started();
   try {
-    assert.equal(subagentActive(root, SESSION), true);
+    assert.equal(open(root), true);
     const r = await stop(root, { last_assistant_message: DEV_OK });
     assert.deepEqual(r, {});
-    assert.equal(subagentActive(root, SESSION), false);
-    assert.equal(fs.existsSync(markerPath(root, SESSION)), false);
+    assert.equal(open(root), false);
+    assert.equal(fs.existsSync(agentsPath(root, SESSION)), false);
   } finally {
     cleanup();
   }
@@ -138,7 +140,7 @@ test('subagent-stop » the last assistant text is read from agent_transcript_pat
     ];
     fs.writeFileSync(file, `${'{"pad":"' + 'p'.repeat(300 * 1024) + '"}\n'}${entries.map((e) => JSON.stringify(e)).join('\n')}\nnot json\n`);
     assert.deepEqual(await stop(root, { agent_transcript_path: file }), {});
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(open(root), false);
   } finally {
     cleanup();
   }
@@ -175,7 +177,7 @@ test('subagent-stop » stop_hook_active with no retry state allows and clears th
   try {
     const r = await stop(root, { last_assistant_message: 'nothing', stop_hook_active: true });
     assert.deepEqual(r, {});
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(open(root), false);
     assert.equal(fs.existsSync(retryPath(root, SESSION, AGENT)), false);
   } finally {
     cleanup();
@@ -186,7 +188,7 @@ test('subagent-stop » unknown role has no shape check and clears the marker', a
   const { root, cleanup } = await started({ type: 'general-purpose' });
   try {
     assert.deepEqual(await stop(root, { agent_type: 'general-purpose', last_assistant_message: 'anything' }), {});
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(open(root), false);
   } finally {
     cleanup();
   }
@@ -198,16 +200,16 @@ test('subagent-stop » second failure clears the marker and blocks with stopping
   try {
     await start(root, { agent_id: 'agent-2' }); // a second subagent is open in the same session
     assert.ok(isBlock(await stop(root, { last_assistant_message: 'nothing' })));
-    assert.equal(count(root), '2');
+    assert.deepEqual(agents(root), [AGENT, 'agent-2']);
     const second = await stop(root, { last_assistant_message: 'still nothing', stop_hook_active: true });
     assert.ok(isBlock(second), JSON.stringify(second));
     assert.match(second.reason, /^stopping: shape still wrong after retry: /);
     assert.match(second.reason, /no "Skipped:" line/);
     assert.match(second.reason, /End your report with the line: stopping: no "Skipped:" line/);
-    assert.equal(count(root), '1', 'this subagent left');
+    assert.deepEqual(agents(root), ['agent-2'], 'this subagent left');
     // The stop that follows the "stopping:" block allows and does not leave a second time.
     assert.deepEqual(await stop(root, { last_assistant_message: 'stopping: …', stop_hook_active: true }), {});
-    assert.equal(count(root), '1', 'the other subagent still counts');
+    assert.deepEqual(agents(root), ['agent-2'], 'the other subagent is still recorded');
     assert.equal(fs.existsSync(retryPath(root, SESSION, AGENT)), false);
   } finally {
     cleanup();
@@ -219,9 +221,9 @@ test('subagent-stop » a stop for an agent that never started is ignored', async
   const { root, cleanup } = await started();
   try {
     assert.deepEqual(await stop(root, { agent_type: '', agent_id: 'int1', last_assistant_message: 'x' }), {});
-    assert.equal(subagentActive(root, SESSION), true, "the started developer's marker is still active");
+    assert.equal(open(root), true, 'the started developer is still recorded');
     assert.deepEqual(await stop(root, { agent_type: 'developer', agent_id: 'int2', last_assistant_message: 'x' }), {});
-    assert.equal(count(root), '1');
+    assert.deepEqual(agents(root), [AGENT]);
     assert.equal(fs.existsSync(retryPath(root, SESSION, 'int2')), false, 'no shape check, no retry state');
   } finally {
     cleanup();
@@ -233,9 +235,24 @@ test('subagent-stop » an agent stops once: a repeated stop after it passed is i
   try {
     await start(root, { agent_id: 'agent-2' });
     assert.deepEqual(await stop(root, { last_assistant_message: DEV_OK }), {});
-    assert.equal(count(root), '1');
+    assert.deepEqual(agents(root), ['agent-2']);
     assert.deepEqual(await stop(root, { last_assistant_message: DEV_OK }), {});
-    assert.equal(count(root), '1', 'agent-2 still counts');
+    assert.deepEqual(agents(root), ['agent-2'], 'agent-2 is still recorded');
+  } finally {
+    cleanup();
+  }
+});
+
+// Whole-branch M1: SubagentStart fires on spawn and on resume. A resumed agent that stops once leaves
+// nothing of the session behind.
+test('subagent-stop » a resumed agent stops once and leaves no session file', async () => {
+  const { root, cleanup } = await started();
+  try {
+    await start(root); // the resume
+    assert.deepEqual(agents(root), [AGENT]);
+    assert.deepEqual(await stop(root, { last_assistant_message: DEV_OK }), {});
+    const dir = path.dirname(agentsPath(root, SESSION));
+    assert.deepEqual(fs.readdirSync(dir).filter((n) => n.includes(SESSION)), []);
   } finally {
     cleanup();
   }
@@ -253,11 +270,11 @@ test('subagent-stop » retry state is kept per agent', async () => {
   }
 });
 
-test('subagent-stop » retry path is sanitised and sits next to the marker', () => {
+test('subagent-stop » retry path is sanitised and sits next to the started-agents record', () => {
   const { root, cleanup } = makeRepo({ commits: 1 });
   try {
     const file = retryPath(root, 'a/../b', '../x');
-    assert.equal(path.dirname(file), path.dirname(markerPath(root, 'a/../b')));
+    assert.equal(path.dirname(file), path.dirname(agentsPath(root, 'a/../b')));
     assert.equal(path.basename(file), 'retry-a____b-___x');
   } finally {
     cleanup();

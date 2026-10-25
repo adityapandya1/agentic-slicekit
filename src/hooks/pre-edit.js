@@ -59,9 +59,9 @@ export function normalise(filePath, root, cwd) {
   return relInside(real(path.resolve(root)), absolute(filePath, root, cwd));
 }
 
-// A kit-owned segment anywhere in the path, whatever root it belongs to; the subagent marker in a git
-// directory (`<.git>/slicekit/subagent-*`, with `retry-*` and `agents-*` beside it) counts too, though it
-// lies outside every work tree.
+// A kit-owned segment anywhere in the path, whatever root it belongs to; the kit's files in a git
+// directory (`<.git>/slicekit/`: `agents-*`, `retry-*`, `clone-id`, and the old `subagent-*` name)
+// count too, though they lie outside every work tree.
 function kitOwned(abs) {
   const segs = toPosix(abs).split('/').map(key);
   return segs.some((s, i) => {
@@ -70,7 +70,8 @@ function kitOwned(abs) {
     return next === 'journal' || next === 'state' || next === 'baselines' || next.startsWith('.subagent-')
       || next.startsWith('.retry-') || next.startsWith('.agents-');
   }) || segs.some((s, i) => i > 0 && (segs[i - 1] === '.git' || segs[i - 1].endsWith('.git'))
-    && s === 'slicekit' && ['subagent-', 'retry-', 'agents-'].some((p) => segs[i + 1]?.startsWith(p)));
+    && s === 'slicekit' && (segs[i + 1] === 'clone-id'
+      || ['subagent-', 'retry-', 'agents-'].some((p) => segs[i + 1]?.startsWith(p))));
 }
 
 // The file's own root: the deeper of the nearest `.slicekit/config.json` above it and its git top

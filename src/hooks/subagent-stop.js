@@ -1,27 +1,27 @@
-// subagent-stop (REQ-3.5, REQ-2.11, REQ-2.12): clears the subagent marker and blocks the subagent once
-// when its final output lacks its role's shape (shapes.js). Fails closed through io.js.
+// subagent-stop (REQ-3.5, REQ-2.11, REQ-2.12): drops the agent from the session's started-agents record
+// and blocks the subagent once when its final output lacks its role's shape (shapes.js). Fails closed
+// through io.js.
 //
 // Claude Code's SubagentStop carries agent_id, agent_type, agent_transcript_path, last_assistant_message
 // and stop_hook_active. After a block the subagent keeps running and its next stop arrives with
 // stop_hook_active: true. SubagentStop also fires for Claude Code's internal agents, which never had a
 // SubagentStart: the hook acts only for an agent_id subagent-start recorded, and answers {} otherwise.
 //
-// Retry state, per session and agent, sits next to the marker (subagent-marker.js retryPath). It is read
+// Retry state, per session and agent, sits next to that record (subagent-marker.js retryPath). It is read
 // first:
 //   "stopped"            -> the stop after the "stopping:" block: allow, delete, do not leave again
 //   "1"       + problems -> leave, write "stopped", block "stopping: ..." (whatever stop_hook_active says)
 //   "1"       + no problems -> allow, leave, delete
 //   no file + stop_hook_active -> allow, leave (another hook blocked this stop; the kit does not block twice)
-//   no file   + problems -> write "1", block "output shape: ..." (the subagent goes on; marker kept)
+//   no file   + problems -> write "1", block "output shape: ..." (the subagent goes on; still recorded)
 //   no problems or unknown role -> allow, leave, delete
-// "Leave" decrements the session marker and drops the agent from the started-agents record, so a later
-// stop for the same agent is ignored and never decrements the count of another open subagent.
+// "Leave" drops the agent from the started-agents record, so a later stop for the same agent is ignored.
 import fs from 'node:fs';
 import path from 'node:path';
 import { allow, block } from './io.js';
 import { fromGitBash } from './paths.js';
 import { roleOf, shapeProblems, ROLES } from './shapes.js';
-import { hasAgent, leave, removeAgent, retryPath, usableId } from './subagent-marker.js';
+import { hasAgent, removeAgent, retryPath, usableId } from './subagent-marker.js';
 
 export const TRANSCRIPT_TAIL = 256 * 1024;
 const STOPPED = 'stopped';
@@ -94,10 +94,7 @@ export async function handle(input, { root }) {
     return allow();
   }
   if (!hasAgent(root, session, agent)) return allow();
-  const quit = () => {
-    leave(root, session);
-    removeAgent(root, session, agent);
-  };
+  const quit = () => removeAgent(root, session, agent);
   const finish = () => {
     fs.rmSync(retry, { force: true });
     quit();

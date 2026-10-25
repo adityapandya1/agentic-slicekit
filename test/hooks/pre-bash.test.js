@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { handle, classifyGit, segments } from '../../src/hooks/pre-bash.js';
-import { markerPath, enter, leave, subagentActive } from '../../src/hooks/subagent-marker.js';
+import { addAgent, agentsPath, hasAgent, removeAgent } from '../../src/hooks/subagent-marker.js';
 import { runHook } from '../../src/hooks/io.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo, commit } from '../helpers/tmp-repo.js';
@@ -267,29 +267,31 @@ test('runs through the dispatcher and fails closed on a missing command', async 
   }
 });
 
-// ---- subagent marker ----
+// ---- the started-agents record (the subagent marker) ----
 
-test('subagent marker counts nested entries and stays inside the git common directory', () => {
+test('the started-agents record holds each agent once and stays inside the git common directory', () => {
   const { root, cleanup } = makeRepo();
   try {
-    assert.equal(subagentActive(root, SESSION), false);
-    enter(root, SESSION);
-    enter(root, SESSION);
-    assert.equal(fs.readFileSync(markerPath(root, SESSION), 'utf8').trim(), '2');
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), true);
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), false);
-    assert.equal(fs.existsSync(markerPath(root, SESSION)), false);
-    leave(root, SESSION);
-    assert.equal(subagentActive(root, SESSION), false);
+    assert.equal(hasAgent(root, SESSION, 'a1'), false);
+    addAgent(root, SESSION, 'a1');
+    addAgent(root, SESSION, 'a2');
+    addAgent(root, SESSION, 'a1');
+    assert.equal(fs.readFileSync(agentsPath(root, SESSION), 'utf8'), 'a1\na2\n');
+    removeAgent(root, SESSION, 'a1');
+    assert.equal(hasAgent(root, SESSION, 'a1'), false);
+    assert.equal(hasAgent(root, SESSION, 'a2'), true);
+    removeAgent(root, SESSION, 'a2');
+    assert.equal(fs.existsSync(agentsPath(root, SESSION)), false);
+    removeAgent(root, SESSION, 'a2');
+    assert.equal(hasAgent(root, SESSION, 'a2'), false);
 
-    const evil = markerPath(root, '../../etc/passwd');
+    const evil = agentsPath(root, '../../etc/passwd');
     assert.equal(path.dirname(evil), path.join(fs.realpathSync.native(path.join(root, '.git')), 'slicekit'));
-    assert.match(path.basename(evil), /^subagent-[A-Za-z0-9_-]+$/);
-    assert.throws(() => markerPath(root, ''));
-    assert.throws(() => markerPath(root, undefined));
-    assert.equal(subagentActive(root, undefined), false);
+    assert.match(path.basename(evil), /^agents-[A-Za-z0-9_-]+$/);
+    assert.throws(() => agentsPath(root, ''));
+    assert.throws(() => agentsPath(root, undefined));
+    assert.throws(() => addAgent(root, SESSION, ''));
+    assert.equal(hasAgent(root, SESSION, undefined), false);
   } finally {
     cleanup();
   }
@@ -469,7 +471,7 @@ test('an agent_id with an empty session id counts as a subagent; a marker alone 
     assertAllow(any(undefined));
     assertDeny(any('', 'a1'), 'agents do not run git; report and let the command commit');
     assertDeny(any(undefined, 'a1'), 'agents do not run git; report and let the command commit');
-    enter(root, 'other-session');
+    addAgent(root, 'other-session', 'a9');
     assertAllow(any(''));
     assertAllow(any(undefined));
     assertAllow(any(SESSION, ''));
@@ -620,39 +622,39 @@ function withLinkedWorktree(fn) {
 }
 const agentDeny = (r) => assertDeny(r, 'agents do not run git; report and let the command commit');
 
-// I2 (S-07 I-2: the guard keys on agent_id; the marker is still shared by every worktree)
-test('a marker entered from the main checkout is seen from a linked worktree', () => withLinkedWorktree((main, wt) => {
-  enter(main, SESSION);
+// I2 (S-07 I-2: the guard keys on agent_id; the started-agents record is shared by every worktree)
+test('an agent recorded from the main checkout is seen from a linked worktree', () => withLinkedWorktree((main, wt) => {
+  addAgent(main, SESSION, 'a1');
   agentDeny(decide(wt, 'git commit -m x', { cwd: wt, agent: 'a1' }));
   agentDeny(decide(main, 'git commit -m x', { cwd: wt, agent: 'a1' }));
   assertAllow(decide(wt, 'git commit -m x', { cwd: wt }));
-  assert.equal(subagentActive(wt, SESSION), true);
-  leave(wt, SESSION);
-  assert.equal(subagentActive(main, SESSION), false);
+  assert.equal(hasAgent(wt, SESSION, 'a1'), true);
+  removeAgent(wt, SESSION, 'a1');
+  assert.equal(hasAgent(main, SESSION, 'a1'), false);
 }));
 
 // I2
-test('a marker entered from a linked worktree is seen from the main checkout', () => withLinkedWorktree((main, wt) => {
-  enter(wt, SESSION);
-  assert.equal(subagentActive(main, SESSION), true);
+test('an agent recorded from a linked worktree is seen from the main checkout', () => withLinkedWorktree((main, wt) => {
+  addAgent(wt, SESSION, 'a1');
+  assert.equal(hasAgent(main, SESSION, 'a1'), true);
   agentDeny(decide(main, 'git commit -m x', { agent: 'a1' }));
   // No session id but an agent_id: still a subagent.
   agentDeny(handle({ agent_id: 'a1', tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: main }, { root: main, cfg: cfgFor(), env: {} }));
-  leave(main, SESSION);
+  removeAgent(main, SESSION, 'a1');
   assertAllow(decide(main, 'git commit -m x'));
 }));
 
 // I2
-test('outside a git repository the marker falls back to .slicekit', () => {
+test('outside a git repository the started-agents record falls back to .slicekit', () => {
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
   try {
-    enter(plain, SESSION);
-    assert.equal(path.dirname(markerPath(plain, SESSION)), path.join(plain, '.slicekit'));
-    assert.equal(fs.readFileSync(path.join(plain, '.slicekit', '.subagent-sess-1'), 'utf8').trim(), '1');
+    addAgent(plain, SESSION, 'a1');
+    assert.equal(path.dirname(agentsPath(plain, SESSION)), path.join(plain, '.slicekit'));
+    assert.equal(fs.readFileSync(path.join(plain, '.slicekit', '.agents-sess-1'), 'utf8'), 'a1\n');
     assertDeny(decide(plain, 'git commit -m x', { agent: 'a1' }), 'agents do not run git; report and let the command commit');
     assertDeny(decide(plain, 'git push', { session: '', agent: 'a1' }), 'agents do not run git; report and let the command commit');
-    leave(plain, SESSION);
-    assert.equal(subagentActive(plain, SESSION), false);
+    removeAgent(plain, SESSION, 'a1');
+    assert.equal(hasAgent(plain, SESSION, 'a1'), false);
   } finally {
     fs.rmSync(plain, { recursive: true, force: true });
   }
@@ -677,7 +679,7 @@ test('a subagent does not change history', () => {
 test('the main session commits while a subagent is open; the subagent is refused', () => {
   const { root, cleanup } = repoOn('slice/P1-S-07-x');
   try {
-    enter(root, SESSION);
+    addAgent(root, SESSION, 'B');
     assertAllow(decide(root, 'git commit -m x'));
     assertDeny(decide(root, 'git commit -m x', { agent: 'B' }), AGENT);
     assertAllow(decide(root, 'git commit -m x', { agent: '' }));

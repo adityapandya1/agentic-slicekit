@@ -417,3 +417,14 @@ test('the subagent-stop retry state is kit-owned', () => {
     cleanup();
   }
 });
+
+// Whole-branch M2: the clone id names this clone's journal files; only the CLI writes it.
+test('the clone id is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/clone-id'), '.git/slicekit/clone-id is written only by the slicekit CLI');
+    assertAllow(decide(root, 'src/slicekit/clone-id.js'));
+  } finally {
+    cleanup();
+  }
+});
