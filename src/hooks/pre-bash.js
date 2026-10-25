@@ -5,10 +5,13 @@
 // writes from a subagent; (6) a command matching cfg.destructive.
 //
 // Limits: this reads the command as a shell would on its surface. It splits on operators outside
-// quotes, strips env prefixes and command/exec/sudo/env, follows `cd`, `git -C` and `bash -c "..."`.
+// quotes, treats here-document bodies as data, strips shell keywords, env prefixes and wrappers
+// (command/exec/sudo/env/timeout/nice/xargs/...), follows `cd`, `pushd`, `git -C`, `git checkout` and
+// `bash -c "..."`. A directory it cannot resolve makes a commit or push refuse rather than pass.
 // It does not expand variables, aliases, eval, functions or encoded payloads: deliberate obfuscation
 // gets through, and the git hooks (S-06's .githooks) are the backstop for commits and pushes.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
@@ -20,21 +23,31 @@ import { subagentActive } from './subagent-marker.js';
 
 // Unquoted, each of these ends a command: && || ; | & newline, subshell parens and backticks.
 const SEPARATORS = new Set([';', '\n', '|', '&', '(', ')', '`']);
+const DELIM_END = /[\s;&|()<>`]/;
 
-// -> string[][]: one array of words (quotes removed) per simple command.
-export function segments(command) {
+// -> [{toks: [{v, b}], heredocs: [string]}]: one entry per simple command. `v` is the word with quotes
+// removed; `b` is only its unquoted characters. Here-document bodies are data, attached to the command
+// that opened them.
+function lex(command) {
   const s = String(command);
   const out = [];
-  let words = [];
+  let cur = { toks: [], heredocs: [] };
   let word = null;
+  let bare = '';
+  let pending = [];
+  const add = (text, quoted) => {
+    word = (word ?? '') + text;
+    if (!quoted) bare += text;
+  };
   const endWord = () => {
-    if (word !== null) words.push(word);
+    if (word !== null) cur.toks.push({ v: word, b: bare });
     word = null;
+    bare = '';
   };
   const endSegment = () => {
     endWord();
-    if (words.length) out.push(words);
-    words = [];
+    if (cur.toks.length) out.push(cur);
+    cur = { toks: [], heredocs: [] };
   };
   let i = 0;
   while (i < s.length) {
@@ -42,7 +55,7 @@ export function segments(command) {
     if (c === "'") {
       const j = s.indexOf("'", i + 1);
       const end = j === -1 ? s.length : j;
-      word = (word ?? '') + s.slice(i + 1, end);
+      add(s.slice(i + 1, end), true);
       i = end + 1;
     } else if (c === '"') {
       let j = i + 1;
@@ -56,21 +69,60 @@ export function segments(command) {
           j += 1;
         }
       }
-      word = (word ?? '') + buf;
+      add(buf, true);
       i = j + 1;
     } else if (c === '\\') {
-      if (i + 1 < s.length && s[i + 1] !== '\n') word = (word ?? '') + s[i + 1];
+      if (i + 1 < s.length && s[i + 1] !== '\n') add(s[i + 1], false);
       i += 2;
+    } else if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+      // A here-document: `<<WORD`, `<<-WORD`, `<<'WORD'`. Its body starts at the next newline.
+      endWord();
+      let j = i + 2;
+      const dash = s[j] === '-';
+      if (dash) j += 1;
+      while (s[j] === ' ' || s[j] === '\t') j += 1;
+      let delim = '';
+      while (j < s.length && !DELIM_END.test(s[j])) {
+        if (s[j] === "'" || s[j] === '"') {
+          const k = s.indexOf(s[j], j + 1);
+          const end = k === -1 ? s.length : k;
+          delim += s.slice(j + 1, end);
+          j = end + 1;
+        } else if (s[j] === '\\') {
+          delim += s[j + 1] ?? '';
+          j += 2;
+        } else {
+          delim += s[j];
+          j += 1;
+        }
+      }
+      if (delim !== '') pending.push({ delim, dash, seg: cur });
+      i = j;
     } else if (c === ' ' || c === '\t' || c === '\r') {
       endWord();
       i += 1;
     } else if (SEPARATORS.has(c)) {
       endSegment();
       i += 1;
+      if (c === '\n' && pending.length) {
+        for (const p of pending) {
+          const body = [];
+          while (i < s.length) {
+            const nl = s.indexOf('\n', i);
+            const e = nl === -1 ? s.length : nl;
+            const line = s.slice(i, e).replace(/\r$/, '');
+            i = e + 1;
+            if ((p.dash ? line.replace(/^\t+/, '') : line) === p.delim) break;
+            body.push(line);
+          }
+          p.seg.heredocs.push(body.join('\n'));
+        }
+        pending = [];
+      }
     } else if (c === '#' && word === null) {
       while (i < s.length && s[i] !== '\n') i += 1;
     } else {
-      word = (word ?? '') + c;
+      add(c, false);
       i += 1;
     }
   }
@@ -78,44 +130,99 @@ export function segments(command) {
   return out;
 }
 
+// -> string[][]: one array of words (quotes removed) per simple command.
+export function segments(command) {
+  return lex(command).map((seg) => seg.toks.map((t) => t.v));
+}
+
 const base = (word) => path.posix.basename(word.replace(/\\/g, '/')).toLowerCase().replace(/\.exe$/, '');
 
-// Redirections are not arguments: `> file`, `2>file`, `<in`.
-function dropRedirects(words) {
+// Redirections are not arguments: `> file`, `2>file`, `<in`, `<<< word`.
+function dropRedirects(toks) {
   const out = [];
-  for (let k = 0; k < words.length; k++) {
-    const m = /^\d*(>>?|<<?|>&|<&|&>)(.*)$/.exec(words[k]);
-    if (!m) out.push(words[k]);
+  for (let k = 0; k < toks.length; k++) {
+    const m = /^\d*(<<<|>>?|<|>&|<&|&>)(.*)$/.exec(toks[k].b === toks[k].v ? toks[k].v : '');
+    if (!m) out.push(toks[k]);
     else if (m[2] === '') k += 1;
   }
   return out;
 }
 
-const SKIP_WORDS = new Set(['command', 'exec', 'nohup', 'time', 'builtin']);
-// Strip env assignments and the wrappers that run the next word as the command.
-function stripPrefixes(words) {
-  let w = dropRedirects(words);
+// Words that only open a construct; the command follows them.
+const KEYWORDS = new Set(['if', 'then', 'elif', 'else', 'do', 'while', 'until', '!', '{']);
+// Wrappers that run the rest of the line as the command: short options that take a separate value,
+// long options that do (without `=`), and how many positionals precede the command.
+const WRAPPERS = {
+  command: { short: '', long: [], skip: 0 },
+  exec: { short: 'a', long: [], skip: 0 },
+  builtin: { short: '', long: [], skip: 0 },
+  nohup: { short: '', long: [], skip: 0 },
+  time: { short: 'fo', long: ['--format', '--output'], skip: 0 },
+  winpty: { short: '', long: [], skip: 0 },
+  sudo: { short: 'ugChpDrtUg', long: ['--user', '--group', '--host', '--prompt', '--chdir'], skip: 0 },
+  env: { short: 'uCS', long: ['--unset', '--chdir', '--split-string'], skip: 0 },
+  timeout: { short: 'sk', long: ['--signal', '--kill-after'], skip: 1 },
+  nice: { short: 'n', long: ['--adjustment'], skip: 0 },
+  ionice: { short: 'cnpPu', long: ['--class', '--classdata', '--pid', '--pgid', '--uid'], skip: 0 },
+  stdbuf: { short: 'ioe', long: ['--input', '--output', '--error'], skip: 0 },
+  xargs: {
+    short: 'IinPLlEesad',
+    long: ['--replace', '--max-args', '--max-procs', '--max-lines', '--eof', '--max-chars', '--arg-file', '--delimiter'],
+    skip: 0,
+  },
+};
+
+// Strip keywords, env assignments and wrappers until the word that is the command.
+function stripPrefixes(toks) {
+  let w = dropRedirects(toks);
   for (;;) {
     if (!w.length) return w;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) {
+    if (KEYWORDS.has(w[0].v)) {
       w = w.slice(1);
       continue;
     }
-    const b = base(w[0]);
-    if (SKIP_WORDS.has(b) || b === 'sudo' || b === 'env') {
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0].v)) {
       w = w.slice(1);
-      while (w.length && w[0].startsWith('-')) {
-        const opt = w.shift();
-        if (b === 'sudo' && /^-[ugChpDrt]$/.test(opt)) w.shift();
-        if (b === 'env' && /^-[uCS]$/.test(opt)) w.shift();
+      continue;
+    }
+    const spec = WRAPPERS[base(w[0].v)];
+    if (!spec) return w;
+    w = w.slice(1);
+    while (w.length && w[0].v.startsWith('-') && w[0].v !== '-') {
+      const opt = w.shift().v;
+      if (opt === '--') break;
+      if (opt.startsWith('--')) {
+        if (spec.long.includes(opt) && w.length) w.shift();
+      } else if (opt.length === 2 && spec.short.includes(opt[1]) && w.length) {
+        w.shift();
       }
-      continue;
     }
-    return w;
+    w = w.slice(spec.skip);
   }
 }
 
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+
+// ---- directories ----
+
+// A directory the hook cannot resolve is null: commits and pushes there refuse rather than pass.
+function resolveDir(from, target) {
+  if (/[$`]/.test(target)) return null;
+  let t = target;
+  if (t === '~' || t.startsWith('~/')) t = path.join(os.homedir(), t.slice(1));
+  else if (t.startsWith('~')) return null;
+  if (process.platform === 'win32') {
+    const m = /^\/([A-Za-z])(\/.*)?$/.exec(t);
+    if (m) t = `${m[1].toUpperCase()}:/${(m[2] ?? '').slice(1)}`;
+  }
+  if (from === null && !path.isAbsolute(t)) return null;
+  const abs = path.resolve(from ?? '', t);
+  try {
+    return fs.statSync(abs).isDirectory() ? abs : null;
+  } catch {
+    return null;
+  }
+}
 
 // ---- git argument parsing ----
 
@@ -222,35 +329,77 @@ function parseStage(op, args) {
   return { kind: 'stage', op, whole: whole && !paths.length, paths };
 }
 
+// The branch a later commit in the same command will be on, if this changes it. UNKNOWN for `-`.
+export const UNKNOWN = Symbol('unknown');
+function parseSwitch(sub, args) {
+  const NEW = sub === 'switch' ? new Set(['-c', '-C', '--create', '--force-create']) : new Set(['-b', '-B', '--orphan']);
+  const positionals = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a === '--') return { kind: 'other' };
+    if (NEW.has(a)) return args[k + 1] === undefined ? { kind: 'other' } : { kind: 'switch', to: args[k + 1] };
+    const eq = a.indexOf('=');
+    if (eq > 0 && NEW.has(a.slice(0, eq))) return { kind: 'switch', to: a.slice(eq + 1) };
+    if (a === '--detach' || a === '-d') return { kind: 'switch', to: null };
+    if (!a.startsWith('-')) positionals.push(a);
+    else if (a === '-') positionals.push(a);
+  }
+  // `git checkout <b> <paths>` restores files and stays put.
+  if (positionals.length !== 1) return { kind: 'other' };
+  return { kind: 'switch', to: positionals[0] === '-' ? UNKNOWN : positionals[0] };
+}
+
 const PR_WRITES = new Set(['create', 'merge', 'edit', 'ready', 'close', 'comment']);
 
-// One simple command -> an invocation {kind, dir, ...}; `state.cwd` carries `cd` forward.
-function invocationsOf(words, state, out) {
-  const w = stripPrefixes(words);
+// One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
+function walk(seg, state, out) {
+  const w = stripPrefixes(seg.toks).map((t) => t.v);
   if (!w.length) return;
   const b = base(w[0]);
-  if (b === 'cd') {
-    if (w[1] && w[1] !== '-') state.cwd = path.resolve(state.cwd, w[1]);
+  if (b === 'cd' || b === 'pushd') {
+    const target = w.slice(1).find((x) => !x.startsWith('-') || x === '-');
+    if (b === 'pushd') state.stack.push({ cwd: state.cwd, label: state.label });
+    if (target === undefined) {
+      state.cwd = b === 'cd' ? os.homedir() : null;
+      state.label = b === 'cd' ? '~' : 'pushd';
+    } else if (target === '-') {
+      state.cwd = null;
+      state.label = '-';
+    } else {
+      state.cwd = resolveDir(state.cwd, target);
+      state.label = target;
+    }
+    return;
+  }
+  if (b === 'popd') {
+    const prev = state.stack.pop();
+    state.cwd = prev ? prev.cwd : null;
+    state.label = prev ? prev.label : 'popd';
     return;
   }
   if (SHELLS.has(b)) {
     const k = w.findIndex((x, idx) => idx > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(x));
-    if (k !== -1 && w[k + 1] !== undefined) {
-      const inner = { cwd: state.cwd };
-      for (const seg of segments(w[k + 1])) invocationsOf(seg, inner, out);
+    const bodies = k !== -1 && w[k + 1] !== undefined ? [w[k + 1]] : seg.heredocs;
+    for (const body of bodies) {
+      const inner = { cwd: state.cwd, label: state.label, stack: [] };
+      for (const s of lex(body)) walk(s, inner, out);
     }
     return;
   }
   if (b === 'gh') {
-    if (w[1] === 'pr' && PR_WRITES.has(w[2])) out.push({ kind: 'pr', dir: state.cwd });
+    if (w[1] === 'pr' && PR_WRITES.has(w[2])) out.push({ kind: 'pr', dir: state.cwd, label: state.label });
     return;
   }
   if (b !== 'git') return;
   let dir = state.cwd;
+  let label = state.label;
   let k = 1;
   while (k < w.length && w[k].startsWith('-')) {
     if (w[k] === '-C') {
-      if (w[k + 1] !== undefined) dir = path.resolve(dir, w[k + 1]);
+      if (w[k + 1] !== undefined) {
+        dir = resolveDir(dir, w[k + 1]);
+        label = w[k + 1];
+      }
       k += 2;
     } else if (GIT_GLOBAL_VALUE.has(w[k])) {
       k += 2;
@@ -264,15 +413,16 @@ function invocationsOf(words, state, out) {
   if (sub === 'commit') inv = parseCommit(args);
   else if (sub === 'push') inv = parsePush(args);
   else if (sub === 'add' || sub === 'rm' || sub === 'mv' || sub === 'stage') inv = parseStage(sub === 'stage' ? 'add' : sub, args);
+  else if (sub === 'checkout' || sub === 'switch') inv = parseSwitch(sub, args);
   else inv = { kind: 'other' };
-  out.push({ ...inv, dir });
+  out.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
 }
 
-// -> every git/gh invocation the command makes, in order.
+// -> every git/gh invocation the command makes, in order. cwd null means unknown.
 export function invocations(command, cwd = process.cwd()) {
   const out = [];
-  const state = { cwd };
-  for (const seg of segments(command)) invocationsOf(seg, state, out);
+  const state = { cwd, label: cwd, stack: [] };
+  for (const seg of lex(command)) walk(seg, state, out);
   return out;
 }
 
@@ -299,7 +449,16 @@ function quiet(fn, fallback) {
   }
 }
 
-const branchIn = (dir) => quiet(() => currentBranch(dir), null);
+// -> branch name; null for no branch (detached HEAD, or not a repository); UNKNOWN when git failed otherwise.
+function branchIn(dir) {
+  try {
+    return currentBranch(dir);
+  } catch (e) {
+    if (e instanceof GitError) return /not a git repository/i.test(e.stderr) ? null : UNKNOWN;
+    throw e;
+  }
+}
+
 const lines = (text) => (text === '' ? [] : text.split('\n'));
 const real = (p) => {
   try {
@@ -309,6 +468,7 @@ const real = (p) => {
   }
 };
 const toPosix = (p) => p.split(path.sep).join('/');
+const topOf = (dir) => (dir === null ? null : quiet(() => real(git(dir, ['rev-parse', '--show-toplevel'])), null));
 
 // ---- rule 4: frozen intake ----
 
@@ -325,8 +485,8 @@ function covers(stager, file, top) {
 
 function frozenIntake(root, cfg, invs) {
   const intakeAbs = kitPaths(real(root), cfg).intake;
-  for (const c of invs.filter((i) => i.kind === 'commit')) {
-    const top = quiet(() => real(git(c.dir, ['rev-parse', '--show-toplevel'])), null);
+  for (const c of invs.filter((i) => i.kind === 'commit' && i.dir !== null)) {
+    const top = topOf(c.dir);
     if (!top) continue;
     if (!quiet(() => (git(top, ['rev-parse', '--verify', 'HEAD']), true), false)) continue;
     const intake = toPosix(path.relative(top, intakeAbs));
@@ -335,8 +495,7 @@ function frozenIntake(root, cfg, invs) {
     const staged = lines(git(top, ['diff', '--cached', '--name-only', '--', intake]));
     const hit = staged.find(inHead);
     if (hit) return hit;
-    const sameRepo = (i) => quiet(() => real(git(i.dir, ['rev-parse', '--show-toplevel'])), null) === top;
-    const stagers = invs.filter((i) => i.kind === 'stage' && sameRepo(i));
+    const stagers = invs.filter((i) => i.kind === 'stage' && i.dir !== null && topOf(i.dir) === top);
     if (c.whole || c.paths.length) stagers.push(c);
     if (!stagers.length) continue;
     const changed = lines(git(top, ['diff', '--name-only', 'HEAD', '--', intake]));
@@ -352,24 +511,39 @@ function frozenIntake(root, cfg, invs) {
 
 // ---- the hook ----
 
+const unknownDir = (label) => deny(`cannot tell which branch ${label} is on; run the command from inside the repository`);
+
 export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
-  const cwd = typeof input.cwd === 'string' && input.cwd !== '' ? input.cwd : root;
-  const invs = invocations(command, cwd);
+  const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
+  const invs = invocations(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
+
+  // The branch each commit and push runs on, following checkouts earlier in the same command.
+  const switched = new Map();
+  for (const inv of invs) {
+    if (inv.dir === null) {
+      inv.branch = UNKNOWN;
+      continue;
+    }
+    const key = topOf(inv.dir) ?? inv.dir;
+    if (inv.kind === 'switch') switched.set(key, inv.to);
+    else inv.branch = switched.has(key) ? switched.get(key) : branchIn(inv.dir);
+  }
 
   // (1)
   for (const c of invs.filter((i) => i.kind === 'commit')) {
-    const b = branchIn(c.dir);
-    if (b !== null && protectedSet.has(b)) return deny(`commit on protected branch ${b}; create a slice branch`);
+    if (c.branch === UNKNOWN) return unknownDir(c.label);
+    if (c.branch !== null && protectedSet.has(c.branch)) return deny(`commit on protected branch ${c.branch}; create a slice branch`);
   }
   // (2)
   const pushes = invs.filter((i) => i.kind === 'push' || i.kind === 'force-push');
   for (const p of pushes) {
     if (p.all && cfg.protectedBranches.length) return deny(`push to protected branch ${cfg.protectedBranches[0]}`);
     for (const t of p.targets) {
-      const b = t === null ? branchIn(p.dir) : t;
+      if (t === null && p.branch === UNKNOWN) return unknownDir(p.label);
+      const b = t === null ? p.branch : t;
       if (b !== null && protectedSet.has(b)) return deny(`push to protected branch ${b}`);
     }
   }

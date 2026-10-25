@@ -292,3 +292,111 @@ test('subagent marker counts nested entries and stays inside .slicekit', () => {
     cleanup();
   }
 });
+
+// ---- fix round 1: tokeniser and directories ----
+
+const PROTECTED_COMMIT = 'commit on protected branch main; create a slice branch';
+const PROTECTED_PUSH = 'push to protected branch main';
+const cannotTell = (label) => `cannot tell which branch ${label} is on; run the command from inside the repository`;
+const toMsys = (p) => p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`);
+
+function onMain(fn) {
+  const repo = repoOn('main');
+  try {
+    fn(repo.root);
+  } finally {
+    repo.cleanup();
+  }
+}
+
+// C1
+test('shell keywords and grouping do not hide a commit or push on main', () => onMain((root) => {
+  assertDeny(decide(root, 'if ! git diff --cached --quiet; then git commit -m x; fi'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'if git push origin main; then :; fi'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'for f in a; do git push origin main; done'), PROTECTED_PUSH);
+  assertDeny(decide(root, '{ git commit -m x; }'), PROTECTED_COMMIT);
+  assertDeny(decide(root, '! git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'while true; do git commit -m x; done'), PROTECTED_COMMIT);
+}));
+
+// C2
+test('an msys drive path resolves to the repository it names', { skip: process.platform !== 'win32' }, () => {
+  const main = repoOn('main');
+  const slice = repoOn('slice/x');
+  try {
+    assertDeny(decide(slice.root, `cd ${toMsys(main.root)} && git commit -m x`), PROTECTED_COMMIT);
+    assertDeny(decide(slice.root, `git -C ${toMsys(main.root)} commit -m x`), PROTECTED_COMMIT);
+    assertAllow(decide(main.root, `cd ${toMsys(slice.root)} && git commit -m x`));
+  } finally {
+    main.cleanup();
+    slice.cleanup();
+  }
+});
+
+// C2
+test('a directory the hook cannot resolve refuses a commit or a bare push', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  const missing = `~/slicekit-missing-${process.pid}-${Date.now()}`;
+  try {
+    assertDeny(decide(root, `cd ${missing} && git commit -m x`), cannotTell(missing));
+    assertDeny(decide(root, 'cd $REPO && git commit -m x'), cannotTell('$REPO'));
+    assertDeny(decide(root, 'cd "$(git rev-parse --show-toplevel)" && git push'), cannotTell('$(git rev-parse --show-toplevel)'));
+    assertDeny(decide(root, 'git -C nonexistent commit -m x'), cannotTell('nonexistent'));
+    assertDeny(decide(root, 'pushd nowhere && git commit -m x'), cannotTell('nowhere'));
+    // An explicit refspec needs no branch lookup.
+    assertDeny(decide(root, 'cd $REPO && git push origin main'), PROTECTED_PUSH);
+    assertAllow(decide(root, 'cd $REPO && git push origin slice/x'));
+    // Not a commit or push: nothing to tell.
+    fs.mkdirSync(path.join(root, 'src'));
+    assertAllow(decide(root, 'cd src && git status'));
+    assertAllow(decide(root, 'cd src && git commit -m x'));
+    assertAllow(decide(root, 'cd $REPO && npm test'));
+    assertAllow(decide(root, 'pushd src && popd && git commit -m x'));
+  } finally {
+    cleanup();
+  }
+});
+
+// I1
+test('wrappers do not hide a commit or push on main', () => onMain((root) => {
+  assertDeny(decide(root, 'timeout 60 git push origin main'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'timeout -k 5 60 git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'timeout 60 git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'nice git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'nice -n 10 git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'xargs git commit -m x </dev/null'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'xargs -n 1 git commit -m x </dev/null'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'nohup git push origin main'), PROTECTED_PUSH);
+  assertDeny(decide(root, 'stdbuf -oL git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'ionice -c 3 git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'winpty git commit -m x'), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'time git commit -m x'), PROTECTED_COMMIT);
+}));
+
+// I2
+test('a checkout earlier in the command decides the branch of a later commit', () => {
+  const { root, cleanup } = repoOn('slice/P1-S-06-x');
+  try {
+    run(root, ['branch', 'main']);
+    assertDeny(decide(root, 'git checkout main && git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git switch main; git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git checkout -b main && git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git switch -c main && git commit -m x'), PROTECTED_COMMIT);
+    assertDeny(decide(root, 'git checkout main && git push'), PROTECTED_PUSH);
+    assertAllow(decide(root, 'git checkout main && git pull'));
+    assertAllow(decide(root, 'git checkout -b slice/P1-S-06-y && git commit -m x'));
+    assertAllow(decide(root, 'git checkout main -- README.md && git commit -m x'));
+    assertDeny(decide(root, 'git checkout - && git commit -m x'), cannotTell(root));
+  } finally {
+    cleanup();
+  }
+});
+
+// I4
+test('a here-document body is data, the line after its terminator is a command', () => onMain((root) => {
+  const body = "cat > notes.md <<'EOF'\nTo ship: git push origin main\nEOF\n";
+  assertAllow(decide(root, body));
+  assertAllow(decide(root, 'cat <<-EOF > notes.md\n\tgit commit -m x\n\tEOF\n'));
+  assertDeny(decide(root, `${body}git commit -m x`), PROTECTED_COMMIT);
+  assertDeny(decide(root, 'bash <<EOF\ngit commit -m x\nEOF\n'), PROTECTED_COMMIT);
+}));
