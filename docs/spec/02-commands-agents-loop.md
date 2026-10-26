@@ -65,21 +65,24 @@ Enforced by: the auditor's brief; `slicekit check` (every G row closed before pl
 ## REQ-2.5 `/slicekit plan`
 
 SHALL refuse while any clarification marker or open gap exists. It SHALL write `<docsRoot>/spec/stack.md` if
-absent (taking the stack from intake when given, otherwise asking), then phases from the milestones
+it is absent or says nothing yet (taking the stack from intake when given, otherwise asking), then phases from the milestones
 in intake or decisions, then slice files (REQ-1.5) such that every REQ is named by at least one slice,
 no two slices in the same parallel group expect to change the same file or package, and each slice's
 evaluation set has at least one `happy` and one `negative` test. It SHALL regenerate `BUILD.md` and
 open a pull request titled `[plan] <program name>`. Shared roots are exempt from the overlap test:
 `.` (the repository root), anything under `test/` (a slice may always add tests), `src/cli/index.js`
 (the command table every slice registers in) and `<docsRoot>/runbook.md` (the runbook, which every
-operational slice appends a section to).
+operational slice appends a section to). When the phase file has an Order line (D-38), the overlap test
+runs over all slices of one Order step, since the groups of a step run at the same time. A phase
+file SHALL carry at most one Order line, and it SHALL name every group of the phase exactly once and
+no group that no slice has.
 
 Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the plan <!-- slicekit:example -->
 branch THEN it fails naming both slices.
 
-Cites: D-10, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-10, D-38, `../intake/2026-10-24-founding-requirement.md`.
 
-Enforced by: `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
+Enforced by: `slicekit plan check`; `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
 
 ## REQ-2.6 `/slicekit build [P<n>/S-<nn>]`
 
@@ -123,16 +126,16 @@ Enforced by: the command; `slicekit state set` preconditions (REQ-1.8).
 
 ## REQ-2.7 `/slicekit build --parallel P<n>`
 
-SHALL run step 1 to step 5 of REQ-2.6 for every `todo` slice in one parallel group at once, each in
+SHALL run step 1 to step 5 of REQ-2.6 for every runnable slice of one Order step at once, each in
 its own worktree, then run steps 6 to 9 for each in turn (D-06). State files are per slice so the
 runs never write the same file. If two runs modify the same path despite the plan, the second to
 push SHALL stop and report the overlap as a plan defect.
 
-Scenario: GIVEN two slices in one parallel group that both change `src/billing/` WHEN <!-- slicekit:example -->
+Scenario: GIVEN two slices of one Order step that both change `src/billing/` WHEN <!-- slicekit:example -->
 `/slicekit build --parallel P1` pushes the second THEN that run stops and reports the overlap as a
 plan defect.
 
-Cites: D-06, D-22.
+Cites: D-06, D-22, D-38.
 
 Enforced by: the command; per-slice state files (D-22).
 

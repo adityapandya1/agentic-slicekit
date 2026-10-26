@@ -9,6 +9,7 @@ import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
+import { planCommand } from './plan.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
 import { specCommand } from './spec.js';
@@ -30,6 +31,7 @@ export const COMMANDS = {
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
+  plan: planCommand,
   pr: prCommand,
   'ready-label': readyLabelCommand,
   spec: specCommand,
