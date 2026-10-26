@@ -16,6 +16,7 @@ import { readSlice, writeSlice } from '../src/state/index.js';
 import { REQUIRED_SECTIONS, getSection, renderPrBody } from '../src/prbody.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { writeSliceFixture } from './helpers/slice-fixture.js';
+import { runCli } from './helpers/run-cli.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,7 +39,7 @@ test('the fixture tracker opens, finds and comments', () => {
     const t = fixtureTracker(dir);
     const made = t.open({ title: '[P2/S-15] H-1: a long function', body: 'the body', labels: ['slicekit'], slice: 'P2/S-15' });
     assert.deepEqual(made, { id: 1, url: 'https://example.test/issues/1' });
-    assert.deepEqual(t.find('P2/S-15', 'H-1'), { id: 1, url: 'https://example.test/issues/1' });
+    assert.deepEqual(t.find('P2/S-15', 'H-1'), { id: 1, url: 'https://example.test/issues/1', state: 'open' });
     assert.equal(t.find('P2/S-15', 'H-2'), null);
     assert.equal(t.find('P2/S-16', 'H-1'), null);
     t.comment(1, 'a comment');
@@ -98,10 +99,21 @@ test('the GitHub tracker reads the number from the url', () => {
   answer = JSON.stringify([
     { number: 3, url: 'https://github.com/o/r/issues/3', title: 'mentions [P2/S-15] H-1: elsewhere' },
     { number: 4, url: 'https://github.com/o/r/issues/4', title: '[P2/S-15] H-10: other' },
-    { number: 7, url: 'https://github.com/o/r/issues/7', title: '[P2/S-15] H-1: x' },
+    { number: 7, url: 'https://github.com/o/r/issues/7', title: '[P2/S-15] H-1: x', state: 'CLOSED' },
   ]);
-  assert.deepEqual(t.find('P2/S-15', 'H-1'), { id: 7, url: 'https://github.com/o/r/issues/7' });
-  assert.deepEqual(seen[2].args, ['issue', 'list', '--state', 'all', '--search', 'P2/S-15 H-1 in:title', '--json', 'number,url,title', '--limit', '50']);
+  assert.deepEqual(t.find('P2/S-15', 'H-1'), { id: 7, url: 'https://github.com/o/r/issues/7', state: 'closed' });
+  assert.deepEqual(seen[2].args, [
+    'issue',
+    'list',
+    '--state',
+    'all',
+    '--search',
+    '"[P2/S-15] H-1:" in:title sort:created-asc',
+    '--json',
+    'number,url,title,state',
+    '--limit',
+    '50',
+  ]);
   answer = '[]';
   assert.equal(t.find('P2/S-15', 'H-2'), null);
 
@@ -166,7 +178,7 @@ function withDeclineKit(fn) {
     const body = renderPrBody({ slice: id, name: 'Fixture 1', sections });
     const pr = { number: 1, url: 'https://example.test/pull/1', state: 'OPEN', isDraft: true, headRefName: 'slice/P1-S-01-a', title: `[${id}] Fixture 1`, body, headRefOid: 'abc1234', labels: [] };
     fs.writeFileSync(path.join(hostDir, 'pr-1.json'), JSON.stringify(pr));
-    return fn({ root: repo.root, cfg, id, host: fixtureHost(hostDir), tracker: fixtureTracker(trackerDir), trackerDir });
+    return fn({ root: repo.root, cfg, id, host: fixtureHost(hostDir), tracker: fixtureTracker(trackerDir), hostDir, trackerDir });
   } finally {
     repo.cleanup();
     fs.rmSync(hostDir, { recursive: true, force: true });
@@ -177,7 +189,7 @@ function withDeclineKit(fn) {
 test('declineFinding opens one issue for a should-have of the latest verdict and lists it in the body', () => {
   withDeclineKit(({ root, cfg, id, host, tracker, trackerDir }) => {
     const first = declineFinding(root, cfg, host, tracker, id, 'H-1');
-    assert.deepEqual(first, { url: 'https://example.test/issues/1', created: true });
+    assert.deepEqual(first, { url: 'https://example.test/issues/1', created: true, state: 'open' });
     const [issue] = JSON.parse(fs.readFileSync(path.join(trackerDir, 'issues.json'), 'utf8'));
     assert.equal(issue.title, `[${id}] H-1: a long function`);
     assert.ok(issue.body.includes('a long function'), issue.body);
@@ -187,7 +199,7 @@ test('declineFinding opens one issue for a should-have of the latest verdict and
     assert.equal(getSection(host.getPullRequest(1).body, 'Should-haves declined'), 'https://example.test/issues/1');
 
     const again = declineFinding(root, cfg, host, tracker, id, 'H-1');
-    assert.deepEqual(again, { url: 'https://example.test/issues/1', created: false });
+    assert.deepEqual(again, { url: 'https://example.test/issues/1', created: false, state: 'open' });
     assert.equal(JSON.parse(fs.readFileSync(path.join(trackerDir, 'issues.json'), 'utf8')).length, 1);
     assert.equal(getSection(host.getPullRequest(1).body, 'Should-haves declined'), 'https://example.test/issues/1');
 
@@ -195,4 +207,60 @@ test('declineFinding opens one issue for a should-have of the latest verdict and
     assert.throws(() => declineFinding(root, cfg, host, tracker, id, 'H-9'), (e) => e.code === 2 && e.message === 'H-9 is not a should-have of round 2');
     assert.throws(() => declineFinding(root, cfg, host, tracker, id, 'B-1'), (e) => e.code === 2 && e.message === 'B-1 is not a should-have of round 2');
   });
+});
+
+test('declineFinding cuts a long title to 256 characters and keeps its prefix', () => {
+  withDeclineKit(({ root, cfg, id, host, tracker, trackerDir }) => {
+    const long = 'x'.repeat(400);
+    fs.writeFileSync(path.join(root, '.slicekit', 'reviews', 'P1-S-01-r2.md'), VERDICT.replace('a long function', long));
+    declineFinding(root, cfg, host, tracker, id, 'H-1');
+    const [issue] = JSON.parse(fs.readFileSync(path.join(trackerDir, 'issues.json'), 'utf8'));
+    assert.equal(issue.title.length, 256);
+    assert.ok(issue.title.startsWith(`[${id}] H-1: xxx`), issue.title);
+    assert.ok(issue.title.endsWith('x…'), issue.title);
+    assert.ok(issue.body.includes(long), 'the body keeps the full text');
+  });
+});
+
+test('declineFinding wraps @mentions in backticks in the title and body', () => {
+  withDeclineKit(({ root, cfg, id, host, tracker, trackerDir }) => {
+    const text = VERDICT.replace('a long function', 'ask @octocat about it').replace('hard to read', 'see @acme/team, mail a@b.com, `@kept`');
+    fs.writeFileSync(path.join(root, '.slicekit', 'reviews', 'P1-S-01-r2.md'), text);
+    declineFinding(root, cfg, host, tracker, id, 'H-1');
+    const [issue] = JSON.parse(fs.readFileSync(path.join(trackerDir, 'issues.json'), 'utf8'));
+    assert.equal(issue.title, `[${id}] H-1: ask \`@octocat\` about it`);
+    assert.ok(issue.body.includes('see `@acme/team`, mail a@b.com, `@kept`'), issue.body);
+    assert.ok(!/(^|[^`\w])@\w/.test(issue.body.replace(/`[^`]*`/g, '')), issue.body);
+  });
+});
+
+test('declineFinding reports an issue already filed, open or closed, and never opens another', () => {
+  for (const state of ['open', 'closed']) {
+    withDeclineKit(({ root, cfg, id, host, tracker, trackerDir }) => {
+      const file = path.join(trackerDir, 'issues.json');
+      const existing = { number: 5, url: 'https://example.test/issues/5', title: `[${id}] H-1: filed by hand`, body: '', labels: [], comments: [], state };
+      fs.writeFileSync(file, JSON.stringify([existing]));
+      assert.deepEqual(declineFinding(root, cfg, host, tracker, id, 'H-1'), { url: existing.url, created: false, state });
+      const after = JSON.parse(fs.readFileSync(file, 'utf8'));
+      assert.equal(after.length, 1);
+      assert.equal(after[0].state, state);
+      assert.equal(getSection(host.getPullRequest(1).body, 'Should-haves declined'), existing.url);
+    });
+  }
+});
+
+test('build decline prints already filed, and closed for a closed issue', () => {
+  for (const [state, line] of [
+    ['open', 'https://example.test/issues/5 (already filed)\n'],
+    ['closed', 'https://example.test/issues/5 (already filed, closed)\n'],
+  ]) {
+    withDeclineKit(({ root, id, hostDir, trackerDir }) => {
+      const existing = { number: 5, url: 'https://example.test/issues/5', title: `[${id}] H-1: x`, body: '', labels: [], comments: [], state };
+      fs.writeFileSync(path.join(trackerDir, 'issues.json'), JSON.stringify([existing]));
+      const r = runCli(['build', 'decline', id, 'H-1'], { cwd: root, env: { ...process.env, SLICEKIT_GITHOST_FIXTURE: hostDir, SLICEKIT_TRACKER_FIXTURE: trackerDir } });
+      assert.equal(r.stderr, '');
+      assert.equal(r.code, 0);
+      assert.equal(r.stdout, line);
+    });
+  }
 });

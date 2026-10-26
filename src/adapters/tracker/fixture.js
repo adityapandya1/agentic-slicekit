@@ -4,7 +4,8 @@ import { redact } from '../../redact.js';
 import { TrackerError, assertFinding, assertIssueId, assertIssueTitle, assertLabels, assertSlice, pickFinding } from './errors.js';
 
 // The test seam for C-2: a directory holding the tracker's issues.
-//   issues.json              [{number, url, title, body, labels, comments}]; missing reads as []
+//   issues.json              [{number, url, title, body, labels, comments, state}]; missing reads as [],
+//                            and an issue with no state is open
 //   issue-create-error.txt   the tracker refusing `open`
 //   issue-calls.jsonl        written: `{op, ...input}` per write (open, comment), in order
 // `open` appends an issue numbered one above the highest there, at https://example.test/issues/<n>.
@@ -47,7 +48,7 @@ export function fixtureTracker(dir) {
       const number = list.reduce((n, i) => Math.max(n, Number.isInteger(i?.number) ? i.number : 0), 0) + 1;
       const url = `https://example.test/issues/${number}`;
       const text = String(body ?? '');
-      writeIssues(dir, [...list, { number, url, title, body: text, labels: [...labels], comments: [] }]);
+      writeIssues(dir, [...list, { number, url, title, body: text, labels: [...labels], comments: [], state: 'open' }]);
       record(dir, { op: 'open', title, body: text, labels: [...labels], slice });
       return { id: number, url };
     },

@@ -25,10 +25,12 @@ answers from that directory, so tests never reach the network.
 picks the implementation from `cfg.tracker.kind`, the same pattern as the git host. Today
 `github-issues.js` implements the three operations of C-2 through `gh`, spawned the way the git host
 spawns it: `open` is `gh issue create` (the body on stdin, the id read from the printed URL),
-`comment` is `gh issue comment`, and `find` lists issues whose title matches and keeps the one whose
-title begins `[<slice>] <finding>:`. Nothing closes an issue. `slicekit build decline` is the one
-caller: it opens an issue for a declined should-have, or finds the one already open, and lists its
-URL under "Should-haves declined" in the pull request body.
+`comment` is `gh issue comment`, and `find` searches for the exact title phrase, oldest first, and
+keeps the first whose title begins `[<slice>] <finding>:`, returning its state too. Nothing closes
+an issue. `slicekit build decline` is the one caller: it opens an issue for a declined should-have,
+or finds the one already filed (open or closed, never reopened), and lists its URL under
+"Should-haves declined" in the pull request body. The title is cut to GitHub's 256 characters, and
+every `@name` in the title and body is wrapped in backticks so agent-written text notifies no one.
 
 When `SLICEKIT_TRACKER_FIXTURE` names a directory, `fixture.js` answers from its `issues.json`,
 records each write in `issue-calls.jsonl`, and refuses `open` while `issue-create-error.txt` exists,

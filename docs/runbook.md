@@ -10,6 +10,8 @@ Not yet known
 
 Declined should-haves become GitHub issues through `gh` (`slicekit build decline`), so its login needs permission to open issues in the repository; tests use `SLICEKIT_TRACKER_FIXTURE` instead.
 
+In a fork, run `gh repo set-default` so issues (and pull requests) go to the right repository.
+
 ## Known failure modes and the first thing to check
 
 Not yet known

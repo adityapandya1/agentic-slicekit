@@ -43,9 +43,11 @@ export function assertLabels(labels) {
 // The title every kit-opened issue for a finding starts with; `find` matches on it.
 export const findingTitlePrefix = (slice, finding) => `[${slice}] ${finding}:`;
 
-// The first issue among `list` ({number, url, title}) whose title starts with the finding's prefix.
+// The first issue among `list` ({number, url, title, state}) whose title starts with the finding's
+// prefix, as {id, url, state}; state is `open` or `closed`, and an issue with none reads as open.
 export function pickFinding(list, slice, finding) {
   const prefix = findingTitlePrefix(slice, finding);
   const hit = (Array.isArray(list) ? list : []).find((i) => i && typeof i.title === 'string' && i.title.startsWith(prefix) && Number.isInteger(i.number));
-  return hit ? { id: hit.number, url: hit.url } : null;
+  if (!hit) return null;
+  return { id: hit.number, url: hit.url, state: String(hit.state ?? 'open').toLowerCase() === 'closed' ? 'closed' : 'open' };
 }

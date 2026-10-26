@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { GitHostError } from '../githost/errors.js';
 import { gh } from '../githost/github.js';
-import { TrackerError, assertFinding, assertIssueId, assertIssueTitle, assertLabels, assertSlice, pickFinding } from './errors.js';
+import { TrackerError, assertFinding, assertIssueId, assertIssueTitle, assertLabels, assertSlice, findingTitlePrefix, pickFinding } from './errors.js';
 
 // C-2 for GitHub Issues through the `gh` CLI, spawned the way the git host spawns it. gh picks the
 // repository from its working directory, so every call runs in the project root. `exec` is the test
 // seam; it defaults to execFileSync. Nothing here closes an issue.
-const LIST_FIELDS = 'number,url,title';
+const LIST_FIELDS = 'number,url,title,state';
 
 // The number and url gh prints for an issue it made: the last line holding `/issues/<n>`.
 export function parseIssueUrl(out) {
@@ -45,11 +45,14 @@ export function githubIssues(env = process.env, root = process.cwd(), exec = exe
       assertIssueId(id);
       run(['issue', 'comment', String(id), '--body-file', '-'], String(body ?? ''));
     },
-    // GitHub's search is loose, so its hits are narrowed to a title that begins `[<slice>] <finding>:`.
+    // The search asks for the exact title phrase, oldest first, so the issue the kit opened first is on
+    // page one; GitHub's phrase match is still loose, so its hits are narrowed to a title that begins
+    // `[<slice>] <finding>:`.
     find(slice, finding) {
       assertSlice(slice);
       assertFinding(finding);
-      const out = run(['issue', 'list', '--state', 'all', '--search', `${slice} ${finding} in:title`, '--json', LIST_FIELDS, '--limit', '50']);
+      const query = `"${findingTitlePrefix(slice, finding)}" in:title sort:created-asc`;
+      const out = run(['issue', 'list', '--state', 'all', '--search', query, '--json', LIST_FIELDS, '--limit', '50']);
       let list;
       try {
         list = JSON.parse(out);

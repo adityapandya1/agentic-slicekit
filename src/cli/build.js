@@ -97,16 +97,16 @@ function prStep(root, io, positionals, values) {
   return 0;
 }
 
-// Prints the issue's URL, and `(already open)` when the finding's issue was there before.
+// Prints the issue's URL, and `(already filed)` (`, closed` for a closed one) when the finding's issue
+// was there before.
 function declineStep(root, io, positionals, values) {
   if (positionals.length !== 2) return usage(io);
   const cfg = loadConfig(root);
   const env = io.env ?? process.env;
   const [id, finding] = positionals;
-  const { url, created } = declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
-  io.stdout(created ? `${url}
-` : `${url} (already open)
-`);
+  const { url, created, state } = declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
+  const filed = state === 'closed' ? 'already filed, closed' : 'already filed';
+  io.stdout(created ? `${url}\n` : `${url} (${filed})\n`);
   return 0;
 }
 
