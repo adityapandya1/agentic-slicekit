@@ -143,3 +143,10 @@ test('ci.botActors defaults to dependabot and renovate and is validated', () => 
     assert.ok(withBots(bad).includes('ci.botActors: must be an array of non-empty strings'), JSON.stringify(bad));
   }
 });
+
+// A git attribute pattern cannot hold a space, so the intake rule could not be written for it.
+test('a docsRoot with whitespace is refused', () => {
+  for (const docsRoot of ['my docs', 'docs\tx']) {
+    assert.ok(validateConfig({ ...base(), docsRoot }).includes('docsRoot must not contain spaces (git attribute patterns cannot hold them)'), docsRoot);
+  }
+});

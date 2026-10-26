@@ -1,0 +1,53 @@
+{
+  "configVersion": 1,
+  "name": "greeting",
+  "shape": "backend",
+  "docsRoot": "docs",
+  "defaultBranch": "main",
+  "protectedBranches": [
+    "main"
+  ],
+  "commands": {
+    "test": "node --test",
+    "lint": "",
+    "build": "",
+    "e2e": ""
+  },
+  "repos": [],
+  "gitHost": {
+    "kind": "github"
+  },
+  "tracker": {
+    "kind": "github-issues"
+  },
+  "review": {
+    "independent": "required"
+  },
+  "freezeTests": true,
+  "style": {
+    "banned": [
+      "minting at the gate",
+      "at the boundary of",
+      "it's worth noting",
+      "robust",
+      "seamlessly",
+      "leverage",
+      "delve"
+    ]
+  },
+  "destructive": [
+    "\\brm\\s+-rf\\s+(/|~|\\.\\.)",
+    "\\bDROP\\s+(TABLE|DATABASE|SCHEMA)\\b",
+    "\\bTRUNCATE\\s+TABLE\\b",
+    "git\\s+reset\\s+--hard\\s+origin/"
+  ],
+  "ci": {
+    "matrix": false,
+    "observabilitySteps": [],
+    "botActors": [
+      "dependabot[bot]",
+      "renovate[bot]"
+    ],
+    "timeoutMinutes": 30
+  }
+}

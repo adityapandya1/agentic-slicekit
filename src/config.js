@@ -69,6 +69,7 @@ function docsRootError(d) {
   if (d.startsWith('/') || /^[A-Za-z]:/.test(d)) return 'docsRoot: must be relative';
   if (d.split('/').includes('..')) return 'docsRoot: no .. segment';
   if (d.endsWith('/')) return 'docsRoot: no trailing slash';
+  if (/\s/.test(d)) return 'docsRoot must not contain spaces (git attribute patterns cannot hold them)';
   return null;
 }
 

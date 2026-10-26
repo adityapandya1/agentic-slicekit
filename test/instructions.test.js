@@ -299,6 +299,8 @@ test('instructions » the CLI prints a brief for a slice given as an argument', 
     const tops = [...prose(r.stdout)].map(([l]) => l).filter((l) => /^## /.test(l));
     assert.deepEqual(tops, [
       '## You write',
+      '## Tests first',
+      '## Then code',
       '## You never',
       '## Your report',
       '## Writing rules',

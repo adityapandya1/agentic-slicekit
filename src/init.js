@@ -22,9 +22,20 @@ const IGNORE_RULES = [
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
+  // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
+  { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
-const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];
+// Intake snapshots (S-10) are stored byte for byte, so git must not convert their line endings. The
+// pattern comes from kitPaths as S-10 builds it, so `./docs` and `docs` write the same line.
+function attributeRules(root, cfg) {
+  const intakeDir = path.relative(root, kitPaths(root, cfg).intake).split(path.sep).join('/');
+  const intake = `${intakeDir}/** -text`;
+  return [
+    { rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) },
+    { rule: intake, forms: new Set([intake, `/${intake}`]) },
+  ];
+}
 const NOT_A_REPO = 'not a git repository';
 const UNBORN_PROTECTED = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
 
@@ -154,15 +165,28 @@ function setHooksPath(root, warnings) {
 
 // An existing config.json is the truth: a flag may repeat its shape, docsRoot or cli, never change them.
 // A new config takes cli from --cli, else from the probe (D-30); the probe's warning comes back with it.
+// One exception: a config with no cli key at all (an example project ships one, so that it names no
+// one's install) takes cli from --cli, else from the probe, and is written back with it.
 function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
-  if (exists(path.join(root, CONFIG_PATH))) {
-    const cfg = loadConfig(root);
+  const file = path.join(root, CONFIG_PATH);
+  if (exists(file)) {
+    const raw = configWithoutCli(file);
+    let probed = null;
+    if (raw) {
+      probed = cli === undefined ? probeCli(root, { env }) : { cli, warning: null };
+      raw.cli = probed.cli;
+    }
+    const cfg = raw ?? loadConfig(root);
     for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot], ['cli', cli]]) {
       if (value !== undefined && value !== cfg[field]) {
         throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
       }
     }
-    return { cfg, cliWarning: null };
+    if (!raw) return { cfg, cliWarning: null, cliFilled: false };
+    const errors = validateConfig(raw);
+    if (errors.length > 0) throw new ConfigError(errors);
+    writeText(file, `${JSON.stringify(raw, null, 2)}\n`);
+    return { cfg: loadConfig(root), cliWarning: probed.warning, cliFilled: true };
   }
   const probed = cli === undefined ? probeCli(root, { env }) : { cli, warning: null };
   const cfg = defaultConfig({
@@ -174,7 +198,19 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
   });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
-  return { cfg, cliWarning: probed.warning };
+  return { cfg, cliWarning: probed.warning, cliFilled: false };
+}
+
+// The parsed config when it is a JSON object with no cli key; null otherwise (loadConfig then reads,
+// and reports, the file as it is).
+function configWithoutCli(file) {
+  let raw;
+  try {
+    raw = JSON.parse(readText(file).replace(/^﻿/, ''));
+  } catch {
+    return null;
+  }
+  return raw !== null && typeof raw === 'object' && !Array.isArray(raw) && !Object.hasOwn(raw, 'cli') ? raw : null;
 }
 
 // M4: a cli with no path separator that is not `node <file>` is looked up on PATH, and a CI runner
@@ -185,13 +221,14 @@ export function bareCliWarning(cli) {
 }
 
 export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
-  const { cfg, cliWarning } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
+  const { cfg, cliWarning, cliFilled } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
-  const lists = { created: [], updated: [], skipped: [] };
+  const lists = { created: [], updated: cliFilled ? [rel(paths.config)] : [], skipped: [] };
   for (const [abs, content] of plan(cfg, paths)) {
+    if (cliFilled && abs === paths.config) continue;
     if (exists(abs)) {
       lists.skipped.push(rel(abs));
     } else {
@@ -201,7 +238,7 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
   }
   lists[ensureLines(paths.gitignore, IGNORE_RULES)].push(rel(paths.gitignore));
   const attributes = path.join(root, '.gitattributes');
-  lists[ensureLines(attributes, ATTRIBUTE_RULES)].push(rel(attributes));
+  lists[ensureLines(attributes, attributeRules(root, cfg))].push(rel(attributes));
 
   const repo = isRepo(root);
   const warnings = repo ? [] : [NOT_A_REPO];
