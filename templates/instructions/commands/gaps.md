@@ -33,13 +33,21 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
    - Or change the REQ the gap is about, then run `{{cli}} gaps close <G-ID> --req <REQ>`. The REQ
      must differ from the merged spec.
 
+   When the human answers a "Not yet known" row, also write the answer into that section of
+   `<docsRoot>/platform.md`, `<docsRoot>/observability.md` or `<docsRoot>/runbook.md` in place of
+   `Not yet known`; the row is still closed by its decision row.
+
    A REQ that rests on an Open decision closes with the same D-ID once that row is settled. When an
    Open question was reworded after an earlier scan, the row for the old wording stays open: close
    it with the decision that settles the question, or tell the human it is the same gap and close it
    the same way. When the human cannot answer yet, the row stays open; tell them which rows are
    open and stop here.
-6. Run `{{cli}} stage require gap-scan`. It must print `ready: gap-scan`; on exit 1, close each row
-   it names. Then run `{{cli}} check` and fix each finding until it reports 0 blocking.
+6. Run `{{cli}} gaps verify`. It must print `ready: gap-scan`; on exit 1, close each row it names
+   and, when it names a gap not in the file, run `{{cli}} gaps scan` again and close the rows it
+   adds as in step 5. Then run
+   `{{cli}} check` and fix each finding until it reports 0 blocking. The full
+   `{{cli}} stage require gap-scan` is not run here, because a REQ change makes the spec differ from
+   the default branch; the plan runs it after the gaps pull request is merged.
 7. Write the pull request body to a file outside the repository, with these three sections:
 
    ```
@@ -49,6 +57,9 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
    ```
 
    Then run `{{cli}} pr open --title "[spec] <program name>: gaps" --body-file <file> --commit "docs(spec): gaps" --paths <docsRoot>/spec,<docsRoot>/decisions.md`,
-   with the program name from `.slicekit/config.json`.
+   with the program name from `.slicekit/config.json`. Add each of `platform.md`,
+   `observability.md` and `runbook.md` that step 5 edited to `--paths`, for example
+   `--paths <docsRoot>/spec,<docsRoot>/decisions.md,<docsRoot>/platform.md`, so no answer is left
+   uncommitted.
 8. Print the pull request line `pr open` printed, and tell the human that merging the pull request
    approves the answers.

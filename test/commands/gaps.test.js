@@ -446,7 +446,8 @@ test('the gaps procedure opens the branch first and runs its steps in order', as
     'instructions auditor',
     'decide add',
     'gaps close <G-ID> --decision <D-ID>',
-    'stage require gap-scan',
+    '`{{cli}} gaps verify`',
+    '`{{cli}} check`',
     'pr open --title "[spec] <program name>: gaps" --body-file <file> --commit "docs(spec): gaps" --paths <docsRoot>/spec,<docsRoot>/decisions.md',
   ];
   const at = order.map((s) => text.indexOf(s));
@@ -454,6 +455,27 @@ test('the gaps procedure opens the branch first and runs its steps in order', as
   assert.deepEqual([...at].sort((a, b) => a - b), at);
   assert.match(text, /cut to 60 characters, then dashes trimmed again; it is `source` if nothing is left/);
   assert.match(text, /reworded/);
+  // The full stage check waits for the plan, after the gaps pull request merges.
+  assert.match(text, /`\{\{cli\}\} stage require gap-scan`[^.]*plan[^.]*merge/);
+  // An answered Not yet known row fills its section, and the edited file goes in --paths.
+  for (const f of ['platform.md', 'observability.md', 'runbook.md']) assert.ok(text.includes(f), f);
+  assert.match(text, /--paths <docsRoot>\/spec,<docsRoot>\/decisions\.md,<docsRoot>\/platform\.md/);
+});
+
+test('the auditor brief names gap mode where it says what it writes and reports', async () => {
+  const { TEMPLATES } = await import('../../src/instructions.js');
+  const t = fs.readFileSync(path.join(TEMPLATES, 'agents/auditor.md'), 'utf8').replace(/\r\n/g, '\n');
+  const section = (name) => {
+    const from = t.indexOf(`## ${name}`);
+    const to = t.indexOf('\n## ', from + 1);
+    return t.slice(from, to === -1 ? t.length : to);
+  };
+  assert.match(t.split('\n## ')[0], /gap mode/);
+  assert.match(section('You write'), /gap mode/);
+  assert.match(section('You write'), /gaps add/);
+  assert.match(section('Your report'), /gap mode/);
+  assert.match(section('Your report'), /G-IDs/);
+  assert.match(section('Gaps').replace(/\s+/g, ' '), /not on a `Cites:` line/);
 });
 
 test('instructions --command gaps prints the procedure', async () => {
