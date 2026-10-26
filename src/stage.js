@@ -177,8 +177,8 @@ function specify(root, cfg) {
 }
 
 // A directory counts as merged when nothing in it is untracked or changed and its content equals the default branch's.
-// `exclude`, when given, is a file under `dir` left out of the comparison.
-function unmerged(root, cfg, dir, what, exclude) {
+// `exclude` lists files under `dir` left out of the comparison.
+function unmerged(root, cfg, dir, what, exclude = []) {
   if (!isRepo(root)) return [`${what} needs a git repository`];
   if (!hasCommits(root)) return [`${what} needs a commit on ${cfg.defaultBranch}`];
   const base = cfg.defaultBranch;
@@ -190,7 +190,7 @@ function unmerged(root, cfg, dir, what, exclude) {
     throw e;
   }
   const where = rel(root, dir);
-  const paths = [where, ...(exclude ? [`:(exclude)${rel(root, exclude)}`] : [])];
+  const paths = [where, ...exclude.map((f) => `:(exclude)${rel(root, f)}`)];
   if (git(root, ['status', '--porcelain', '--', ...paths]) !== '') return [`${where} has uncommitted changes`];
   try {
     git(root, ['diff', '--quiet', '--end-of-options', base, '--', ...paths]);
@@ -201,8 +201,16 @@ function unmerged(root, cfg, dir, what, exclude) {
   return [];
 }
 
-// The gaps file is written after the spec merges, on the gaps branch, so this stage leaves it out.
-const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 'spec review', kitPaths(root, cfg).gaps);
+// The gaps file is written on the gaps branch and stack.md on the plan branch, both after the spec
+// merges, so this stage leaves them out.
+function specReview(root, cfg) {
+  const p = kitPaths(root, cfg);
+  return unmerged(root, cfg, p.spec, 'spec review', [p.gaps, p.stack]);
+}
+
+// The line `gaps scan` writes into the gaps file. Without it the gap scan has not run, whatever the
+// table holds: init's empty table is not a finished scan.
+export const SCANNED_LINE = /^Scanned: \d{4}-\d{2}-\d{2} at \S+$/;
 
 function gapScan(root, cfg) {
   const file = kitPaths(root, cfg).gaps;
@@ -219,6 +227,7 @@ function gapScan(root, cfg) {
     }
   }
   if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
+  if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) return [`${rel(root, file)} has no Scanned: line; gaps scan has not run`];
   return blockers;
 }
 

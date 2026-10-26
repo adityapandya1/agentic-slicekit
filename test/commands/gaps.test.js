@@ -174,17 +174,115 @@ test('an Open decision row cannot close a gap', async () => {
   });
 });
 
+// Closes every open row with D-01, the settled row `writeDecisions` writes.
+async function closeAll(root) {
+  for (const g of readGaps(gapsText(root)).rows.filter((r) => r.closedBy === '')) {
+    const r = await cli(root, ['gaps', 'close', g.id, '--decision', 'D-01']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+  }
+}
+
 test('on a gaps branch with only gaps.md changed the gap-scan stage is ready', async () => {
   await withProgram(async (root) => {
     mergedSpec(root);
-    await cli(root, ['gaps', 'add', '--class', 'unknown', '--where', 'docs/decisions.md:13', '--what', 'D-02 is open: Which carrier?']);
+    assert.equal((await cli(root, ['gaps', 'scan'])).code, 0);
     const open = await cli(root, ['stage', 'require', 'gap-scan']);
     assert.equal(open.code, 1, open.stdout + open.stderr);
     assert.match(open.stderr, /G-1 is not closed/);
-    await cli(root, ['gaps', 'close', 'G-1', '--decision', 'D-01']);
+    await closeAll(root);
     const ready = await cli(root, ['stage', 'require', 'gap-scan']);
     assert.equal(ready.code, 0, ready.stdout + ready.stderr);
     assert.match(ready.stdout, /^ready: gap-scan/);
+  });
+});
+
+test('the gap-scan stage is not done until gaps scan has run, and the scan line is no gap', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    const before = await cli(root, ['stage', 'require', 'gap-scan']);
+    assert.equal(before.code, 1, before.stdout + before.stderr);
+    assert.match(before.stderr, /^gap scan not done: .*; run \/slicekit gaps$/m);
+    await cli(root, ['gaps', 'scan']);
+    const text = gapsText(root);
+    const marker = /^Scanned: \d{4}-\d{2}-\d{2} at [0-9a-f]{7}$/m.exec(text);
+    assert.ok(marker, text);
+    const rows = readGaps(text).rows;
+    assert.ok(rows.length > 0 && rows.every((r) => /^G-\d+$/.test(r.id)), text);
+    const { clarificationMarkers } = await import('../../src/stage.js');
+    assert.deepEqual(clarificationMarkers(text), []);
+    // A second scan keeps one scan line.
+    await cli(root, ['gaps', 'scan']);
+    assert.equal(gapsText(root).match(/^Scanned: /gm).length, 1);
+  });
+});
+
+test('gaps verify is ready once a REQ change on the gaps branch closes the last row', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    await cli(root, ['gaps', 'scan']);
+    await closeAll(root);
+    await cli(root, ['gaps', 'add', '--class', 'unsupported', '--where', 'docs/spec/01-orders.md:3', '--what', 'store orders has no evidence']);
+    const open = await cli(root, ['gaps', 'verify']);
+    assert.equal(open.code, 1, open.stdout + open.stderr);
+    assert.match(open.stdout, /^docs\/spec\/gaps\.md:\d+ G-\d+ is not closed$/m);
+
+    fs.writeFileSync(specFile(root), fs.readFileSync(specFile(root), 'utf8').replace('SHALL store orders', 'SHALL store every order'));
+    const id = readGaps(gapsText(root)).rows.at(-1).id;
+    const closed = await cli(root, ['gaps', 'close', id, '--req', 'REQ-1.1']);
+    assert.equal(closed.code, 0, closed.stdout + closed.stderr);
+    const ready = await cli(root, ['gaps', 'verify']);
+    assert.equal(ready.code, 0, ready.stdout + ready.stderr);
+    assert.equal(ready.stdout, 'ready: gap-scan\n');
+  });
+});
+
+test('gaps verify lists a candidate a fresh scan would add, and an unscanned file', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    const never = await cli(root, ['gaps', 'verify']);
+    assert.equal(never.code, 1);
+    assert.match(never.stdout, /gaps scan has not run/);
+    await cli(root, ['gaps', 'scan']);
+    await closeAll(root);
+    fs.appendFileSync(path.join(root, 'docs/decisions.md'), '| D-03 | Decision | Which region? | Latency | Mumbai |\n');
+    const r = await cli(root, ['gaps', 'verify']);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /^docs\/decisions\.md:14 unknown gap not in gaps\.md: D-03 is open: Which region\?$/m);
+  });
+});
+
+test('a re-scan after edits above its candidates adds no row', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    const first = await cli(root, ['gaps', 'scan']);
+    assert.equal(first.code, 0, first.stdout + first.stderr);
+    const before = gapsText(root);
+    const platform = path.join(root, 'docs/platform.md');
+    const text = fs.readFileSync(platform, 'utf8');
+    const at = text.indexOf('Not yet known');
+    fs.writeFileSync(platform, `${text.slice(0, at)}Hosted on Fly.\nOne region.${text.slice(at + 'Not yet known'.length)}`);
+    const dec = path.join(root, 'docs/decisions.md');
+    fs.writeFileSync(dec, fs.readFileSync(dec, 'utf8').replace('| D-01 | Decision | Which store? | Postgres | Ana, 2026-01-02 |', '| D-01 | Decision | Which store? | Postgres | Ana, 2026-01-02 |\n| D-03 | Decision | Which queue? | pgmq | Ana, 2026-01-03 |'));
+    const again = await cli(root, ['gaps', 'scan']);
+    assert.equal(again.stdout, 'no new gaps\n', again.stderr);
+    assert.equal(gapsText(root), before);
+  });
+});
+
+test('spec review leaves out stack.md on a plan branch', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    git(root, 'checkout', '-q', '-b', 'plan/x');
+    const stack = path.join(root, 'docs/spec/stack.md');
+    fs.writeFileSync(stack, '# Stack\n\nNode 22 and Postgres.\n');
+    const dirty = await cli(root, ['stage', 'require', 'spec-review']);
+    assert.equal(dirty.code, 0, dirty.stdout + dirty.stderr);
+    git(root, 'add', '-A');
+    git(root, ['com', 'mit'].join(''), '-q', '-m', 'stack');
+    const committed = await cli(root, ['stage', 'require', 'spec-review']);
+    assert.equal(committed.code, 0, committed.stdout + committed.stderr);
+    fs.writeFileSync(specFile(root), '# Orders\n\nchanged\n');
+    assert.equal((await cli(root, ['stage', 'require', 'spec-review'])).code, 1, 'a spec change still counts');
   });
 });
 

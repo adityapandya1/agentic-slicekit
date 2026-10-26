@@ -9,7 +9,7 @@ import { exists, readText } from './fs.js';
 import { GitError, git } from './git.js';
 import { headings, lines, prose, tables } from './markdown.js';
 import { kitPaths } from './paths.js';
-import { reqBlocks, reqBlocksIn } from './stage.js';
+import { SCANNED_LINE, reqBlocks, reqBlocksIn } from './stage.js';
 
 export const CLASSES = ['missing', 'unsupported', 'contradiction', 'unknown', 'unrequested'];
 
@@ -35,7 +35,7 @@ function gapTable(text) {
   const t = tables(text).find((x) => sameColumns(x.header));
   if (!t) return null;
   const rows = t.rows.map((cells, i) => ({ line: t.line + 2 + i, cells }));
-  return { rows, last: t.line + 1 + t.rows.length };
+  return { header: t.line, rows, last: t.line + 1 + t.rows.length };
 }
 
 // `{rows, next}`, with `next` numbered as `readDecisions` numbers decision rows. A row whose first
@@ -200,9 +200,70 @@ function fromDecisions(root, cfg) {
   return out;
 }
 
-// Writes a row for each gap a script can find, through `addGap`, so a second run adds nothing.
-// Judgement classes (contradiction, unrequested, and missing beyond named interfaces) are the
-// auditor's. Returns `[{id, added, cls, where, what}]` in candidate order.
+// Every gap a script can find, in candidate order. Judgement classes (contradiction, unrequested,
+// and missing beyond named interfaces) are the auditor's.
+const candidates = (root, cfg) => [...notYetKnown(root, cfg), ...fromDecisions(root, cfg)];
+
+// A scan candidate matches a row of the same class, file and What, whatever the line: an edit above
+// a candidate moves its line, and that is not a new gap.
+const fileOf = (where) => where.replace(/:\d+$/, '');
+const key = (g) => `${g.cls}\u0000${fileOf(g.where)}\u0000${g.what}`;
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function shortHead(root) {
+  try {
+    return git(root, ['rev-parse', '--short=7', 'HEAD']);
+  } catch (e) {
+    if (e instanceof GitError) return 'no-commit';
+    throw e;
+  }
+}
+
+// Writes the `Scanned: <date> at <short sha>` line the gap-scan stage requires, just above the
+// table, or replaces the one there. An unchanged line leaves the file as it is.
+function markScanned(root, cfg) {
+  const { file, text, table } = load(root, cfg);
+  const line = `Scanned: ${today()} at ${shortHead(root)}`;
+  const at = [...prose(text)].find(([l]) => SCANNED_LINE.test(l.trim()));
+  if (at) {
+    if (at[0].trim() !== line) save(file, replaceLine(text, at[1], line));
+    return;
+  }
+  const blankBefore = table.header === 1 || lines(text)[table.header - 2].trim() === '';
+  let out = insertAfter(text, table.header - 1, '');
+  out = insertAfter(out, table.header - 1, line);
+  if (!blankBefore) out = insertAfter(out, table.header - 1, '');
+  save(file, out);
+}
+
+// Writes a row for each gap a script can find, through `addGap`, then the scan line, so a second
+// run adds nothing. Returns `[{id, added, cls, where, what}]` in candidate order.
 export function scanGaps(root, cfg) {
-  return [...notYetKnown(root, cfg), ...fromDecisions(root, cfg)].map((c) => ({ ...addGap(root, cfg, c), ...c }));
+  const out = [];
+  for (const c of candidates(root, cfg)) {
+    const same = readGaps(load(root, cfg).text).rows.find((r) => key(r) === key(c));
+    out.push({ ...(same ? { id: same.id, added: false } : addGap(root, cfg, c)), ...c });
+  }
+  markScanned(root, cfg);
+  return out;
+}
+
+// What stands between the gaps file and a finished gap scan, without the spec-review check (the
+// spec differs from the default branch while a REQ change closes a gap): `[{where, message}]`, one
+// per open row, per candidate a fresh scan would add, and for a file no scan has marked.
+export function verifyGaps(root, cfg) {
+  const { file, text } = load(root, cfg);
+  const rel = posix(path.relative(root, file));
+  const out = [];
+  if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) {
+    out.push({ where: `${rel}:1`, message: 'gaps scan has not run; run slicekit gaps scan' });
+  }
+  const { rows } = readGaps(text);
+  for (const r of rows.filter((g) => g.closedBy === '')) out.push({ where: `${rel}:${r.line}`, message: `${r.id} is not closed` });
+  const known = new Set(rows.map(key));
+  for (const c of candidates(root, cfg).filter((g) => !known.has(key(g)))) {
+    out.push({ where: c.where, message: `${c.cls} gap not in gaps.md: ${c.what}` });
+  }
+  return out;
 }
