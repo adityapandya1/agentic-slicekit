@@ -58,18 +58,25 @@ function resolveTests(wt, tests) {
     .map((t) => t.trim())
     .filter((t) => t !== '');
   if (list.length === 0) throw new BuildError('--tests names no test file', 2);
-  const root = real(wt);
   const out = [];
   for (const given of list) {
     const abs = path.resolve(wt, given.replace(/\\/g, '/'));
-    // Existence first, so both sides of the comparison are real paths (8.3 names, links resolved).
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new BuildError(`${given} is not a file`, 2);
-    const rel = path.relative(root, real(abs));
-    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new BuildError(`${given} is outside the worktree`, 2);
-    const posix = rel.split(path.sep).join('/');
+    const posix = toWorktreePath(wt, given);
     if (!out.includes(posix)) out.push(posix);
   }
   return out;
+}
+
+// A path given absolute or relative to the worktree, with either slash, as a POSIX path relative to
+// it; outside it is a usage error. An existing path is compared through real paths (8.3 names and
+// links resolved); a missing one, as written.
+export function toWorktreePath(wt, given) {
+  const abs = path.resolve(wt, String(given).trim().replace(/\\/g, '/'));
+  const there = fs.existsSync(abs);
+  const rel = path.relative(there ? real(wt) : path.resolve(wt), there ? real(abs) : abs);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new BuildError(`${given} is outside the worktree`, 2);
+  return rel.split(path.sep).join('/');
 }
 
 export function sliceIn(wt, cfg, id) {
@@ -83,13 +90,15 @@ export function sliceIn(wt, cfg, id) {
 export const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// A path (POSIX, relative to the worktree) the kit owns: anything under `.slicekit/`, BUILD.md, the
-// config and the slice file. The build commands change these; a test or the developer's work never does.
+// A path (POSIX, relative to the worktree) the kit owns: anything under `.slicekit/` or `.githooks/`,
+// BUILD.md, the config, the slice file and `.claude/settings.json`. The kit's commands change these;
+// a test or the developer's work never does.
 export function isKitFile(wt, cfg, slice, rel) {
   const paths = kitPaths(wt, cfg);
   const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-  const own = [posixRel(wt, paths.build), posixRel(wt, paths.config), posixRel(wt, slice.path)];
-  return key(rel).startsWith(`${key(posixRel(wt, paths.kit))}/`) || own.some((o) => key(o) === key(rel));
+  const own = [paths.build, paths.config, slice.path, path.join(paths.claude, 'settings.json')].map((p) => posixRel(wt, p));
+  const dirs = [paths.kit, paths.githooks].map((p) => posixRel(wt, p));
+  return dirs.some((d) => key(rel).startsWith(`${key(d)}/`)) || own.some((o) => key(o) === key(rel));
 }
 
 // The kit's own files are never tests: freezing one would lock the kit out of its own bookkeeping.

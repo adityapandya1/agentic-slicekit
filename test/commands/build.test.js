@@ -761,13 +761,11 @@ test('build commit refuses a red run under --require-green, a run that could not
       git(p.wt, ['checkout', '--', kit]);
     }
 
-    const cfgFile = path.join(p.wt, '.slicekit', 'config.json');
+    // The config the command reads is the main checkout's; the worktree's copy stays as committed.
+    const cfgFile = path.join(p.root, '.slicekit', 'config.json');
     const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
     cfg.commands.test = 'slicekit-no-such-command-for-commit';
     fs.writeFileSync(cfgFile, `${JSON.stringify(cfg, null, 2)}\n`);
-    git(p.wt, ['add', '.slicekit/config.json']);
-    git(p.wt, ['commit', '-q', '-m', 'cfg']);
-    fs.writeFileSync(path.join(p.root, '.slicekit', 'config.json'), `${JSON.stringify(cfg, null, 2)}\n`);
     write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
     const notRun = await commitWorkCli(p, '--message', 'x');
     assert.equal(notRun.code, 1);
@@ -794,5 +792,141 @@ test('every commit on the slice branch carries the Slice trailer', async () => {
     for (const c of commits) assert.equal(c.trailers.Slice, 'P1/S-01', `${c.subject}\n${c.body}`);
   } finally {
     p.cleanup();
+  }
+});
+
+const amendCli = (p, t, reason = 'r') => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', t, '--reason', reason]);
+const GREEN = 'export const x = () => 2;\n';
+const WEAK = "import { test } from 'node:test';\ntest('works', () => {});\n";
+const editSlice = (p, text = '\nAmended.\n') => fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), text);
+
+test('a frozen test hidden from git or changed on disk is refused at commit', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 99;\n');
+    for (const flag of ['--skip-worktree', '--assume-unchanged']) {
+      git(p.wt, ['update-index', flag, 'test/a.test.js']);
+      fs.writeFileSync(path.join(p.wt, 'test', 'a.test.js'), WEAK);
+      const r = await commitWorkCli(p, '--message', 'x', '--require-green');
+      assert.equal(r.code, 1, flag);
+      assert.match(r.stderr, /frozen test test\/a\.test\.js /, flag);
+      git(p.wt, ['update-index', flag.replace('--', '--no-'), 'test/a.test.js']);
+      git(p.wt, ['checkout', '--', 'test/a.test.js']);
+    }
+    // Deleted, or renamed away: a missing frozen test is a change.
+    fs.renameSync(path.join(p.wt, 'test', 'a.test.js'), path.join(p.wt, 'test', 'b.test.js'));
+    const renamed = await commitWorkCli(p, '--message', 'x');
+    assert.equal(renamed.code, 1);
+    assert.match(renamed.stderr, /frozen test test\/a\.test\.js changed since/);
+    assert.equal(git(p.wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 building');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a hand commit cannot unfreeze a test or change the evaluation set', async () => {
+  const p = await building();
+  try {
+    const sf = path.join(p.wt, '.slicekit', 'state', 'P1-S-01.json');
+    const st = JSON.parse(fs.readFileSync(sf, 'utf8'));
+    fs.writeFileSync(sf, `${JSON.stringify({ ...st, unfrozen: ['test/a.test.js'] }, null, 2)}\n`);
+    commitIn(p.wt, 'by hand state');
+    const forged = git(p.wt, ['rev-parse', '--short=7', 'HEAD']);
+    fs.writeFileSync(path.join(p.wt, 'test', 'a.test.js'), WEAK);
+    write(p.wt, 'src/t1.js', GREEN);
+    const r = await commitWorkCli(p, '--message', 'weakened');
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes(`.slicekit/state/P1-S-01.json was changed in ${forged} outside the kit; only build commands write it`), r.stderr);
+
+    git(p.wt, ['reset', '-q', '--hard', 'HEAD^']);
+    editSlice(p, '\nhand\n');
+    commitIn(p.wt, 'by hand slice');
+    const sliceSha = git(p.wt, ['rev-parse', '--short=7', 'HEAD']);
+    write(p.wt, 'src/t1.js', GREEN);
+    const s = await commitWorkCli(p, '--message', 'y');
+    assert.equal(s.code, 1);
+    assert.ok(s.stderr.includes(`${SLICE_FILE} was changed in ${sliceSha} outside the kit; only build commands write it`), s.stderr);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build commit refuses the hooks and the Claude settings', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', GREEN);
+    for (const kit of ['.githooks/pre-commit', '.claude/settings.json']) {
+      write(p.wt, kit, 'x\n');
+      const r = await commitWorkCli(p, '--message', 'x');
+      assert.equal(r.code, 1, kit);
+      assert.ok(r.stderr.includes(`${kit} is a kit file; build commit does not commit it`), r.stderr);
+      fs.rmSync(path.join(p.wt, ...kit.split('/')));
+    }
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('amend takes any spelling of the test and records the amendment', async () => {
+  const p = await building();
+  try {
+    editSlice(p);
+    const r = await amendCli(p, path.join(p.wt, 'test', 'a.test.js').replace(/\//g, '\\'), 'the row was wrong');
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, 'unfroze test/a.test.js\n');
+    const last = stateIn(p.wt).history.at(-1);
+    assert.deepEqual(last.evidence, {
+      unfreeze: 'test/a.test.js',
+      amendCommit: git(p.wt, ['rev-parse', 'HEAD^']),
+      reason: 'the row was wrong',
+    });
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('an amend that stopped part way finishes on a re-run', async () => {
+  // The state lock is busy while unfreeze runs: the slice file is committed, nothing is unfrozen.
+  const p = await building();
+  try {
+    editSlice(p);
+    const lock = path.join(p.wt, '.slicekit', 'state', 'P1-S-01.json.lock');
+    fs.writeFileSync(lock, String(process.pid));
+    const busy = await amendCli(p, 'test/a.test.js');
+    assert.equal(busy.code, 1);
+    assert.equal(git(p.wt, ['log', '-1', '--format=%s']), 'docs(P1/S-01): amend evaluation set');
+    assert.deepEqual(stateIn(p.wt).unfrozen, []);
+    fs.rmSync(lock);
+    const again = await amendCli(p, 'test/a.test.js');
+    assert.equal(again.code, 0, again.stderr);
+    assert.deepEqual(stateIn(p.wt).unfrozen, ['test/a.test.js']);
+    assert.deepEqual(git(p.wt, ['log', '-2', '--format=%s']).split('\n'), [
+      'chore(slicekit): P1/S-01 unfreeze test/a.test.js',
+      'docs(P1/S-01): amend evaluation set',
+    ]);
+  } finally {
+    p.cleanup();
+  }
+  // The bookkeeping commit is refused by a hook: the state says unfrozen, but nothing records it.
+  const q = await building();
+  const hook = path.join(git(q.wt, ['rev-parse', '--path-format=absolute', '--git-common-dir']), 'hooks', 'commit-msg');
+  try {
+    editSlice(q);
+    fs.mkdirSync(path.dirname(hook), { recursive: true });
+    fs.writeFileSync(hook, '#!/bin/sh\nif grep -q "^chore(slicekit)" "$1"; then exit 1; fi\nexit 0\n', { mode: 0o755 });
+    const refused = await amendCli(q, 'test/a.test.js');
+    assert.equal(refused.code, 1);
+    assert.deepEqual(stateIn(q.wt).unfrozen, ['test/a.test.js']);
+    fs.rmSync(hook);
+    const again = await amendCli(q, 'test/a.test.js');
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(git(q.wt, ['status', '--porcelain']), '');
+    assert.equal(git(q.wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 unfreeze test/a.test.js');
+    // Now it is done: a third run is refused.
+    const third = await amendCli(q, 'test/a.test.js');
+    assert.equal(third.code, 1);
+    assert.match(third.stderr, /test\/a\.test\.js is already unfrozen/);
+  } finally {
+    q.cleanup();
   }
 });

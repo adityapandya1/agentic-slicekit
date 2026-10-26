@@ -162,8 +162,9 @@ export function setState(root, cfg, id, to, evidence = {}) {
   });
 }
 
-// Only a test frozen at tests-red can be unfrozen; any other path has nothing to release.
-export function unfreeze(root, cfg, id, file) {
+// Only a test frozen at tests-red can be unfrozen; any other path has nothing to release. `extra`
+// joins the history entry's evidence (build amend gives the amendment commit and the reason).
+export function unfreeze(root, cfg, id, file, extra = {}) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
     if (!current.frozenTests.includes(file)) {
@@ -172,7 +173,7 @@ export function unfreeze(root, cfg, id, file) {
     const next = {
       ...current,
       unfrozen: [...current.unfrozen, file],
-      history: [...current.history, entry(current.state, current.state, 'cli', { unfreeze: file })],
+      history: [...current.history, entry(current.state, current.state, 'cli', { unfreeze: file, ...extra })],
     };
     writeSlice(root, cfg, next);
     return next;
