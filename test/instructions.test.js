@@ -244,10 +244,10 @@ test('instructions » a procedure has {{cli}} and {{args}} replaced', () => {
 test('instructions » --command passes everything after the name through unparsed', async () => {
   const { root, cleanup } = project('backend');
   try {
-    // The kit ships no procedures yet: an unbuilt command exits 1, even with options after it.
-    const r = await cli(root, ['instructions', '--command', 'plan', '--parallel', 'P2']);
+    // An unbuilt command (audit, a Phase 4 procedure) exits 1, even with options after it.
+    const r = await cli(root, ['instructions', '--command', 'audit', '--parallel', 'P2']);
     assert.equal(r.code, 1);
-    assert.equal(r.stderr, 'slicekit: the /slicekit plan command is not built in this version\n');
+    assert.equal(r.stderr, 'slicekit: the /slicekit audit command is not built in this version\n');
     const u = await cli(root, ['instructions', '--command', 'nosuch']);
     assert.equal(u.code, 2);
     assert.equal(u.stderr, "slicekit: unknown command 'nosuch'\n");

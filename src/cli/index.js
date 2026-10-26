@@ -4,12 +4,16 @@ import { branchCommand } from './branch.js';
 import { buildCommand } from './build.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
+import { gapsCommand } from './gaps.js';
 import { initCommand } from './init.js';
+import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
+import { planCommand } from './plan.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
+import { specCommand } from './spec.js';
 import { stageCommand } from './stage.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
@@ -23,12 +27,16 @@ export const COMMANDS = {
   build: buildCommand,
   check: checkCommand,
   decide: decideCommand,
+  gaps: gapsCommand,
   init: initCommand,
+  intake: intakeCommand,
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
+  plan: planCommand,
   pr: prCommand,
   'ready-label': readyLabelCommand,
+  spec: specCommand,
   stage: stageCommand,
   state: stateCommand,
   status: statusCommand,

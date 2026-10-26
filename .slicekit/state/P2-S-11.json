@@ -1,0 +1,48 @@
+{
+  "slice": "P2/S-11",
+  "state": "merged",
+  "branch": null,
+  "pr": {
+    "number": 11,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/11",
+    "headSha": "8602b4b172ef868b167b7461a6bcc62749a32b40"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": "2026-10-26T16:44:27Z",
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-26T16:19:53.446Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 11,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/11",
+          "headSha": "aa74dce9af539145e4356a497bf83436deafb3a8",
+          "title": "[P2/S-11] `/slicekit specify`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-26T16:44:42.551Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-26T16:44:27Z",
+        "pr": {
+          "number": 11,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/11",
+          "headSha": "8602b4b172ef868b167b7461a6bcc62749a32b40"
+        },
+        "source": "host"
+      }
+    }
+  ]
+}

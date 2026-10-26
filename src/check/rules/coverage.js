@@ -1,12 +1,13 @@
 // coverage (03 REQ-3.7, 02 REQ-2.5): once a program is at the plan stage, every REQ is named by at
-// least one slice, every slice lists its expected changes, and no two slices in one parallel group
-// of one phase expect to change the same path.
+// least one slice, every slice lists its expected changes and has a happy and a negative test, a
+// phase's Order line names each of its groups once (D-38), and no two slices that run at the same
+// time (one Order step, or one parallel group without an Order line) expect to change the same path.
 import fs from 'node:fs';
 import path from 'node:path';
 import { readText } from '../../fs.js';
 import { re, stateFileName } from '../../ids.js';
-import { headings } from '../../markdown.js';
-import { findSliceFiles, parseSliceFile } from '../../slicefile.js';
+import { headings, prose } from '../../markdown.js';
+import { findSliceFiles, parseOrder, parseSliceFile, phaseOfDir } from '../../slicefile.js';
 import { programStage } from '../../stage.js';
 
 export const id = 'coverage';
@@ -132,15 +133,62 @@ function prefixes(slice, runbook) {
   return out;
 }
 
-function overlaps(parsed, out, runbook) {
-  const groups = new Map();
+// Each phase directory's Order line (D-38), parsed, with its file and line, and the lines of any
+// further Order line (`parseOrder` follows the first); phases without one are left out. The lines
+// are found with the same pattern `parseOrder` uses, so the two cannot disagree.
+function orderLines(ctx) {
+  const out = new Map();
+  if (!fs.existsSync(ctx.paths.phases)) return out;
+  for (const dir of fs.readdirSync(ctx.paths.phases, { withFileTypes: true })) {
+    const phase = phaseOfDir(dir.name);
+    if (!dir.isDirectory() || !phase) continue;
+    const file = path.join(ctx.paths.phases, dir.name, `${phase.id}.md`);
+    const rel = toPosix(path.relative(ctx.root, file));
+    const doc = ctx.docs.find((d) => d.rel === rel);
+    if (!doc && !fs.existsSync(file)) continue;
+    const text = doc ? doc.text : readText(file);
+    const steps = parseOrder(text);
+    if (!steps) continue;
+    const at = [...prose(text)].filter(([l]) => /^\*\*Order:\*\*\s*(.+)$/.test(l)).map(([, n]) => n);
+    out.set(phase.id, { rel, line: at[0] ?? 1, more: at.slice(1), steps: steps.map((s) => s.filter((g) => g !== '')).filter((s) => s.length > 0) });
+  }
+  return out;
+}
+
+// REQ-2.5 / D-38: an Order line names every group of its phase, each once, and no group no slice has.
+function orderFindings(parsed, orders, out) {
+  for (const [phaseId, order] of orders) {
+    const groups = new Set(parsed.filter((p) => p.slice && p.phaseId === phaseId).map((p) => p.slice.group));
+    const seen = new Set();
+    const twice = new Set();
+    for (const g of order.steps.flat()) (seen.has(g) ? twice : seen).add(g);
+    const at = (message) => out.push({ file: order.rel, line: order.line, message: `phase ${phaseId} Order line ${message}` });
+    for (const g of [...groups].sort()) if (!seen.has(g)) at(`does not name group ${g}`);
+    for (const g of twice) at(`names group ${g} twice`);
+    for (const g of seen) if (!groups.has(g)) at(`names group ${g}, which no slice has`);
+    for (const line of order.more) out.push({ file: order.rel, line, message: `phase ${phaseId} has more than one Order line` });
+  }
+}
+
+// The slices that run at the same time: with an Order line, those of one step (a group named in
+// several steps is in each, so all its overlaps show; a group the line does not name is its own
+// step, so its overlaps are still found); without one, those of one group.
+function overlaps(parsed, orders, out, runbook) {
+  const sets = new Map();
   for (const p of parsed) {
     if (!p.slice) continue;
-    const key = `${p.phaseId}\u0000${p.slice.group}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ ...p, prefixes: prefixes(p.slice, runbook) });
+    const order = orders.get(p.phaseId);
+    const steps = order ? order.steps.filter((s) => s.includes(p.slice.group)) : [];
+    // A Set, so a step written twice (`A; A`) does not put a slice beside itself.
+    const labels = new Set(steps.length > 0 ? steps.map((s) => `step ${s.join(', ')}`) : [`group ${p.slice.group}`]);
+    const member = { ...p, prefixes: prefixes(p.slice, runbook) };
+    for (const label of labels) {
+      const key = `${p.phaseId}\u0000${label}`;
+      if (!sets.has(key)) sets.set(key, { label, members: [] });
+      sets.get(key).members.push(member);
+    }
   }
-  for (const members of groups.values()) {
+  for (const { label, members } of sets.values()) {
     for (let j = 1; j < members.length; j++) {
       for (let i = 0; i < j; i++) {
         const [a, b] = [members[i], members[j]];
@@ -152,11 +200,7 @@ function overlaps(parsed, out, runbook) {
           }
         }
         for (const [where, line] of shared) {
-          out.push({
-            file: b.rel,
-            line,
-            message: `slices ${a.slice.id} and ${b.slice.id} in group ${b.slice.group} both expect ${where}`,
-          });
+          out.push({ file: b.rel, line, message: `slices ${a.slice.id} and ${b.slice.id} in ${label} both expect ${where}` });
         }
       }
     }
@@ -185,7 +229,16 @@ export function run(ctx) {
       out.push({ file: p.rel, line: p.slice.expectedChangesLine ?? 1, message: `slice ${p.slice.id} lists no expected changes` });
     }
   }
-  overlaps(parsed, out, toPosix(path.relative(ctx.root, ctx.paths.runbook)));
+  // REQ-2.5: each slice's evaluation set has at least one happy and one negative test.
+  for (const p of parsed) {
+    if (!p.slice) continue;
+    for (const kind of ['happy', 'negative']) {
+      if (!p.slice.evaluation.some((e) => e.kind === kind)) out.push({ file: p.rel, line: 1, message: `slice ${p.slice.id} has no ${kind} test` });
+    }
+  }
+  const orders = orderLines(ctx);
+  orderFindings(parsed, orders, out);
+  overlaps(parsed, orders, out, toPosix(path.relative(ctx.root, ctx.paths.runbook)));
   return out;
 }
 

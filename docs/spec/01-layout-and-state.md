@@ -105,12 +105,14 @@ it is built in (D-15); the REQ and D rows it implements; a **Done when** list of
 observable checks; an **Evaluation set** listing each test to be written, tagged `happy`, `negative`
 or `e2e`, each naming the REQ it covers; the files or packages expected to change; whether the slice
 touches configuration, infrastructure, migrations, alerts, queues or integrations (the runbook flag,
-D-21); and the parallel group within its phase.
+D-21); and the parallel group within its phase. A phase file MAY carry one line
+`**Order:** <step>; <step>; …`, each step a comma list of the groups that run at the same time;
+without it each group is its own step, in name order.
 
 Scenario: GIVEN a slice file whose evaluation set has a test naming no REQ WHEN `slicekit check`
 runs THEN it fails naming the slice and the test.
 
-Cites: D-10, D-15, D-21, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-10, D-15, D-21, D-38, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (citations rule).
 
