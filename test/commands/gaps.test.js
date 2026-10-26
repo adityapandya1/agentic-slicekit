@@ -319,3 +319,50 @@ test('scan run twice adds no duplicate row', async () => {
     assert.equal(gapsText(root), before);
   });
 });
+
+test('the procedure and the auditor brief pass the brief lint', async () => {
+  const { briefProblems } = await import('../helpers/brief-lint.js');
+  const { TEMPLATES } = await import('../../src/instructions.js');
+  const read = (f) => fs.readFileSync(path.join(TEMPLATES, f), 'utf8').replace(/\r\n/g, '\n');
+  const procedure = read('commands/gaps.md');
+  const brief = read('agents/auditor.md');
+  assert.deepEqual(briefProblems(procedure, { kind: 'command' }), []);
+  assert.deepEqual(briefProblems(brief, { kind: 'agent' }), []);
+  for (const want of ['gaps scan', 'gaps close', 'stage require gap-scan']) assert.ok(procedure.includes(want), want);
+  const gaps = brief.slice(brief.indexOf('## Gaps'));
+  assert.ok(brief.includes('## Gaps'), 'the brief has a Gaps section');
+  for (const cls of CLASSES) assert.ok(gaps.includes(`\`${cls}\``), cls);
+  // A gap-mode reply as the brief asks for it passes the stop-time shape check.
+  const { shapeProblems } = await import('../../src/hooks/shapes.js');
+  const reply = 'Added G-7, G-8: 1 contradiction, 1 unrequested.\nSkipped: none\nNot checked: contracts\n';
+  assert.deepEqual(shapeProblems('auditor', reply, { root: '/nowhere' }), []);
+});
+
+test('the gaps procedure opens the branch first and runs its steps in order', async () => {
+  const { TEMPLATES } = await import('../../src/instructions.js');
+  const text = fs.readFileSync(path.join(TEMPLATES, 'commands/gaps.md'), 'utf8').replace(/\s+/g, ' ');
+  const order = [
+    'branch gaps <slug>',
+    'stage require spec-review',
+    'gaps scan',
+    'instructions auditor',
+    'decide add',
+    'gaps close <G-ID> --decision <D-ID>',
+    'stage require gap-scan',
+    'pr open --title "[spec] <program name>: gaps" --body-file <file> --commit "docs(spec): gaps" --paths <docsRoot>/spec,<docsRoot>/decisions.md',
+  ];
+  const at = order.map((s) => text.indexOf(s));
+  assert.ok(at.every((i) => i !== -1), order.filter((_, k) => at[k] === -1).join(', '));
+  assert.deepEqual([...at].sort((a, b) => a - b), at);
+  assert.match(text, /cut to 60 characters, then dashes trimmed again; it is `source` if nothing is left/);
+  assert.match(text, /reworded/);
+});
+
+test('instructions --command gaps prints the procedure', async () => {
+  await withProgram(async (root) => {
+    const r = await cli(root, ['instructions', '--command', 'gaps']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /gaps scan/);
+    assert.doesNotMatch(r.stdout, /\{\{cli\}\}/);
+  });
+});
