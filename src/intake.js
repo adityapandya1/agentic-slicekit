@@ -162,7 +162,7 @@ function readSource(root, source) {
 
 // The `.gitattributes` rule that keeps every intake file byte for byte in every clone: without it a
 // `text=auto` or `core.autocrlf` setting rewrites line endings and the sidecar's SHA-256 stops
-// matching. `init` writes its own rules; this one is written here, when a snapshot is taken.
+// matching. init writes it too (S-14); a snapshot adds it when it is missing.
 const squash = (line) => line.trim().replace(/\s+/g, ' ');
 const holdsRule = (text, rule) => text.split(/\r?\n/).some((l) => squash(l) === rule || squash(l) === `/${rule}`);
 

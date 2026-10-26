@@ -590,4 +590,38 @@ test('the procedure passes the brief lint', async () => {
   const order = ['branch spec', 'intake snapshot', 'intake ask --pass product', 'intake ask --pass platform', 'intake done'].map((s) => text.indexOf(s));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.ok(!order.includes(-1));
+  assert.ok(text.includes('`<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`.'));
+});
+
+test('the procedure lists the sections the platform and observability templates hold', () => {
+  const text = fs.readFileSync(new URL('../../templates/instructions/commands/intake.md', import.meta.url), 'utf8');
+  const lines = text.split(/\r?\n/);
+  for (const name of ['platform.md', 'observability.md']) {
+    const at = lines.findIndex((l) => l === `The sections of \`<docsRoot>/${name}\`:`);
+    assert.notEqual(at, -1, `the procedure introduces the sections of ${name}`);
+    const bullets = [];
+    for (let i = at + 1; i < lines.length; i++) {
+      if (lines[i] === '' && bullets.length === 0) continue;
+      const m = /^- (.+)$/.exec(lines[i]);
+      if (!m) break;
+      bullets.push(m[1]);
+    }
+    const headings = template(name).split(/\r?\n/).filter((l) => l.startsWith('## ')).map((l) => l.slice(3).trim());
+    assert.deepEqual(bullets, headings, name);
+  }
+});
+
+test('an untracked source survives the branch step', async () => {
+  await withRepo(
+    async (root) => {
+      fs.writeFileSync(path.join(root, 'req.md'), '# Orders\n');
+      const b = await cli(root, ['branch', 'spec', 'demo']);
+      assert.equal(b.code, 0, b.stderr);
+      assert.equal(first(b), 'spec/demo');
+      const s = await cli(root, ['intake', 'snapshot', 'req.md']);
+      assert.equal(s.code, 0, s.stderr);
+      assert.equal(first(s), `docs/intake/${DATE}-req.md`);
+    },
+    { branch: 'main', files: docs() },
+  );
 });

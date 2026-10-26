@@ -77,11 +77,19 @@ test('branch starts from the default branch and refuses a dirty tree', async () 
       // No upstream is set, so a later push cannot land on main.
       assert.throws(() => git(root, ['rev-parse', '--abbrev-ref', '@{u}']), GitError);
 
+      // An untracked file is carried to the new branch, as git carries it.
       fs.writeFileSync(path.join(root, 'stray.txt'), 'x');
+      const carried = await cli(root, ['branch', 'gaps', 'carry']);
+      assert.equal(carried.code, 0, carried.stderr);
+      assert.equal(currentBranch(root), 'gaps/carry');
+      assert.equal(fs.readFileSync(path.join(root, 'stray.txt'), 'utf8'), 'x');
+
+      // A change to a tracked file is refused.
+      fs.appendFileSync(path.join(root, '.slicekit', 'config.json'), '\n');
       const dirty = await cli(root, ['branch', 'plan', 'next']);
       assert.equal(dirty.code, 1);
       assert.match(dirty.stderr, /commit or stash your changes first/);
-      assert.equal(currentBranch(root), 'spec/demo');
+      assert.equal(currentBranch(root), 'gaps/carry');
       assert.throws(() => git(root, ['rev-parse', '--verify', 'refs/heads/plan/next']), GitError);
     },
     { remote: true },

@@ -1,8 +1,9 @@
 // `slicekit branch <spec|gaps|plan> <slug>` (REQ-2.3..REQ-2.5): puts the session on the work branch
 // of a document pull request, cut from the default branch as origin has it. The command owns git
-// (D-19); a clean tree is required so nothing is carried across.
+// (D-19). A change to a tracked file (staged or not) is refused, so no edit is carried across;
+// untracked files go along as git carries them, so a source dropped in for intake survives.
 import { ConfigError, loadConfig } from '../config.js';
-import { GitError, assertRef, currentBranch, git, hasRemote, isClean, switchBranch } from '../git.js';
+import { GitError, assertRef, currentBranch, git, hasRemote, switchBranch } from '../git.js';
 
 const KINDS = ['spec', 'gaps', 'plan'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,59}$/;
@@ -37,7 +38,7 @@ async function run(args, io) {
       io.stdout(`${target}\n`);
       return 0;
     }
-    if (!isClean(root)) {
+    if (git(root, ['status', '--porcelain', '--untracked-files=no']) !== '') {
       io.stderr('slicekit: commit or stash your changes first\n');
       return 1;
     }

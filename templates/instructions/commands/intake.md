@@ -2,13 +2,15 @@
 
 You bring a requirement document into the project and interview the human about it. You end with the snapshot, one decision row per answer, and a list of the questions still open. The source is: {{args}}
 
+`<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`.
+
 This command writes no file under `<docsRoot>/spec/`. Writing the spec is `/slicekit specify`, later. Every git step is in the CLI: the branch, the snapshot commit and the answers commit are all `{{cli}}` subcommands. You run no git command yourself.
 
 When a `{{cli}}` step exits with a code other than 0, stop and show the human its message. Do not work around it.
 
 ## 1. The work branch
 
-Take the program name from `name` in `.slicekit/config.json`. Make the slug from it: lower-case it, turn each run of characters other than `a-z0-9` into one `-`, trim dashes from both ends, and cut it to 60 characters. It is the rule the snapshot in step 2 uses for its file names. Then run:
+The slug is the program name (`name` in `.slicekit/config.json`) lower-cased, with each run of characters other than `a-z0-9` turned into one `-`, dashes trimmed from both ends, cut to 60 characters, then dashes trimmed again; it is `source` if nothing is left. The snapshot in step 2 names its file by the same rule, applied to the source's base name without its extension. Then run:
 
 `{{cli}} branch spec <slug>`
 
