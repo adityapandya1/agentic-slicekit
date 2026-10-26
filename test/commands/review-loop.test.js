@@ -192,6 +192,7 @@ test('a finding that disappears and comes back takes a new number', async () => 
     const ok = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
     assert.deepEqual(ok.blockers, ['B-3']);
     assert.equal(ok.roundsUsed, 2);
+    assert.equal(ok.next, 'fix');
     assert.equal(stateIn(p.wt).verdicts.at(-1).independent, true);
   } finally {
     p.cleanup();
@@ -401,15 +402,49 @@ test('a blocker fixed in round 2 is named as fixed', async () => {
   try {
     const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x returns the wrong value']])));
     assert.equal(one.code, 0, one.stderr);
-    // Nothing was fixed or left unfixed yet, so the line is unchanged and the body is not rewritten.
-    assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'nothing');
-    assert.equal(bodyUpdates(p).length, 0);
+    // While the loop runs, an open blocker shows as open after its round.
+    assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'B-1 x returns the wrong value — open after round 1');
+    assert.equal(bodyUpdates(p).length, 1);
     await fixPush(p, 1);
     const two = await p.verdict(review(p, 2, verdictText('APPROVE')));
     assert.equal(two.code, 0, two.stderr);
     const pr = prIn(p);
     assert.equal(getSection(pr.body, 'Reviewer blocked'), 'B-1 x returns the wrong value — fixed in round 2');
     assert.deepEqual(prBodyProblems(pr.title, pr.body, {}), []);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// D-18 caps the in-loop rounds only: an independent verdict with blockers asks for a fix, whatever
+// the in-loop count, and never stops the loop.
+test('an independent verdict after two rounds asks for a fix and does not stop the loop', async () => {
+  const p = await drafted();
+  try {
+    const cfg = loadConfig(p.root);
+    const host = getHost(cfg, p.env, p.root);
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x is wrong']])));
+    assert.equal(one.code, 0, one.stderr);
+    await fixPush(p, 1);
+    const two = await p.verdict(review(p, 2, verdictText('APPROVE')));
+    assert.equal(two.code, 0, two.stderr);
+    // The independent review is given on a pushed head, so the slice goes back through build pr.
+    await fixPush(p, 2);
+
+    const file = `${REVIEWS}/P1-S-01i-r3.md`;
+    write(p.root, file, verdictText('BLOCK', [['B-3', 'z is wrong']]));
+    const before = stateIn(p.wt).verdicts.length;
+    // recordVerdict throws on every refusal and the CLI exits 1 only on `stuck`, so `fix` is exit 0.
+    const r = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
+    assert.equal(r.next, 'fix');
+    assert.deepEqual(r.blockers, ['B-3']);
+    assert.equal(r.roundsUsed, 2);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+    assert.equal(stateIn(p.wt).verdicts.length, before + 1);
+    assert.equal(
+      getSection(prIn(p).body, 'Reviewer blocked'),
+      'B-1 x is wrong — fixed in round 2; B-3 z is wrong — open after round 3',
+    );
   } finally {
     p.cleanup();
   }

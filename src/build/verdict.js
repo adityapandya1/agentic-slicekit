@@ -110,12 +110,13 @@ function verdictSource(wt, id, k, src, dest, rel, shown) {
 
 const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 
-function outcome(k, v, verdicts) {
+// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never `stuck`.
+function outcome(k, v, verdicts, independent) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
   const shouldHaves = v.findings.filter((f) => f.kind === 'should-have').map((f) => f.id);
   const roundsUsed = inLoop(verdicts);
   let next = 'ci';
-  if (blockers.length > 0) next = roundsUsed < LOOP_ROUNDS ? 'fix' : 'stuck';
+  if (blockers.length > 0) next = independent || roundsUsed < LOOP_ROUNDS ? 'fix' : 'stuck';
   else if (shouldHaves.length > 0) next = 'ask';
   return { round: k, blockers, shouldHaves, roundsUsed, next };
 }
@@ -126,8 +127,9 @@ const blockersOf = (v) => (v?.findings ?? []).filter((f) => f.kind === 'blocker'
 
 // The pull request body's "Reviewer blocked" (REQ-2.10) over the slice's verdicts in round order,
 // each `{round, findings}` with findings as parseVerdict reads them. A blocker of an earlier round
-// that the latest does not hold is fixed in the round after its last appearance; when the loop
-// stopped (`stuck`), each blocker of the latest is not fixed. `nothing` when neither applies.
+// that the latest does not hold is fixed in the round after its last appearance; each blocker of the
+// latest is open after that round, or not fixed when the loop stopped (`stuck`). `nothing` when there
+// are none.
 export function reviewerBlocked(verdicts, { stuck = false } = {}) {
   const sorted = [...verdicts].sort((a, b) => a.round - b.round);
   const latest = sorted.at(-1);
@@ -140,7 +142,9 @@ export function reviewerBlocked(verdicts, { stuck = false } = {}) {
     }
   });
   const out = [...fixed.values()];
-  if (stuck) for (const f of blockersOf(latest)) out.push(`${f.id} ${f.wrong} — not fixed after round ${LOOP_ROUNDS}`);
+  for (const f of blockersOf(latest)) {
+    out.push(stuck ? `${f.id} ${f.wrong} — not fixed after round ${LOOP_ROUNDS}` : `${f.id} ${f.wrong} — open after round ${latest.round}`);
+  }
   return out.length > 0 ? out.join('; ') : 'nothing';
 }
 
@@ -172,7 +176,7 @@ function finish(wt, cfg, host, id, current, result, verdicts) {
 }
 
 // -> {round, blockers, shouldHaves, roundsUsed, next}: `blockers` and `shouldHaves` are finding IDs;
-// `next` is `fix`, `ask`, `ci`, or `stuck` when blockers survive the last in-loop round.
+// `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
 export function recordVerdict(root, cfg, host, id, file, { worktree, independent = false } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const shown = typeof file === 'string' ? file.split(path.sep).join('/') : String(file);
@@ -197,7 +201,7 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return finish(wt, cfg, host, id, current, outcome(k, v, verdicts), verdicts);
+    return finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
@@ -222,5 +226,5 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts), state.verdicts);
+  return finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts);
 }
