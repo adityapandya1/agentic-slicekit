@@ -98,7 +98,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25); a file under `<docsRoot>/intake/` whose sidecar's SHA-256 matches its bytes is exempt because it is frozen (REQ-1.2), and one without a valid sidecar is checked like any doc |
 | queue | `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
-| coverage | at plan stage or later, a REQ named by no slice, a slice listing no expected changes, or two slices in one parallel group expecting the same path (REQ-2.5) |
+| coverage | at plan stage or later, a REQ named by no slice, a slice listing no expected changes, a slice whose evaluation set has no `happy` or no `negative` test, a phase whose Order line misses, repeats or names a group no slice has, or two slices in one parallel group, or in one step of the phase's Order line, expecting the same path (REQ-2.5) |
 | trailer | on a slice branch, a first-parent commit not reachable from the default branch, local or on origin, whose `Slice:` trailer, as git reads it, is missing or names another slice; merge commits are exempt |
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |

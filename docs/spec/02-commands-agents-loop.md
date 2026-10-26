@@ -123,12 +123,12 @@ Enforced by: the command; `slicekit state set` preconditions (REQ-1.8).
 
 ## REQ-2.7 `/slicekit build --parallel P<n>`
 
-SHALL run step 1 to step 5 of REQ-2.6 for every `todo` slice in one parallel group at once, each in
+SHALL run step 1 to step 5 of REQ-2.6 for every runnable slice of one Order step at once, each in
 its own worktree, then run steps 6 to 9 for each in turn (D-06). State files are per slice so the
 runs never write the same file. If two runs modify the same path despite the plan, the second to
 push SHALL stop and report the overlap as a plan defect.
 
-Scenario: GIVEN two slices in one parallel group that both change `src/billing/` WHEN <!-- slicekit:example -->
+Scenario: GIVEN two slices of one Order step that both change `src/billing/` WHEN <!-- slicekit:example -->
 `/slicekit build --parallel P1` pushes the second THEN that run stops and reports the overlap as a
 plan defect.
 

@@ -13,7 +13,7 @@ const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
 const PLAN = ['after-intake', 'after-plan'];
 
-const slice = (id, { group = 'B', requirements = '[REQ-1.1]', changes = ['src/a.js'] } = {}) => `---
+const slice = (id, { group = 'B', requirements = '[REQ-1.1]', changes = ['src/a.js'], kinds = ['happy', 'negative'] } = {}) => `---
 slice: ${id}
 name: Fixture ${id}
 repo: .
@@ -31,7 +31,7 @@ decisions: [D-01]
 
 | Test | Kind | Covers |
 |---|---|---|
-| \`a.test.js » works\` | happy | REQ-1.1 |
+${kinds.map((k) => `| \`a.test.js » ${k}\` | ${k} | REQ-1.1 |`).join('\n')}
 
 ## Expected changes
 
@@ -95,7 +95,7 @@ test('uncovered REQ after plan is a finding', () => {
 test('the plan branch is checked before it merges', () => {
   // main holds the plan; a slice file written on the plan branch, not yet committed, overlaps S-01.
   const out = findings(PLAN, { after: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02') } });
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 23, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' }]);
 });
 
 test('a brace pattern is expanded before comparing', () => {
@@ -105,7 +105,7 @@ test('a brace pattern is expanded before comparing', () => {
       'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['src/x.js', 'src/cli/status.js'] }),
     },
   });
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/cli/status.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 25, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/cli/status.js' }]);
 });
 
 test('nested and repeated brace groups are expanded fully', () => {
@@ -121,12 +121,12 @@ test('an overlap that only a nested expansion reveals is a finding', () => {
       'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['src/x.js', 'src/b/d.js'] }),
     },
   });
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/b/d.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 25, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/b/d.js' }]);
 });
 
 test('a slice that lists no expected changes is a finding', () => {
   const empty = findings(PLAN, { files: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: [] }) } });
-  assert.deepEqual(empty, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 21, message: 'slice P1/S-02 lists no expected changes' }]);
+  assert.deepEqual(empty, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 22, message: 'slice P1/S-02 lists no expected changes' }]);
   const missing = findings(PLAN, {
     files: { 'docs/phases/P1-x/S-02-b.md': slice('P1/S-02').replace(/## Expected changes[\s\S]*$/, '') },
   });
@@ -153,8 +153,8 @@ test('overlapping expected changes in one group is a finding', () => {
     },
   });
   assert.deepEqual(out, [
-    { file: 'docs/phases/P1-x/S-02-b.md', line: 23, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/billing/invoice.js' },
-    { file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' },
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/billing/invoice.js' },
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 25, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/a.js' },
   ]);
   // A path segment is not a prefix of a longer segment: `src/a` and `src/ab.js` do not overlap.
   const apart = findings(PLAN, {
@@ -200,7 +200,7 @@ test('test/ and src/cli/index.js never overlap', () => {
     },
   });
   // The rule is speaking (src/x.js is reported), and nothing else the two share is.
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 27, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 28, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
 });
 
 test('the runbook never overlaps, wherever the docs root is', () => {
@@ -210,7 +210,7 @@ test('the runbook never overlaps, wherever the docs root is', () => {
       'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { changes: ['./docs/runbook.md', 'src/x.js'] }),
     },
   });
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-02-b.md', line: 25, message: 'slices P1/S-01 and P1/S-02 in group B both expect src/x.js' }]);
 
   // Under another docs root the runbook is `handbook/runbook.md`; `docs/runbook.md` is then an
   // ordinary path and still overlaps.
@@ -222,7 +222,7 @@ test('the runbook never overlaps, wherever the docs root is', () => {
     },
   });
   assert.deepEqual(moved, [
-    { file: 'handbook/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in group B both expect docs/runbook.md' },
+    { file: 'handbook/phases/P1-x/S-02-b.md', line: 25, message: 'slices P1/S-01 and P1/S-02 in group B both expect docs/runbook.md' },
   ]);
 });
 
@@ -234,7 +234,7 @@ test('different groups may overlap', () => {
     },
   });
   // S-01 (group B) and S-02 (group C) both expect src/a.js: not a finding. S-02 and S-03 share group C.
-  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-03-c.md', line: 23, message: 'slices P1/S-02 and P1/S-03 in group C both expect src/c.js' }]);
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-03-c.md', line: 24, message: 'slices P1/S-02 and P1/S-03 in group C both expect src/c.js' }]);
 });
 
 test('an unparseable slice file is a finding, not a crash', () => {
@@ -249,4 +249,53 @@ test('an unparseable slice file is a finding, not a crash', () => {
   assert.equal(out[0].file, 'docs/phases/P1-x/S-02-b.md');
   assert.equal(out[0].line, 1);
   assert.match(out[0].message, /^slice file cannot be read: .*missing front-matter field "name"/);
+});
+
+const phase = (order) => `# Phase 1 — X
+
+${order === null ? 'No Order line.' : `**Order:** ${order}`}
+`;
+
+test('a slice with no negative test is a finding', () => {
+  // REQ-2.5: each slice's evaluation set has at least one happy and one negative test.
+  const out = findings(PLAN, { files: { 'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { kinds: ['happy'] }) } });
+  assert.deepEqual(out, [{ file: 'docs/phases/P1-x/S-01-a.md', line: 1, message: 'slice P1/S-01 has no negative test' }]);
+  const noHappy = findings(PLAN, { files: { 'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { kinds: ['negative', 'e2e'] }) } });
+  assert.deepEqual(noHappy, [{ file: 'docs/phases/P1-x/S-01-a.md', line: 1, message: 'slice P1/S-01 has no happy test' }]);
+  // Before plan, silent like the rule's other findings.
+  const early = findings(PLAN, { commit: false, files: { 'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { kinds: ['happy'] }) } });
+  assert.deepEqual(early, []);
+});
+
+test('an Order line missing a group is a finding', () => {
+  // REQ-2.5 / D-38: the Order line names every group of the phase once, and only groups a slice has.
+  const two = {
+    'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { group: 'A' }),
+    'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { group: 'B', changes: ['src/b.js'] }),
+  };
+  const at = (message) => [{ file: 'docs/phases/P1-x/P1.md', line: 3, message }];
+  assert.deepEqual(findings(PLAN, { files: { ...two, 'docs/phases/P1-x/P1.md': phase('A') } }), at('phase P1 Order line does not name group B'));
+  assert.deepEqual(findings(PLAN, { files: { ...two, 'docs/phases/P1-x/P1.md': phase('A; B; B') } }), at('phase P1 Order line names group B twice'));
+  assert.deepEqual(
+    findings(PLAN, { files: { ...two, 'docs/phases/P1-x/P1.md': phase('A; B, C') } }),
+    at('phase P1 Order line names group C, which no slice has'),
+  );
+  // A complete line, and a phase with no Order line, give nothing.
+  assert.deepEqual(findings(PLAN, { files: { ...two, 'docs/phases/P1-x/P1.md': phase('A; B') } }), []);
+  assert.deepEqual(findings(PLAN, { files: { ...two, 'docs/phases/P1-x/P1.md': phase(null) } }), []);
+});
+
+test('slices in one Order step are checked for overlap', () => {
+  // D-38: the groups of one step run at the same time, so their slices must not share a path.
+  const files = {
+    'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { group: 'B', changes: ['src/x.js'] }),
+    'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { group: 'C', changes: ['src/x.js'] }),
+    'docs/phases/P1-x/S-03-c.md': slice('P1/S-03', { group: 'A', changes: ['src/x.js'] }),
+  };
+  assert.deepEqual(findings(PLAN, { files: { ...files, 'docs/phases/P1-x/P1.md': phase('A; B, C') } }), [
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in step B, C both expect src/x.js' },
+  ]);
+  assert.deepEqual(findings(PLAN, { files: { ...files, 'docs/phases/P1-x/P1.md': phase('A; B; C') } }), []);
+  // Without an Order line each group is its own step: B and C do not overlap.
+  assert.deepEqual(findings(PLAN, { files: { ...files, 'docs/phases/P1-x/P1.md': phase(null) } }), []);
 });
