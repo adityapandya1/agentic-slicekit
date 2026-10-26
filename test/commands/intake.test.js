@@ -290,3 +290,136 @@ test('a snapshot never sweeps uncommitted .gitattributes edits into its commit',
     assert.match(r.stderr, /\.gitattributes has uncommitted changes/);
   });
 });
+
+// ---- the interview (REQ-2.2) ----
+
+const template = (name) => fs.readFileSync(new URL(`../../templates/docs/${name}`, import.meta.url), 'utf8');
+const docs = () => ({
+  'docs/decisions.md': template('decisions.md'),
+  'docs/platform.md': template('platform.md'),
+  'docs/observability.md': template('observability.md'),
+  'docs/spec/stack.md': '# Stack\n',
+});
+const decisionsText = (root) => fs.readFileSync(path.join(root, 'docs', 'decisions.md'), 'utf8');
+const sessionFile = (root) => path.join(root, '.slicekit', 'interview.json');
+const specList = (root) => fs.readdirSync(path.join(root, 'docs', 'spec'), { recursive: true }).sort();
+const ask = (root, pass, topic, question) => cli(root, ['intake', 'ask', '--pass', pass, '--topic', topic, '--question', question]);
+const answer = (root, ...args) => cli(root, ['intake', 'answer', ...args]);
+
+test('the snapshot and its sidecar are written and no spec file is created', async () => {
+  await withRepo(
+    async (root) => {
+      const before = specList(root);
+      fs.writeFileSync(path.join(root, 'req.md'), '# Orders\n\nThe service stores orders.\n');
+      const s = await cli(root, ['intake', 'snapshot', 'req.md']);
+      assert.equal(s.code, 0, s.stderr);
+      const snap = first(s);
+
+      const q1 = await ask(root, 'product', 'purpose', 'What is the service for?');
+      assert.equal(q1.code, 0, q1.stderr);
+      assert.equal(first(q1), 'question 1');
+      const a1 = await answer(root, '--answer', 'Storing orders.', '--who', 'Ada');
+      assert.equal(a1.code, 0, a1.stderr);
+      assert.match(first(a1), /^D-\d+$/);
+
+      const q2 = await ask(root, 'platform', 'hosting', 'Where does it run?');
+      assert.equal(first(q2), 'question 2');
+      const a2 = await answer(root, '--answer', 'One container on Fly.', '--type', 'Information', '--who', 'Ada');
+      assert.equal(a2.code, 0, a2.stderr);
+      // The platform pass writes its answer into platform.md; done commits it.
+      fs.appendFileSync(path.join(root, 'docs', 'platform.md'), `\nHosting: one container on Fly (${first(a2)}).\n`);
+
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 0, d.stderr);
+      assert.equal(d.stdout, 'open: none\n');
+
+      assert.ok(fs.existsSync(path.join(root, snap)));
+      assert.ok(fs.existsSync(path.join(root, `${snap}.meta.json`)));
+      const settled = decisionsText(root).split('\n').filter((l) => /^\| D-\d+ \|/.test(l));
+      assert.deepEqual(settled, [
+        `| ${first(a1)} | Decision | What is the service for? | Storing orders. | Ada, ${DATE} |`,
+        `| ${first(a2)} | Information | Where does it run? | One container on Fly. | Ada, ${DATE} |`,
+      ]);
+      assert.deepEqual(specList(root), before);
+      assert.equal(fs.existsSync(sessionFile(root)), false);
+      assert.equal(git(root, ['log', '-1', '--format=%s']), 'docs(intake): interview answers');
+      assert.equal(git(root, ['status', '--porcelain']), '?? req.md');
+    },
+    { files: docs() },
+  );
+});
+
+test('the next question is refused while the last answer has no D row', async () => {
+  await withRepo(
+    async (root) => {
+      const before = decisionsText(root);
+      assert.equal((await ask(root, 'product', 'purpose', 'What is it for?')).code, 0);
+      const r = await ask(root, 'product', 'users', 'Who uses it?');
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /answer the last question first: "What is it for\?" has no decision row/);
+      assert.equal(decisionsText(root), before);
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 1);
+      assert.match(d.stderr, /answer the last question first/);
+    },
+    { files: docs() },
+  );
+});
+
+test('a platform question closes the product pass', async () => {
+  await withRepo(
+    async (root) => {
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      await answer(root, '--answer', 'Orders.');
+      await ask(root, 'platform', 'hosting', 'Where does it run?');
+      await answer(root, '--answer', 'Fly.');
+      const r = await ask(root, 'product', 'users', 'Who uses it?');
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /the product pass is closed; ask platform questions now/);
+    },
+    { files: docs() },
+  );
+});
+
+test('done refuses when a spec file appeared during the interview', async () => {
+  await withRepo(
+    async (root) => {
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      fs.writeFileSync(path.join(root, 'docs', 'spec', 'x.md'), '# X\n');
+      await answer(root, '--answer', 'Orders.');
+      await ask(root, 'platform', 'hosting', 'Where does it run?');
+      await answer(root, '--answer', 'Fly.');
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 1);
+      assert.match(d.stderr, /intake writes no spec text; remove docs\/spec\/x\.md/);
+      assert.ok(fs.existsSync(sessionFile(root)));
+    },
+    { files: docs() },
+  );
+});
+
+test('an open answer is listed by done, and each pass must ask something', async () => {
+  await withRepo(
+    async (root) => {
+      const none = await answer(root, '--answer', 'x');
+      assert.equal(none.code, 1);
+      assert.match(none.stderr, /no question is waiting for an answer/);
+      assert.equal((await ask(root, 'design', 'x', 'y')).code, 2);
+
+      await ask(root, 'product', 'constraints', 'What budget is there?');
+      const a = await answer(root, '--open', '--why', 'It sets the hosting.', '--recommendation', 'Ask finance.');
+      assert.equal(a.code, 0, a.stderr);
+      const early = await cli(root, ['intake', 'done']);
+      assert.equal(early.code, 1);
+      assert.match(early.stderr, /the platform pass asked nothing/);
+
+      await ask(root, 'platform', 'logs', 'Where do logs go?');
+      await answer(root, '--answer', 'Grafana.');
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 0, d.stderr);
+      assert.equal(d.stdout, `open: ${first(a)} What budget is there?\n`);
+      assert.ok(decisionsText(root).includes(`| ${first(a)} | Open | What budget is there? | It sets the hosting. | Ask finance. |`));
+    },
+    { files: docs() },
+  );
+});

@@ -3,6 +3,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { addDecision, readDecisions } from './decisions.js';
+import { listFiles } from './fs.js';
 import { GitError, commitPaths, currentBranch, git, gitUser } from './git.js';
 import { kitPaths } from './paths.js';
 
@@ -188,6 +190,13 @@ function textAttribute(root, rel) {
   return out.slice(out.lastIndexOf(': ') + 2);
 }
 
+function onWorkBranch(root, cfg, what) {
+  const branch = currentBranch(root);
+  if (branch === null || branch === cfg.defaultBranch || cfg.protectedBranches.includes(branch)) {
+    throw new IntakeError(1, `${what} on a work branch; run slicekit branch spec <slug>`);
+  }
+}
+
 // Copies `source` (a file path, or an http(s) URL) into `<docsRoot>/intake/` as
 // `<UTC date>-<slug>.<ext>` with a sidecar `<name>.meta.json` holding {origin, [finalUrl,] sha256,
 // by, at}, and commits both. A snapshot is never overwritten: the same bytes under the same name are
@@ -197,10 +206,7 @@ export async function snapshot(root, cfg, source, { slug, who, now = new Date(),
   if (slug !== undefined && !SLUG.test(slug)) {
     throw new IntakeError(2, `slug '${slug}' must be lowercase letters, digits and dashes, at most 60, not starting with a dash`);
   }
-  const branch = currentBranch(root);
-  if (branch === null || branch === cfg.defaultBranch || cfg.protectedBranches.includes(branch)) {
-    throw new IntakeError(1, 'snapshot on a work branch; run slicekit branch spec <slug>');
-  }
+  onWorkBranch(root, cfg, 'snapshot');
   const dir = kitPaths(root, cfg).intake;
   const rule = `${posix(path.relative(root, dir))}/** -text`;
   // The snapshot commit carries .gitattributes when it adds the rule: a person's other edits to it
@@ -247,4 +253,106 @@ export async function snapshot(root, cfg, source, { slug, who, now = new Date(),
   const paths = [fileRel, sidecarRel, ...(committedHoldsRule(root, rule) ? [] : ['.gitattributes'])];
   commitPaths(root, paths, `docs(intake): snapshot ${name}`);
   return { file, sidecar, created };
+}
+
+// ---- the interview (REQ-2.2) ----
+// One question waits at a time, and it cannot be followed by another until its answer is a D row.
+// The product pass comes first; the first platform question closes it. The session lives in
+// `.slicekit/interview.json` as {startedAt, specFiles, pending, asked}.
+
+const PASSES = ['product', 'platform'];
+const sessionPath = (root, cfg) => path.join(kitPaths(root, cfg).kit, 'interview.json');
+
+function specFilesNow(root, cfg) {
+  const dir = kitPaths(root, cfg).spec;
+  if (!fs.existsSync(dir)) return [];
+  const base = posix(path.relative(root, dir));
+  return listFiles(dir).map((f) => `${base}/${f}`);
+}
+
+function readSession(root, cfg) {
+  const file = sessionPath(root, cfg);
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    throw new IntakeError(1, `${posix(path.relative(root, file))} is not valid JSON; delete it to start the interview again`);
+  }
+}
+
+function writeSession(root, cfg, session) {
+  const file = sessionPath(root, cfg);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(session, null, 2)}\n`);
+}
+
+const waiting = (session) =>
+  new IntakeError(1, `answer the last question first: "${session.pending.question}" has no decision row`);
+
+function oneLineText(field, value) {
+  if (typeof value !== 'string' || value.trim() === '') throw new IntakeError(2, `${field} is required`);
+  if (/[\r\n]/.test(value)) throw new IntakeError(2, `${field} must be one line`);
+  return value.trim();
+}
+
+// Holds `question` as the one waiting for an answer; returns its number in the session.
+export function ask(root, cfg, { pass, topic, question, now = new Date() } = {}) {
+  if (!PASSES.includes(pass)) throw new IntakeError(2, `pass must be product or platform, not '${pass}'`);
+  const t = oneLineText('topic', topic);
+  const q = oneLineText('question', question);
+  const session = readSession(root, cfg) ?? { startedAt: now.toISOString(), specFiles: specFilesNow(root, cfg), pending: null, asked: [] };
+  if (session.pending) throw waiting(session);
+  if (pass === 'product' && session.asked.some((a) => a.pass === 'platform')) {
+    throw new IntakeError(1, 'the product pass is closed; ask platform questions now');
+  }
+  session.pending = { pass, topic: t, question: q };
+  writeSession(root, cfg, session);
+  return { n: session.asked.length + 1 };
+}
+
+// Writes the waiting question's answer as a D row through addDecision, then clears it. An `open`
+// answer is an Open row with `why` and `recommendation`.
+export function answer(root, cfg, { answer: text, type, who, open = false, why, recommendation, iface, now = new Date() } = {}) {
+  const session = readSession(root, cfg);
+  if (!session?.pending) throw new IntakeError(1, 'no question is waiting for an answer');
+  const { id } = addDecision(root, cfg, {
+    type: type ?? (open ? 'Open' : 'Decision'),
+    open,
+    question: session.pending.question,
+    ...(open ? { why, recommendation } : { answer: text }),
+    who: who || undefined,
+    iface,
+    today: now.toISOString().slice(0, 10),
+  });
+  session.asked.push({ ...session.pending, decision: id });
+  session.pending = null;
+  writeSession(root, cfg, session);
+  return { id };
+}
+
+// Ends the interview: refuses while a question waits, while a pass asked nothing, or when a file
+// appeared under the spec directory; otherwise commits the answers and returns the session's open rows.
+export function done(root, cfg) {
+  const session = readSession(root, cfg);
+  if (!session) throw new IntakeError(1, 'no interview is under way; run slicekit intake ask first');
+  if (session.pending) throw waiting(session);
+  for (const pass of PASSES) {
+    if (!session.asked.some((a) => a.pass === pass)) throw new IntakeError(1, `the ${pass} pass asked nothing`);
+  }
+  const known = new Set(session.specFiles);
+  const added = specFilesNow(root, cfg).find((f) => !known.has(f));
+  if (added) throw new IntakeError(1, `intake writes no spec text; remove ${added}`);
+  onWorkBranch(root, cfg, 'interview answers');
+
+  const paths = kitPaths(root, cfg);
+  const rows = readDecisions(fs.readFileSync(paths.decisions, 'utf8')).rows;
+  const open = session.asked
+    .filter((a) => rows.some((r) => r.id === a.decision && r.table === 'open'))
+    .map((a) => ({ id: a.decision, question: a.question }));
+  const files = [paths.decisions, paths.platform, paths.observability]
+    .filter((f) => fs.existsSync(f))
+    .map((f) => posix(path.relative(root, f)));
+  const commit = commitPaths(root, files, 'docs(intake): interview answers');
+  fs.rmSync(sessionPath(root, cfg), { force: true });
+  return { open, commit };
 }
