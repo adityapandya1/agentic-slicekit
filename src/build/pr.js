@@ -6,13 +6,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { check } from '../check/index.js';
-import { git, headSha, pushBranch, pushTarget } from '../git.js';
+import { behindUpstream, git, headSha, pushBranch, pushTarget } from '../git.js';
 import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { openOrUpdate } from '../pr.js';
 import { PrBodyError, getSection, renderPrBody } from '../prbody.js';
 import { readSlice } from '../state/index.js';
-import { sameSha } from '../evidence.js';
+import { headCovers } from '../state/covers.js';
 import { posixRel, runCommand, sliceIn, unusableRun } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
 import { BuildError, findWorktree } from './worktree.js';
@@ -53,12 +53,17 @@ const lines = (out) => out.split('\n').filter((l) => l !== '');
 // The worktree is clean, or holds only the state file and BUILD.md of a draft-pr recording whose
 // bookkeeping commit did not land: that commit is made now.
 function cleanOrFinish(wt, cfg, id, current) {
-  const dirty = lines(git(wt, ['status', '--porcelain', '--untracked-files=all']));
-  if (dirty.length === 0) return;
+  // Paths from name lists, never from status columns: git() trims its output, and a leading space
+  // is part of the first porcelain line.
+  const changed = [
+    ...lines(git(wt, ['diff', '--name-only', '--no-renames', 'HEAD'])),
+    ...lines(git(wt, ['ls-files', '--others', '--exclude-standard'])),
+  ];
+  const files = [...new Set(changed)];
+  if (files.length === 0) return;
   const paths = kitPaths(wt, cfg);
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
-  const files = dirty.map((l) => l.slice(3));
   const onlyBookkeeping = files.includes(stateRel) && files.every((f) => f === stateRel || f === buildRel);
   if (current.state === 'draft-pr' && onlyBookkeeping && pendingDraftPr(wt, stateRel, current)) {
     commitBookkeeping(wt, id, 'draft-pr', files);
@@ -97,7 +102,16 @@ function runbookChanged(wt, cfg, rel) {
   return git(wt, ['--literal-pathspecs', 'diff', '--name-only', base, 'HEAD', '--', rel]) !== '';
 }
 
-// Each declared command in the worktree; -> the test run's summary.
+// The test run's pass and fail totals, from the last line naming each; the summary line when the
+// output does not name both on separate lines.
+function proofSummary(run) {
+  const all = run.output.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
+  const pass = all.filter((l) => /\bpass(ed|es|ing)?\b/i.test(l)).at(-1);
+  const fail = all.filter((l) => /\bfail(ed|s|ures?)?\b/i.test(l)).at(-1);
+  return pass && fail && pass !== fail ? `${pass} · ${fail}` : run.summary;
+}
+
+// Each declared command in the worktree; -> the test run's pass and fail totals.
 function runCommands(wt, cfg) {
   const commands = cfg.commands ?? {};
   if (!text(commands.test)) throw new BuildError('commands.test is not declared in .slicekit/config.json');
@@ -109,7 +123,7 @@ function runCommands(wt, cfg) {
     const unusable = unusableRun(command, run);
     if (unusable) throw unusable;
     if (run.exit !== 0) throw new BuildError(`${name} failed (exit ${run.exit}): ${run.summary}`);
-    if (name === 'test') summary = run.summary;
+    if (name === 'test') summary = proofSummary(run);
   }
   return summary;
 }
@@ -131,9 +145,12 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   // After a verdict, a return to draft-pr needs a new head (the state refuses the same one): refused
   // here, before the push, rather than after it.
   const afterReview = current.state !== 'building' && current.state !== 'draft-pr';
-  if (afterReview && current.pr && sameSha(headSha(wt), current.pr.headSha)) {
-    throw new BuildError(`${id} has nothing new since ${current.pr.headSha.slice(0, 7)}; push a fix to return to draft-pr`);
+  // A head that adds only bookkeeping (a verdict, the state, BUILD.md) to the reviewed one is the same work.
+  if (afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt))) {
+    throw new BuildError(`${id} has nothing new since review of ${current.pr.headSha.slice(0, 7)}; push a fix to return to draft-pr`);
   }
+  const { target } = pushTarget(wt);
+  if (behindUpstream(wt) > 0) throw new BuildError(`origin/${target} has commits this worktree does not: pull first`);
 
   const runbookRel = cfg.docsRoot === '.' ? 'runbook.md' : `${cfg.docsRoot}/runbook.md`;
   const changed = runbookChanged(wt, cfg, runbookRel);
@@ -144,7 +161,6 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   checkClean(wt);
 
   // The pull request already open for the branch: the recorded one once there is a recording.
-  const { target } = pushTarget(wt);
   const open = host.pullRequestForBranch(target);
   if (current.state !== 'building' && (!open || open.number !== current.pr?.number)) {
     throw new BuildError(`pull request #${current.pr?.number} of ${id} is not open for ${target}`);

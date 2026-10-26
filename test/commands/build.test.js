@@ -9,6 +9,7 @@ import { init as initKit } from '../../src/init.js';
 import { main } from '../../src/cli/index.js';
 import { commitsOnBranch, git, parseTrailers } from '../../src/git.js';
 import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
+import { recordState } from '../../src/build/record.js';
 import { runCommand } from '../../src/build/red.js';
 import { prBodyProblems } from '../../src/prbody.js';
 import { runCli } from '../helpers/run-cli.js';
@@ -1012,7 +1013,7 @@ test('the draft pull request body carries every section', async () => {
     assert.equal(made.baseRefName, 'main');
     assert.deepEqual(prBodyProblems(made.title, made.body, loadConfig(p.root)), []);
     assert.match(made.body, /^## \[P1\/S-01\] Thing 1\n\*\*Done when:\*\* 1\. It works\.\n/);
-    assert.match(made.body, /\n\*\*Proof:\*\* `node --test` → \S.* · CI: pending\n/);
+    assert.match(made.body, /\n\*\*Proof:\*\* `node --test` → \S*\s?pass 1 · \S*\s?fail 0 · CI: pending\n/);
     assert.match(made.body, /\n\*\*Decisions:\*\* x returns 2\n/);
     assert.match(
       made.body,
@@ -1148,6 +1149,71 @@ test('build pr refuses before any push: notes, a dirty worktree, a failing comma
     assert.match(checked.stderr, /slicekit check failed/);
     untouched(broken);
   } finally {
+    p.cleanup();
+  }
+});
+
+test('build pr after a verdict refuses a head with nothing new since review', async () => {
+  const p = await green();
+  try {
+    assert.equal((await p.pr()).code, 0);
+    write(p.wt, '.slicekit/reviews/P1-S-01-r1.md', '# Verdict\n\nNo blockers.\n');
+    commitIn(p.wt, 'chore(slicekit): P1/S-01 verdict round 1\n\nSlice: P1/S-01');
+    recordState(p.wt, loadConfig(p.root), 'P1/S-01', 'in-review', {
+      verdict: { round: 1, blockers: 0, path: '.slicekit/reviews/P1-S-01-r1.md' },
+    });
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const pushed = git(p.remote, ['rev-parse', SLICE_BRANCH]);
+    const before = stateIn(p.wt);
+    const again = await p.pr();
+    assert.equal(again.code, 1);
+    assert.match(again.stderr, /nothing new since review/);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(git(p.remote, ['rev-parse', SLICE_BRANCH]), pushed);
+    assert.deepEqual(stateIn(p.wt), before);
+    assert.equal(before.state, 'in-review');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build pr finishes a draft-pr recording whose bookkeeping commit was undone, staged or not', async () => {
+  for (const staged of [false, true]) {
+    const p = await green();
+    try {
+      assert.equal((await p.pr()).code, 0);
+      const recorded = stateIn(p.wt).pr.headSha;
+      git(p.wt, ['reset', '-q', ...(staged ? ['--soft'] : []), 'HEAD^']);
+      git(p.wt, ['push', '-q', '--force', 'origin', `HEAD:${SLICE_BRANCH}`]);
+      assert.notEqual(git(p.wt, ['status', '--porcelain']), '');
+      const again = await p.pr();
+      assert.equal(again.code, 0, `${staged}: ${again.stderr}`);
+      assert.equal(git(p.wt, ['status', '--porcelain']), '');
+      assert.equal(git(p.remote, ['rev-parse', SLICE_BRANCH]), git(p.wt, ['rev-parse', 'HEAD']));
+      assert.equal(git(p.wt, ['rev-parse', 'HEAD^']), recorded);
+      assert.equal(stateIn(p.wt).history.filter((h) => h.to === 'draft-pr').length, 1);
+    } finally {
+      p.cleanup();
+    }
+  }
+});
+
+test('build pr refuses a worktree behind its branch on origin', async () => {
+  const p = await green();
+  const other = cloneOf(p.remote);
+  try {
+    git(other.root, ['switch', '-q', 'slice/P1-S-01-thing-1']);
+    git(other.root, ['commit', '-q', '--allow-empty', '-m', 'elsewhere\n\nSlice: P1/S-01']);
+    git(other.root, ['push', '-q', 'origin', 'slice/P1-S-01-thing-1']);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const r = await p.pr();
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('origin/slice/P1-S-01-thing-1 has commits this worktree does not: pull first'), r.stderr);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(stateIn(p.wt).state, 'building');
+    assert.deepEqual(prCalls(p.host), []);
+  } finally {
+    other.cleanup();
     p.cleanup();
   }
 });
