@@ -28,7 +28,9 @@ decisions: [D-17, D-20]
 
 ## Expected changes
 
-`src/gaps.js`, `src/cli/gaps.js`, `templates/instructions/commands/gaps.md`, `templates/instructions/agents/auditor.md`, tests.
+`src/gaps.js`, `src/cli/gaps.js`, `src/decisions.js`, `templates/instructions/commands/gaps.md`, `templates/instructions/agents/auditor.md`, tests.
+
+This slice also changes src/stage.js (leaving the gaps file out of the spec review and clarify stages, and exporting reqBlocksIn); that file belongs to P2/S-11, which is merged, so the change is a modification of merged work, not a parallel overlap.
 
 ## Tasks
 

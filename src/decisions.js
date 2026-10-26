@@ -74,12 +74,18 @@ export function readDecisions(text) {
       );
     }
   }
-  const width = Math.max(1, ...rows.map((r) => r.id.length - 2));
-  const high = Math.max(0, ...rows.map((r) => r.n));
-  return { rows, next: `D-${String(high + 1).padStart(width, '0')}` };
+  return { rows, next: nextId('D', rows) };
 }
 
-const posix = (p) => p.split(path.sep).join('/');
+// The next ID after `rows` (each `{id, n}`): the highest number plus one, zero-padded to the widest
+// ID already used. `gaps.md` numbers its rows the same way.
+export function nextId(prefix, rows) {
+  const width = Math.max(1, ...rows.map((r) => r.id.length - prefix.length - 1));
+  const high = Math.max(0, ...rows.map((r) => r.n));
+  return `${prefix}-${String(high + 1).padStart(width, '0')}`;
+}
+
+export const posix = (p) => p.split(path.sep).join('/');
 
 function load(root, cfg) {
   const file = kitPaths(root, cfg).decisions;
@@ -89,7 +95,7 @@ function load(root, cfg) {
 
 // Writes a temporary file in the same directory, then renames it over the file, so a reader never
 // sees half a file.
-function save(file, text) {
+export function save(file, text) {
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
   try {
     fs.writeFileSync(tmp, text);
@@ -106,8 +112,8 @@ function oneLine(field, value) {
   if (/[\r\n]/.test(value)) throw new DecisionError(2, `${field} must be one line`);
 }
 
-const escape = (s) => s.trim().replace(/\|/g, '\\|');
-const row = (cs) => `| ${cs.map(escape).join(' | ')} |`;
+export const escape = (s) => s.trim().replace(/\|/g, '\\|');
+export const row = (cs) => `| ${cs.map(escape).join(' | ')} |`;
 
 function whoDefault(root) {
   try {
@@ -122,9 +128,9 @@ const whoWhen = (root, who, today) => `${(who ?? whoDefault(root)).trim() || 'un
 
 // The file's lines, each with its own ending. A new line takes the first line's ending; no other
 // line's ending changes, except that a last line with no ending gets one when a line follows it.
-const split = (text) => text.split(/(?<=\n)/);
+export const split = (text) => text.split(/(?<=\n)/);
 
-function insertAfter(text, after, line) {
+export function insertAfter(text, after, line) {
   const parts = split(text);
   const eol = parts[0]?.endsWith('\r\n') ? '\r\n' : '\n';
   const prev = parts[after - 1];

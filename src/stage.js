@@ -98,7 +98,8 @@ function clarify(root, cfg) {
   const rows = readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open');
   const open = new Map(rows.map((r) => [r.id, r.type]));
   const cited = new Set();
-  for (const f of filesUnder(p.spec, '.md')) {
+  // The gaps file names Open rows in order to close them; that is not the spec resting on them.
+  for (const f of filesUnder(p.spec, '.md').filter((x) => x !== p.gaps)) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);
   }
   const ids = [...cited].sort();
@@ -114,21 +115,24 @@ function clarify(root, cfg) {
 // heading, and the text after the heading up to the next heading of the same or a higher level, or
 // the next REQ heading of any level. S-11 and S-12 report findings at `file:line`.
 export function reqBlocks(root, cfg) {
-  const out = [];
   const dir = kitPaths(root, cfg).spec;
-  const reqHead = new RegExp(`^(${re('req').source})\\b`);
   const own = exists(dir) ? listFiles(dir, { ext: '.md' }).filter((f) => !f.includes('/')).map((f) => path.join(dir, f)) : [];
-  for (const f of own) {
-    const text = readText(f);
-    const all = lines(text);
-    const hs = headings(text);
-    hs.forEach((h, i) => {
-      const m = h.level >= 2 && h.level <= 3 ? reqHead.exec(h.text) : null;
-      if (!m) return;
-      const next = hs.slice(i + 1).find((n) => n.level <= h.level || reqHead.test(n.text));
-      out.push({ id: m[1], file: rel(root, f), line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
-    });
-  }
+  return own.flatMap((f) => reqBlocksIn(readText(f)).map(({ id, line, block }) => ({ id, file: rel(root, f), line, block })));
+}
+
+// The REQ blocks of one file's text, read as `reqBlocks` reads them: `{id, line, block}`.
+// `gaps close --req` reads the same REQ at the merge base with this.
+export function reqBlocksIn(text) {
+  const reqHead = new RegExp(`^(${re('req').source})\\b`);
+  const all = lines(text);
+  const hs = headings(text);
+  const out = [];
+  hs.forEach((h, i) => {
+    const m = h.level >= 2 && h.level <= 3 ? reqHead.exec(h.text) : null;
+    if (!m) return;
+    const next = hs.slice(i + 1).find((n) => n.level <= h.level || reqHead.test(n.text));
+    out.push({ id: m[1], line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
+  });
   return out;
 }
 
@@ -173,7 +177,8 @@ function specify(root, cfg) {
 }
 
 // A directory counts as merged when nothing in it is untracked or changed and its content equals the default branch's.
-function unmerged(root, cfg, dir, what) {
+// `exclude`, when given, is a file under `dir` left out of the comparison.
+function unmerged(root, cfg, dir, what, exclude) {
   if (!isRepo(root)) return [`${what} needs a git repository`];
   if (!hasCommits(root)) return [`${what} needs a commit on ${cfg.defaultBranch}`];
   const base = cfg.defaultBranch;
@@ -185,9 +190,10 @@ function unmerged(root, cfg, dir, what) {
     throw e;
   }
   const where = rel(root, dir);
-  if (git(root, ['status', '--porcelain', '--', where]) !== '') return [`${where} has uncommitted changes`];
+  const paths = [where, ...(exclude ? [`:(exclude)${rel(root, exclude)}`] : [])];
+  if (git(root, ['status', '--porcelain', '--', ...paths]) !== '') return [`${where} has uncommitted changes`];
   try {
-    git(root, ['diff', '--quiet', '--end-of-options', base, '--', where]);
+    git(root, ['diff', '--quiet', '--end-of-options', base, '--', ...paths]);
   } catch (e) {
     if (e instanceof GitError) return [`${where} differs from ${base}; merge the pull request`];
     throw e;
@@ -195,7 +201,8 @@ function unmerged(root, cfg, dir, what) {
   return [];
 }
 
-const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 'spec review');
+// The gaps file is written after the spec merges, on the gaps branch, so this stage leaves it out.
+const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 'spec review', kitPaths(root, cfg).gaps);
 
 function gapScan(root, cfg) {
   const file = kitPaths(root, cfg).gaps;
