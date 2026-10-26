@@ -98,7 +98,8 @@ function clarify(root, cfg) {
   const rows = readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open');
   const open = new Map(rows.map((r) => [r.id, r.type]));
   const cited = new Set();
-  for (const f of filesUnder(p.spec, '.md')) {
+  // The gaps file names Open rows in order to close them; that is not the spec resting on them.
+  for (const f of filesUnder(p.spec, '.md').filter((x) => x !== p.gaps)) {
     for (const r of refs(readText(f))) if (r.kind === 'id' && open.has(r.value)) cited.add(r.value);
   }
   const ids = [...cited].sort();
@@ -114,21 +115,24 @@ function clarify(root, cfg) {
 // heading, and the text after the heading up to the next heading of the same or a higher level, or
 // the next REQ heading of any level. S-11 and S-12 report findings at `file:line`.
 export function reqBlocks(root, cfg) {
-  const out = [];
   const dir = kitPaths(root, cfg).spec;
-  const reqHead = new RegExp(`^(${re('req').source})\\b`);
   const own = exists(dir) ? listFiles(dir, { ext: '.md' }).filter((f) => !f.includes('/')).map((f) => path.join(dir, f)) : [];
-  for (const f of own) {
-    const text = readText(f);
-    const all = lines(text);
-    const hs = headings(text);
-    hs.forEach((h, i) => {
-      const m = h.level >= 2 && h.level <= 3 ? reqHead.exec(h.text) : null;
-      if (!m) return;
-      const next = hs.slice(i + 1).find((n) => n.level <= h.level || reqHead.test(n.text));
-      out.push({ id: m[1], file: rel(root, f), line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
-    });
-  }
+  return own.flatMap((f) => reqBlocksIn(readText(f)).map(({ id, line, block }) => ({ id, file: rel(root, f), line, block })));
+}
+
+// The REQ blocks of one file's text, read as `reqBlocks` reads them: `{id, line, block}`.
+// `gaps close --req` reads the same REQ at the merge base with this.
+export function reqBlocksIn(text) {
+  const reqHead = new RegExp(`^(${re('req').source})\\b`);
+  const all = lines(text);
+  const hs = headings(text);
+  const out = [];
+  hs.forEach((h, i) => {
+    const m = h.level >= 2 && h.level <= 3 ? reqHead.exec(h.text) : null;
+    if (!m) return;
+    const next = hs.slice(i + 1).find((n) => n.level <= h.level || reqHead.test(n.text));
+    out.push({ id: m[1], line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
+  });
   return out;
 }
 
@@ -173,7 +177,8 @@ function specify(root, cfg) {
 }
 
 // A directory counts as merged when nothing in it is untracked or changed and its content equals the default branch's.
-function unmerged(root, cfg, dir, what) {
+// `exclude` lists files under `dir` left out of the comparison.
+function unmerged(root, cfg, dir, what, exclude = []) {
   if (!isRepo(root)) return [`${what} needs a git repository`];
   if (!hasCommits(root)) return [`${what} needs a commit on ${cfg.defaultBranch}`];
   const base = cfg.defaultBranch;
@@ -185,9 +190,10 @@ function unmerged(root, cfg, dir, what) {
     throw e;
   }
   const where = rel(root, dir);
-  if (git(root, ['status', '--porcelain', '--', where]) !== '') return [`${where} has uncommitted changes`];
+  const paths = [where, ...exclude.map((f) => `:(exclude)${rel(root, f)}`)];
+  if (git(root, ['status', '--porcelain', '--', ...paths]) !== '') return [`${where} has uncommitted changes`];
   try {
-    git(root, ['diff', '--quiet', '--end-of-options', base, '--', where]);
+    git(root, ['diff', '--quiet', '--end-of-options', base, '--', ...paths]);
   } catch (e) {
     if (e instanceof GitError) return [`${where} differs from ${base}; merge the pull request`];
     throw e;
@@ -195,24 +201,42 @@ function unmerged(root, cfg, dir, what) {
   return [];
 }
 
-const specReview = (root, cfg) => unmerged(root, cfg, kitPaths(root, cfg).spec, 'spec review');
+// The gaps file is written on the gaps branch and stack.md on the plan branch, both after the spec
+// merges, so this stage leaves them out.
+function specReview(root, cfg) {
+  const p = kitPaths(root, cfg);
+  return unmerged(root, cfg, p.spec, 'spec review', [p.gaps, p.stack]);
+}
+
+// The line `gaps scan` writes into the gaps file. Without it the gap scan has not run, whatever the
+// table holds: init's empty table is not a finished scan.
+export const SCANNED_LINE = /^Scanned: \d{4}-\d{2}-\d{2} at \S+$/;
 
 function gapScan(root, cfg) {
   const file = kitPaths(root, cfg).gaps;
   if (!exists(file)) return [`${rel(root, file)} is missing`];
   const text = readText(file);
-  const blockers = [];
+  const { hasColumn, open } = openGapRows(text);
+  if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
+  if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) return [`${rel(root, file)} has no Scanned: line; gaps scan has not run`];
+  return open.map((r) => `${r.id} is not closed`);
+}
+
+// The rows of every table in the gaps file with a Closed by column whose first cell is set and whose
+// Closed by cell is empty: `{hasColumn, open: [{id, line}]}`, 1-based lines. The gap-scan stage and
+// `gaps verify` both read open rows through this.
+export function openGapRows(text) {
   let hasColumn = false;
+  const open = [];
   for (const t of tables(text)) {
     const closed = t.header.findIndex((h) => h.toLowerCase() === 'closed by');
     if (closed === -1) continue;
     hasColumn = true;
-    for (const row of t.rows) {
-      if (row[0] && (row[closed] ?? '') === '') blockers.push(`${row[0]} is not closed`);
-    }
+    t.rows.forEach((row, i) => {
+      if (row[0] && (row[closed] ?? '') === '') open.push({ id: row[0], line: t.line + 2 + i });
+    });
   }
-  if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
-  return blockers;
+  return { hasColumn, open };
 }
 
 function stack(root, cfg) {
