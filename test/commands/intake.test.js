@@ -265,3 +265,28 @@ test('a source over the size cap is refused', async () => {
     assert.equal(fs.existsSync(path.join(root, 'docs', 'intake')), false);
   });
 });
+
+test('a snapshot never sweeps uncommitted .gitattributes edits into its commit', async () => {
+  await withRepo(
+    async (root) => {
+      const attrs = path.join(root, '.gitattributes');
+      fs.writeFileSync(attrs, '* text=auto eol=lf\n*.png binary\n');
+      fs.writeFileSync(path.join(root, 'req.md'), 'first\n');
+      const r = await cli(root, ['intake', 'snapshot', 'req.md']);
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /\.gitattributes has uncommitted changes; commit or stash them first/);
+      assert.equal(fs.readFileSync(attrs, 'utf8'), '* text=auto eol=lf\n*.png binary\n');
+      assert.equal(fs.existsSync(path.join(root, 'docs', 'intake')), false);
+    },
+    { files: { '.gitattributes': '* text=auto eol=lf\n' } },
+  );
+
+  // An untracked .gitattributes without the rule is someone's edit too.
+  await withRepo(async (root) => {
+    fs.writeFileSync(path.join(root, '.gitattributes'), '*.png binary\n');
+    fs.writeFileSync(path.join(root, 'req.md'), 'first\n');
+    const r = await cli(root, ['intake', 'snapshot', 'req.md']);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /\.gitattributes has uncommitted changes/);
+  });
+});

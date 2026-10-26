@@ -201,10 +201,18 @@ export async function snapshot(root, cfg, source, { slug, who, now = new Date(),
   if (branch === null || branch === cfg.defaultBranch || cfg.protectedBranches.includes(branch)) {
     throw new IntakeError(1, 'snapshot on a work branch; run slicekit branch spec <slug>');
   }
+  const dir = kitPaths(root, cfg).intake;
+  const rule = `${posix(path.relative(root, dir))}/** -text`;
+  // The snapshot commit carries .gitattributes when it adds the rule: a person's other edits to it
+  // must not ride along.
+  const attributes = path.join(root, '.gitattributes');
+  const current = fs.existsSync(attributes) ? fs.readFileSync(attributes, 'utf8') : null;
+  if (!(current !== null && holdsRule(current, rule)) && git(root, ['status', '--porcelain', '--', '.gitattributes']) !== '') {
+    throw new IntakeError(1, '.gitattributes has uncommitted changes; commit or stash them first');
+  }
   const src = isUrl(source) ? await fetchSource(source, fetchImpl) : readSource(root, source);
   const digest = sha256(src.bytes);
   const stem = `${now.toISOString().slice(0, 10)}-${slug ?? slugify(path.posix.basename(src.base, path.posix.extname(src.base)))}`;
-  const dir = kitPaths(root, cfg).intake;
 
   let name;
   let created = true;
@@ -223,8 +231,7 @@ export async function snapshot(root, cfg, source, { slug, who, now = new Date(),
   const fileRel = posix(path.relative(root, file));
   const sidecarRel = posix(path.relative(root, sidecar));
 
-  const rule = `${posix(path.relative(root, dir))}/** -text`;
-  const restore = ensureAttribute(path.join(root, '.gitattributes'), rule);
+  const restore = ensureAttribute(attributes, rule);
   const text = textAttribute(root, fileRel);
   if (text !== 'unset') {
     restore();
