@@ -99,21 +99,85 @@ test('spec verify refuses a bad usage with exit 2', async () => {
   });
 });
 
-test('a Cites entry resolves against the spec file directory, then the root, and only under intake', async () => {
+// The forms a Cites entry may take, each on its own REQ, and whether it is supported. `check`'s
+// citation rule and `spec verify` share one resolver, so the two agree on every form.
+const FORMS = [
+  ['REQ-1.1', 'docs/intake/2026-01-01-brief.md', true],
+  ['REQ-1.2', 'intake/2026-01-01-brief.md', true],
+  ['REQ-1.3', '2026-01-01-brief.md', true],
+  ['REQ-1.4', '[the brief](../intake/2026-01-01-brief.md)', true],
+  ['REQ-1.5', 'docs/intake/2026-01-01-brief.md.meta.json', true],
+  ['REQ-1.11', '../intake/2026-01-01-brief.md', true],
+  ['REQ-1.6', 'D-01', true],
+  ['REQ-1.7', 'D-99, D-01', true],
+  ['REQ-1.8', 'D-99', false],
+  ['REQ-1.9', 'docs/intake/none.md', false],
+  ['REQ-1.10', 'docs/decisions.md', false],
+];
+
+test('every Cites form resolves the way the citation rule resolves it', async () => {
   await withProgram(async (root) => {
     writeDecisions(root);
-    writeSpec(
-      root,
-      [
-        req('REQ-1.1', 'a', '../intake/2026-01-01-brief.md'),
-        req('REQ-1.2', 'b', '`docs/intake/2026-01-01-brief.md:1`'),
-        req('REQ-1.3', 'c', 'docs/decisions.md'),
-        req('REQ-1.4', 'd', 'D-99, docs/intake/none.md'),
-        req('REQ-1.5', 'e', 'D-99, D-01'),
-      ].join('\n'),
-    );
+    writeSpec(root, FORMS.map(([id, cites]) => req(id, 'x', cites)).join('\n'));
     const got = unsupportedReqs(root, loadConfig(root));
-    assert.deepEqual(got.map((r) => r.req), ['REQ-1.3', 'REQ-1.4']);
+    assert.deepEqual(got.map((r) => r.req), FORMS.filter(([, , ok]) => !ok).map(([id]) => id));
     assert.ok(got.every((r) => r.file === 'docs/spec/01-orders.md' && r.line > 0));
   });
+});
+
+test('check and spec verify agree on every Cites form', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    writeSpec(root, FORMS.map(([id, cites]) => req(id, 'x', cites)).join('\n'));
+    const ch = await cli(root, ['check', '--json']);
+    const findings = JSON.parse(ch.stdout).findings.filter((f) => f.rule === 'citations');
+    // check flags each cited decision or intake file it cannot find, or the entry when it names
+    // none; spec verify calls a REQ unsupported when nothing it cites resolves. They agree when
+    // the REQs spec verify names are the ones check flags on every reference.
+    const refs = (cites) => cites.split(/[\s,]+/).filter((t) => /D-\d|intake\/|^\d{4}-/.test(t)).length;
+    const flaggedByCheck = FORMS.filter(([id, cites]) => findings.filter((f) => f.message.startsWith(`${id} `)).length >= Math.max(1, refs(cites))).map(([id]) => id);
+    const sv = await cli(root, ['spec', 'verify']);
+    const byVerify = FORMS.map(([id]) => id).filter((id) => new RegExp(`:\\d+ ${id} cites nothing`).test(sv.stdout));
+    assert.deepEqual(byVerify, flaggedByCheck, JSON.stringify(findings.map((f) => f.message)));
+    assert.deepEqual(byVerify, FORMS.filter(([, , ok]) => !ok).map(([id]) => id));
+  });
+});
+
+test('a nested REQ heading ends the block above it', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    writeSpec(root, `## REQ-1.1 outer\n\nThe system SHALL x.\n\nScenario: y.\n\nCites: D-99\n\nEnforced by: \`x.test.js\`\n\n### REQ-1.2 inner\n\nThe system SHALL z.\n\nScenario: y.\n\nCites: D-01\n\nEnforced by: \`x.test.js\`\n`);
+    assert.deepEqual(unsupportedReqs(root, loadConfig(root)).map((r) => r.req), ['REQ-1.1']);
+  });
+});
+
+test('a REQ in a contract is not read as part of the spec', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    writeSpec(root, req('REQ-1.1', 'x', 'D-01'));
+    fs.mkdirSync(path.join(root, 'docs/spec/contracts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs/spec/contracts/orders.md'), `# Orders topic\n\n${req('REQ-9.1', 'y', 'D-99')}`);
+    const r = await cli(root, ['spec', 'verify']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^spec verified: 1 REQ, 1 contracts, 0 clarification markers$/m);
+  });
+});
+
+test('a marker in a code span is not counted and a wrapped marker counts once at its first line', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    writeSpec(root, `${req('REQ-1.1', 'x', 'D-01')}\nWrite \`[NEEDS CLARIFICATION: <q>]\` for a gap.\n\nShips [NEEDS CLARIFICATION: how fast\nmust orders ship?] soon.\n`);
+    const r = await cli(root, ['spec', 'verify']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const out = r.stdout.trim().split('\n');
+    assert.equal(out[0], 'spec verified: 1 REQ, 0 contracts, 1 clarification markers');
+    const at = fs.readFileSync(path.join(root, 'docs/spec/01-orders.md'), 'utf8').split('\n').findIndex((l) => l.startsWith('Ships')) + 1;
+    assert.equal(out[1], `docs/spec/01-orders.md:${at} [NEEDS CLARIFICATION: how fast must orders ship?]`);
+  });
+});
+
+test('the kit spec has no clarification marker', async () => {
+  const kit = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const { verifySpec } = await import('../../src/spec-verify.js');
+  assert.deepEqual(verifySpec(kit, loadConfig(kit)).markers, []);
 });

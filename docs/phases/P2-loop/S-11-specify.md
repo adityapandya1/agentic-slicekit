@@ -25,7 +25,7 @@ decisions: [D-07, D-15, D-17]
 
 ## Expected changes
 
-`src/spec-verify.js`, `src/cli/spec.js`, `templates/instructions/commands/specify.md`, tests.
+`src/spec-verify.js`, `src/cli/spec.js`, `src/stage.js`, `src/check/rules/citations.js`, `templates/instructions/commands/specify.md`, tests.
 
 ## Tasks
 
