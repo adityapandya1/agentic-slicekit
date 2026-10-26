@@ -111,7 +111,7 @@ decisions: [D-10, D-19, D-22, D-35]
 
 ### Task 5: The procedure, the developer brief, and `examples/backend`
 
-**Files:** Create `templates/instructions/commands/build.md`, `examples/backend/` (`package.json` with `"type": "module"` and a `test` script, `.slicekit/config.json` with shape `backend` and `commands.test` `node --test`, `docs/spec/01-greeting.md` defining REQ-1.1, `docs/decisions.md`, `docs/phases/P1-greeting/P1.md`, `docs/phases/P1-greeting/S-01-greet.md` with one happy and one negative evaluation row, `src/.keep`, `README.md` saying to run `slicekit init` first). Modify `templates/instructions/agents/developer.md`, `test/commands/build.test.js`.
+**Files:** Create `templates/instructions/commands/build.md`, `examples/backend/` (`package.json` with `"type": "module"` and a `test` script, `.slicekit/config.json` with shape `backend` and `commands.test` `node --test`, `examples/backend/docs/spec/01-greeting.md` defining REQ-1.1, `examples/backend/docs/decisions.md`, `examples/backend/docs/phases/P1-greeting/P1.md`, `examples/backend/docs/phases/P1-greeting/S-01-greet.md` with one happy and one negative evaluation row, `src/.keep`, `README.md` saying to run `slicekit init` first). Modify `templates/instructions/agents/developer.md`, `test/commands/build.test.js`.
 
 **Interfaces:**
 - Consumes (S-09): `briefProblems`; `{{cli}} instructions developer`.
