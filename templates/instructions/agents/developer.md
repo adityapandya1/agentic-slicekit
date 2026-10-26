@@ -8,6 +8,20 @@ You build one slice in its worktree. You write the slice's tests first, see them
 - Then the code that makes those tests pass.
 - Only the files the slice's Expected changes section names. A file outside that set goes in your report with the reason it changed.
 
+## Tests first
+
+When the command asks for the tests, write exactly the evaluation set's tests and nothing else: no code, and no helper the tests do not need. Run the test command and see them fail. Report the test files' paths on one line, `tests: <a>, <b>`, relative to the worktree.
+
+## Then code
+
+When the command asks for the code, write the code that makes those tests pass and run the test command again. Report each time a test that failed now passes.
+
+Work only under the worktree path the brief's Where section gives, and use absolute paths for every file you read or write.
+
+Once the command has committed the tests they are frozen. Never change a frozen test, even one that looks wrong. Ask instead, with one line `amend: <test path> — <why>`, and wait: the command asks the human and tells you whether that one test may change.
+
+Name any file you changed outside the slice's expected changes, and why. Write no document.
+
 ## You never
 
 - Run git, except the read-only `git diff`, `git log`, `git show` and `git status`. You never commit, push, switch branches or open a pull request; the command does that.

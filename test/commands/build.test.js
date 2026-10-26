@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig } from '../../src/config.js';
 import { init as initKit } from '../../src/init.js';
 import { main } from '../../src/cli/index.js';
@@ -13,6 +14,8 @@ import { recordState } from '../../src/build/record.js';
 import { runCommand } from '../../src/build/red.js';
 import { prBodyProblems } from '../../src/prbody.js';
 import { runCli } from '../helpers/run-cli.js';
+import { briefProblems } from '../helpers/brief-lint.js';
+import { TEMPLATES } from '../../src/instructions.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
 
 async function cli(root, args, env) {
@@ -1216,4 +1219,85 @@ test('build pr refuses a worktree behind its branch on origin', async () => {
     other.cleanup();
     p.cleanup();
   }
+});
+
+// ---- Task 5: the procedure, the developer brief, examples/backend ----
+
+const KIT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const EXAMPLE = path.join(KIT_ROOT, 'examples', 'backend');
+
+test('examples/backend goes from todo to draft-pr', async () => {
+  const repo = makeRepo();
+  const origin = makeRemote(repo.root);
+  const host = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
+  try {
+    const { root } = repo;
+    fs.cpSync(EXAMPLE, root, { recursive: true });
+    const kept = fs.readFileSync(path.join(root, 'docs', 'spec', '01-greeting.md'), 'utf8');
+    const init = await cli(root, ['init', '--shape', 'backend']);
+    assert.equal(init.code, 0, init.stderr);
+    // init adds the kit's layout around the example's docs and keeps them as they were.
+    assert.equal(fs.readFileSync(path.join(root, 'docs', 'spec', '01-greeting.md'), 'utf8'), kept);
+    assert.ok(fs.existsSync(path.join(root, 'docs', 'runbook.md')));
+    const status = runCli(['status', '--write'], { cwd: root });
+    assert.equal(status.code, 0, status.stderr);
+    commitAll(root, 'the example, with the kit installed');
+    git(root, ['push', '-q', 'origin', 'main']);
+
+    const next = await cli(root, ['build', 'next']);
+    assert.equal(next.code, 0, next.stderr);
+    assert.equal(next.stdout, 'P1/S-01\n');
+    const started = await cli(root, ['build', 'start', 'P1/S-01']);
+    assert.equal(started.code, 0, started.stderr);
+    const wt = started.stdout.split('\n')[0];
+
+    // The developer's tests, before any code: they import src/greet.js, which does not exist yet.
+    write(wt, 'test/greet.test.js', "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('greets a name', () => assert.equal(greet('Ada'), 'Hello, Ada!'));\n");
+    write(wt, 'test/greet-empty.test.js', "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('refuses an empty name', () => assert.throws(() => greet(''), /a name is required/));\n");
+    const red = await cli(root, ['build', 'red', 'P1/S-01', '--tests', 'test/greet.test.js,test/greet-empty.test.js']);
+    assert.equal(red.code, 0, red.stderr);
+    assert.equal(red.stdout.split('\n')[1], 'tests-red → building');
+
+    write(wt, 'src/greet.js', "export function greet(name) {\n  if (!name) throw new Error('a name is required');\n  return `Hello, ${name}!`;\n}\n");
+    const done = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): greet a name', '--require-green']);
+    assert.equal(done.code, 0, done.stderr);
+    assert.match(done.stdout, /^[0-9a-f]{7} exit 0\n$/);
+
+    const notes = path.join(host, 'notes.json');
+    fs.writeFileSync(
+      notes,
+      JSON.stringify({ tryIt: ['Run npm test.', "Call greet('Ada').", 'See Hello, Ada!.'], skipped: 'Names with spaces were not tried.' }),
+    );
+    const pr = await cli(root, ['build', 'pr', 'P1/S-01', '--notes', notes], { ...process.env, SLICEKIT_GITHOST_FIXTURE: host });
+    assert.equal(pr.code, 0, pr.stderr);
+    assert.equal(pr.stdout, '#1 https://example.test/pull/1\n');
+
+    assert.equal(stateIn(wt).state, 'draft-pr');
+    const made = fs.readdirSync(host).filter((f) => /^pr-\d+\.json$/.test(f));
+    assert.deepEqual(made, ['pr-1.json']);
+    const body = JSON.parse(fs.readFileSync(path.join(host, 'pr-1.json'), 'utf8'));
+    assert.equal(body.isDraft, true);
+    assert.equal(body.title, '[P1/S-01] Greet a name');
+
+    const checked = runCli(['check'], { cwd: wt });
+    assert.equal(checked.code, 0, checked.stdout + checked.stderr);
+    assert.match(checked.stdout, /\b0 findings\b/);
+  } finally {
+    fs.rmSync(host, { recursive: true, force: true });
+    origin.cleanup();
+    repo.cleanup();
+  }
+});
+
+test('the procedure and the developer brief pass the brief lint', () => {
+  const procedure = fs.readFileSync(path.join(TEMPLATES, 'commands', 'build.md'), 'utf8').replace(/\r\n/g, '\n');
+  const brief = fs.readFileSync(path.join(TEMPLATES, 'agents', 'developer.md'), 'utf8').replace(/\r\n/g, '\n');
+  assert.deepEqual(briefProblems(procedure, { kind: 'command' }), []);
+  assert.deepEqual(briefProblems(brief, { kind: 'agent' }), []);
+  for (const sub of ['next', 'start', 'red', 'commit', 'amend', 'pr']) assert.ok(procedure.includes(`{{cli}} build ${sub}`), sub);
+  assert.ok(procedure.includes('{{cli}} instructions developer'), procedure);
+  assert.ok(procedure.includes('tests: <a>, <b>'), procedure);
+  for (const h of ['## Tests first', '## Then code']) assert.match(brief, new RegExp(`^${h}$`, 'm'), h);
+  assert.ok(brief.includes('ran: <command> → exit <code>'), brief);
+  assert.ok(brief.includes('amend:'), brief);
 });
