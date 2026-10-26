@@ -1,0 +1,33 @@
+{
+  "slice": "P2/S-12",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 13,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/13",
+    "headSha": "df7e7f18cb4c788ff8e913f1fa74a60db05e31b3"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-26T18:34:01.258Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 13,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/13",
+          "headSha": "df7e7f18cb4c788ff8e913f1fa74a60db05e31b3",
+          "title": "[P2/S-12] /slicekit gaps and the auditor's gap mode"
+        }
+      }
+    }
+  ]
+}
