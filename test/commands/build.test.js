@@ -8,6 +8,7 @@ import { defaultConfig, loadConfig } from '../../src/config.js';
 import { main } from '../../src/cli/index.js';
 import { git, parseTrailers } from '../../src/git.js';
 import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
+import { runCommand } from '../../src/build/red.js';
 import { runCli } from '../helpers/run-cli.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
 
@@ -71,9 +72,9 @@ function setSliceState(root, id, state) {
 }
 
 // A repository on main with a config and one phase committed; with `remote`, a bare origin holding main.
-function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {} }) {
+function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {}, files = {} }) {
   const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot, commands });
-  const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
+  const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`, ...files } });
   for (const ph of phases ?? [{ order, slices }]) writePhase(repo.root, docsRoot, ph);
   git(repo.root, ['add', '-A']);
   commit(repo.root, 'plan');
@@ -455,8 +456,8 @@ test('uncommitted slice states or plan files are refused', async () => {
 
 // A started slice P1/S-01 whose evaluation row is `a.test.js » works`, with `node --test` as the
 // test command; `body` is the test file the developer wrote at test/a.test.js in the worktree.
-async function startedWithTest(body) {
-  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test: 'node --test' } });
+async function startedWithTest(body, { test = 'node --test', files } = {}) {
+  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test }, files });
   const started = await cli(p.root, ['build', 'start', 'P1/S-01']);
   assert.equal(started.code, 0, started.stderr);
   const wt = started.stdout.split('\n')[0];
@@ -535,6 +536,137 @@ test('absolute and backslash test paths are stored relative', async () => {
     const again = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', abs]);
     assert.equal(again.code, 1);
     assert.match(again.stderr, /P1\/S-01 is building; red runs from todo/);
+  } finally {
+    p.cleanup();
+  }
+});
+
+const red1 = (p, tests) => cli(p.root, ['build', 'red', 'P1/S-01', '--tests', tests]);
+const NO_CHANGE = /test\/a\.test\.js have no change to commit; red needs the evaluation set as new or changed files/;
+const commitIn = (wt, message) => {
+  git(wt, ['add', '-A']);
+  git(wt, ['commit', '-q', '-m', message]);
+};
+
+test('an evaluation test with no change since HEAD is refused unless HEAD is its red commit', async () => {
+  // A failing test already on main: unchanged in the worktree, so the claim commit would become "red".
+  const existing = await startedWithTest(undefined, { files: { 'test/a.test.js': FAILING } });
+  try {
+    const r = await red1(existing, 'test/a.test.js');
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, NO_CHANGE);
+    assert.equal(stateIn(existing.wt).state, 'todo');
+  } finally {
+    existing.cleanup();
+  }
+  // The tests committed by hand, then an unrelated commit on top: HEAD is not the red commit.
+  const p = await startedWithTest(FAILING);
+  try {
+    commitIn(p.wt, 'test(P1/S-01): evaluation set');
+    write(p.wt, 'src/t1.js', 'export const x = 1;\n');
+    commitIn(p.wt, 'unrelated');
+    const r = await red1(p, 'test/a.test.js');
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, NO_CHANGE);
+    assert.equal(stateIn(p.wt).state, 'todo');
+    // HEAD holding exactly the listed tests under the evaluation-set subject is a re-run: accepted.
+    git(p.wt, ['reset', '-q', '--hard', 'HEAD^']);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const again = await red1(p, 'test/a.test.js');
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout.split('\n')[0], head);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a test command that could not run is not red', async () => {
+  for (const [command, extra] of [
+    ['slicekit-no-such-command-for-red', {}],
+    ['npm run tset', { 'package.json': `${JSON.stringify({ name: 'x', version: '1.0.0', scripts: { test: 'node --test' } })}\n` }],
+  ]) {
+    const p = await startedWithTest(FAILING, { test: command, files: extra });
+    try {
+      const r = await red1(p, 'test/a.test.js');
+      assert.equal(r.code, 1, command);
+      assert.match(r.stderr, new RegExp(`${command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} could not run \\(exit \\d+\\): `), r.stderr);
+      assert.equal(stateIn(p.wt).state, 'todo');
+      assert.equal(git(p.wt, ['rev-parse', 'HEAD']), p.claim);
+    } finally {
+      p.cleanup();
+    }
+  }
+});
+
+test('runCommand reports a run that did not finish and summarises the totals', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-run-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'out.js'), "console.log('# tests 3');\nconsole.log('# fail 1');\nconsole.log('# duration_ms 5');\nconsole.log('bye');\n");
+    const r = runCommand(dir, 'node out.js');
+    assert.equal(r.exit, 0);
+    assert.equal(r.error, null);
+    assert.equal(r.summary, '# fail 1');
+    // A shell builtin, so no child outlives the killed shell.
+    const big = runCommand(dir, 'echo output-longer-than-the-buffer-allows', { maxBuffer: 8 });
+    assert.equal(typeof big.error, 'string');
+    assert.match(big.error, /ENOBUFS/);
+  } finally {
+    // On win32 the shell's child can outlive the killed shell for a moment and hold the directory.
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test('every listed file holds an evaluation test, and no kit file is one', async () => {
+  const p = await startedWithTest(FAILING);
+  try {
+    write(p.wt, 'test/helper.js', 'export const h = 1;\n');
+    const helper = await red1(p, 'test/a.test.js,test/helper.js');
+    assert.equal(helper.code, 1);
+    assert.match(helper.stderr, /test\/helper\.js holds no evaluation test/);
+    for (const kit of ['.slicekit/config.json', 'docs/phases/P1-x/S-01-thing-1.md']) {
+      const r = await red1(p, `test/a.test.js,${kit}`);
+      assert.equal(r.code, 1, kit);
+      assert.ok(r.stderr.includes(`${kit} is a kit file, not a test`), r.stderr);
+    }
+    assert.equal(stateIn(p.wt).state, 'todo');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('the evaluation name must be a string in the test file', async () => {
+  const p = await startedWithTest("import { test } from 'node:test';\n// works\ntest('other', () => { throw new Error('x'); });\n");
+  try {
+    const r = await red1(p, 'test/a.test.js');
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /evaluation test "a\.test\.js » works" is not in the test files/);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a re-run after a refused bookkeeping commit finishes the move to building', async () => {
+  const p = await startedWithTest(FAILING);
+  const hooks = git(p.wt, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  const hook = path.join(hooks, 'hooks', 'commit-msg');
+  try {
+    fs.mkdirSync(path.dirname(hook), { recursive: true });
+    fs.writeFileSync(hook, '#!/bin/sh\nif grep -q "^chore(slicekit)" "$1"; then echo no bookkeeping >&2; exit 1; fi\nexit 0\n', { mode: 0o755 });
+    const first = await red1(p, 'test/a.test.js');
+    assert.equal(first.code, 1);
+    assert.equal(stateIn(p.wt).state, 'tests-red');
+    fs.rmSync(hook);
+    const again = await red1(p, 'test/a.test.js');
+    assert.equal(again.code, 0, again.stderr);
+    const state = stateIn(p.wt);
+    assert.equal(state.state, 'building');
+    assert.equal(again.stdout.split('\n')[0], state.redCommit);
+    assert.deepEqual(state.history.map((h) => h.to), ['tests-red', 'building']);
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+    assert.deepEqual(git(p.wt, ['log', '--format=%s', `${state.redCommit}..HEAD`]).split('\n'), [
+      'chore(slicekit): P1/S-01 building',
+      'chore(slicekit): P1/S-01 tests-red',
+    ]);
   } finally {
     p.cleanup();
   }

@@ -472,6 +472,7 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
 test('init marks the intake snapshots -text under the docs root', () => {
   for (const [docs, line, file] of [
     ['docs', 'docs/intake/** -text', 'docs/intake/a.md'],
+    ['./docs', 'docs/intake/** -text', 'docs/intake/a.md'],
     ['handbook/specs', 'handbook/specs/intake/** -text', 'handbook/specs/intake/sub/a.md'],
     ['.', 'intake/** -text', 'intake/a.md'],
   ]) {
