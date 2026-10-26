@@ -224,3 +224,20 @@ test('an interface with no contract is a finding naming its decision row', async
     assert.equal(r.stdout, `docs/decisions.md:${line} interface orders topic (${id}) has no contract under docs/spec/contracts/\n`);
   });
 });
+
+test('the procedure passes the brief lint', async () => {
+  const { briefProblems } = await import('../helpers/brief-lint.js');
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', 'instructions', 'commands', 'specify.md');
+  const text = fs.readFileSync(file, 'utf8');
+  assert.deepEqual(briefProblems(text, { kind: 'command' }), []);
+  for (const want of ['stage require clarify', 'spec verify', '[NEEDS CLARIFICATION', 'pr open --title "[spec]']) assert.ok(text.includes(want), want);
+});
+
+test('instructions --command specify prints the procedure', async () => {
+  await withProgram(async (root) => {
+    const r = await cli(root, ['instructions', '--command', 'specify']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /stage require clarify/);
+    assert.doesNotMatch(r.stdout, /\{\{cli\}\}/);
+  });
+});
