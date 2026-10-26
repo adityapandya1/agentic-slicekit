@@ -167,7 +167,7 @@ Transitions and their mechanical preconditions:
 | building → draft-pr | the test command exits 0; `slicekit check` exits 0; a pull request exists whose title begins `[P<n>/S-<nn>]` |
 | draft-pr → in-review | a verdict file exists for round 1 |
 | in-review → changes-requested | the latest verdict has open blockers |
-| in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA |
+| in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA or a later head D-35 covers |
 | ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35) |
 | in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |

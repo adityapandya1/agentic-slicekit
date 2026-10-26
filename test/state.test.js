@@ -630,3 +630,52 @@ test('LockError names the slice', () => {
   assert.equal(e.message, 'could not lock P1/S-01: another slicekit is writing it');
   assert.equal(e.name, 'LockError');
 });
+
+// D-35: CI that ran on a later head adding only bookkeeping is CI on the reviewed work.
+function commitEverything(root, message) {
+  execFileSync('git', ['add', '-A'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['commit', '-q', '--no-verify', '-m', message], { cwd: root, stdio: 'pipe', env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } });
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+}
+// A slice in review on a real head H1 with a clean verdict, and a later head H2 that changes BUILD.md
+// and the state file, and whatever `extra` writes.
+function reviewedThenCommitted(fn, extra) {
+  withKit((root, cfg, [id]) => {
+    fs.writeFileSync(path.join(root, 'a.test.js'), '');
+    fs.mkdirSync(path.join(root, '.slicekit', 'reviews'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'reviews', 'P1-S-01-r1.md'), '');
+    setState(root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: ['a.test.js'] });
+    setState(root, cfg, id, 'building', {});
+    const h1 = commitEverything(root, 'h1');
+    setState(root, cfg, id, 'draft-pr', push(h1));
+    setState(root, cfg, id, 'in-review', { verdict: { round: 1, path: '.slicekit/reviews/P1-S-01-r1.md', blockers: 0 } });
+    fs.writeFileSync(kitPaths(root, cfg).build, '# Build\n\nlater\n');
+    extra(root);
+    const h2 = commitEverything(root, 'h2');
+    fn(root, cfg, id, h2);
+  });
+}
+
+test('ci-green accepts CI on a later head that only adds bookkeeping', () => {
+  reviewedThenCommitted(
+    (root, cfg, id, h2) => {
+      const s = setState(root, cfg, id, 'ci-green', green(h2));
+      assert.equal(s.state, 'ci-green');
+      assert.equal(s.ci.sha, h2);
+    },
+    () => {},
+  );
+  reviewedThenCommitted(
+    (root, cfg, id, h2) => {
+      assert.equal(
+        refusal(() => setState(root, cfg, id, 'ci-green', green(h2))),
+        'ci-green needs the CI sha to be the pull request head sha or a later head that only adds bookkeeping',
+      );
+      assert.equal(readSlice(root, cfg, id).state, 'in-review');
+    },
+    (root) => {
+      fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'src', 'x.js'), 'export const x = 1;\n');
+    },
+  );
+});

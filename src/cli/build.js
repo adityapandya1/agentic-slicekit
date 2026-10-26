@@ -14,14 +14,15 @@ import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
 import { declineFinding } from '../build/decline.js';
+import { finish } from '../build/finish.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
 import { LOOP_ROUNDS, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>] [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -32,6 +33,7 @@ const OPTIONS = {
   test: { type: 'string' },
   reason: { type: 'string' },
   notes: { type: 'string' },
+  wait: { type: 'string' },
 };
 
 function next(root, io, positionals) {
@@ -131,7 +133,23 @@ function declineStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep };
+// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head.
+function finishStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  let wait;
+  if (values.wait !== undefined) {
+    if (!/^\d+$/.test(values.wait)) return usage(io);
+    wait = Number(values.wait);
+  }
+  const cfg = loadConfig(root);
+  const { ci } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
+  io.stdout(`ci-green
+${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}
+`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

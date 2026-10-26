@@ -14,8 +14,9 @@ import { BuildError, findWorktree } from './worktree.js';
 const short = (sha) => sha.slice(0, 7);
 const lines = (out) => out.split('\n').filter((l) => l !== '');
 
-// A fix for review findings is committed the same way while the pull request is in review.
-const COMMIT_FROM = ['building', 'in-review', 'changes-requested'];
+// A fix for review findings is committed the same way while the pull request is in review, and after
+// CI or the independent review passed (build pr then takes the slice back to draft-pr).
+const COMMIT_FROM = ['building', 'in-review', 'changes-requested', 'ci-green', 'ready'];
 
 function building(wt, cfg, id, step, from = ['building']) {
   const current = readSlice(wt, cfg, id);

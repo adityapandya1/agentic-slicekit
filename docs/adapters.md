@@ -14,7 +14,7 @@ or agent tool is a new implementation of an existing contract, not a change to t
 
 `src/adapters/githost/index.js` exports `getHost(cfg, env, root)`, the only door to a git host. It
 picks the implementation from `cfg.gitHost.kind`. Today `github.js` implements `openPullRequest`,
-`updatePullRequestBody`, `markReady`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
+`updatePullRequestBody`, `markReady`, `markDraft`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
 `ciStatus`, `setLabel` (which adds or removes) and `ensureLabel`; `renderWorkflow` is `src/workflow.js`.
 Setting `SLICEKIT_GITHOST_FIXTURE` to a directory replaces the host with `fixture.js`, which reads
 answers from that directory, so tests never reach the network.

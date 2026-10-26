@@ -168,7 +168,8 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (current.state !== 'building' && (!open || open.number !== current.pr?.number)) {
     throw new BuildError(`pull request #${current.pr?.number} of ${id} is not open for ${target}`);
   }
-  const live = open ? host.getPullRequest(open.number).body : '';
+  const livePr = open ? host.getPullRequest(open.number) : null;
+  const live = livePr?.body ?? '';
   const kept = (name, fallback) => (open ? getSection(live, name) : null) ?? fallback;
 
   const title = `[${id}] ${slice.name}`;
@@ -196,6 +197,8 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
 
   const made = openOrUpdate(wt, cfg, host, { title, body, draft: true });
   const result = { number: made.number, url: made.url, created: made.created };
+  // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
+  if (livePr?.draft === false) host.markDraft(made.number);
   // At draft-pr there is no draft-pr → draft-pr move: the reviewer reads the live head.
   if (current.state === 'draft-pr') return result;
   recordState(wt, cfg, id, 'draft-pr', {

@@ -12,9 +12,9 @@ import { assertBranch, assertLabel, assertLabelColor, assertPrNumber, assertTitl
 //   label-error.txt, label-create-error.txt   gh refusing `pr edit`, `label create`
 //   label-calls.jsonl    written: one line per label call, in order
 //   pr-create-error.txt  gh refusing `pr create`
-//   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready)
-// openPullRequest writes pr-<n>.json (n one above the highest there, else 1); updatePullRequestBody
-// and markReady rewrite it, so a later getPullRequest or pullRequestForBranch sees the change.
+//   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready, draft)
+// openPullRequest writes pr-<n>.json (n one above the highest there, else 1); updatePullRequestBody,
+// markReady and markDraft rewrite it, so a later getPullRequest or pullRequestForBranch sees the change.
 // A missing file is what the real host says for "not there"; an unreadable one is a host failure.
 function readJson(file) {
   try {
@@ -117,6 +117,12 @@ export function fixtureHost(dir) {
       const raw = readPr(dir, n);
       writePr(dir, { ...raw, isDraft: false });
       recordPr(dir, { op: 'markReady', number: n });
+    },
+    markDraft(n) {
+      assertPrNumber(n);
+      const raw = readPr(dir, n);
+      writePr(dir, { ...raw, isDraft: true });
+      recordPr(dir, { op: 'markDraft', number: n });
     },
     // As the GitHub host: the open pull requests with that head, a fork's (isCrossRepository) dropped.
     pullRequestForBranch(branch, { base } = {}) {

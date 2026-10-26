@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
 import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
+import { finish } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
 import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, write } from '../helpers/build-flow.js';
@@ -555,4 +557,179 @@ test('Reviewer blocked quotes each finding without backticks and cuts long text'
   const long = 'a'.repeat(300);
   assert.equal(reviewerBlocked([{ round: 1, findings: [f('B-1', long)] }]), `B-1 \`${'a'.repeat(159)}…\` — open after round 1`);
   assert.equal(reviewerBlocked([{ round: 1, findings: [] }]), 'nothing');
+});
+
+// Task 4: `build finish`, and `build decline` end to end.
+
+// The fixture host never moves headRefOid, so a test sets the live head it means by hand.
+function setLiveHead(p, sha) {
+  const file = path.join(p.host, 'pr-1.json');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, `${JSON.stringify({ ...raw, headRefOid: sha }, null, 2)}\n`);
+}
+const RUN_URL = 'https://example.test/runs/1';
+function setCi(p, sha, status, conclusion = null) {
+  write(p.host, `ci-${sha}.json`, JSON.stringify([{ status, conclusion, url: RUN_URL, createdAt: '2026-10-26T00:00:00Z' }]));
+}
+const finishCli = (p, ...args) => cli(p.root, ['build', 'finish', 'P1/S-01', ...args], p.env);
+
+// A slice in review with a clean round 1 on its head; the live head is the pushed verdict head.
+async function approved(findings = []) {
+  const p = await drafted();
+  const r = await p.verdict(review(p, 1, verdictText('APPROVE', findings)));
+  assert.equal(r.code, 0, r.stderr);
+  const head = git(p.wt, ['rev-parse', 'HEAD']);
+  setLiveHead(p, head);
+  return { ...p, head };
+}
+
+test('finish refuses a live head the state has not recorded', async () => {
+  const p = await approved();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // later\n');
+    commitIn(p.wt, 'fix: unrecorded');
+    const later = git(p.wt, ['rev-parse', 'HEAD']);
+    setLiveHead(p, later);
+    setCi(p, later, 'completed', 'success');
+    const r = await finishCli(p);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('a fix push is not recorded; run slicekit build pr P1/S-01'), r.stderr);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+    assert.equal(prIn(p).isDraft, true);
+    assert.ok(!prCalls(p.host).some((c) => c.op === 'markReady'));
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('finish refuses while the latest verdict on the head has blockers', async () => {
+  const p = await drafted();
+  try {
+    const r = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x is wrong']])));
+    assert.equal(r.code, 0, r.stderr);
+    setLiveHead(p, git(p.wt, ['rev-parse', 'HEAD']));
+    const f = await finishCli(p);
+    assert.equal(f.code, 1);
+    assert.ok(f.stderr.includes('P1/S-01 has open blockers; finish needs a clean verdict'), f.stderr);
+    assert.equal(prIn(p).isDraft, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a declined should-have becomes one issue and a body line', async () => {
+  const p = await approved([['H-1', 'names are long']]);
+  const tracker = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-tracker-'));
+  try {
+    const env = { ...p.env, SLICEKIT_TRACKER_FIXTURE: tracker };
+    const decline = () => cli(p.root, ['build', 'decline', 'P1/S-01', 'H-1'], env);
+    const first = await decline();
+    assert.equal(first.code, 0, first.stderr);
+    const url = first.stdout.trim();
+    assert.match(url, /^https:\/\/example\.test\/issues\/\d+$/);
+    const second = await decline();
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(second.stdout, `${url} (already filed)\n`);
+
+    const calls = fs.readFileSync(path.join(tracker, 'issue-calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const opens = calls.filter((c) => c.op === 'open');
+    assert.equal(opens.length, 1);
+    assert.equal(opens[0].title, '[P1/S-01] H-1: names are long');
+    assert.ok(opens[0].body.includes(`${REVIEWS}/P1-S-01-r1.md`), opens[0].body);
+
+    const body = prIn(p).body;
+    assert.equal(getSection(body, 'Should-haves declined'), url);
+    assert.equal(body.split(url).length - 1, 1);
+  } finally {
+    fs.rmSync(tracker, { recursive: true, force: true });
+    p.cleanup();
+  }
+});
+
+test('finish records ci-green only when CI succeeds on the head', async () => {
+  const p = await approved();
+  try {
+    const sha7 = p.head.slice(0, 7);
+    setCi(p, p.head, 'completed', 'failure');
+    const failed = await finishCli(p, '--wait', '0');
+    assert.equal(failed.code, 1);
+    assert.ok(failed.stderr.includes(`CI failed on ${sha7}: ${RUN_URL}`), failed.stderr);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+    assert.match(getSection(prIn(p).body, 'Proof'), /CI: pending$/);
+
+    setCi(p, p.head, 'in_progress');
+    const pending = await finishCli(p, '--wait', '0');
+    assert.equal(pending.code, 1);
+    assert.ok(pending.stderr.includes(`CI still running on ${sha7}; run slicekit build finish P1/S-01 again`), pending.stderr);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+
+    setCi(p, p.head, 'completed', 'success');
+    const ok = await finishCli(p);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n`);
+    const st = stateIn(p.wt);
+    assert.equal(st.state, 'ci-green');
+    assert.deepEqual(st.ci, { sha: p.head, status: 'success' });
+    const pr = prIn(p);
+    assert.equal(pr.isDraft, false);
+    const proof = getSection(pr.body, 'Proof');
+    assert.ok(proof.endsWith(`CI: ${RUN_URL}`), proof);
+    assert.ok(!proof.includes('CI: pending'), proof);
+    assert.deepEqual(prBodyProblems(pr.title, pr.body, {}), []);
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(p.wt, ['rev-parse', 'HEAD']));
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('finish polls every interval through the sleep it is given, up to the wait', async () => {
+  const p = await approved();
+  try {
+    const cfg = loadConfig(p.wt);
+    setCi(p, p.head, 'queued');
+    const slept = [];
+    const r = finish(p.root, cfg, getHost(cfg, p.env, p.root), 'P1/S-01', {
+      wait: 40,
+      interval: 15,
+      sleep: (s) => {
+        slept.push(s);
+        if (slept.length === 2) setCi(p, p.head, 'completed', 'success');
+      },
+    });
+    assert.deepEqual(slept, [15, 15]);
+    assert.deepEqual(r.ci, { status: 'success', sha: p.head, url: RUN_URL });
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+  } finally {
+    p.cleanup();
+  }
+  const q = await approved();
+  try {
+    const cfg = loadConfig(q.wt);
+    setCi(q, q.head, 'queued');
+    const naps = [];
+    assert.throws(
+      () => finish(q.root, cfg, getHost(cfg, q.env, q.root), 'P1/S-01', { wait: 40, interval: 15, sleep: (s) => naps.push(s) }),
+      /CI still running/,
+    );
+    assert.deepEqual(naps, [15, 15, 10]);
+    assert.equal(stateIn(q.wt).state, 'in-review');
+  } finally {
+    q.cleanup();
+  }
+});
+
+test('a return to draft-pr after finish marks the pull request draft again', async () => {
+  const p = await approved();
+  try {
+    setCi(p, p.head, 'completed', 'success');
+    const ok = await finishCli(p);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.equal(prIn(p).isDraft, false);
+    await fixPush(p, 1);
+    assert.equal(prIn(p).isDraft, true);
+    assert.deepEqual(prCalls(p.host).filter((c) => c.op === 'markDraft'), [{ op: 'markDraft', number: 1 }]);
+  } finally {
+    p.cleanup();
+  }
 });

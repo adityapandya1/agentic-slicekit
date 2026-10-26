@@ -195,8 +195,10 @@ export const TRANSITIONS = {
       if (!v || v.blockers !== 0) return 'ci-green needs a latest verdict on the current head sha with no blockers';
       if (!ev.ci || ev.ci.status !== 'success') return 'ci-green needs the CI status to be success (--ci-status)';
       if (!isStr(ev.ci.sha)) return 'ci-green needs the CI sha (--ci-sha)';
-      if (!current.pr || !sameSha(ev.ci.sha, current.pr.headSha)) {
-        return 'ci-green needs the CI sha to equal the pull request head sha';
+      // D-35: CI on a later head that adds only the kit's bookkeeping ran on the reviewed work.
+      const head = current.pr?.headSha;
+      if (!head || !(sameSha(ev.ci.sha, head) || headCovers(ctx.root, head, ev.ci.sha))) {
+        return 'ci-green needs the CI sha to be the pull request head sha or a later head that only adds bookkeeping';
       }
       return null;
     },

@@ -104,6 +104,11 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertPrNumber(n);
       gh(exec, ['pr', 'ready', String(n)], { env, cwd: root });
     },
+    // Back to draft: a slice that returns to draft-pr after its pull request was marked ready.
+    markDraft(n) {
+      assertPrNumber(n);
+      gh(exec, ['pr', 'ready', String(n), '--undo'], { env, cwd: root });
+    },
     // The open pull request whose head is `branch` in this repository, as { number, url, base }, or
     // null. Every open one with that head name is listed (a fork's included), then filtered.
     pullRequestForBranch(branch, { base } = {}) {
