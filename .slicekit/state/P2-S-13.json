@@ -1,18 +1,18 @@
 {
   "slice": "P2/S-13",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 14,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/14",
-    "headSha": "4bdb016c7877a31fe537fe5128fcc669ecb9f7ec"
+    "headSha": "54040ef9a394facd2707e95cbe5b20dd289f78c8"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-26T19:02:48Z",
   "handoff": null,
   "history": [
     {
@@ -27,6 +27,21 @@
           "headSha": "4bdb016c7877a31fe537fe5128fcc669ecb9f7ec",
           "title": "[P2/S-13] `/slicekit plan`"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-26T19:03:03.121Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-26T19:02:48Z",
+        "pr": {
+          "number": 14,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/14",
+          "headSha": "54040ef9a394facd2707e95cbe5b20dd289f78c8"
+        },
+        "source": "host"
       }
     }
   ]
