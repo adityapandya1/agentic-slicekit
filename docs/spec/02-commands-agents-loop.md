@@ -72,12 +72,15 @@ evaluation set has at least one `happy` and one `negative` test. It SHALL regene
 open a pull request titled `[plan] <program name>`. Shared roots are exempt from the overlap test:
 `.` (the repository root), anything under `test/` (a slice may always add tests), `src/cli/index.js`
 (the command table every slice registers in) and `<docsRoot>/runbook.md` (the runbook, which every
-operational slice appends a section to).
+operational slice appends a section to). When the phase file has an Order line (D-38), the overlap test
+runs over all slices of one Order step, since the groups of a step run at the same time. A phase
+file SHALL carry at most one Order line, and it SHALL name every group of the phase exactly once and
+no group that no slice has.
 
 Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the plan <!-- slicekit:example -->
 branch THEN it fails naming both slices.
 
-Cites: D-10, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-10, D-38, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
 
@@ -132,7 +135,7 @@ Scenario: GIVEN two slices of one Order step that both change `src/billing/` WHE
 `/slicekit build --parallel P1` pushes the second THEN that run stops and reports the overlap as a
 plan defect.
 
-Cites: D-06, D-22.
+Cites: D-06, D-22, D-38.
 
 Enforced by: the command; per-slice state files (D-22).
 

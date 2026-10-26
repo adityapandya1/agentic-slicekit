@@ -133,8 +133,9 @@ function prefixes(slice, runbook) {
   return out;
 }
 
-// Each phase directory's Order line (D-38), parsed, with its file and line; phases without one are
-// left out. The line is found with the same pattern `parseOrder` uses, so the two cannot disagree.
+// Each phase directory's Order line (D-38), parsed, with its file and line, and the lines of any
+// further Order line (`parseOrder` follows the first); phases without one are left out. The lines
+// are found with the same pattern `parseOrder` uses, so the two cannot disagree.
 function orderLines(ctx) {
   const out = new Map();
   if (!fs.existsSync(ctx.paths.phases)) return out;
@@ -148,14 +149,8 @@ function orderLines(ctx) {
     const text = doc ? doc.text : readText(file);
     const steps = parseOrder(text);
     if (!steps) continue;
-    let line = 1;
-    for (const [l, n] of prose(text)) {
-      if (/^\*\*Order:\*\*\s*(.+)$/.test(l)) {
-        line = n;
-        break;
-      }
-    }
-    out.set(phase.id, { rel, line, steps: steps.map((s) => s.filter((g) => g !== '')).filter((s) => s.length > 0) });
+    const at = [...prose(text)].filter(([l]) => /^\*\*Order:\*\*\s*(.+)$/.test(l)).map(([, n]) => n);
+    out.set(phase.id, { rel, line: at[0] ?? 1, more: at.slice(1), steps: steps.map((s) => s.filter((g) => g !== '')).filter((s) => s.length > 0) });
   }
   return out;
 }
@@ -171,21 +166,27 @@ function orderFindings(parsed, orders, out) {
     for (const g of [...groups].sort()) if (!seen.has(g)) at(`does not name group ${g}`);
     for (const g of twice) at(`names group ${g} twice`);
     for (const g of seen) if (!groups.has(g)) at(`names group ${g}, which no slice has`);
+    for (const line of order.more) out.push({ file: order.rel, line, message: `phase ${phaseId} has more than one Order line` });
   }
 }
 
-// The slices that run at the same time: with an Order line, those of one step (a group the line does
-// not name is its own step, so its overlaps are still found); without one, those of one group.
+// The slices that run at the same time: with an Order line, those of one step (a group named in
+// several steps is in each, so all its overlaps show; a group the line does not name is its own
+// step, so its overlaps are still found); without one, those of one group.
 function overlaps(parsed, orders, out, runbook) {
   const sets = new Map();
   for (const p of parsed) {
     if (!p.slice) continue;
     const order = orders.get(p.phaseId);
-    const step = order ? order.steps.find((s) => s.includes(p.slice.group)) : null;
-    const label = step ? `step ${step.join(', ')}` : `group ${p.slice.group}`;
-    const key = `${p.phaseId}\u0000${label}`;
-    if (!sets.has(key)) sets.set(key, { label, members: [] });
-    sets.get(key).members.push({ ...p, prefixes: prefixes(p.slice, runbook) });
+    const steps = order ? order.steps.filter((s) => s.includes(p.slice.group)) : [];
+    // A Set, so a step written twice (`A; A`) does not put a slice beside itself.
+    const labels = new Set(steps.length > 0 ? steps.map((s) => `step ${s.join(', ')}`) : [`group ${p.slice.group}`]);
+    const member = { ...p, prefixes: prefixes(p.slice, runbook) };
+    for (const label of labels) {
+      const key = `${p.phaseId}\u0000${label}`;
+      if (!sets.has(key)) sets.set(key, { label, members: [] });
+      sets.get(key).members.push(member);
+    }
   }
   for (const { label, members } of sets.values()) {
     for (let j = 1; j < members.length; j++) {

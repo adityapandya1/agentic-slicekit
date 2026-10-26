@@ -299,3 +299,27 @@ test('slices in one Order step are checked for overlap', () => {
   // Without an Order line each group is its own step: B and C do not overlap.
   assert.deepEqual(findings(PLAN, { files: { ...files, 'docs/phases/P1-x/P1.md': phase(null) } }), []);
 });
+
+test('a group named in two steps is checked for overlap in each', () => {
+  // D-38: a group named twice is a finding, and its overlaps in every step that names it all show.
+  const files = {
+    'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { group: 'A', changes: ['src/x.js'] }),
+    'docs/phases/P1-x/S-02-b.md': slice('P1/S-02', { group: 'B', changes: ['src/x.js', 'src/y.js'] }),
+    'docs/phases/P1-x/S-03-c.md': slice('P1/S-03', { group: 'C', changes: ['src/y.js'] }),
+    'docs/phases/P1-x/P1.md': phase('A, B; B, C'),
+  };
+  assert.deepEqual(findings(PLAN, { files }), [
+    { file: 'docs/phases/P1-x/P1.md', line: 3, message: 'phase P1 Order line names group B twice' },
+    { file: 'docs/phases/P1-x/S-02-b.md', line: 24, message: 'slices P1/S-01 and P1/S-02 in step A, B both expect src/x.js' },
+    { file: 'docs/phases/P1-x/S-03-c.md', line: 24, message: 'slices P1/S-02 and P1/S-03 in step B, C both expect src/y.js' },
+  ]);
+});
+
+test('a second Order line is a finding', () => {
+  // D-38: a phase file carries one Order line; the first is the one followed.
+  const files = {
+    'docs/phases/P1-x/S-01-a.md': slice('P1/S-01', { group: 'A' }),
+    'docs/phases/P1-x/P1.md': `${phase('A')}\n**Order:** A\n`,
+  };
+  assert.deepEqual(findings(PLAN, { files }), [{ file: 'docs/phases/P1-x/P1.md', line: 5, message: 'phase P1 has more than one Order line' }]);
+});
