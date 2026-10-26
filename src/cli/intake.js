@@ -7,7 +7,7 @@ import { GitError } from '../git.js';
 import { IntakeError, snapshot } from '../intake.js';
 
 const SUBCOMMANDS = ['snapshot', 'ask', 'answer', 'done'];
-const SLUG = /^[a-z0-9][a-z0-9-]{0,59}$/;
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const USAGE = 'intake snapshot <file|url> [--slug <s>] [--who <w>]';
 const OPTIONS = { slug: { type: 'string' }, who: { type: 'string' } };
 
@@ -26,13 +26,17 @@ async function run(args, io) {
   }
   const [sub, source, ...rest] = positionals;
   if (sub !== 'snapshot' || source === undefined || rest.length > 0) return usage(io);
-  if (values.slug !== undefined && !SLUG.test(values.slug)) {
-    return usage(io, `slug '${values.slug}' must be lowercase letters, digits and dashes, at most 60, not starting with a dash`);
+  // SLICEKIT_NOW is for tests only: it fixes the instant a snapshot is named and stamped with.
+  const fixed = (io.env ?? process.env).SLICEKIT_NOW;
+  let now = new Date();
+  if (fixed !== undefined && fixed !== '') {
+    now = new Date(fixed);
+    if (!ISO.test(fixed) || Number.isNaN(now.getTime())) return usage(io, `SLICEKIT_NOW '${fixed}' is not an ISO time`);
   }
   const root = io.cwd;
   try {
     const cfg = loadConfig(root);
-    const { file } = await snapshot(root, cfg, source, { slug: values.slug, who: values.who });
+    const { file } = await snapshot(root, cfg, source, { slug: values.slug, who: values.who, now });
     io.stdout(`${path.relative(root, file).split(path.sep).join('/')}\n`);
     return 0;
   } catch (e) {
