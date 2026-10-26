@@ -6,18 +6,21 @@ import { ConfigError, loadConfig } from '../config.js';
 import { GitError } from '../git.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
+import { getTracker, TrackerError } from '../adapters/tracker/index.js';
 import { PrError } from '../pr.js';
+import { PrBodyError } from '../prbody.js';
 import { SliceFileError } from '../slicefile.js';
 import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
+import { declineFinding } from '../build/decline.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'decline'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -94,7 +97,20 @@ function prStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep };
+// Prints the issue's URL, and `(already open)` when the finding's issue was there before.
+function declineStep(root, io, positionals, values) {
+  if (positionals.length !== 2) return usage(io);
+  const cfg = loadConfig(root);
+  const env = io.env ?? process.env;
+  const [id, finding] = positionals;
+  const { url, created } = declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
+  io.stdout(created ? `${url}
+` : `${url} (already open)
+`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, decline: declineStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
@@ -124,7 +140,7 @@ async function run(args, io) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }
-    if (e instanceof GitError || e instanceof GitHostError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
+    if (e instanceof GitError || e instanceof GitHostError || e instanceof TrackerError || e instanceof PrBodyError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 1;
     }

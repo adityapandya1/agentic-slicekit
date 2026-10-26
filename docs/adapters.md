@@ -7,7 +7,7 @@ or agent tool is a new implementation of an existing contract, not a change to t
 | Contract | What it covers | Where the code lives | Version one |
 |---|---|---|---|
 | `docs/spec/contracts/C-1-git-host.md` | pull requests, labels, merged-since, CI status, the CI file | `src/adapters/githost/` | GitHub through `gh` |
-| `docs/spec/contracts/C-2-tracker.md` | open, comment on and find a ticket | arrives with S-15 | GitHub Issues |
+| `docs/spec/contracts/C-2-tracker.md` | open, comment on and find a ticket | `src/adapters/tracker/` | GitHub Issues through `gh` |
 | `docs/spec/contracts/C-3-agent-tool.md` | commands, agent briefs, skills, hook registrations | `src/render/` and `templates/claude-code/` | Claude Code |
 
 ## Git host (C-1)
@@ -21,8 +21,18 @@ answers from that directory, so tests never reach the network.
 
 ## Tracker (C-2)
 
-Not built yet. S-15 adds `src/adapters/tracker/` with the three operations of C-2 behind one entry <!-- slicekit:pending P2/S-15 -->
-point chosen by `cfg.tracker.kind`, the same pattern as the git host.
+`src/adapters/tracker/index.js` exports `getTracker(cfg, env, root)`, the only door to a tracker. It
+picks the implementation from `cfg.tracker.kind`, the same pattern as the git host. Today
+`github-issues.js` implements the three operations of C-2 through `gh`, spawned the way the git host
+spawns it: `open` is `gh issue create` (the body on stdin, the id read from the printed URL),
+`comment` is `gh issue comment`, and `find` lists issues whose title matches and keeps the one whose
+title begins `[<slice>] <finding>:`. Nothing closes an issue. `slicekit build decline` is the one
+caller: it opens an issue for a declined should-have, or finds the one already open, and lists its
+URL under "Should-haves declined" in the pull request body.
+
+When `SLICEKIT_TRACKER_FIXTURE` names a directory, `fixture.js` answers from its `issues.json`,
+records each write in `issue-calls.jsonl`, and refuses `open` while `issue-create-error.txt` exists,
+so tests never reach the network.
 
 ## Agent tool (C-3)
 

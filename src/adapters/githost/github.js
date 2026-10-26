@@ -35,8 +35,8 @@ export function ghExitError(args, stderr) {
 }
 
 // `input`, when given, is piped to gh's stdin (a body passed as `--body-file -`, never on the
-// command line).
-function gh(exec, args, { input, ...opts } = {}) {
+// command line). Exported for the tracker adapter (C-2), which spawns gh the same way.
+export function gh(exec, args, { input, ...opts } = {}) {
   const stdin = input === undefined ? 'ignore' : 'pipe';
   try {
     return exec('gh', args, { encoding: 'utf8', stdio: [stdin, 'pipe', 'pipe'], ...opts, ...(input === undefined ? {} : { input }) });
