@@ -94,6 +94,7 @@ export function validateEvidence(ev) {
       if (ci[k] !== undefined && !isStr(ci[k])) return bad(`ci.${k}`, 'a non-empty string');
     }
     if (ci.sha !== undefined && !isSha(ci.sha)) return bad('ci.sha', SHA_SHAPE);
+    if (ci.url !== undefined && !isStr(ci.url)) return bad('ci.url', 'a non-empty string');
   }
   return null;
 }
@@ -202,7 +203,7 @@ export const TRANSITIONS = {
       }
       return null;
     },
-    apply: (_current, ev) => ({ ci: { sha: ev.ci.sha, status: ev.ci.status } }),
+    apply: (_current, ev) => ({ ci: { sha: ev.ci.sha, status: ev.ci.status, ...(ev.ci.url ? { url: ev.ci.url } : {}) } }),
   },
   ready: {
     from: ['ci-green'],

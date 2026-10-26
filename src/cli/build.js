@@ -143,9 +143,7 @@ function finishStep(root, io, positionals, values) {
   }
   const cfg = loadConfig(root);
   const { ci } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
-  io.stdout(`ci-green
-${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}
-`);
+  io.stdout(`ci-green\n${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}\n`);
   return 0;
 }
 

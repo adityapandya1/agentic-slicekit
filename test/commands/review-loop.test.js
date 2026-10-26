@@ -6,7 +6,7 @@ import path from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
 import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
-import { finish } from '../../src/build/finish.js';
+import { finish, proofWithCi } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
 import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, write } from '../helpers/build-flow.js';
@@ -650,6 +650,11 @@ test('finish records ci-green only when CI succeeds on the head', async () => {
   const p = await approved();
   try {
     const sha7 = p.head.slice(0, 7);
+    const none = await finishCli(p, '--wait', '0');
+    assert.equal(none.code, 1);
+    assert.ok(none.stderr.includes(`no CI run found for ${sha7}; check that the workflow ran`), none.stderr);
+    assert.equal(prIn(p).isDraft, true);
+
     setCi(p, p.head, 'completed', 'failure');
     const failed = await finishCli(p, '--wait', '0');
     assert.equal(failed.code, 1);
@@ -672,13 +677,13 @@ test('finish records ci-green only when CI succeeds on the head', async () => {
     assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n`);
     const st = stateIn(p.wt);
     assert.equal(st.state, 'ci-green');
-    assert.deepEqual(st.ci, { sha: p.head, status: 'success' });
+    assert.deepEqual(st.ci, { sha: p.head, status: 'success', url: RUN_URL });
     const pr = prIn(p);
     assert.equal(pr.isDraft, false);
     const proof = getSection(pr.body, 'Proof');
     assert.ok(proof.endsWith(`CI: ${RUN_URL}`), proof);
     assert.ok(!proof.includes('CI: pending'), proof);
-    assert.deepEqual(prBodyProblems(pr.title, pr.body, {}), []);
+    assert.deepEqual(prBodyProblems(pr.title, pr.body, loadConfig(p.wt)), []);
     assert.equal(git(p.wt, ['status', '--porcelain']), '');
     assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(p.wt, ['rev-parse', 'HEAD']));
   } finally {
@@ -735,4 +740,65 @@ test('a return to draft-pr after finish marks the pull request draft again', asy
   } finally {
     p.cleanup();
   }
+});
+
+// Review I-1: a re-run at ci-green never pushes a commit build pr has not seen.
+test('finish at ci-green refuses a code commit made since, and pushes nothing', async () => {
+  const p = await approved();
+  try {
+    setCi(p, p.head, 'completed', 'success');
+    assert.equal((await finishCli(p)).code, 0);
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // unreviewed\n');
+    const c = await commitWorkCli(p, '--message', 'fix: later', '--require-green');
+    assert.equal(c.code, 0, c.stderr);
+    const remote = git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']);
+    const again = await finishCli(p);
+    assert.equal(again.code, 1);
+    assert.ok(again.stderr.includes('P1/S-01 has commits since build pr; run slicekit build pr P1/S-01 first'), again.stderr);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), remote);
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Review M-2: a re-run at ci-green cites the run recorded with ci-green, not what the host says now.
+test('finish at ci-green cites the recorded run', async () => {
+  const p = await approved();
+  try {
+    setCi(p, p.head, 'completed', 'success');
+    assert.equal((await finishCli(p)).code, 0);
+    write(p.host, `ci-${p.head}.json`, JSON.stringify([{ status: 'completed', conclusion: 'failure', url: 'https://example.test/runs/2', createdAt: '2026-10-27T00:00:00Z' }]));
+    const again = await finishCli(p);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n`);
+    assert.ok(getSection(prIn(p).body, 'Proof').endsWith(`CI: ${RUN_URL}`));
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Review M-6: a live head this worktree does not hold is a pull, not a fix push.
+test('finish says pull first for a live head missing from the worktree', async () => {
+  const p = await approved();
+  try {
+    const missing = 'a'.repeat(40);
+    setLiveHead(p, missing);
+    setCi(p, missing, 'completed', 'success');
+    const r = await finishCli(p);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes("P1/S-01's pull request head aaaaaaa is not in the worktree; pull first"), r.stderr);
+    assert.equal(prIn(p).isDraft, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Review M-1: the run URL is taken literally, and a CI part already there is replaced, not doubled.
+test('Proof takes the run URL literally and replaces the CI part it holds', () => {
+  assert.equal(proofWithCi('`node --test` → 3 pass · CI: pending', 'https://x/runs/1?a=$&b'), '`node --test` → 3 pass · CI: https://x/runs/1?a=$&b');
+  assert.equal(proofWithCi("t · CI: pending", "https://x/$'tail"), "t · CI: https://x/$'tail");
+  assert.equal(proofWithCi('t · CI: https://old/run · notes', RUN_URL), `t · CI: ${RUN_URL} · notes`);
+  assert.equal(proofWithCi('t · CI: https://old/run', 'https://x/$&'), 't · CI: https://x/$&');
+  assert.equal(proofWithCi('tests pass', RUN_URL), `tests pass · CI: ${RUN_URL}`);
 });
