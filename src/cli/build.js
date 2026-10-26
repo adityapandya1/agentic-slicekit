@@ -4,14 +4,18 @@ import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { GitError } from '../git.js';
 import { SliceFileError } from '../slicefile.js';
+import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
+import { red } from '../build/red.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr'];
-const USAGE = 'build next | build start <id> [--descr <d>]';
+const USAGE = 'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
+  tests: { type: 'string' },
+  worktree: { type: 'string' },
 };
 
 function next(root, io, positionals) {
@@ -37,7 +41,17 @@ function start(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start };
+function redStep(root, io, positionals, values) {
+  if (positionals.length !== 1 || values.tests === undefined) return usage(io);
+  const cfg = loadConfig(root);
+  const { commit } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree });
+  io.stdout(`${commit}
+tests-red → building
+`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
@@ -67,7 +81,7 @@ async function run(args, io) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }
-    if (e instanceof GitError || e instanceof SliceFileError) {
+    if (e instanceof GitError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 1;
     }

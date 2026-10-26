@@ -31,7 +31,7 @@ function write(root, rel, text) {
 function writePhase(root, docsRoot, { phase = 1, order, slices }) {
   const dir = docsRoot === '.' ? `phases/P${phase}-x` : `${docsRoot}/phases/P${phase}-x`;
   write(root, `${dir}/P${phase}.md`, `# Phase ${phase} — X\n\n${order ? `**Order:** ${order}\n` : ''}`);
-  for (const { n, group } of slices) {
+  for (const { n, group, evalFile } of slices) {
     write(
       root,
       `${dir}/S-${pad(n)}-thing-${n}.md`,
@@ -53,7 +53,7 @@ decisions: []
 
 | Test | Kind | Covers |
 |---|---|---|
-| \`t${n}.test.js » works\` | happy | REQ-1.1 |
+| \`${evalFile ?? `t${n}.test.js`} » works\` | happy | REQ-1.1 |
 
 ## Expected changes
 
@@ -71,8 +71,8 @@ function setSliceState(root, id, state) {
 }
 
 // A repository on main with a config and one phase committed; with `remote`, a bare origin holding main.
-function project({ order, slices, phases, remote = false, docsRoot = 'docs' }) {
-  const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot });
+function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {} }) {
+  const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot, commands });
   const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
   for (const ph of phases ?? [{ order, slices }]) writePhase(repo.root, docsRoot, ph);
   git(repo.root, ['add', '-A']);
@@ -448,6 +448,93 @@ test('uncommitted slice states or plan files are refused', async () => {
     // Other uncommitted work does not stop a start.
     write(p.root, 'notes.txt', 'mine');
     assert.equal((await cli(p.root, ['build', 'next'])).stdout, 'P1/S-01\n');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// A started slice P1/S-01 whose evaluation row is `a.test.js » works`, with `node --test` as the
+// test command; `body` is the test file the developer wrote at test/a.test.js in the worktree.
+async function startedWithTest(body) {
+  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test: 'node --test' } });
+  const started = await cli(p.root, ['build', 'start', 'P1/S-01']);
+  assert.equal(started.code, 0, started.stderr);
+  const wt = started.stdout.split('\n')[0];
+  if (body !== undefined) write(wt, 'test/a.test.js', body);
+  return { ...p, wt, claim: git(wt, ['rev-parse', 'HEAD']) };
+}
+
+const stateIn = (wt) => {
+  const file = path.join(wt, '.slicekit', 'state', 'P1-S-01.json');
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { state: 'todo' };
+};
+const PASSING = "import { test } from 'node:test';\ntest('works', () => {});\n";
+const FAILING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('works', () => assert.equal(1, 2));\n";
+
+test('tests that pass before the build are refused', async () => {
+  const p = await startedWithTest(PASSING);
+  try {
+    const r = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', 'test/a.test.js']);
+    assert.equal(r.code, 1, r.stderr);
+    assert.match(r.stderr, /the evaluation set must fail before the build/);
+    assert.equal(stateIn(p.wt).state, 'todo');
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), p.claim);
+    assert.match(git(p.wt, ['status', '--porcelain']), /\?\? test\//);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('absolute and backslash test paths are stored relative', async () => {
+  const p = await startedWithTest("import { test } from 'node:test';\ntest('another', () => {});\n");
+  try {
+    const abs = path.join(p.wt, 'test', 'a.test.js').replace(/\//g, '\\');
+    // A test file that does not hold the evaluation row's name is refused before the run.
+    const missing = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', abs]);
+    assert.equal(missing.code, 1);
+    assert.match(missing.stderr, /evaluation test "a\.test\.js » works" is not in the test files/);
+
+    write(p.root, 'outside.test.js', FAILING);
+    const outside = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', path.join(p.root, 'outside.test.js')]);
+    assert.equal(outside.code, 2);
+    assert.match(outside.stderr, /outside\.test\.js is outside the worktree/);
+    assert.equal(stateIn(p.wt).state, 'todo');
+
+    write(p.wt, 'test/a.test.js', FAILING);
+    const r = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', abs]);
+    assert.equal(r.code, 0, r.stderr);
+    const [sha, moves] = r.stdout.trim().split('\n');
+    assert.match(sha, /^[0-9a-f]{40}$/);
+    assert.equal(moves, 'tests-red → building');
+
+    const state = stateIn(p.wt);
+    assert.equal(state.state, 'building');
+    assert.deepEqual(state.frozenTests, ['test/a.test.js']);
+    assert.equal(state.redCommit, sha);
+    assert.deepEqual(state.history.map((h) => h.to), ['tests-red', 'building']);
+
+    // The red commit holds the test file alone, on top of the claim; the bookkeeping follows it.
+    assert.equal(git(p.wt, ['rev-parse', `${sha}^`]), p.claim);
+    assert.equal(git(p.wt, ['diff', '--name-only', p.claim, sha]), 'test/a.test.js');
+    const body = git(p.wt, ['log', '-1', '--format=%B', sha]);
+    assert.match(body, /^test\(P1\/S-01\): evaluation set\n/);
+    assert.match(body, /\nran: node --test → exit 1\n/);
+    assert.equal(parseTrailers(body).Slice, 'P1/S-01');
+    const after = git(p.wt, ['log', '--format=%s', `${sha}..HEAD`]).split('\n');
+    assert.deepEqual(after, ['chore(slicekit): P1/S-01 building', 'chore(slicekit): P1/S-01 tests-red']);
+    // Each bookkeeping commit carries the state file, and BUILD.md when its text changed, nothing else.
+    for (const c of git(p.wt, ['rev-list', `${sha}..HEAD`]).split('\n')) {
+      const touched = git(p.wt, ['diff-tree', '--no-commit-id', '--name-only', '-r', c]).split('\n');
+      assert.ok(touched.includes('.slicekit/state/P1-S-01.json'), touched.join(', '));
+      assert.ok(touched.every((f) => ['.slicekit/state/P1-S-01.json', 'BUILD.md'].includes(f)), touched.join(', '));
+      assert.equal(parseTrailers(git(p.wt, ['log', '-1', '--format=%B', c])).Slice, 'P1/S-01');
+    }
+    assert.ok(git(p.wt, ['diff', '--name-only', sha, 'HEAD']).split('\n').includes('BUILD.md'));
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+
+    const again = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', abs]);
+    assert.equal(again.code, 1);
+    assert.match(again.stderr, /P1\/S-01 is building; red runs from todo/);
   } finally {
     p.cleanup();
   }
