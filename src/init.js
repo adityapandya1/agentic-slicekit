@@ -26,7 +26,14 @@ const IGNORE_RULES = [
   { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
-const ATTRIBUTE_RULES = [{ rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) }];
+// Intake snapshots (S-10) are stored byte for byte, so git must not convert their line endings.
+function attributeRules(docsRoot) {
+  const intake = `${docsRoot === '.' ? '' : `${docsRoot}/`}intake/** -text`;
+  return [
+    { rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) },
+    { rule: intake, forms: new Set([intake, `/${intake}`]) },
+  ];
+}
 const NOT_A_REPO = 'not a git repository';
 const UNBORN_PROTECTED = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
 
@@ -203,7 +210,7 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, env = pr
   }
   lists[ensureLines(paths.gitignore, IGNORE_RULES)].push(rel(paths.gitignore));
   const attributes = path.join(root, '.gitattributes');
-  lists[ensureLines(attributes, ATTRIBUTE_RULES)].push(rel(attributes));
+  lists[ensureLines(attributes, attributeRules(cfg.docsRoot))].push(rel(attributes));
 
   const repo = isRepo(root);
   const warnings = repo ? [] : [NOT_A_REPO];

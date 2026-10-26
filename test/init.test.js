@@ -452,20 +452,36 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
   withRepo((root) => {
     const first = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(first.created.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\n');
     const second = init(root, { name: 'demo', shape: 'backend' });
     assert.ok(second.skipped.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\n');
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\n');
   });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.updated.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\ndocs/intake/** -text\n');
   }, { files: { '.gitattributes': '* text=auto\n' } });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.skipped.includes('.gitattributes'));
-  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n' } });
+  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n/docs/intake/** -text\n' } });
+});
+
+// S-10 writes intake snapshots byte for byte; -text keeps git from converting their line endings.
+test('init marks the intake snapshots -text under the docs root', () => {
+  for (const [docs, line, file] of [
+    ['docs', 'docs/intake/** -text', 'docs/intake/a.md'],
+    ['handbook/specs', 'handbook/specs/intake/** -text', 'handbook/specs/intake/sub/a.md'],
+    ['.', 'intake/** -text', 'intake/a.md'],
+  ]) {
+    withRepo((root) => {
+      init(root, { name: 'demo', shape: 'backend', docsRoot: docs, cli: 'node bin/slicekit.js' });
+      assert.ok(read(root, '.gitattributes').split('\n').includes(line), docs);
+      assert.equal(git(root, ['check-attr', 'text', '--', file]), `${file}: text: unset`);
+      assert.equal(git(root, ['check-attr', 'text', '--', 'README.md']), 'README.md: text: unspecified');
+    });
+  }
 });
 
 // M5: a CRLF file gets CRLF lines appended.
@@ -474,7 +490,7 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n';
     assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
-    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\ndocs/intake/** -text\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
