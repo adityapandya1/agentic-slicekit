@@ -241,3 +241,13 @@ test('instructions --command specify prints the procedure', async () => {
     assert.doesNotMatch(r.stdout, /\{\{cli\}\}/);
   });
 });
+
+test('the procedure opens the branch before it checks clarify, with the slug rule spelled out', () => {
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', 'instructions', 'commands', 'specify.md');
+  const text = fs.readFileSync(file, 'utf8');
+  const branch = text.indexOf('branch spec <slug>');
+  const gate = text.indexOf('stage require clarify');
+  assert.ok(branch !== -1 && gate !== -1 && branch < gate, 'branch spec comes before stage require clarify');
+  assert.match(text, /lower-cased/);
+  assert.match(text, /these three sections/);
+});

@@ -59,7 +59,7 @@ decisions: [D-17, D-20]
 - `scanGaps(root, cfg) → [{id, added}]`, through `addGap`, so a second run adds nothing. Candidates, in this order:
   1. `unknown`, where `<docsRoot>/<file>:<line>`, what `<section> not yet known`: each `##` section of `platform.md`, `observability.md` and `runbook.md` whose body is the single line `Not yet known`.
   2. `unknown`, where `<docsRoot>/decisions.md:<line>`, what `<D-ID> is open: <question>`: each Open-table row.
-  3. `unknown`, where `<file>:<line>` of the REQ heading (from `reqBlocks`), what `<REQ> rests on open <D-ID>`: each REQ whose `Cites:` names an Open-table row (REQ-1.4).
+  3. `unknown`, where `<file>:<line>` of the REQ heading (from `reqBlocks`), what `<REQ> rests on open <D-ID>`: each REQ whose `Cites:` names an Open-table row (REQ-1.4), its citations read with `citedRefs` (`src/check/rules/citations.js`), the reader `check` and `spec verify` use.
   4. `missing`, where the interface's intake line (its `Named at` source; the decision row's line when it has none), what `interface <name> named at intake has no contract`.
 - CLI `gaps scan` prints `<G-ID> <class> <what>` per added row, or `no new gaps`.
 

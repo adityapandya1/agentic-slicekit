@@ -9,10 +9,12 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
 
 ## Steps
 
-1. Run `{{cli}} stage require clarify`. On exit 1, print what it says and stop: the spec waits for
+1. Run `{{cli}} branch spec <slug>`. The slug is the program name (`name` in
+   `.slicekit/config.json`) lower-cased, with each run of characters other than `a-z0-9` turned
+   into one `-`, dashes trimmed from both ends, cut to 60 characters. That is the slug intake used,
+   so the spec lands on the branch that holds the intake snapshot.
+2. Run `{{cli}} stage require clarify`. On exit 1, print what it says and stop: the spec waits for
    intake and clarify.
-2. Run `{{cli}} branch spec <slug>`, with the same slug the intake used, so the spec goes on the
-   intake's branch.
 3. Read every snapshot under `<docsRoot>/intake/` and every row of `<docsRoot>/decisions.md`. These
    are the only sources a requirement may stand on.
 4. Write `<docsRoot>/spec/<capability>.md`, one capability per file. Each requirement has the shape
@@ -33,7 +35,7 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
    nothing that exists gets a clarification marker, not an invented source. The markers it lists may
    stay: the gaps step and the plan deal with them. Then run `{{cli}} check` and fix each finding
    until it reports 0 blocking.
-7. Write the pull request body to a file outside the repository, with exactly these three lines:
+7. Write the pull request body to a file outside the repository, with these three sections:
 
    ```
    **Done when:** one spec file per capability, each REQ citing its source, a contract per interface named at intake
