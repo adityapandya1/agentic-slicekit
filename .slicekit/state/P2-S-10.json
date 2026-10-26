@@ -1,0 +1,33 @@
+{
+  "slice": "P2/S-10",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 12,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/12",
+    "headSha": "8078ffcc70f33c620ade31a9eb63f479261ff953"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-26T16:55:57.315Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 12,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/12",
+          "headSha": "8078ffcc70f33c620ade31a9eb63f479261ff953",
+          "title": "[P2/S-10] `/slicekit intake`"
+        }
+      }
+    }
+  ]
+}
