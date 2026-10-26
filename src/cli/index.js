@@ -4,6 +4,7 @@ import { branchCommand } from './branch.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { initCommand } from './init.js';
+import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
@@ -23,6 +24,7 @@ export const COMMANDS = {
   check: checkCommand,
   decide: decideCommand,
   init: initCommand,
+  intake: intakeCommand,
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
