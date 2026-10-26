@@ -111,7 +111,7 @@ function verdictStep(root, io, positionals, values) {
   io.stdout(out.map((l) => `${l}
 `).join(''));
   if (r.next === 'stuck') {
-    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${LOOP_ROUNDS}; the pull request stays draft
+    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${r.round}; the pull request stays draft
 `);
     return 1;
   }

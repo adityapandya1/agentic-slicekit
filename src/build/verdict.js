@@ -18,7 +18,8 @@ import { git, headSha, pushBranch } from '../git.js';
 import { verdictFileName, verdictFilePattern } from '../ids.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
-import { PrBodyError, getSection, setSection } from '../prbody.js';
+import { bannedPhrasesIn } from '../check/rules/style.js';
+import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
@@ -125,44 +126,89 @@ const push = (wt, cfg) => pushBranch(wt, { protectedBranches: cfg.protectedBranc
 
 const blockersOf = (v) => (v?.findings ?? []).filter((f) => f.kind === 'blocker');
 
+// The longest "what is wrong" the line quotes, in characters, the closing `…` included.
+const WHAT_MAX = 160;
+
+// A finding's "what is wrong" as a code span: its backticks removed, cut to WHAT_MAX characters.
+function quoted(wrong) {
+  const chars = Array.from(String(wrong).replace(/`/g, '').trim());
+  const cut = chars.length > WHAT_MAX ? `${chars.slice(0, WHAT_MAX - 1).join('')}…` : chars.join('');
+  return `\`${cut}\``;
+}
+
 // The pull request body's "Reviewer blocked" (REQ-2.10) over the slice's verdicts in round order,
 // each `{round, findings}` with findings as parseVerdict reads them. A blocker of an earlier round
-// that the latest does not hold is fixed in the round after its last appearance; each blocker of the
-// latest is open after that round, or not fixed when the loop stopped (`stuck`). `nothing` when there
-// are none.
+// that the latest does not hold is fixed in the round after its last appearance. Each blocker of the
+// latest is open after the round it was first seen in, or, when the loop stopped (`stuck`), not
+// fixed after the latest round. `nothing` when there are none. Round numbers are shared with
+// independent rounds, so each names the real round.
 export function reviewerBlocked(verdicts, { stuck = false } = {}) {
   const sorted = [...verdicts].sort((a, b) => a.round - b.round);
   const latest = sorted.at(-1);
   const open = new Set(blockersOf(latest).map((f) => f.id));
+  const seen = new Map();
+  for (const v of sorted) for (const f of blockersOf(v)) if (!seen.has(f.id)) seen.set(f.id, v.round);
   // In order of first appearance, with the text of the last.
   const fixed = new Map();
   sorted.slice(0, -1).forEach((v, i) => {
     for (const f of blockersOf(v)) {
-      if (!open.has(f.id)) fixed.set(f.id, `${f.id} ${f.wrong} — fixed in round ${sorted[i + 1].round}`);
+      if (!open.has(f.id)) fixed.set(f.id, `${f.id} ${quoted(f.wrong)} — fixed in round ${sorted[i + 1].round}`);
     }
   });
   const out = [...fixed.values()];
   for (const f of blockersOf(latest)) {
-    out.push(stuck ? `${f.id} ${f.wrong} — not fixed after round ${LOOP_ROUNDS}` : `${f.id} ${f.wrong} — open after round ${latest.round}`);
+    out.push(`${f.id} ${quoted(f.wrong)} — ${stuck ? `not fixed after round ${latest.round}` : `open after round ${seen.get(f.id)}`}`);
   }
   return out.length > 0 ? out.join('; ') : 'nothing';
 }
 
-// Sets the pull request's "Reviewer blocked" from the recorded verdict files, writing the body only
-// when the line changes.
-function updateBlocked(wt, host, number, verdicts, stuck) {
-  const parsed = verdicts.map((x) => ({ round: x.round, findings: parseVerdict(readText(path.resolve(wt, x.path), x.path), x.path).findings }));
-  const text = reviewerBlocked(parsed, { stuck });
-  const body = host.getPullRequest(number).body ?? '';
-  if (getSection(body, BLOCKED) === text) return;
+// The recorded verdicts as reviewerBlocked takes them, read from their files in the worktree.
+const parsedVerdicts = (wt, verdicts) =>
+  verdicts.map((x) => ({ round: x.round, findings: parseVerdict(readText(path.resolve(wt, x.path), x.path), x.path).findings }));
+
+const BREAKS = 'the section would break the body: ';
+
+// The pull request body with "Reviewer blocked" set to `text` -> {next, problems}: `next` is null
+// when the line is already `text`; `problems` are what the new body would add, judged under `cfg`.
+function withBlocked(host, number, text, cfg) {
+  const pr = host.getPullRequest(number);
+  const body = pr.body ?? '';
+  if (getSection(body, BLOCKED) === text) return { next: null, problems: [] };
   let next;
   try {
     next = setSection(body, BLOCKED, text);
   } catch (e) {
-    if (e instanceof PrBodyError) throw new BuildError(`cannot set "${BLOCKED}" on pull request #${number}: ${e.message}`);
-    throw e;
+    if (!(e instanceof PrBodyError)) throw e;
+    const problems = e.message.startsWith(BREAKS) ? e.message.slice(BREAKS.length).split('; ') : [e.message];
+    return { next: null, problems };
   }
-  host.updatePullRequestBody(number, next);
+  const before = new Set(prBodyProblems(pr.title ?? '', body, cfg));
+  return { next, problems: prBodyProblems(pr.title ?? '', next, cfg).filter((p) => !before.has(p)) };
+}
+
+// Sets the pull request's "Reviewer blocked" from the recorded verdict files, writing the body only
+// when the line changes.
+function updateBlocked(wt, cfg, host, number, verdicts, stuck) {
+  const { next, problems } = withBlocked(host, number, reviewerBlocked(parsedVerdicts(wt, verdicts), { stuck }), cfg);
+  if (problems.length > 0) throw new BuildError(`cannot set "${BLOCKED}" on pull request #${number}: ${problems.join('; ')}`);
+  if (next !== null) host.updatePullRequestBody(number, next);
+}
+
+// Each banned phrase (style.banned) in the verdict: by finding where a finding's text holds it, then
+// any left in the rest of the file. The style rule checks the committed file, and the body quotes
+// each "what is wrong".
+function bannedProblems(cfg, v, text, shown) {
+  const banned = cfg.style?.banned ?? [];
+  const out = [];
+  const named = new Set();
+  for (const f of v.findings) {
+    for (const p of bannedPhrasesIn([f.wrong, f.why, f.verified].join('\n\n'), banned)) {
+      out.push(`verdict ${shown}: ${f.id} uses "${p}"; reword it`);
+      named.add(p.toLowerCase());
+    }
+  }
+  for (const p of bannedPhrasesIn(text, banned)) if (!named.has(p.toLowerCase())) out.push(`verdict ${shown}: uses "${p}"; reword it`);
+  return out;
 }
 
 // After a round is recorded: a stopped loop records changes-requested (once), then the branch is
@@ -171,12 +217,21 @@ function finish(wt, cfg, host, id, current, result, verdicts) {
   const stuck = result.next === 'stuck';
   if (stuck && current.state === 'in-review') recordState(wt, cfg, id, 'changes-requested', {});
   push(wt, cfg);
-  updateBlocked(wt, host, current.pr.number, verdicts, stuck);
+  updateBlocked(wt, cfg, host, current.pr.number, verdicts, stuck);
   return result;
+}
+
+// The verdict is given on the recorded head; code committed since has not been through build pr.
+function assertBuilt(wt, id, current) {
+  if (!headCovers(wt, current.pr?.headSha ?? '', headSha(wt))) {
+    throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
+  }
 }
 
 // -> {round, blockers, shouldHaves, roundsUsed, next}: `blockers` and `shouldHaves` are finding IDs;
 // `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
+// `stuck` is returned, not thrown: the loop has stopped and changes-requested is recorded, and a
+// caller must exit 1 on it (the CLI does).
 export function recordVerdict(root, cfg, host, id, file, { worktree, independent = false } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const shown = typeof file === 'string' ? file.split(path.sep).join('/') : String(file);
@@ -192,9 +247,11 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   const verdicts = current.verdicts ?? [];
 
   // This round is the latest recorded: a run that stopped after recording it (before changes-requested,
-  // the push or the body). Finish what is left; record the round nothing more.
+  // the push or the body). Finish what is left; record the round nothing more. The push carries only
+  // what build pr has seen.
   const last = verdicts.at(-1);
   if (['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel) {
+    assertBuilt(wt, id, current);
     const text = readText(dest, rel);
     if (!samePath(src, dest) && fs.existsSync(src)) {
       if (fs.readFileSync(src, 'utf8') !== text) throw new BuildError(`round ${k} of ${id} is already recorded from ${rel}; ${shown} differs from it`);
@@ -211,15 +268,21 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
     throw new BuildError(`${id} is ${current.state}; build verdict runs from ${FROM.join(' or ')}`);
   }
   if (k !== verdicts.length + 1) throw new BuildError(`the next verdict of ${id} is round ${verdicts.length + 1}, not ${k}`);
-  // The verdict is given on the recorded head; code committed since has not been through build pr.
-  if (!headCovers(wt, current.pr?.headSha ?? '', headSha(wt))) {
-    throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
-  }
+  assertBuilt(wt, id, current);
 
   const { text, here, moved } = verdictSource(wt, id, k, src, dest, rel, shown);
   const v = checked(text, shown, name, independent);
   const reused = reusedNumbers(shown, v.findings.map((f) => f.id), earlierIds(wt, verdicts));
   if (reused.length > 0) throw new BuildError(reused.join('\n'));
+  const banned = bannedProblems(cfg, v, text, shown);
+  if (banned.length > 0) throw new BuildError(banned.join('\n'));
+  // The line this round would write, judged against the live body before anything moves.
+  const stuck = outcome(k, v, [...verdicts, { independent }], independent).next === 'stuck';
+  const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings }], { stuck });
+  const { problems } = withBlocked(host, current.pr.number, line, cfg);
+  if (problems.length > 0) {
+    throw new BuildError(problems.map((p) => `verdict ${shown}: the Reviewer blocked line would break the pull request body: ${p}`).join('\n'));
+  }
 
   if (here && moved) fs.rmSync(src);
   else if (here) move(src, dest);
