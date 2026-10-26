@@ -65,7 +65,7 @@ Enforced by: the auditor's brief; `slicekit check` (every G row closed before pl
 ## REQ-2.5 `/slicekit plan`
 
 SHALL refuse while any clarification marker or open gap exists. It SHALL write `<docsRoot>/spec/stack.md` if
-absent (taking the stack from intake when given, otherwise asking), then phases from the milestones
+it is absent or says nothing yet (taking the stack from intake when given, otherwise asking), then phases from the milestones
 in intake or decisions, then slice files (REQ-1.5) such that every REQ is named by at least one slice,
 no two slices in the same parallel group expect to change the same file or package, and each slice's
 evaluation set has at least one `happy` and one `negative` test. It SHALL regenerate `BUILD.md` and
@@ -82,7 +82,7 @@ branch THEN it fails naming both slices.
 
 Cites: D-10, D-38, `../intake/2026-10-24-founding-requirement.md`.
 
-Enforced by: `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
+Enforced by: `slicekit plan check`; `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
 
 ## REQ-2.6 `/slicekit build [P<n>/S-<nn>]`
 

@@ -14,8 +14,9 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
    is `source` if nothing is left. That is the slug intake and the spec used, so the plan lands on
    the program's branch.
 2. Run `{{cli}} plan check`. When it exits 1 it prints one blocker per line: a clarification marker
-   as `<file>:<line> clarification marker: …`, or the gap scan not being done. Print them and stop;
-   the plan waits for clarify and `/slicekit gaps`. Go on only when it prints `ready to plan`.
+   as `<file>:<line> clarification marker: …`, or the earlier stage that is not done yet, such as
+   spec review or the gap scan. Print them and stop: the plan waits for each marker to be resolved
+   and for the stage the refusal names. Go on only when it prints `ready to plan`.
 3. When `<docsRoot>/spec/stack.md` is absent or says nothing yet, take the stack (language, runtime,
    storage, test runner, hosting) from the intake snapshots or `<docsRoot>/decisions.md` when they
    give it. For each choice they leave open, ask the human one question, and record the answer with
