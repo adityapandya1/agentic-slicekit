@@ -1,18 +1,18 @@
 {
   "slice": "P2/S-12",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 13,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/13",
-    "headSha": "df7e7f18cb4c788ff8e913f1fa74a60db05e31b3"
+    "headSha": "8ed9d10b2f561802bc05a165c7c345df68f595da"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-26T18:42:49Z",
   "handoff": null,
   "history": [
     {
@@ -27,6 +27,21 @@
           "headSha": "df7e7f18cb4c788ff8e913f1fa74a60db05e31b3",
           "title": "[P2/S-12] /slicekit gaps and the auditor's gap mode"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-26T18:43:04.827Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-26T18:42:49Z",
+        "pr": {
+          "number": 13,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/13",
+          "headSha": "8ed9d10b2f561802bc05a165c7c345df68f595da"
+        },
+        "source": "host"
       }
     }
   ]
