@@ -16,11 +16,12 @@ import { amend, commitWork } from '../build/commit.js';
 import { declineFinding } from '../build/decline.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
+import { LOOP_ROUNDS, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'decline'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -97,6 +98,20 @@ function prStep(root, io, positionals, values) {
   return 0;
 }
 
+// Prints the next step, the round's finding IDs and the in-loop rounds used.
+function verdictStep(root, io, positionals, values) {
+  if (positionals.length !== 2) return usage(io);
+  const cfg = loadConfig(root);
+  const [id, file] = positionals;
+  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, { worktree: values.worktree });
+  const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
+  const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
+  if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
+  io.stdout(out.map((l) => `${l}
+`).join(''));
+  return 0;
+}
+
 // Prints the issue's URL, and `(already filed)` (`, closed` for a closed one) when the finding's issue
 // was there before.
 function declineStep(root, io, positionals, values) {
@@ -110,7 +125,7 @@ function declineStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, decline: declineStep };
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

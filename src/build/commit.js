@@ -14,9 +14,12 @@ import { BuildError, findWorktree } from './worktree.js';
 const short = (sha) => sha.slice(0, 7);
 const lines = (out) => out.split('\n').filter((l) => l !== '');
 
-function building(wt, cfg, id, step) {
+// A fix for review findings is committed the same way while the pull request is in review.
+const COMMIT_FROM = ['building', 'in-review', 'changes-requested'];
+
+function building(wt, cfg, id, step, from = ['building']) {
   const current = readSlice(wt, cfg, id);
-  if (current.state !== 'building') throw new BuildError(`${id} is ${current.state}; ${step} runs from building`);
+  if (!from.includes(current.state)) throw new BuildError(`${id} is ${current.state}; ${step} runs from ${from.join(', ')}`);
   return current;
 }
 
@@ -66,7 +69,10 @@ function frozenProblem(wt, current) {
 // --require-green meaningless; CI, which runs the committed config, is the backstop.
 function kitCommit(id, subject, trailers, files, stateRel, buildRel, sliceRel) {
   if (trailers.Slice !== id) return false;
-  if (subject.startsWith(`chore(slicekit): ${id} `)) return files.every((f) => f === stateRel || f === buildRel);
+  // build verdict's commit adds this slice's verdict file under .slicekit/reviews/.
+  const stem = stateRel.split('/').at(-1).replace(/\.json$/, '');
+  const verdictFile = (f) => new RegExp(`^\\.slicekit/reviews/${stem}i?-r[1-9]\\d*\\.md$`).test(f);
+  if (subject.startsWith(`chore(slicekit): ${id} `)) return files.every((f) => f === stateRel || f === buildRel || verdictFile(f));
   if (subject === `docs(${id}): amend evaluation set`) return files.length === 1 && files[0] === sliceRel;
   return false;
 }
@@ -94,7 +100,7 @@ function forgedKitChange(wt, cfg, id, current, slice) {
 export function commitWork(root, cfg, id, { message, requireGreen = false, worktree } = {}) {
   if (typeof message !== 'string' || message.trim() === '') throw new BuildError('--message is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
-  const current = building(wt, cfg, id, 'commit');
+  const current = building(wt, cfg, id, 'commit', COMMIT_FROM);
   const slice = sliceIn(wt, cfg, id);
   const forged = forgedKitChange(wt, cfg, id, current, slice);
   if (forged) throw new BuildError(forged);

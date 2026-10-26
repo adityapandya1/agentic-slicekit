@@ -1,13 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultConfig, loadConfig } from '../../src/config.js';
-import { init as initKit } from '../../src/init.js';
-import { main } from '../../src/cli/index.js';
+import { loadConfig } from '../../src/config.js';
 import { commitsOnBranch, git, parseTrailers } from '../../src/git.js';
 import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
 import { recordState } from '../../src/build/record.js';
@@ -17,119 +14,28 @@ import { binPath, runCli } from '../helpers/run-cli.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES } from '../../src/instructions.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
-
-async function cli(root, args, env) {
-  let stdout = '';
-  let stderr = '';
-  const io = { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; }, ...(env ? { env } : {}) };
-  const code = await main(args, io);
-  return { code, stdout, stderr };
-}
-
-const pad = (n) => String(n).padStart(2, '0');
-
-function write(root, rel, text) {
-  const file = path.join(root, ...rel.split('/'));
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
-}
-
-// Phase P<phase> with a phase file carrying `order` (or no Order line) and one slice per entry.
-function writePhase(root, docsRoot, { phase = 1, order, slices }) {
-  const dir = docsRoot === '.' ? `phases/P${phase}-x` : `${docsRoot}/phases/P${phase}-x`;
-  write(root, `${dir}/P${phase}.md`, `# Phase ${phase} — X\n\n${order ? `**Order:** ${order}\n` : ''}`);
-  for (const { n, group, evalFile } of slices) {
-    write(
-      root,
-      `${dir}/S-${pad(n)}-thing-${n}.md`,
-      `---
-slice: P${phase}/S-${pad(n)}
-name: Thing ${n}
-repo: .
-group: ${group}
-runbook: no
-requirements: [REQ-1.1]
-decisions: []
----
-
-## Done when
-
-1. It works.
-
-## Evaluation set
-
-| Test | Kind | Covers |
-|---|---|---|
-| \`${evalFile ?? `t${n}.test.js`} » works\` | happy | REQ-1.1 |
-| \`${evalFile ?? `t${n}.test.js`} » works\` | negative | REQ-1.1 |
-
-## Expected changes
-
-\`src/t${n}.js\`.
-`,
-    );
-  }
-}
+import {
+  cli,
+  write,
+  writePhase,
+  project,
+  commitAll,
+  startedWithTest,
+  stateIn,
+  red1,
+  commitIn,
+  building,
+  commitWorkCli,
+  GREEN,
+  green,
+  prCalls,
+} from '../helpers/build-flow.js';
 
 // Writes and commits a state file: build next and build start refuse uncommitted state changes.
 function setSliceState(root, id, state) {
   write(root, `.slicekit/state/${id.replace('/', '-')}.json`, `${JSON.stringify({ slice: id, state, history: [] }, null, 2)}\n`);
   git(root, ['add', '--', '.slicekit/state']);
   commit(root, `state ${id} ${state}`);
-}
-
-// The spec and decisions that make the slice files' REQ-1.1 a known, cited requirement.
-const SPEC = `# 01 — X
-
-## REQ-1.1 It works
-
-The kit SHALL work.
-
-Scenario: GIVEN a repo WHEN it runs THEN it works.
-
-Cites: D-01.
-
-Enforced by: the tests.
-`;
-const DECISIONS = `# Decisions
-
-## Settled
-
-| # | Type | Question | Answer | Who, when |
-|---|---|---|---|---|
-| D-01 | Decision | Name? | demo | team, 2026-10-24 |
-`;
-
-// A repository on main with a config and one phase committed; with `remote`, a bare origin holding
-// main. With `init`, the kit is installed (hooks, templates, a spec for REQ-1.1) and `slicekit check`
-// passes on it.
-function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {}, files = {}, init = false }) {
-  const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot, commands });
-  const repo = makeRepo({ files: init ? files : { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`, ...files } });
-  if (init) {
-    initKit(repo.root, { name: 'demo', shape: 'backend', docsRoot, commands, cli: 'node bin/slicekit.js' });
-    write(repo.root, `${docsRoot}/spec/01-x.md`, SPEC);
-    write(repo.root, `${docsRoot}/decisions.md`, DECISIONS);
-  }
-  for (const ph of phases ?? [{ order, slices }]) writePhase(repo.root, docsRoot, ph);
-  if (init) {
-    const status = runCli(['status', '--write'], { cwd: repo.root });
-    assert.equal(status.code, 0, status.stderr);
-    commitAll(repo.root, 'plan');
-  } else {
-    git(repo.root, ['add', '-A']);
-    commit(repo.root, 'plan');
-  }
-  const origin = remote ? makeRemote(repo.root) : null;
-  if (origin) git(repo.root, ['push', '-q', 'origin', 'main']);
-  return {
-    root: repo.root,
-    remote: origin?.remote,
-    cleanup() {
-      origin?.cleanup();
-      repo.cleanup();
-    },
-  };
 }
 
 test('next skips a slice whose group waits on an unmerged step', async () => {
@@ -168,16 +74,6 @@ test('next skips a slice whose group waits on an unmerged step', async () => {
     p.cleanup();
   }
 });
-
-// ALLOW_PROTECTED_COMMIT: init installs the kit's hooks, which refuse a commit on main.
-function commitAll(root, message) {
-  git(root, ['add', '-A']);
-  execFileSync('git', ['commit', '-q', '-m', message], {
-    cwd: root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' },
-  });
-}
 
 test('a docs root of . does not read the worktrees', () => {
   const repo = makeRepo();
@@ -528,21 +424,6 @@ test('uncommitted slice states or plan files are refused', async () => {
   }
 });
 
-// A started slice P1/S-01 whose evaluation row is `a.test.js » works`, with `node --test` as the
-// test command; `body` is the test file the developer wrote at test/a.test.js in the worktree.
-async function startedWithTest(body, { test = 'node --test', files, remote = false, init = false } = {}) {
-  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test }, files, remote, init });
-  const started = await cli(p.root, ['build', 'start', 'P1/S-01']);
-  assert.equal(started.code, 0, started.stderr);
-  const wt = started.stdout.split('\n')[0];
-  if (body !== undefined) write(wt, 'test/a.test.js', body);
-  return { ...p, wt, claim: git(wt, ['rev-parse', 'HEAD']) };
-}
-
-const stateIn = (wt) => {
-  const file = path.join(wt, '.slicekit', 'state', 'P1-S-01.json');
-  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { state: 'todo' };
-};
 const PASSING = "import { test } from 'node:test';\ntest('works', () => {});\n";
 const FAILING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('works', () => assert.equal(1, 2));\n";
 
@@ -615,12 +496,7 @@ test('absolute and backslash test paths are stored relative', async () => {
   }
 });
 
-const red1 = (p, tests) => cli(p.root, ['build', 'red', 'P1/S-01', '--tests', tests]);
 const NO_CHANGE = /test\/a\.test\.js have no change to commit; red needs the evaluation set as new or changed files/;
-const commitIn = (wt, message) => {
-  git(wt, ['add', '-A']);
-  git(wt, ['commit', '-q', '-m', message]);
-};
 
 test('an evaluation test with no change since HEAD is refused unless HEAD is its red commit', async () => {
   // A failing test already on main: unchanged in the worktree, so the claim commit would become "red".
@@ -746,16 +622,6 @@ test('a re-run after a refused bookkeeping commit finishes the move to building'
   }
 });
 
-// A started slice past red: test/a.test.js imports src/t1.js, which does not exist yet, so it fails
-// until the developer writes it.
-const IMPORTING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { x } from '../src/t1.js';\ntest('works', () => assert.equal(x(), 2));\n";
-async function building(opts) {
-  const p = await startedWithTest(IMPORTING, opts);
-  const r = await red1(p, 'test/a.test.js');
-  assert.equal(r.code, 0, r.stderr);
-  return { ...p, redSha: r.stdout.split('\n')[0] };
-}
-const commitWorkCli = (p, ...args) => cli(p.root, ['build', 'commit', 'P1/S-01', ...args]);
 const SLICE_FILE = 'docs/phases/P1-x/S-01-thing-1.md';
 
 test('a change to a frozen test is refused at commit', async () => {
@@ -870,7 +736,6 @@ test('every commit on the slice branch carries the Slice trailer', async () => {
 });
 
 const amendCli = (p, t, reason = 'r') => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', t, '--reason', reason]);
-const GREEN = 'export const x = () => 2;\n';
 const WEAK = "import { test } from 'node:test';\ntest('works', () => {});\n";
 const editSlice = (p, text = '\nAmended.\n') => fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), text);
 
@@ -1005,35 +870,6 @@ test('an amend that stopped part way finishes on a re-run', async () => {
   }
 });
 
-// A green slice P1/S-01 with a bare origin and the fixture git host; `notes` is the notes file.
-async function green() {
-  const p = await building({ remote: true, init: true });
-  write(p.wt, 'src/t1.js', GREEN);
-  const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
-  assert.equal(done.code, 0, done.stderr);
-  const host = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
-  const notes = path.join(host, 'notes.json');
-  fs.writeFileSync(
-    notes,
-    JSON.stringify({ tryIt: ['Run the tests.', 'Call x().', 'See 2.'], skipped: 'Windows paths were not tried.', decisions: ['x returns 2'] }),
-  );
-  const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: host };
-  const cleanup = p.cleanup;
-  return {
-    ...p,
-    host,
-    notes,
-    pr: (...args) => cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', notes, ...args], env),
-    cleanup() {
-      fs.rmSync(host, { recursive: true, force: true });
-      cleanup();
-    },
-  };
-}
-const prCalls = (host) => {
-  const file = path.join(host, 'pr-calls.jsonl');
-  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-};
 const SLICE_BRANCH = 'refs/heads/slice/P1-S-01-thing-1';
 
 test('the draft pull request body carries every section', async () => {
