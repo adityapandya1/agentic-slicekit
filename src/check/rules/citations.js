@@ -72,10 +72,29 @@ function intakeName(raw) {
   return DATED.test(token) ? token : null;
 }
 
-function intakeExists(ctx, name) {
+// True when `name` (from intakeName) is a file under the intake folder.
+export function intakeExists(intakeDir, name) {
   if (name === '' || name.split('/').includes('..')) return false;
-  const file = path.join(ctx.paths.intake, ...name.split('/'));
+  const file = path.join(intakeDir, ...name.split('/'));
   return fs.existsSync(file) && fs.statSync(file).isFile();
+}
+
+// Every decision and intake reference on the `Cites:` entries among `lines` ([text, number]
+// pairs outside fences): `{token, kind, name, line}`, `name` the decision ID or the intake file.
+// `check` and `spec verify` both resolve citations through this.
+export function citedRefs(lines) {
+  const out = [];
+  for (const parts of citesEntries(lines)) {
+    for (const [line, n] of parts.flatMap(([l, ln], k) => citedTokens(l, k > 0).map((t) => [t, ln]))) {
+      if (DECISION.test(line)) {
+        out.push({ token: line, kind: 'decision', name: line, line: n });
+        continue;
+      }
+      const name = intakeName(line);
+      if (name !== null) out.push({ token: line, kind: 'intake', name, line: n });
+    }
+  }
+  return out;
 }
 
 function checkReqBlock(ctx, doc, h, end, fenced, out) {
@@ -90,21 +109,12 @@ function checkReqBlock(ctx, doc, h, end, fenced, out) {
   const entries = citesEntries(body);
   if (entries.length === 0) at(`${reqId} has no Cites line`);
   for (const parts of entries) {
-    let named = 0;
-    const first = parts[0][1];
-    const tokens = parts.flatMap(([line, ln], k) => citedTokens(line, k > 0).map((t) => [t, ln]));
-    for (const [token, n] of tokens) {
-      if (DECISION.test(token)) {
-        named += 1;
-        if (!ctx.ids.decision.has(token)) at(`${reqId} cites unknown ${token}`, n);
-        continue;
-      }
-      const name = intakeName(token);
-      if (name === null) continue;
-      named += 1;
-      if (!intakeExists(ctx, name)) at(`${reqId} cites missing intake ${name}`, n);
+    const found = citedRefs(parts);
+    for (const r of found) {
+      if (r.kind === 'decision' && !ctx.ids.decision.has(r.name)) at(`${reqId} cites unknown ${r.name}`, r.line);
+      if (r.kind === 'intake' && !intakeExists(ctx.paths.intake, r.name)) at(`${reqId} cites missing intake ${r.name}`, r.line);
     }
-    if (named === 0) at(`${reqId} Cites line names no decision or intake file`, first);
+    if (found.length === 0) at(`${reqId} Cites line names no decision or intake file`, parts[0][1]);
   }
 
   if (!body.some(([l]) => startsWith(l, 'Enforced by:'))) at(`${reqId} has no Enforced by line`);

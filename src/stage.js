@@ -4,7 +4,7 @@ import path from 'node:path';
 import { exists, listFiles, readText } from './fs.js';
 import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
 import { readDecisions } from './decisions.js';
-import { headings, lines, refs, tables } from './markdown.js';
+import { blankCodeSpans, headings, lines, prose, refs, tables } from './markdown.js';
 import { re } from './ids.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
@@ -109,21 +109,50 @@ function clarify(root, cfg) {
   };
 }
 
-// Every REQ heading in the spec: its ID, its file (relative to root, forward slashes), the 1-based
-// line of the heading, and the text after the heading up to the next heading of the same or a higher
-// level. S-11 and S-12 report findings at `file:line`.
+// Every REQ heading in the spec's own files (not contracts or another subfolder, as check's citation
+// rule reads them): its ID, its file (relative to root, forward slashes), the 1-based line of the
+// heading, and the text after the heading up to the next heading of the same or a higher level, or
+// the next REQ heading of any level. S-11 and S-12 report findings at `file:line`.
 export function reqBlocks(root, cfg) {
   const out = [];
-  for (const f of filesUnder(kitPaths(root, cfg).spec, '.md')) {
+  const dir = kitPaths(root, cfg).spec;
+  const reqHead = new RegExp(`^(${re('req').source})\\b`);
+  const own = exists(dir) ? listFiles(dir, { ext: '.md' }).filter((f) => !f.includes('/')).map((f) => path.join(dir, f)) : [];
+  for (const f of own) {
     const text = readText(f);
     const all = lines(text);
     const hs = headings(text);
     hs.forEach((h, i) => {
-      const m = h.level >= 2 && h.level <= 3 ? new RegExp(`^(${re('req').source})\\b`).exec(h.text) : null;
+      const m = h.level >= 2 && h.level <= 3 ? reqHead.exec(h.text) : null;
       if (!m) return;
-      const next = hs.slice(i + 1).find((n) => n.level <= h.level);
+      const next = hs.slice(i + 1).find((n) => n.level <= h.level || reqHead.test(n.text));
       out.push({ id: m[1], file: rel(root, f), line: h.line, block: all.slice(h.line, next ? next.line - 1 : all.length).join('\n') });
     });
+  }
+  return out;
+}
+
+const MARKER_START = '[NEEDS CLARIFICATION:';
+
+// Every `[NEEDS CLARIFICATION: …]` marker in `text`, outside fences and code spans: its 1-based
+// starting line and its text up to the closing `]`, a marker wrapped over lines joined with
+// spaces. `spec verify` lists these; the stack stage refuses them.
+export function clarificationMarkers(text) {
+  const ls = [...prose(text)].map(([l, n]) => [blankCodeSpans(l), n]);
+  const out = [];
+  for (let i = 0; i < ls.length; i++) {
+    let from = 0;
+    for (;;) {
+      const at = ls[i][0].indexOf(MARKER_START, from);
+      if (at === -1) break;
+      let rest = ls[i][0].slice(at);
+      let j = i;
+      while (!rest.includes(']') && j + 1 < ls.length && ls[j + 1][0].trim() !== '') rest += ` ${ls[++j][0].trim()}`;
+      const end = rest.indexOf(']');
+      out.push({ line: ls[i][1], text: end === -1 ? rest.trimEnd() : rest.slice(0, end + 1) });
+      if (j > i) break;
+      from = at + MARKER_START.length;
+    }
   }
   return out;
 }
@@ -190,7 +219,7 @@ function stack(root, cfg) {
   const file = kitPaths(root, cfg).stack;
   if (!exists(file)) return [`${rel(root, file)} is missing`];
   const text = readText(file);
-  if (text.includes('[NEEDS CLARIFICATION')) return [`${rel(root, file)} still has a [NEEDS CLARIFICATION marker`];
+  if (clarificationMarkers(text).length > 0) return [`${rel(root, file)} still has a [NEEDS CLARIFICATION marker`];
   const body = text.replace(/^#.*$/gm, '').trim();
   if (body === '' || /^not yet known\.?$/i.test(body)) return [`${rel(root, file)} says nothing is known yet`];
   return [];

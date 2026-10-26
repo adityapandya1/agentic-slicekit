@@ -224,6 +224,23 @@ test('stack blocks on a marker or on Not yet known', () => {
   }
 });
 
+test('stack blocks only on a prose marker with the colon', () => {
+  const cases = [
+    ['# Stack\n\nNode. Write `[NEEDS CLARIFICATION: db?]` for a gap.\n', true],
+    ['# Stack\n\nNode. [NEEDS CLARIFICATION] db?\n', true],
+    ['# Stack\n\nNode. [NEEDS CLARIFICATION: db?]\n', false],
+  ];
+  for (const [text, passes] of cases) {
+    withPoint(PLAN, (root) => {
+      fs.writeFileSync(path.join(root, 'docs/spec/stack.md'), text);
+      git(root, ['add', '-A']);
+      git(root, ['commit', '-m', 'stack']);
+      const r = programStage(root, cfg, { upTo: 'stack' });
+      assert.equal(r.complete, passes, `${text}: ${JSON.stringify(r)}`);
+    });
+  }
+});
+
 test('plan blocks on an uncovered REQ and on an unmerged plan', () => {
   withPoint(PLAN, (root) => {
     edit(root, 'docs/spec/a.md', (t) => `${t}\n### REQ-1.2 Another\n\nIt SHALL also work.\n\nScenario: GIVEN a WHEN b THEN c.\n\nCites: D-01.\n\nEnforced by: advisory\n`);
