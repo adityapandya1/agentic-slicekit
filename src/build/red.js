@@ -72,7 +72,7 @@ function resolveTests(wt, tests) {
   return out;
 }
 
-function sliceIn(wt, cfg, id) {
+export function sliceIn(wt, cfg, id) {
   for (const f of findSliceFiles(wt, cfg)) {
     const slice = parseSliceFile(readText(f.path), f.path);
     if (slice.id === id) return slice;
@@ -80,20 +80,28 @@ function sliceIn(wt, cfg, id) {
   throw new BuildError(`unknown slice ${id}`, 2);
 }
 
-const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
+export const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A path (POSIX, relative to the worktree) the kit owns: anything under `.slicekit/`, BUILD.md, the
+// config and the slice file. The build commands change these; a test or the developer's work never does.
+export function isKitFile(wt, cfg, slice, rel) {
+  const paths = kitPaths(wt, cfg);
+  const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const own = [posixRel(wt, paths.build), posixRel(wt, paths.config), posixRel(wt, slice.path)];
+  return key(rel).startsWith(`${key(posixRel(wt, paths.kit))}/`) || own.some((o) => key(o) === key(rel));
+}
 
 // The kit's own files are never tests: freezing one would lock the kit out of its own bookkeeping.
 function refuseKitFiles(wt, cfg, slice, tests) {
-  const paths = kitPaths(wt, cfg);
-  const kit = posixRel(wt, paths.kit);
-  const own = [posixRel(wt, paths.build), posixRel(wt, paths.config), posixRel(wt, slice.path)];
-  const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-  for (const t of tests) {
-    if (key(t).startsWith(`${key(kit)}/`) || own.some((o) => key(o) === key(t))) {
-      throw new BuildError(`${t} is a kit file, not a test`);
-    }
-  }
+  for (const t of tests) if (isKitFile(wt, cfg, slice, t)) throw new BuildError(`${t} is a kit file, not a test`);
+}
+
+// A run that did not finish or never started is evidence of nothing, red or green.
+export function unusableRun(command, run) {
+  if (run.error) return new BuildError(`${command} did not finish (${run.error}); a run that does not finish is not a failing test`);
+  if (couldNotRun(run)) return new BuildError(`${command} could not run (exit ${run.exit}): ${run.summary}`);
+  return null;
 }
 
 // The rows as { row, file, name }: `<file> » <name>`, or a bare `<file>` with no name.
@@ -177,8 +185,8 @@ export function red(root, cfg, id, { tests, worktree } = {}) {
   if (same.length > 0 && !headIsRedCommit(wt, id, files)) throw noChange(same);
 
   const run = runCommand(wt, command);
-  if (run.error) throw new BuildError(`${command} did not finish (${run.error}); a run that does not finish is not a failing test`);
-  if (couldNotRun(run)) throw new BuildError(`${command} could not run (exit ${run.exit}): ${run.summary}`);
+  const unusable = unusableRun(command, run);
+  if (unusable) throw unusable;
   if (run.exit === 0) throw new BuildError(`the evaluation set must fail before the build; ${command} → exit 0: ${run.summary}`);
 
   const made = commitPaths(wt, files, `test(${id}): evaluation set\n\nran: ${command} → exit ${run.exit}\n\nSlice: ${id}`);

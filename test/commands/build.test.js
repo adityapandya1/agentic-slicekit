@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { defaultConfig, loadConfig } from '../../src/config.js';
 import { main } from '../../src/cli/index.js';
-import { git, parseTrailers } from '../../src/git.js';
+import { commitsOnBranch, git, parseTrailers } from '../../src/git.js';
 import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
 import { runCommand } from '../../src/build/red.js';
 import { runCli } from '../helpers/run-cli.js';
@@ -667,6 +667,131 @@ test('a re-run after a refused bookkeeping commit finishes the move to building'
       'chore(slicekit): P1/S-01 building',
       'chore(slicekit): P1/S-01 tests-red',
     ]);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// A started slice past red: test/a.test.js imports src/t1.js, which does not exist yet, so it fails
+// until the developer writes it.
+const IMPORTING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { x } from '../src/t1.js';\ntest('works', () => assert.equal(x(), 2));\n";
+async function building() {
+  const p = await startedWithTest(IMPORTING);
+  const r = await red1(p, 'test/a.test.js');
+  assert.equal(r.code, 0, r.stderr);
+  return { ...p, redSha: r.stdout.split('\n')[0] };
+}
+const commitWorkCli = (p, ...args) => cli(p.root, ['build', 'commit', 'P1/S-01', ...args]);
+const SLICE_FILE = 'docs/phases/P1-x/S-01-thing-1.md';
+
+test('a change to a frozen test is refused at commit', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
+    fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), "test('extra', () => {});\n");
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const refused = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
+    assert.equal(refused.code, 1);
+    assert.ok(
+      refused.stderr.includes(`frozen test test/a.test.js changed since ${p.redSha.slice(0, 7)}; amend the slice file to change the evaluation set`),
+      refused.stderr,
+    );
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+
+    // amend needs the human's edit to the slice file first.
+    const early = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'r']);
+    assert.equal(early.code, 1);
+    assert.match(early.stderr, /amend the slice file first; it has no change/);
+    const notFrozen = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'src/t1.js', '--reason', 'r']);
+    assert.equal(notFrozen.code, 1);
+
+    fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nThe extra test checks nothing yet.\n');
+    const amended = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'r']);
+    assert.equal(amended.code, 0, amended.stderr);
+    assert.equal(amended.stdout, 'unfroze test/a.test.js\n');
+    assert.deepEqual(stateIn(p.wt).unfrozen, ['test/a.test.js']);
+    assert.deepEqual(git(p.wt, ['log', '-2', '--format=%s']).split('\n'), [
+      'chore(slicekit): P1/S-01 unfreeze test/a.test.js',
+      'docs(P1/S-01): amend evaluation set',
+    ]);
+    assert.match(git(p.wt, ['log', '-1', '--format=%B', 'HEAD^']), /\n\nr\n\nSlice: P1\/S-01$/);
+
+    const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+    assert.equal(done.code, 0, done.stderr);
+    assert.match(done.stdout, /^[0-9a-f]{7} exit 0\n$/);
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+    const body = git(p.wt, ['log', '-1', '--format=%B']);
+    assert.match(body, /^feat\(P1\/S-01\): x\n\nran: node --test → exit 0\n\nSlice: P1\/S-01$/);
+    assert.deepEqual(git(p.wt, ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']).split('\n').sort(), ['src/t1.js', 'test/a.test.js']);
+    assert.equal((await commitWorkCli(p, '--message', 'again')).stdout, 'nothing to commit\n');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build commit refuses a red run under --require-green, a run that could not run, and kit files', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 3;\n');
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const red = await commitWorkCli(p, '--message', 'wip', '--require-green');
+    assert.equal(red.code, 1);
+    assert.match(red.stderr, /tests fail \(exit 1\): /);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+
+    // Without --require-green a red run is committed, with its exit in the message.
+    const wip = await commitWorkCli(p, '--message', 'wip');
+    assert.equal(wip.code, 0, wip.stderr);
+    assert.match(wip.stdout, /^[0-9a-f]{7} exit 1\n$/);
+
+    // A frozen test committed by hand is still a change since the red commit.
+    fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), '// later\n');
+    git(p.wt, ['add', 'test/a.test.js']);
+    git(p.wt, ['commit', '-q', '-m', 'by hand']);
+    const byHand = await commitWorkCli(p, '--message', 'x');
+    assert.equal(byHand.code, 1);
+    assert.match(byHand.stderr, /frozen test test\/a\.test\.js changed since/);
+    git(p.wt, ['reset', '-q', '--hard', 'HEAD^']);
+
+    for (const kit of ['BUILD.md', '.slicekit/state/P1-S-01.json', SLICE_FILE]) {
+      fs.appendFileSync(path.join(p.wt, ...kit.split('/')), kit.endsWith('.json') ? ' ' : '\nx\n');
+      const r = await commitWorkCli(p, '--message', 'x');
+      assert.equal(r.code, 1, kit);
+      assert.ok(r.stderr.includes(`${kit} is a kit file; build commit does not commit it`), r.stderr);
+      git(p.wt, ['checkout', '--', kit]);
+    }
+
+    const cfgFile = path.join(p.wt, '.slicekit', 'config.json');
+    const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    cfg.commands.test = 'slicekit-no-such-command-for-commit';
+    fs.writeFileSync(cfgFile, `${JSON.stringify(cfg, null, 2)}\n`);
+    git(p.wt, ['add', '.slicekit/config.json']);
+    git(p.wt, ['commit', '-q', '-m', 'cfg']);
+    fs.writeFileSync(path.join(p.root, '.slicekit', 'config.json'), `${JSON.stringify(cfg, null, 2)}\n`);
+    write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
+    const notRun = await commitWorkCli(p, '--message', 'x');
+    assert.equal(notRun.code, 1);
+    assert.match(notRun.stderr, /slicekit-no-such-command-for-commit could not run \(exit \d+\): /);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('every commit on the slice branch carries the Slice trailer', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 3;\n');
+    assert.equal((await commitWorkCli(p, '--message', 'feat(P1/S-01): first try')).code, 0);
+    fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), "test('extra', () => {});\n");
+    fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nAmended.\n');
+    assert.equal((await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'why'])).code, 0);
+    write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
+    assert.equal((await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green')).code, 0);
+
+    const base = git(p.wt, ['merge-base', 'HEAD', 'main']);
+    const commits = commitsOnBranch(p.wt, base);
+    assert.ok(commits.length >= 8, String(commits.length));
+    for (const c of commits) assert.equal(c.trailers.Slice, 'P1/S-01', `${c.subject}\n${c.body}`);
   } finally {
     p.cleanup();
   }

@@ -6,16 +6,22 @@ import { GitError } from '../git.js';
 import { SliceFileError } from '../slicefile.js';
 import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
+import { amend, commitWork } from '../build/commit.js';
 import { red } from '../build/red.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr'];
-const USAGE = 'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>]';
+const USAGE =
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
   tests: { type: 'string' },
   worktree: { type: 'string' },
+  message: { type: 'string' },
+  'require-green': { type: 'boolean' },
+  test: { type: 'string' },
+  reason: { type: 'string' },
 };
 
 function next(root, io, positionals) {
@@ -45,13 +51,31 @@ function redStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.tests === undefined) return usage(io);
   const cfg = loadConfig(root);
   const { commit } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree });
-  io.stdout(`${commit}
-tests-red → building
-`);
+  io.stdout(`${commit}\ntests-red → building\n`);
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep };
+function commitStep(root, io, positionals, values) {
+  if (positionals.length !== 1 || values.message === undefined) return usage(io);
+  const cfg = loadConfig(root);
+  const { sha, exit } = commitWork(root, cfg, positionals[0], {
+    message: values.message,
+    requireGreen: Boolean(values['require-green']),
+    worktree: values.worktree,
+  });
+  io.stdout(sha === null ? 'nothing to commit\n' : `${sha.slice(0, 7)} exit ${exit}\n`);
+  return 0;
+}
+
+function amendStep(root, io, positionals, values) {
+  if (positionals.length !== 1 || values.test === undefined || values.reason === undefined) return usage(io);
+  const cfg = loadConfig(root);
+  const { test } = amend(root, cfg, positionals[0], { test: values.test, reason: values.reason, worktree: values.worktree });
+  io.stdout(`unfroze ${test}\n`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
