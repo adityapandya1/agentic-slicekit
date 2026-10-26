@@ -61,6 +61,7 @@ decisions: []
 | Test | Kind | Covers |
 |---|---|---|
 | \`${evalFile ?? `t${n}.test.js`} » works\` | happy | REQ-1.1 |
+| \`${evalFile ?? `t${n}.test.js`} » works\` | negative | REQ-1.1 |
 
 ## Expected changes
 
