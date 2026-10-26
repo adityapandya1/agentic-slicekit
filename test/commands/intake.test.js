@@ -575,3 +575,19 @@ test('done commits only the files that exist, and interface and open rows keep t
     { files: { 'docs/decisions.md': template('decisions.md'), 'docs/spec/stack.md': '# Stack\n' } },
   );
 });
+
+// ---- the procedure (REQ-2.2) ----
+
+test('the procedure passes the brief lint', async () => {
+  const { briefProblems } = await import('../helpers/brief-lint.js');
+  const text = fs.readFileSync(new URL('../../templates/instructions/commands/intake.md', import.meta.url), 'utf8');
+  assert.deepEqual(briefProblems(text, { kind: 'command' }), []);
+  for (const want of ['intake ask', 'intake answer', 'intake done', '--interface', '--answer=', '{{cli}} branch spec', '{{cli}} intake snapshot {{args}}']) {
+    assert.ok(text.includes(want), `the procedure names ${want}`);
+  }
+  assert.match(text, /writes no file under `<docsRoot>\/spec\/`/);
+  // The steps come in the order the slice gives them.
+  const order = ['branch spec', 'intake snapshot', 'intake ask --pass product', 'intake ask --pass platform', 'intake done'].map((s) => text.indexOf(s));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.ok(!order.includes(-1));
+});
