@@ -12,7 +12,9 @@ export function commit(root, message, { allowEmpty = true } = {}) {
 }
 
 export function makeRepo({ commits = 0, branch = 'main', files = {} } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-repo-'));
+  // The real path: macOS reaches the temp folder through /private, and Windows may name it with an
+  // 8.3 short name; git reports worktree paths in their real form, so tests compare against that.
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-repo-')));
   run(root, ['init', '-b', branch]);
   run(root, ['config', 'user.name', 'Slicekit Test']);
   run(root, ['config', 'user.email', 'test@example.com']);
