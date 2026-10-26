@@ -10,7 +10,7 @@ decisions: [D-10, D-22, D-38]
 
 ## Done when
 
-1. `slicekit plan check` refuses, listing each one, while any `[NEEDS CLARIFICATION` marker is under the spec or the gap scan is not done ("gap scan not done" and the command that does it, REQ-1.7); otherwise it prints `ready to plan` (REQ-2.5).
+1. `slicekit plan check` refuses, listing each one, while the spec holds any marker that `clarificationMarkers` (`src/stage.js`) returns or the gap scan is not done ("gap scan not done" and the command that does it, REQ-1.7); otherwise it prints `ready to plan` (REQ-2.5).
 2. The `coverage` rule also fails, from the plan stage on, a slice whose evaluation set lacks a `happy` or a `negative` test, and a phase whose `**Order:**` line misses, repeats or invents a group; slices in different groups of one Order step are checked for overlap like slices of one group, since they run at the same time. REQ-1.5 defines the Order line and its default, REQ-2.7 speaks of one Order step, and REQ-3.7's coverage row says what the rule checks (D-38).
 3. The `/slicekit plan` procedure writes `stack.md` when it says nothing yet, the phases with their Order lines and the slice files (REQ-1.5), regenerates `BUILD.md` (REQ-1.6), runs `check` to `0 findings`, and opens the `[plan] <program name>` pull request.
 
@@ -37,7 +37,7 @@ decisions: [D-10, D-22, D-38]
 
 **Interfaces:**
 - Consumes: `requireStage`, `StageError` from `src/stage.js` (Phase 1).
-- `planBlockers(root, cfg) → string[]`: first one `<file>:<line> clarification marker: <the marker text up to its closing bracket>` per `[NEEDS CLARIFICATION` in any `.md` under `<docsRoot>/spec/` (contracts and `stack.md` included), then the `StageError` message of `requireStage(root, cfg, 'gap-scan')` when it throws (for a missing `gaps.md`: `gap scan not done: <docsRoot>/spec/gaps.md is missing; run /slicekit gaps`).
+- `planBlockers(root, cfg) → string[]`: first one `<file>:<line> clarification marker: <the marker text up to its closing bracket>` for each marker `clarificationMarkers` (`src/stage.js`) returns from any `.md` under `<docsRoot>/spec/` (contracts and `stack.md` included), then the `StageError` message of `requireStage(root, cfg, 'gap-scan')` when it throws (for a missing `gaps.md`: `gap scan not done: <docsRoot>/spec/gaps.md is missing; run /slicekit gaps`).
 - CLI `plan check`: no blockers → `ready to plan`, exit 0; else one blocker per line, exit 1. `subcommands = ['check']`.
 
 - [ ] **Step 1: Failing test** — `refuses while a clarification marker or an open gap exists`: a repo past spec review whose spec holds one marker and whose `gaps.md` has an open `G-1` → exit 1 with two lines, the first naming the spec file, its line and `clarification marker`, the second `gap scan not done: G-1 is not closed; run /slicekit gaps`; with the marker resolved and `G-1` closed → `ready to plan`. With no `gaps.md` the message holds `gap scan not done`. <!-- slicekit:example -->
