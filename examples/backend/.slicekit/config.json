@@ -4,7 +4,6 @@
   "shape": "backend",
   "docsRoot": "docs",
   "defaultBranch": "main",
-  "cli": "npx slicekit",
   "protectedBranches": [
     "main"
   ],

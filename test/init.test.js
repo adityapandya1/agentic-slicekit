@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { bareCliWarning, init } from '../src/init.js';
-import { ConfigError, loadConfig, validateConfig } from '../src/config.js';
+import { ConfigError, defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { buildContext } from '../src/check/context.js';
 import hooksRule from '../src/check/rules/hooks.js';
 import { git } from '../src/git.js';
@@ -367,6 +367,36 @@ test('cli: --cli overrides the probe and lands in config and settings', () => {
     assert.match(r.stdout, new RegExp(`^hooks run: ${cli.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`, 'm'));
     assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, cli);
     assert.ok(JSON.parse(read(root, '.claude/settings.json')).hooks.Stop[0].hooks[0].command.startsWith(`${cli} hook `));
+  });
+});
+
+// An example project ships a config without cli: the reader's own install is the only one that works.
+test('cli: a config without cli takes it from --cli or the probe and keeps every other field', () => {
+  withRepo((root) => {
+    const cfg = JSON.parse(JSON.stringify(defaultConfig({ name: 'greeting', shape: 'backend', commands: { test: 'node --test' } })));
+    delete cfg.cli;
+    fs.mkdirSync(path.join(root, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'config.json'), `${JSON.stringify(cfg, null, 2)}\n`);
+    const cli = `node "${binPath}"`;
+    const r = runCli(['init', '--shape', 'backend', '--cli', cli], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, '');
+    assert.match(r.stdout, /^updated \.slicekit\/config\.json$/m);
+    const written = JSON.parse(read(root, '.slicekit/config.json'));
+    assert.deepEqual(written, { ...cfg, cli });
+    // From then on the config is the truth for cli, as for shape and docsRoot.
+    const other = runCli(['init', '--cli', 'node other.js'], { cwd: root });
+    assert.equal(other.code, 2);
+    assert.match(other.stderr, /config\.json already sets cli = /);
+  });
+  withRepo((root) => {
+    const cfg = JSON.parse(JSON.stringify(defaultConfig({ name: 'greeting', shape: 'backend' })));
+    delete cfg.cli;
+    fs.mkdirSync(path.join(root, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'config.json'), `${JSON.stringify(cfg, null, 2)}\n`);
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, 'slicekit');
   });
 });
 

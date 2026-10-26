@@ -6,21 +6,19 @@ You build one slice in its worktree. You write the slice's tests first, see them
 
 - The tests of the slice's evaluation set, each named exactly as the evaluation set names it.
 - Then the code that makes those tests pass.
-- Only the files the slice's Expected changes section names. A file outside that set goes in your report with the reason it changed.
+- Only the files the slice's Expected changes section names.
 
 ## Tests first
 
-When the command asks for the tests, write exactly the evaluation set's tests and nothing else: no code, and no helper the tests do not need. Run the test command and see them fail. Report the test files' paths on one line, `tests: <a>, <b>`, relative to the worktree.
+When the command asks for the tests, write exactly the evaluation set's tests: no test the evaluation set does not list, no code, and no other file except a helper a test imports. Run the test command and see them fail. Report the test files' paths on one line, `tests: <a>, <b>`, relative to the worktree.
 
 ## Then code
 
-When the command asks for the code, write the code that makes those tests pass and run the test command again. Report each time a test that failed now passes.
+When the command asks for the code, write the code that makes those tests pass and run the test command again. Your report names each test that now passes.
 
 Work only under the worktree path the brief's Where section gives, and use absolute paths for every file you read or write.
 
-Once the command has committed the tests they are frozen. Never change a frozen test, even one that looks wrong. Ask instead, with one line `amend: <test path> — <why>`, and wait: the command asks the human and tells you whether that one test may change.
-
-Name any file you changed outside the slice's expected changes, and why. Write no document.
+Once the command has committed the tests they are frozen. Never change a frozen test, even one that looks wrong. Ask instead: put one line `amend: <test path> — <why>` in your report and stop. The command asks the human and, on yes, sends you back to change that one test.
 
 ## You never
 

@@ -13,7 +13,7 @@ import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.j
 import { recordState } from '../../src/build/record.js';
 import { runCommand } from '../../src/build/red.js';
 import { prBodyProblems } from '../../src/prbody.js';
-import { runCli } from '../helpers/run-cli.js';
+import { binPath, runCli } from '../helpers/run-cli.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES } from '../../src/instructions.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
@@ -1100,6 +1100,12 @@ test('build pr refuses before any push: notes, a dirty worktree, a failing comma
     const twoSteps = await p.pr();
     assert.equal(twoSteps.code, 2);
     assert.match(twoSteps.stderr, /notes need tryIt \(three steps\) and skipped/);
+    // A field of the wrong type is named, with the type it needs.
+    assert.match(twoSteps.stderr, /notes\.tryIt must be a list of exactly three non-empty strings/);
+    fs.writeFileSync(p.notes, JSON.stringify({ tryIt: ['a', 'b', 'c'], skipped: ['Skipped: x', 'Not checked: y'] }));
+    const listed = await p.pr();
+    assert.equal(listed.code, 2);
+    assert.match(listed.stderr, /notes\.skipped must be one non-empty string/);
     fs.writeFileSync(p.notes, JSON.stringify({ tryIt: ['a', 'b', 'c'] }));
     assert.equal((await p.pr()).code, 2);
     untouched();
@@ -1225,7 +1231,26 @@ test('build pr refuses a worktree behind its branch on origin', async () => {
 
 const KIT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const EXAMPLE = path.join(KIT_ROOT, 'examples', 'backend');
+// The hook command the README tells a reader to pass: this checkout's bin, through node.
+const KIT_CLI = `node "${binPath.replace(/\\/g, '/')}"`;
+const exampleFile = (rel) => fs.readFileSync(path.join(EXAMPLE, ...rel.split('/')), 'utf8');
 
+test('init on a copy of examples/backend prints no hook warning', () => {
+  assert.equal(Object.hasOwn(JSON.parse(exampleFile('.slicekit/config.json')), 'cli'), false);
+  const repo = makeRepo();
+  try {
+    fs.cpSync(EXAMPLE, repo.root, { recursive: true });
+    const init = runCli(['init', '--shape', 'backend', '--cli', KIT_CLI], { cwd: repo.root, shim: false });
+    assert.equal(init.code, 0, init.stderr);
+    assert.equal(init.stderr, '');
+    assert.equal(loadConfig(repo.root).cli, KIT_CLI);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// The README's steps, then the procedure's steps 1 to 5 in the forms the procedure gives them, with
+// this test standing in for the developer and the human.
 test('examples/backend goes from todo to draft-pr', async () => {
   const repo = makeRepo();
   const origin = makeRemote(repo.root);
@@ -1233,42 +1258,75 @@ test('examples/backend goes from todo to draft-pr', async () => {
   try {
     const { root } = repo;
     fs.cpSync(EXAMPLE, root, { recursive: true });
-    const kept = fs.readFileSync(path.join(root, 'docs', 'spec', '01-greeting.md'), 'utf8');
-    const init = await cli(root, ['init', '--shape', 'backend']);
+    const init = runCli(['init', '--shape', 'backend', '--cli', KIT_CLI], { cwd: root, shim: false });
     assert.equal(init.code, 0, init.stderr);
-    // init adds the kit's layout around the example's docs and keeps them as they were.
-    assert.equal(fs.readFileSync(path.join(root, 'docs', 'spec', '01-greeting.md'), 'utf8'), kept);
+    // init adds the kit's layout around the example's files and keeps them as they were.
+    for (const rel of ['docs/spec/01-greeting.md', 'docs/decisions.md', 'docs/phases/P1-greeting/P1.md', 'docs/phases/P1-greeting/S-01-greet.md']) {
+      assert.equal(fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8'), exampleFile(rel), rel);
+    }
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.slicekit', 'config.json'), 'utf8')), {
+      ...JSON.parse(exampleFile('.slicekit/config.json')),
+      cli: KIT_CLI,
+    });
     assert.ok(fs.existsSync(path.join(root, 'docs', 'runbook.md')));
-    const status = runCli(['status', '--write'], { cwd: root });
+    const status = runCli(['status', '--write'], { cwd: root, shim: false });
     assert.equal(status.code, 0, status.stderr);
     commitAll(root, 'the example, with the kit installed');
     git(root, ['push', '-q', 'origin', 'main']);
+    // main is green before any slice starts.
+    const onMain = runCli(['check'], { cwd: root, shim: false });
+    assert.equal(onMain.code, 0, onMain.stdout + onMain.stderr);
 
+    // Step 1.
     const next = await cli(root, ['build', 'next']);
     assert.equal(next.code, 0, next.stderr);
     assert.equal(next.stdout, 'P1/S-01\n');
     const started = await cli(root, ['build', 'start', 'P1/S-01']);
     assert.equal(started.code, 0, started.stderr);
     const wt = started.stdout.split('\n')[0];
+    const at = ['--worktree', wt];
 
-    // The developer's tests, before any code: they import src/greet.js, which does not exist yet.
+    // Step 2: the developer's whole prompt names the worktree.
+    const brief = await cli(root, ['instructions', 'developer', 'P1/S-01', ...at]);
+    assert.equal(brief.code, 0, brief.stderr);
+    assert.match(brief.stdout, /^## Where$/m);
+    assert.ok(brief.stdout.includes(path.resolve(wt).split(path.sep).join('/')), brief.stdout);
+    const testFile = (pattern) =>
+      `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('refuses an empty name', () => assert.throws(() => greet(''), /${pattern}/));\n`;
     write(wt, 'test/greet.test.js', "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('greets a name', () => assert.equal(greet('Ada'), 'Hello, Ada!'));\n");
-    write(wt, 'test/greet-empty.test.js', "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('refuses an empty name', () => assert.throws(() => greet(''), /a name is required/));\n");
-    const red = await cli(root, ['build', 'red', 'P1/S-01', '--tests', 'test/greet.test.js,test/greet-empty.test.js']);
+    write(wt, 'test/greet-empty.test.js', testFile('name required'));
+
+    // Step 3: the developer's `tests:` paths, joined by commas.
+    const red = await cli(root, ['build', 'red', 'P1/S-01', '--tests', 'test/greet.test.js,test/greet-empty.test.js', ...at]);
     assert.equal(red.code, 0, red.stderr);
     assert.equal(red.stdout.split('\n')[1], 'tests-red → building');
 
+    // Step 4: the code, then an amendment the human approved: the negative test expects the wrong
+    // message. The row stays the same, so the amendment is a note under it in the worktree's slice file.
     write(wt, 'src/greet.js', "export function greet(name) {\n  if (!name) throw new Error('a name is required');\n  return `Hello, ${name}!`;\n}\n");
-    const done = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): greet a name', '--require-green']);
-    assert.equal(done.code, 0, done.stderr);
-    assert.match(done.stdout, /^[0-9a-f]{7} exit 0\n$/);
+    // The checkout may have CRLF line ends.
+    const row = /(\| `greet-empty\.test\.js » refuses an empty name` \| negative \| REQ-1\.1 \|)(\r?\n)/;
+    const sliceFile = path.join(wt, 'docs', 'phases', 'P1-greeting', 'S-01-greet.md');
+    const before = fs.readFileSync(sliceFile, 'utf8');
+    assert.match(before, row);
+    fs.writeFileSync(sliceFile, before.replace(row, '$1$2$2Amended: `test/greet-empty.test.js` expects the message REQ-1.1 states, "a name is required".$2'));
+    const amended = await cli(root, ['build', 'amend', 'P1/S-01', '--test', 'test/greet-empty.test.js', '--reason', 'the test expected the wrong message', ...at]);
+    assert.equal(amended.code, 0, amended.stderr);
+    write(wt, 'test/greet-empty.test.js', testFile('a name is required'));
+    const work = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): greet a name', ...at]);
+    assert.equal(work.code, 0, work.stderr);
+    assert.match(work.stdout, /^[0-9a-f]{7} exit 0\n$/);
 
-    const notes = path.join(host, 'notes.json');
+    // Step 5: everything is committed, so the green run has nothing to commit, which is success.
+    const done = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): green', '--require-green', ...at]);
+    assert.equal(done.code, 0, done.stderr);
+    assert.equal(done.stdout, 'nothing to commit\n');
+    const notes = path.join(host, 'slicekit-notes-P1-S-01.json');
     fs.writeFileSync(
       notes,
       JSON.stringify({ tryIt: ['Run npm test.', "Call greet('Ada').", 'See Hello, Ada!.'], skipped: 'Names with spaces were not tried.' }),
     );
-    const pr = await cli(root, ['build', 'pr', 'P1/S-01', '--notes', notes], { ...process.env, SLICEKIT_GITHOST_FIXTURE: host });
+    const pr = await cli(root, ['build', 'pr', 'P1/S-01', '--notes', notes, ...at], { ...process.env, SLICEKIT_GITHOST_FIXTURE: host });
     assert.equal(pr.code, 0, pr.stderr);
     assert.equal(pr.stdout, '#1 https://example.test/pull/1\n');
 
@@ -1279,7 +1337,7 @@ test('examples/backend goes from todo to draft-pr', async () => {
     assert.equal(body.isDraft, true);
     assert.equal(body.title, '[P1/S-01] Greet a name');
 
-    const checked = runCli(['check'], { cwd: wt });
+    const checked = runCli(['check'], { cwd: wt, shim: false });
     assert.equal(checked.code, 0, checked.stdout + checked.stderr);
     assert.match(checked.stdout, /\b0 findings\b/);
   } finally {
@@ -1300,4 +1358,15 @@ test('the procedure and the developer brief pass the brief lint', () => {
   for (const h of ['## Tests first', '## Then code']) assert.match(brief, new RegExp(`^${h}$`, 'm'), h);
   assert.ok(brief.includes('ran: <command> → exit <code>'), brief);
   assert.ok(brief.includes('amend:'), brief);
+  // The amendment is made to the worktree's copy of the slice file, even when the row stays the same.
+  assert.ok(procedure.includes('<path>/<docs root>/phases/'), procedure);
+  // `nothing to commit` is success; the notes file's shape and place are stated.
+  assert.ok(procedure.includes('`nothing to commit`'), procedure);
+  assert.ok(procedure.includes('a list of exactly three strings'), procedure);
+  assert.ok(procedure.includes('one string'), procedure);
+  assert.ok(procedure.includes('slicekit-notes-<id>.json'), procedure);
+  assert.doesNotMatch(procedure, /npx/);
+  // The brief says each thing once.
+  assert.equal(brief.match(/\bdocument\b/gi)?.length, 1, 'document');
+  assert.equal(brief.match(/outside the slice's expected/gi)?.length, 1, 'outside');
 });

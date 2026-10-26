@@ -22,23 +22,27 @@ On a refusal (for example "the evaluation set must fail before the build", or an
 
 ## 4. The developer makes them pass
 
-Spawn the developer again, with the same brief, to make the tests pass. Keep it alive between reports when you can.
+Spawn the developer again, with the same brief, to make the tests pass. It reports once, when it stops.
 
-After each report that names a newly passing test, run `{{cli}} build commit <id> --message "<subject>" --worktree <path>`, with a subject such as `feat(<id>): <what now works>`. It prints `<sha7> exit <n>` or `nothing to commit`. A refusal naming a frozen test means the developer changed one: send it back with the message.
+After each developer report in which a test newly passes, run `{{cli}} build commit <id> --message "<subject>" --worktree <path>`, with a subject such as `feat(<id>): <what now works>`. It prints `<sha7> exit <n>`, or `nothing to commit` with exit 0, which is success. A refusal naming a frozen test means the developer changed one: send it back with the message. While tests still fail, spawn the developer again with what is left.
 
-When the developer reports a line `amend: <test path> — <why>`, ask the human whether that test may change. On no, tell the developer the test stands. On yes, edit the slice file's evaluation set to match, then run `{{cli}} build amend <id> --test <test path> --reason "<why>" --worktree <path>`, and tell the developer it may change that one test.
+When the developer reports a line `amend: <test path> — <why>`, ask the human whether that test may change. On no, tell the developer the test stands. On yes:
+
+1. Edit the slice file in the worktree, `<path>/<docs root>/phases/<phase>/<slice file>`, never the copy in the main checkout: `build amend` reads the worktree's copy.
+2. Change the evaluation set's row when the test's name or kind changes. When the row stays the same (only the test was wrong), still record the amendment in that file, as a line under the evaluation set naming the test and the reason: `build amend` refuses a slice file with no change.
+3. Run `{{cli}} build amend <id> --test <test path> --reason "<why>" --worktree <path>`, and tell the developer it may change that one test.
 
 ## 5. Green, then the draft pull request
 
-When the developer reports every test passing, run `{{cli}} build commit <id> --message "<subject>" --require-green --worktree <path>`. A non-zero test run is refused: send the developer back with the printed summary.
+When the developer reports every test passing, run `{{cli}} build commit <id> --message "<subject>" --require-green --worktree <path>`. It prints `<sha7> exit 0`, or `nothing to commit` with exit 0 when step 4 already committed everything; both are success. A failing test run is refused: send the developer back with the printed summary.
 
-Write the notes file, a JSON file outside the worktree, from the developer's report:
+Write the notes file from the developer's report, outside the worktree: `.git/slicekit-notes-<id>.json` in the main checkout, with the `/` in `<id>` written as `-` (for example `.git/slicekit-notes-P1-S-01.json`). It is one JSON object:
 
-- `tryIt`: exactly three steps a reviewer can follow to see the slice work.
-- `skipped`: what was skipped and what was not checked, from the report's `Skipped:` and `Not checked:` lines.
-- `decisions`: a list of the choices made while building, when there were any.
-- `runbook`: when the slice's runbook flag is set and the runbook did not change, `no operational change: <reason>`.
-- `infra`: the infrastructure or migration the slice needs, when it needs one.
+- `tryIt`: a list of exactly three strings, the steps a reviewer follows to see the slice work.
+- `skipped`: one string, the report's `Skipped:` and `Not checked:` lines joined, never a list.
+- `decisions` (optional): a list of strings, the choices made while building.
+- `runbook` (optional): one string. When the slice's runbook flag is set and the runbook did not change, `no operational change: <reason>`.
+- `infra` (optional): one string, the infrastructure or migration the slice needs.
 
 Run `{{cli}} build pr <id> --notes <file> --worktree <path>`. It runs the test, lint and build commands and `{{cli}} check`, pushes, opens the draft pull request and prints `#<n> <url>`. On a refusal, fix what it names (through the developer when it is code) and run it again; a re-run never opens a second pull request.
 

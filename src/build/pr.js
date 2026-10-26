@@ -36,9 +36,12 @@ function readNotes(root, notes) {
     }
   }
   if (n === null || typeof n !== 'object' || Array.isArray(n)) throw new BuildError(NOTES_SHAPE, 2);
-  if (!Array.isArray(n.tryIt) || n.tryIt.length !== 3 || !n.tryIt.every(text) || !text(n.skipped)) {
-    throw new BuildError(NOTES_SHAPE, 2);
-  }
+  // The field that is wrong is named with the type it needs: a list given for `skipped` must not read
+  // as a missing `skipped`.
+  const wrong = [];
+  if (!Array.isArray(n.tryIt) || n.tryIt.length !== 3 || !n.tryIt.every(text)) wrong.push('notes.tryIt must be a list of exactly three non-empty strings');
+  if (!text(n.skipped)) wrong.push('notes.skipped must be one non-empty string');
+  if (wrong.length > 0) throw new BuildError(`${NOTES_SHAPE}: ${wrong.join('; ')}`, 2);
   if (n.decisions !== undefined && !(Array.isArray(n.decisions) && n.decisions.every(text))) {
     throw new BuildError('notes.decisions must be a list of non-empty strings', 2);
   }
