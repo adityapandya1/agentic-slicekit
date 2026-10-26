@@ -216,19 +216,27 @@ function gapScan(root, cfg) {
   const file = kitPaths(root, cfg).gaps;
   if (!exists(file)) return [`${rel(root, file)} is missing`];
   const text = readText(file);
-  const blockers = [];
+  const { hasColumn, open } = openGapRows(text);
+  if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
+  if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) return [`${rel(root, file)} has no Scanned: line; gaps scan has not run`];
+  return open.map((r) => `${r.id} is not closed`);
+}
+
+// The rows of every table in the gaps file with a Closed by column whose first cell is set and whose
+// Closed by cell is empty: `{hasColumn, open: [{id, line}]}`, 1-based lines. The gap-scan stage and
+// `gaps verify` both read open rows through this.
+export function openGapRows(text) {
   let hasColumn = false;
+  const open = [];
   for (const t of tables(text)) {
     const closed = t.header.findIndex((h) => h.toLowerCase() === 'closed by');
     if (closed === -1) continue;
     hasColumn = true;
-    for (const row of t.rows) {
-      if (row[0] && (row[closed] ?? '') === '') blockers.push(`${row[0]} is not closed`);
-    }
+    t.rows.forEach((row, i) => {
+      if (row[0] && (row[closed] ?? '') === '') open.push({ id: row[0], line: t.line + 2 + i });
+    });
   }
-  if (!hasColumn && re('gap', 'g').test(text)) return [`${rel(root, file)} has no Closed by column`];
-  if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) return [`${rel(root, file)} has no Scanned: line; gaps scan has not run`];
-  return blockers;
+  return { hasColumn, open };
 }
 
 function stack(root, cfg) {

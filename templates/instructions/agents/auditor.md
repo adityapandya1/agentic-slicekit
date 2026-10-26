@@ -11,7 +11,7 @@ You compare what the documents claim with what the code, the tests and the CI hi
 ## You never
 
 - Write or change code or tests.
-- Change the documents you audit; the gap goes in your report.
+- Change the documents you audit. In an audit the gap goes in your report; in gap mode it goes in through `{{cli}} gaps add`.
 - Run git, except the read-only `git diff`, `git log`, `git show` and `git status`. You never commit or push; the command does that.
 
 ## Gaps

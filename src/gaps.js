@@ -9,7 +9,7 @@ import { exists, readText } from './fs.js';
 import { GitError, git } from './git.js';
 import { headings, lines, prose, tables } from './markdown.js';
 import { kitPaths } from './paths.js';
-import { SCANNED_LINE, reqBlocks, reqBlocksIn } from './stage.js';
+import { SCANNED_LINE, openGapRows, reqBlocks, reqBlocksIn } from './stage.js';
 
 export const CLASSES = ['missing', 'unsupported', 'contradiction', 'unknown', 'unrequested'];
 
@@ -221,13 +221,14 @@ function shortHead(root) {
 }
 
 // Writes the `Scanned: <date> at <short sha>` line the gap-scan stage requires, just above the
-// table, or replaces the one there. An unchanged line leaves the file as it is.
-function markScanned(root, cfg) {
+// table, or replaces the one there when the scan added rows. A scan that added nothing leaves an
+// existing line, so a re-scan on a clean checkout leaves the tree clean.
+function markScanned(root, cfg, added) {
   const { file, text, table } = load(root, cfg);
   const line = `Scanned: ${today()} at ${shortHead(root)}`;
   const at = [...prose(text)].find(([l]) => SCANNED_LINE.test(l.trim()));
   if (at) {
-    if (at[0].trim() !== line) save(file, replaceLine(text, at[1], line));
+    if (added && at[0].trim() !== line) save(file, replaceLine(text, at[1], line));
     return;
   }
   const blankBefore = table.header === 1 || lines(text)[table.header - 2].trim() === '';
@@ -245,7 +246,7 @@ export function scanGaps(root, cfg) {
     const same = readGaps(load(root, cfg).text).rows.find((r) => key(r) === key(c));
     out.push({ ...(same ? { id: same.id, added: false } : addGap(root, cfg, c)), ...c });
   }
-  markScanned(root, cfg);
+  markScanned(root, cfg, out.some((g) => g.added));
   return out;
 }
 
@@ -259,8 +260,9 @@ export function verifyGaps(root, cfg) {
   if (![...prose(text)].some(([l]) => SCANNED_LINE.test(l.trim()))) {
     out.push({ where: `${rel}:1`, message: 'gaps scan has not run; run slicekit gaps scan' });
   }
+  // Open rows as the gap-scan stage counts them: in any table with a Closed by column.
+  for (const r of openGapRows(text).open) out.push({ where: `${rel}:${r.line}`, message: `${r.id} is not closed` });
   const { rows } = readGaps(text);
-  for (const r of rows.filter((g) => g.closedBy === '')) out.push({ where: `${rel}:${r.line}`, message: `${r.id} is not closed` });
   const known = new Set(rows.map(key));
   for (const c of candidates(root, cfg).filter((g) => !known.has(key(g)))) {
     out.push({ where: c.where, message: `${c.cls} gap not in gaps.md: ${c.what}` });

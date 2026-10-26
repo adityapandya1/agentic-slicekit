@@ -236,6 +236,34 @@ test('gaps verify is ready once a REQ change on the gaps branch closes the last 
   });
 });
 
+test('a scan that adds no row leaves the gaps file and the tree as they are', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    await cli(root, ['gaps', 'scan']);
+    git(root, 'add', '-A');
+    git(root, ['com', 'mit'].join(''), '-q', '-m', 'gaps');
+    git(root, ['com', 'mit'].join(''), '-q', '--allow-empty', '-m', 'later');
+    const again = await cli(root, ['gaps', 'scan']);
+    assert.equal(again.stdout, 'no new gaps\n', again.stderr);
+    assert.equal(git(root, 'status', '--porcelain'), '');
+  });
+});
+
+test('gaps verify counts an open row in any table with a Closed by column, as the stage does', async () => {
+  await withProgram(async (root) => {
+    mergedSpec(root);
+    await cli(root, ['gaps', 'scan']);
+    await closeAll(root);
+    assert.equal((await cli(root, ['gaps', 'verify'])).code, 0);
+    fs.appendFileSync(path.join(root, 'docs/spec/gaps.md'), '\n## Earlier\n\n| # | Note | Closed by |\n|---|---|---|\n| G-90 | old |  |\n');
+    const stage = await cli(root, ['stage', 'require', 'gap-scan']);
+    assert.match(stage.stderr, /G-90 is not closed/);
+    const r = await cli(root, ['gaps', 'verify']);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /^docs\/spec\/gaps\.md:\d+ G-90 is not closed$/m);
+  });
+});
+
 test('gaps verify lists a candidate a fresh scan would add, and an unscanned file', async () => {
   await withProgram(async (root) => {
     mergedSpec(root);
@@ -474,6 +502,7 @@ test('the auditor brief names gap mode where it says what it writes and reports'
   assert.match(section('You write'), /gap mode/);
   assert.match(section('You write'), /gaps add/);
   assert.match(section('Your report'), /gap mode/);
+  assert.match(section('You never'), /in gap mode it goes in through `\{\{cli\}\} gaps add`/);
   assert.match(section('Your report'), /G-IDs/);
   assert.match(section('Gaps').replace(/\s+/g, ' '), /not on a `Cites:` line/);
 });
