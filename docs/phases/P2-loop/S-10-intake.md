@@ -28,7 +28,7 @@ decisions: [D-08, D-17, D-20]
 
 ## Expected changes
 
-`src/intake.js`, `src/cli/intake.js`, `templates/instructions/commands/intake.md`, tests.
+`src/intake.js`, `src/cli/intake.js`, `src/hooks/pre-edit.js` (the interview session is kit-owned), `templates/instructions/commands/intake.md`, tests.
 
 ## Tasks
 

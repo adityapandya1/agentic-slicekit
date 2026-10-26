@@ -9,7 +9,7 @@ import path from 'node:path';
 import { defaultConfig } from '../../src/config.js';
 import { main } from '../../src/cli/index.js';
 import { git } from '../../src/git.js';
-import { MAX_BYTES, maskUrl, snapshot } from '../../src/intake.js';
+import { MAX_BYTES, answer as answerFn, maskUrl, snapshot } from '../../src/intake.js';
 import { intakePin } from '../../src/stage.js';
 import { commit, makeRepo } from '../helpers/tmp-repo.js';
 
@@ -289,6 +289,31 @@ test('a snapshot never sweeps uncommitted .gitattributes edits into its commit',
     assert.equal(r.code, 1);
     assert.match(r.stderr, /\.gitattributes has uncommitted changes/);
   });
+
+  // The rule already there is not a licence: another line beside it is still someone's edit.
+  await withRepo(
+    async (root) => {
+      fs.writeFileSync(path.join(root, '.gitattributes'), '* text=auto\n*.png binary\ndocs/intake/** -text\n');
+      fs.writeFileSync(path.join(root, 'req.md'), 'first\n');
+      const r = await cli(root, ['intake', 'snapshot', 'req.md']);
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /\.gitattributes has uncommitted changes/);
+      assert.equal(git(root, ['show', 'HEAD:.gitattributes']), '* text=auto');
+    },
+    { files: { '.gitattributes': '* text=auto\n' } },
+  );
+
+  // Only the rule on top of the committed file (a refused commit's leftover) goes ahead.
+  await withRepo(
+    async (root) => {
+      fs.writeFileSync(path.join(root, '.gitattributes'), '* text=auto\ndocs/intake/** -text\n');
+      fs.writeFileSync(path.join(root, 'req.md'), 'first\n');
+      const r = await cli(root, ['intake', 'snapshot', 'req.md']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(git(root, ['status', '--porcelain']), '?? req.md');
+    },
+    { files: { '.gitattributes': '* text=auto\n' } },
+  );
 });
 
 // ---- the interview (REQ-2.2) ----
@@ -301,7 +326,7 @@ const docs = () => ({
   'docs/spec/stack.md': '# Stack\n',
 });
 const decisionsText = (root) => fs.readFileSync(path.join(root, 'docs', 'decisions.md'), 'utf8');
-const sessionFile = (root) => path.join(root, '.slicekit', 'interview.json');
+const sessionFile = (root) => path.join(git(root, ['rev-parse', '--path-format=absolute', '--git-dir']), 'slicekit', 'interview.json');
 const specList = (root) => fs.readdirSync(path.join(root, 'docs', 'spec'), { recursive: true }).sort();
 const ask = (root, pass, topic, question) => cli(root, ['intake', 'ask', '--pass', pass, '--topic', topic, '--question', question]);
 const answer = (root, ...args) => cli(root, ['intake', 'answer', ...args]);
@@ -421,5 +446,132 @@ test('an open answer is listed by done, and each pass must ask something', async
       assert.ok(decisionsText(root).includes(`| ${first(a)} | Open | What budget is there? | It sets the hosting. | Ask finance. |`));
     },
     { files: docs() },
+  );
+});
+
+test('an answer interrupted after its row is written is finished, not written twice', async () => {
+  await withRepo(
+    async (root, cfg) => {
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      // The second session write is the one after the row: fail it, as a crash there would.
+      const original = fs.writeFileSync;
+      let writes = 0;
+      fs.writeFileSync = function (file, ...rest) {
+        if (String(file).endsWith('interview.json') && ++writes === 2) throw new Error('crash');
+        return original.call(this, file, ...rest);
+      };
+      try {
+        assert.throws(() => answerFn(root, cfg, { answer: 'Orders.', now: new Date(NOW) }), /crash/);
+      } finally {
+        fs.writeFileSync = original;
+      }
+      const rowsAfterCrash = decisionsText(root).split('\n').filter((l) => /^\| D-\d+ \|/.test(l));
+      assert.equal(rowsAfterCrash.length, 1);
+      const again = await answer(root, '--answer', 'Something else.');
+      assert.equal(again.code, 0, again.stderr);
+      assert.equal(first(again), rowsAfterCrash[0].split(' | ')[0].slice(2));
+      assert.deepEqual(decisionsText(root).split('\n').filter((l) => /^\| D-\d+ \|/.test(l)), rowsAfterCrash);
+      assert.equal(first(await ask(root, 'product', 'users', 'Who uses it?')), 'question 2');
+    },
+    { files: docs() },
+  );
+});
+
+test('the interview lives in the git directory, one per worktree', async () => {
+  await withRepo(
+    async (root) => {
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      assert.ok(fs.existsSync(sessionFile(root)));
+      git(root, ['add', '-A']);
+      assert.equal(git(root, ['diff', '--cached', '--name-only']), '');
+
+      const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-wt-'));
+      try {
+        git(root, ['worktree', 'add', '-q', '-b', 'spec/other', wt]);
+        const other = await ask(wt, 'product', 'purpose', 'A second interview?');
+        assert.equal(other.code, 0, other.stderr);
+        assert.equal(first(other), 'question 1');
+        assert.notEqual(sessionFile(wt), sessionFile(root));
+        assert.equal(JSON.parse(fs.readFileSync(sessionFile(root), 'utf8')).pending.question, 'What is it for?');
+        git(root, ['worktree', 'remove', '--force', wt]);
+      } finally {
+        fs.rmSync(wt, { recursive: true, force: true });
+      }
+    },
+    { files: docs() },
+  );
+});
+
+test('a platform question waits for the product pass, and the interview needs a work branch', async () => {
+  await withRepo(
+    async (root) => {
+      const early = await ask(root, 'platform', 'hosting', 'Where does it run?');
+      assert.equal(early.code, 1);
+      assert.match(early.stderr, /ask the product questions first/);
+
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      await answer(root, '--answer', 'Orders.');
+      await ask(root, 'platform', 'hosting', 'Where does it run?');
+      await answer(root, '--answer', 'Fly.');
+      git(root, ['switch', '-q', 'main']);
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 1);
+      assert.match(d.stderr, /on a work branch; run slicekit branch spec <slug>/);
+    },
+    { files: docs() },
+  );
+  await withRepo(
+    async (root) => {
+      const r = await ask(root, 'product', 'purpose', 'What is it for?');
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /the interview on a work branch; run slicekit branch spec <slug>/);
+      assert.equal(fs.existsSync(sessionFile(root)), false);
+    },
+    { branch: 'main', files: docs() },
+  );
+});
+
+test('a spec file changed during the interview is refused', async () => {
+  await withRepo(
+    async (root) => {
+      await ask(root, 'product', 'purpose', 'What is it for?');
+      fs.appendFileSync(path.join(root, 'docs', 'spec', 'stack.md'), '\nNode.\n');
+      await answer(root, '--answer', 'Orders.');
+      await ask(root, 'platform', 'hosting', 'Where does it run?');
+      await answer(root, '--answer', 'Fly.');
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 1);
+      assert.match(d.stderr, /intake writes no spec text; docs\/spec\/stack\.md changed during the interview/);
+    },
+    { files: docs() },
+  );
+});
+
+test('done commits only the files that exist, and interface and open rows keep their shape', async () => {
+  await withRepo(
+    async (root) => {
+      fs.writeFileSync(path.join(root, 'req.md'), '# Orders\n');
+      assert.equal((await cli(root, ['intake', 'snapshot', 'req.md'])).code, 0);
+      await ask(root, 'product', 'interfaces', 'What does billing call?');
+      const misuse = await answer(root, '--answer', 'REST.', '--why', 'stray');
+      assert.equal(misuse.code, 2);
+      const a = await answer(root, '--answer', 'REST.', '--who', 'Ada', '--interface', 'Billing API', '--source', 'docs/intake/x.md:3');
+      assert.equal(a.code, 0, a.stderr);
+      await ask(root, 'platform', 'ledger', 'Where is the ledger kept?');
+      const b = await answer(root, '--open', '--why', 'It sets the store.', '--recommendation', 'Ask finance.', '--interface', 'Ledger');
+      assert.equal(b.code, 0, b.stderr);
+      const d = await cli(root, ['intake', 'done']);
+      assert.equal(d.code, 0, d.stderr);
+      assert.equal(d.stdout, `open: ${first(b)} Where is the ledger kept?\n`);
+      const text = decisionsText(root);
+      assert.ok(text.includes(`| ${first(a)} | Decision | Interface: Billing API. What does billing call? | REST. Named at docs/intake/x.md:3. | Ada, ${DATE} |`), text);
+      assert.ok(text.includes(`| ${first(b)} | Open | Interface: Ledger. Where is the ledger kept? | It sets the store. | Ask finance. |`), text);
+      assert.equal(git(root, ['show', '--name-only', '--format=', 'HEAD']), 'docs/decisions.md');
+      assert.equal(git(root, ['status', '--porcelain']), '?? req.md');
+      const stage = await cli(root, ['stage', 'require', 'clarify']);
+      assert.equal(stage.code, 0, stage.stderr);
+      assert.match(stage.stdout, /^ready: clarify/);
+    },
+    { files: { 'docs/decisions.md': template('decisions.md'), 'docs/spec/stack.md': '# Stack\n' } },
   );
 });

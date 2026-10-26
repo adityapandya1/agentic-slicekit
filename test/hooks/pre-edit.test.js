@@ -432,3 +432,18 @@ test('the clone id is kit-owned', () => {
     cleanup();
   }
 });
+
+// S-10: the intake interview session lives in the per-worktree git directory; only the CLI writes it.
+test('the intake interview session is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/interview.json'), '.git/slicekit/interview.json is written only by the slicekit CLI');
+    assertDeny(
+      decide(root, '.git/worktrees/wt/slicekit/interview.json'),
+      '.git/worktrees/wt/slicekit/interview.json is written only by the slicekit CLI',
+    );
+    assertAllow(decide(root, 'src/slicekit/interview.json'));
+  } finally {
+    cleanup();
+  }
+});

@@ -73,6 +73,9 @@ async function run(args, io) {
   if (sub === 'ask' && ['pass', 'topic', 'question'].some((k) => values[k] === undefined)) return usage(io);
   if (sub === 'answer') {
     if (values.source !== undefined && values.interface === undefined) return usage(io, '--source needs --interface');
+    if (!values.open && (values.why !== undefined || values.recommendation !== undefined)) {
+      return usage(io, '--why and --recommendation go with --open');
+    }
     if (values.open ? values.answer !== undefined || values.why === undefined || values.recommendation === undefined : values.answer === undefined) {
       return usage(io);
     }
