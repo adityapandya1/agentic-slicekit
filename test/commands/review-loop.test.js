@@ -6,7 +6,7 @@ import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
 import { recordVerdict } from '../../src/build/verdict.js';
 import { git } from '../../src/git.js';
-import { cli, commitWorkCli, green, stateIn, write } from '../helpers/build-flow.js';
+import { cli, commitIn, commitWorkCli, green, stateIn, write } from '../helpers/build-flow.js';
 
 const REVIEWS = '.slicekit/reviews';
 
@@ -192,6 +192,118 @@ test('a finding that disappears and comes back takes a new number', async () => 
     assert.deepEqual(ok.blockers, ['B-3']);
     assert.equal(ok.roundsUsed, 2);
     assert.equal(stateIn(p.wt).verdicts.at(-1).independent, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-1: the kit's verdict commit adds one verdict file, the round its subject names. A hand commit
+// under the kit's subject that rewrites, deletes, adds two, or adds another round is forged.
+test('a hand commit to a verdict file is refused at the next build commit', async () => {
+  const p = await drafted();
+  try {
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x is wrong']])));
+    assert.equal(one.code, 0, one.stderr);
+    const base = git(p.wt, ['rev-parse', 'HEAD']);
+    const r1 = at(p.wt, `${REVIEWS}/P1-S-01-r1.md`);
+    const cases = {
+      rewrite: ['verdict r1', () => fs.writeFileSync(r1, verdictText('APPROVE'))],
+      delete: ['verdict r1', () => fs.rmSync(r1)],
+      'two files': ['verdict r2', () => {
+        write(p.wt, `${REVIEWS}/P1-S-01-r2.md`, verdictText('APPROVE'));
+        write(p.wt, `${REVIEWS}/P1-S-01-r3.md`, verdictText('APPROVE'));
+      }],
+      'round mismatch': ['verdict r3', () => write(p.wt, `${REVIEWS}/P1-S-01-r2.md`, verdictText('APPROVE'))],
+    };
+    for (const [name, [what, change]] of Object.entries(cases)) {
+      change();
+      commitIn(p.wt, `chore(slicekit): P1/S-01 ${what}\n\nSlice: P1/S-01`);
+      const r = await commitWorkCli(p, '--message', 'fix: B-1');
+      assert.equal(r.code, 1, `${name}: ${r.stdout}`);
+      assert.match(r.stderr, /\.slicekit\/reviews\/P1-S-01-r\d\.md was changed in [0-9a-f]{7} outside the kit/, name);
+      git(p.wt, ['reset', '-q', '--hard', base]);
+    }
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-2: a verdict is given on the recorded head; code committed after it has not been through build pr.
+test('a verdict over commits since build pr is refused', async () => {
+  const p = await drafted();
+  try {
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // unreviewed\n');
+    commitIn(p.wt, 'fix: unreviewed\n\nSlice: P1/S-01');
+    const pushed = git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const before = stateIn(p.wt);
+    const file = review(p, 1, verdictText('APPROVE'));
+    const r = await p.verdict(file);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('P1/S-01 has commits since build pr; run slicekit build pr P1/S-01 first'), r.stderr);
+    assert.ok(fs.existsSync(at(p.root, file)));
+    assert.ok(!fs.existsSync(at(p.wt, `${REVIEWS}/P1-S-01-r1.md`)));
+    assert.deepEqual(stateIn(p.wt), before);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), pushed);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-3: a run that stopped after the move, before the commit, finishes on a re-run with the same name.
+test('a verdict moved but not committed is finished on a re-run', async () => {
+  const p = await drafted();
+  try {
+    const file = `${REVIEWS}/P1-S-01-r1.md`;
+    write(p.wt, file, verdictText('BLOCK', [['B-1', 'x is wrong']]));
+    assert.ok(!fs.existsSync(at(p.root, file)));
+    const r = await p.verdict(file);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\n');
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+    assert.ok(git(p.wt, ['log', '--format=%s']).split('\n').includes('chore(slicekit): P1/S-01 verdict r1'));
+    assert.equal(stateIn(p.wt).verdicts.length, 1);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(p.wt, ['rev-parse', 'HEAD']));
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-3: a run that recorded the round but could not push pushes on a re-run, recording nothing again.
+test('a recorded verdict whose push failed is pushed on a re-run', async () => {
+  const p = await drafted();
+  try {
+    const file = review(p, 1, verdictText('CHANGES', [['H-1', 'a long name']]));
+    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    const failed = await p.verdict(file);
+    assert.equal(failed.code, 1);
+    const recorded = stateIn(p.wt);
+    assert.equal(recorded.state, 'in-review');
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+
+    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    const again = await p.verdict(file);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, 'next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\n');
+    assert.deepEqual(stateIn(p.wt), recorded);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), head);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// M-1: the file's own Independent line agrees with how it is recorded.
+test('a verdict whose Independent line disagrees with its name is refused', async () => {
+  const p = await drafted();
+  try {
+    const file = review(p, 1, verdictText('APPROVE').replace('Verdict: APPROVE\n', 'Verdict: APPROVE\n\nIndependent: yes\n'));
+    const r = await p.verdict(file);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes(`verdict ${file}: Independent does not match P1-S-01-r1.md`), r.stderr);
+    assert.ok(fs.existsSync(at(p.root, file)));
+    assert.equal(stateIn(p.wt).state, 'draft-pr');
   } finally {
     p.cleanup();
   }

@@ -26,3 +26,18 @@ export function sliceFromBranch(branch) {
 export function stateFileName(addr) {
   return `${addr.replace('/', '-')}.json`;
 }
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const verdictStem = (addr) => stateFileName(addr).replace(/\.json$/, '');
+
+// A slice's verdict file name, `P<n>-S-<nn>[i]-r<k>.md`: `i` marks an independent review.
+export function verdictFileName(addr, round, { independent = false } = {}) {
+  return `${verdictStem(addr)}${independent ? 'i' : ''}-r${round}.md`;
+}
+
+// The verdict file names of a slice: group 1 is the `i` (or ''), group 2 the round. With
+// `independent` given, only names of that kind match; left out, both do.
+export function verdictFilePattern(addr, { independent } = {}) {
+  const i = independent === undefined ? 'i?' : independent ? 'i' : '';
+  return new RegExp(`^${escapeRe(verdictStem(addr))}(${i})-r([1-9]\\d*)\\.md$`);
+}
