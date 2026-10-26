@@ -98,7 +98,8 @@ function prStep(root, io, positionals, values) {
   return 0;
 }
 
-// Prints the next step, the round's finding IDs and the in-loop rounds used.
+// Prints the next step, the round's finding IDs and the in-loop rounds used; a stopped loop (D-18)
+// also says so and exits 1.
 function verdictStep(root, io, positionals, values) {
   if (positionals.length !== 2) return usage(io);
   const cfg = loadConfig(root);
@@ -109,6 +110,11 @@ function verdictStep(root, io, positionals, values) {
   if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
   io.stdout(out.map((l) => `${l}
 `).join(''));
+  if (r.next === 'stuck') {
+    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${LOOP_ROUNDS}; the pull request stays draft
+`);
+    return 1;
+  }
   return 0;
 }
 

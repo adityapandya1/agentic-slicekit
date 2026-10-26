@@ -6,7 +6,8 @@ import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
 import { recordVerdict } from '../../src/build/verdict.js';
 import { git } from '../../src/git.js';
-import { cli, commitIn, commitWorkCli, green, stateIn, write } from '../helpers/build-flow.js';
+import { getSection, prBodyProblems } from '../../src/prbody.js';
+import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, write } from '../helpers/build-flow.js';
 
 const REVIEWS = '.slicekit/reviews';
 
@@ -304,6 +305,111 @@ test('a verdict whose Independent line disagrees with its name is refused', asyn
     assert.ok(r.stderr.includes(`verdict ${file}: Independent does not match P1-S-01-r1.md`), r.stderr);
     assert.ok(fs.existsSync(at(p.root, file)));
     assert.equal(stateIn(p.wt).state, 'draft-pr');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// The pull request as the fixture host holds it.
+const prIn = (p) => JSON.parse(fs.readFileSync(path.join(p.host, 'pr-1.json'), 'utf8'));
+const bodyUpdates = (p) => prCalls(p.host).filter((c) => c.op === 'updatePullRequestBody');
+
+test('a blocker that survives round two stops at changes-requested', async () => {
+  const p = await drafted();
+  try {
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x returns the wrong value']])));
+    assert.equal(one.code, 0, one.stderr);
+    await fixPush(p, 1);
+    const two = await p.verdict(review(p, 2, verdictText('BLOCK', [['B-1', 'x still returns the wrong value']])));
+    assert.equal(two.code, 1, two.stderr);
+    assert.equal(two.stdout, 'next: stuck\nblockers: B-1\nshould-haves: none\nrounds: 2 of 2\n');
+    assert.ok(two.stderr.includes('stopped: B-1 survive round 2; the pull request stays draft'), two.stderr);
+    const st = stateIn(p.wt);
+    assert.equal(st.state, 'changes-requested');
+    assert.equal(st.verdicts.length, 2);
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(p.wt, ['rev-parse', 'HEAD']));
+
+    const pr = prIn(p);
+    assert.equal(pr.isDraft, true);
+    const blocked = getSection(pr.body, 'Reviewer blocked');
+    assert.equal(blocked, 'B-1 x still returns the wrong value — not fixed after round 2');
+    assert.deepEqual(prBodyProblems(pr.title, pr.body, {}), []);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a stopped round whose push failed is finished on a re-run, recording nothing twice', async () => {
+  const p = await drafted();
+  try {
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x is wrong']])));
+    assert.equal(one.code, 0, one.stderr);
+    await fixPush(p, 1);
+    const file = review(p, 2, verdictText('BLOCK', [['B-1', 'x is still wrong']]));
+    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    const failed = await p.verdict(file);
+    assert.equal(failed.code, 1);
+    const recorded = stateIn(p.wt);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    // The push failed before the body was touched.
+    const updates = bodyUpdates(p).length;
+
+    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    const again = await p.verdict(file);
+    assert.equal(again.code, 1, again.stderr);
+    assert.equal(again.stdout, 'next: stuck\nblockers: B-1\nshould-haves: none\nrounds: 2 of 2\n');
+    assert.ok(again.stderr.includes('stopped: B-1 survive round 2; the pull request stays draft'), again.stderr);
+    assert.equal(stateIn(p.wt).state, 'changes-requested');
+    assert.deepEqual(stateIn(p.wt), recorded);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), head);
+    assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'B-1 x is still wrong — not fixed after round 2');
+    assert.equal(bodyUpdates(p).length, updates + 1);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a third in-loop verdict is refused', async () => {
+  const p = await drafted();
+  try {
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x is wrong']])));
+    assert.equal(one.code, 0, one.stderr);
+    await fixPush(p, 1);
+    const two = await p.verdict(review(p, 2, verdictText('BLOCK', [['B-1', 'x is still wrong']])));
+    assert.equal(two.code, 1, two.stderr);
+    await fixPush(p, 2);
+
+    const file = review(p, 3, verdictText('APPROVE'));
+    const before = stateIn(p.wt);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const r = await p.verdict(file);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('two review rounds used; the loop stopped (D-18)'), r.stderr);
+    assert.ok(fs.existsSync(at(p.root, file)));
+    assert.ok(!fs.existsSync(at(p.wt, `${REVIEWS}/P1-S-01-r3.md`)));
+    assert.deepEqual(stateIn(p.wt), before);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a blocker fixed in round 2 is named as fixed', async () => {
+  const p = await drafted();
+  try {
+    const one = await p.verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x returns the wrong value']])));
+    assert.equal(one.code, 0, one.stderr);
+    // Nothing was fixed or left unfixed yet, so the line is unchanged and the body is not rewritten.
+    assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'nothing');
+    assert.equal(bodyUpdates(p).length, 0);
+    await fixPush(p, 1);
+    const two = await p.verdict(review(p, 2, verdictText('APPROVE')));
+    assert.equal(two.code, 0, two.stderr);
+    const pr = prIn(p);
+    assert.equal(getSection(pr.body, 'Reviewer blocked'), 'B-1 x returns the wrong value — fixed in round 2');
+    assert.deepEqual(prBodyProblems(pr.title, pr.body, {}), []);
   } finally {
     p.cleanup();
   }
