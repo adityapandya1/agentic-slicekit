@@ -1,13 +1,14 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
-import { GapError, addGap, closeGap } from '../gaps.js';
+import { GapError, addGap, closeGap, scanGaps } from '../gaps.js';
 
 const USAGE =
-  'gaps add --class <c> --where <file>:<line> --what <text>\n' +
+  'gaps scan\n' +
+  '  slicekit gaps add --class <c> --where <file>:<line> --what <text>\n' +
   '  slicekit gaps close G-<n> (--decision D-<n> | --req <REQ>)\n' +
   '  (a value that starts with "-" goes as --what=<text>, and so for every option)';
 
-const ALLOWED = { add: ['class', 'where', 'what'], close: ['decision', 'req'] };
+const ALLOWED = { scan: [], add: ['class', 'where', 'what'], close: ['decision', 'req'] };
 const OPTIONS = Object.fromEntries(Object.values(ALLOWED).flat().map((k) => [k, { type: 'string' }]));
 
 const usage = (io, why) => {
@@ -15,8 +16,8 @@ const usage = (io, why) => {
   return 2;
 };
 
-// Writes or closes a gap row (REQ-2.4). Exit 1 on a file problem or a closed row, 2 on bad usage,
-// bad input or an unknown ID.
+// Scans for gaps, or writes or closes a gap row (REQ-2.4). Exit 1 on a file problem or a closed
+// row, 2 on bad usage, bad input or an unknown ID.
 async function run(args, io) {
   let values;
   let positionals;
@@ -30,13 +31,17 @@ async function run(args, io) {
   if (!allowed) return usage(io);
   const extra = Object.keys(values).filter((k) => !allowed.includes(k));
   if (extra.length > 0) return usage(io, `${sub} does not take --${extra[0]}`);
+  if (sub === 'scan' && rest.length > 0) return usage(io);
   if (sub === 'add' && (rest.length > 0 || allowed.some((k) => values[k] === undefined))) return usage(io);
   if (sub === 'close' && (rest.length !== 1 || (values.decision === undefined) === (values.req === undefined))) {
     return usage(io, rest.length === 1 ? 'close takes exactly one of --decision and --req' : undefined);
   }
   try {
     const cfg = loadConfig(io.cwd);
-    if (sub === 'add') {
+    if (sub === 'scan') {
+      const added = scanGaps(io.cwd, cfg).filter((g) => g.added);
+      io.stdout(added.length > 0 ? added.map((g) => `${g.id} ${g.cls} ${g.what}\n`).join('') : 'no new gaps\n');
+    } else if (sub === 'add') {
       const { id } = addGap(io.cwd, cfg, { cls: values.class, where: values.where, what: values.what });
       io.stdout(`${id}\n`);
     } else {

@@ -3,10 +3,11 @@
 // gap-scan stage (`src/stage.js`) refuses while any row has that cell empty.
 import fs from 'node:fs';
 import path from 'node:path';
-import { insertAfter, nextId, posix, readDecisions, row, save, split } from './decisions.js';
-import { exists } from './fs.js';
+import { citedRefs } from './check/rules/citations.js';
+import { insertAfter, interfacesWithoutContract, nextId, posix, readDecisions, row, save, split } from './decisions.js';
+import { exists, readText } from './fs.js';
 import { GitError, git } from './git.js';
-import { tables } from './markdown.js';
+import { headings, lines, prose, tables } from './markdown.js';
 import { kitPaths } from './paths.js';
 import { reqBlocks, reqBlocksIn } from './stage.js';
 
@@ -154,4 +155,54 @@ export function closeGap(root, cfg, id, { decision, req } = {}) {
   cells[CLOSED] = closedBy;
   save(file, replaceLine(text, gap.line, row(cells)));
   return { id: gap.id, closedBy };
+}
+
+const NOT_YET_KNOWN = /^not yet known\.?$/i;
+
+// Each `##` section of the platform, observability and runbook files whose body is the one line
+// `Not yet known` (REQ-1.11), at its heading line.
+function notYetKnown(root, cfg) {
+  const p = kitPaths(root, cfg);
+  const out = [];
+  for (const file of [p.platform, p.observability, p.runbook]) {
+    if (!exists(file)) continue;
+    const text = readText(file);
+    const all = lines(text);
+    const hs = headings(text);
+    hs.forEach((h, i) => {
+      if (h.level !== 2) return;
+      const next = hs.slice(i + 1).find((n) => n.level <= 2);
+      const body = all.slice(h.line, next ? next.line - 1 : all.length).filter((l) => l.trim() !== '');
+      if (body.length !== 1 || !NOT_YET_KNOWN.test(body[0].trim())) return;
+      out.push({ cls: 'unknown', where: `${posix(path.relative(root, file))}:${h.line}`, what: `${h.text} not yet known` });
+    });
+  }
+  return out;
+}
+
+// Each Open decision row (REQ-1.4), each REQ whose `Cites:` names one, and each interface named at
+// intake that no contract cites.
+function fromDecisions(root, cfg) {
+  const p = kitPaths(root, cfg);
+  if (!exists(p.decisions)) return [];
+  const where = posix(path.relative(root, p.decisions));
+  const open = readDecisions(readText(p.decisions)).rows.filter((r) => r.table === 'open');
+  const openIds = new Set(open.map((r) => r.id));
+  const out = open.map((r) => ({ cls: 'unknown', where: `${where}:${r.line}`, what: `${r.id} is open: ${r.question}` }));
+  for (const { id, file, line, block } of reqBlocks(root, cfg)) {
+    const cited = citedRefs([...prose(block)].map(([l, n]) => [l, n + line]));
+    const names = [...new Set(cited.filter((r) => r.kind === 'decision' && openIds.has(r.name)).map((r) => r.name))];
+    for (const d of names) out.push({ cls: 'unknown', where: `${file}:${line}`, what: `${id} rests on open ${d}` });
+  }
+  for (const i of interfacesWithoutContract(root, cfg)) {
+    out.push({ cls: 'missing', where: i.source ?? `${where}:${i.line}`, what: `interface ${i.name} named at intake has no contract` });
+  }
+  return out;
+}
+
+// Writes a row for each gap a script can find, through `addGap`, so a second run adds nothing.
+// Judgement classes (contradiction, unrequested, and missing beyond named interfaces) are the
+// auditor's. Returns `[{id, added, cls, where, what}]` in candidate order.
+export function scanGaps(root, cfg) {
+  return [...notYetKnown(root, cfg), ...fromDecisions(root, cfg)].map((c) => ({ ...addGap(root, cfg, c), ...c }));
 }

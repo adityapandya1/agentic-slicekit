@@ -244,3 +244,78 @@ test('add escapes a pipe, refuses a line break, and returns the existing row for
     assert.equal(readGaps(gapsText(root)).rows.length, 1);
   });
 });
+
+const rowsOf = (root) => readGaps(gapsText(root)).rows;
+const stripped = (rows) => rows.map(({ id, cls, where, what, closedBy }) => ({ id, cls, where, what, closedBy }));
+
+test('a Not yet known section is an unknown row', async () => {
+  await withProgram(async (root) => {
+    fs.writeFileSync(path.join(root, 'docs/observability.md'), '# Observability\n\n## Dashboards\n\nGrafana board orders.\n\n## Alert routes\n\nNot yet known\n');
+    const r = await cli(root, ['gaps', 'scan']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const row = rowsOf(root).find((g) => g.where.startsWith('docs/observability.md:'));
+    assert.ok(row, gapsText(root));
+    assert.equal(row.cls, 'unknown');
+    assert.equal(row.what, 'Alert routes not yet known');
+    assert.equal(row.where, 'docs/observability.md:7');
+    assert.ok(!rowsOf(root).some((g) => g.what === 'Dashboards not yet known'), 'a section with content is no gap');
+    assert.ok(r.stdout.split('\n').includes(`${row.id} unknown Alert routes not yet known`), r.stdout);
+  });
+});
+
+test('a REQ resting on an Open row is an unknown row', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    fs.writeFileSync(
+      specFile(root),
+      '# Orders\n\n## REQ-1.1 ship orders\n\nThe system SHALL ship orders.\n\nScenario: it ships.\n\nCites: D-02\n\nEnforced by: `x.test.js`\n\n## REQ-1.2 store orders\n\nThe system SHALL store orders.\n\nScenario: stored.\n\nCites: D-01\n\nEnforced by: `y.test.js`\n',
+    );
+    const r = await cli(root, ['gaps', 'scan']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const rests = rowsOf(root).filter((g) => / rests on open /.test(g.what));
+    assert.deepEqual(stripped(rests).map(({ cls, where, what }) => ({ cls, where, what })), [
+      { cls: 'unknown', where: 'docs/spec/01-orders.md:3', what: 'REQ-1.1 rests on open D-02' },
+    ]);
+    const open = rowsOf(root).find((g) => g.what === 'D-02 is open: Which carrier?');
+    assert.ok(open, gapsText(root));
+    assert.equal(open.cls, 'unknown');
+    assert.equal(open.where, 'docs/decisions.md:13');
+  });
+});
+
+test('an interface named at intake and in no contract is a missing row naming the intake line', async () => {
+  await withProgram(async (root) => {
+    const d = await cli(root, ['decide', 'add', '--type', 'Decision', '--question', 'Which topic carries orders?', '--answer', 'orders.v1', '--interface', 'orders topic', '--source', 'docs/intake/2026-01-01-req.md:12', '--who', 'Ana']);
+    assert.equal(d.code, 0, d.stdout + d.stderr);
+    const r = await cli(root, ['gaps', 'scan']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const missing = rowsOf(root).filter((g) => g.cls === 'missing');
+    assert.equal(missing.length, 1, gapsText(root));
+    assert.equal(missing[0].where, 'docs/intake/2026-01-01-req.md:12');
+    assert.match(missing[0].what, /orders topic/);
+    assert.equal(missing[0].what, 'interface orders topic named at intake has no contract');
+
+    fs.mkdirSync(path.join(root, 'docs/spec/contracts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs/spec/contracts/C-1-orders.md'), `# C-1 orders topic\n\nCites: ${d.stdout.trim()}\n`);
+    const again = await cli(root, ['gaps', 'scan']);
+    assert.equal(again.stdout, 'no new gaps\n', again.stderr);
+  });
+});
+
+test('scan run twice adds no duplicate row', async () => {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    fs.writeFileSync(specFile(root), '# Orders\n\n## REQ-1.1 ship orders\n\nThe system SHALL ship orders.\n\nScenario: it ships.\n\nCites: D-02\n\nEnforced by: `x.test.js`\n');
+    const first = await cli(root, ['gaps', 'scan']);
+    assert.equal(first.code, 0, first.stdout + first.stderr);
+    assert.ok(rowsOf(root).length > 2, gapsText(root));
+    const lines = first.stdout.trim().split('\n');
+    assert.equal(lines.length, rowsOf(root).length);
+    assert.ok(lines.every((l) => /^G-\d+ (unknown|missing) \S/.test(l)), first.stdout);
+    const before = gapsText(root);
+    const second = await cli(root, ['gaps', 'scan']);
+    assert.equal(second.code, 0, second.stdout + second.stderr);
+    assert.equal(second.stdout, 'no new gaps\n');
+    assert.equal(gapsText(root), before);
+  });
+});
