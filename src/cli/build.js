@@ -3,16 +3,20 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { GitError } from '../git.js';
+import { getHost } from '../adapters/githost/index.js';
+import { GitHostError } from '../adapters/githost/errors.js';
+import { PrError } from '../pr.js';
 import { SliceFileError } from '../slicefile.js';
 import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
+import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -22,6 +26,7 @@ const OPTIONS = {
   'require-green': { type: 'boolean' },
   test: { type: 'string' },
   reason: { type: 'string' },
+  notes: { type: 'string' },
 };
 
 function next(root, io, positionals) {
@@ -75,7 +80,17 @@ function amendStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep };
+function prStep(root, io, positionals, values) {
+  if (positionals.length !== 1 || values.notes === undefined) return usage(io);
+  const cfg = loadConfig(root);
+  const host = getHost(cfg, io.env ?? process.env, root);
+  const { number, url } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  io.stdout(`#${number} ${url}
+`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
@@ -97,7 +112,7 @@ async function run(args, io) {
   try {
     return handler(io.cwd, io, rest, values);
   } catch (e) {
-    if (e instanceof BuildError) {
+    if (e instanceof BuildError || e instanceof PrError) {
       io.stderr(`slicekit: ${e.message}\n`);
       return e.code;
     }
@@ -105,7 +120,7 @@ async function run(args, io) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }
-    if (e instanceof GitError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
+    if (e instanceof GitError || e instanceof GitHostError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 1;
     }

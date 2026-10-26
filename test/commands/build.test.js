@@ -5,17 +5,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultConfig, loadConfig } from '../../src/config.js';
+import { init as initKit } from '../../src/init.js';
 import { main } from '../../src/cli/index.js';
 import { commitsOnBranch, git, parseTrailers } from '../../src/git.js';
 import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
 import { runCommand } from '../../src/build/red.js';
+import { prBodyProblems } from '../../src/prbody.js';
 import { runCli } from '../helpers/run-cli.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
 
-async function cli(root, args) {
+async function cli(root, args, env) {
   let stdout = '';
   let stderr = '';
-  const io = { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } };
+  const io = { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; }, ...(env ? { env } : {}) };
   const code = await main(args, io);
   return { code, stdout, stderr };
 }
@@ -71,13 +73,48 @@ function setSliceState(root, id, state) {
   commit(root, `state ${id} ${state}`);
 }
 
-// A repository on main with a config and one phase committed; with `remote`, a bare origin holding main.
-function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {}, files = {} }) {
+// The spec and decisions that make the slice files' REQ-1.1 a known, cited requirement.
+const SPEC = `# 01 — X
+
+## REQ-1.1 It works
+
+The kit SHALL work.
+
+Scenario: GIVEN a repo WHEN it runs THEN it works.
+
+Cites: D-01.
+
+Enforced by: the tests.
+`;
+const DECISIONS = `# Decisions
+
+## Settled
+
+| # | Type | Question | Answer | Who, when |
+|---|---|---|---|---|
+| D-01 | Decision | Name? | demo | team, 2026-10-24 |
+`;
+
+// A repository on main with a config and one phase committed; with `remote`, a bare origin holding
+// main. With `init`, the kit is installed (hooks, templates, a spec for REQ-1.1) and `slicekit check`
+// passes on it.
+function project({ order, slices, phases, remote = false, docsRoot = 'docs', commands = {}, files = {}, init = false }) {
   const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot, commands });
-  const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`, ...files } });
+  const repo = makeRepo({ files: init ? files : { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`, ...files } });
+  if (init) {
+    initKit(repo.root, { name: 'demo', shape: 'backend', docsRoot, commands, cli: 'node bin/slicekit.js' });
+    write(repo.root, `${docsRoot}/spec/01-x.md`, SPEC);
+    write(repo.root, `${docsRoot}/decisions.md`, DECISIONS);
+  }
   for (const ph of phases ?? [{ order, slices }]) writePhase(repo.root, docsRoot, ph);
-  git(repo.root, ['add', '-A']);
-  commit(repo.root, 'plan');
+  if (init) {
+    const status = runCli(['status', '--write'], { cwd: repo.root });
+    assert.equal(status.code, 0, status.stderr);
+    commitAll(repo.root, 'plan');
+  } else {
+    git(repo.root, ['add', '-A']);
+    commit(repo.root, 'plan');
+  }
   const origin = remote ? makeRemote(repo.root) : null;
   if (origin) git(repo.root, ['push', '-q', 'origin', 'main']);
   return {
@@ -456,8 +493,8 @@ test('uncommitted slice states or plan files are refused', async () => {
 
 // A started slice P1/S-01 whose evaluation row is `a.test.js » works`, with `node --test` as the
 // test command; `body` is the test file the developer wrote at test/a.test.js in the worktree.
-async function startedWithTest(body, { test = 'node --test', files } = {}) {
-  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test }, files });
+async function startedWithTest(body, { test = 'node --test', files, remote = false, init = false } = {}) {
+  const p = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test }, files, remote, init });
   const started = await cli(p.root, ['build', 'start', 'P1/S-01']);
   assert.equal(started.code, 0, started.stderr);
   const wt = started.stdout.split('\n')[0];
@@ -675,8 +712,8 @@ test('a re-run after a refused bookkeeping commit finishes the move to building'
 // A started slice past red: test/a.test.js imports src/t1.js, which does not exist yet, so it fails
 // until the developer writes it.
 const IMPORTING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { x } from '../src/t1.js';\ntest('works', () => assert.equal(x(), 2));\n";
-async function building() {
-  const p = await startedWithTest(IMPORTING);
+async function building(opts) {
+  const p = await startedWithTest(IMPORTING, opts);
   const r = await red1(p, 'test/a.test.js');
   assert.equal(r.code, 0, r.stderr);
   return { ...p, redSha: r.stdout.split('\n')[0] };
@@ -928,5 +965,189 @@ test('an amend that stopped part way finishes on a re-run', async () => {
     assert.match(third.stderr, /test\/a\.test\.js is already unfrozen/);
   } finally {
     q.cleanup();
+  }
+});
+
+// A green slice P1/S-01 with a bare origin and the fixture git host; `notes` is the notes file.
+async function green() {
+  const p = await building({ remote: true, init: true });
+  write(p.wt, 'src/t1.js', GREEN);
+  const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+  assert.equal(done.code, 0, done.stderr);
+  const host = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
+  const notes = path.join(host, 'notes.json');
+  fs.writeFileSync(
+    notes,
+    JSON.stringify({ tryIt: ['Run the tests.', 'Call x().', 'See 2.'], skipped: 'Windows paths were not tried.', decisions: ['x returns 2'] }),
+  );
+  const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: host };
+  const cleanup = p.cleanup;
+  return {
+    ...p,
+    host,
+    notes,
+    pr: (...args) => cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', notes, ...args], env),
+    cleanup() {
+      fs.rmSync(host, { recursive: true, force: true });
+      cleanup();
+    },
+  };
+}
+const prCalls = (host) => {
+  const file = path.join(host, 'pr-calls.jsonl');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+};
+const SLICE_BRANCH = 'refs/heads/slice/P1-S-01-thing-1';
+
+test('the draft pull request body carries every section', async () => {
+  const p = await green();
+  try {
+    const r = await p.pr();
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, '#1 https://example.test/pull/1\n');
+    const made = JSON.parse(fs.readFileSync(path.join(p.host, 'pr-1.json'), 'utf8'));
+    assert.equal(made.isDraft, true);
+    assert.equal(made.title, '[P1/S-01] Thing 1');
+    assert.equal(made.headRefName, 'slice/P1-S-01-thing-1');
+    assert.equal(made.baseRefName, 'main');
+    assert.deepEqual(prBodyProblems(made.title, made.body, loadConfig(p.root)), []);
+    assert.match(made.body, /^## \[P1\/S-01\] Thing 1\n\*\*Done when:\*\* 1\. It works\.\n/);
+    assert.match(made.body, /\n\*\*Proof:\*\* `node --test` → \S.* · CI: pending\n/);
+    assert.match(made.body, /\n\*\*Decisions:\*\* x returns 2\n/);
+    assert.match(
+      made.body,
+      /\n\*\*Runbook:\*\* no operational change: the slice touches no configuration, infrastructure, migration, alert, queue or integration\n/,
+    );
+    assert.match(made.body, /\n\*\*Infra \/ migration:\*\* none\n\*\*Try it:\*\* 1\. Run the tests\. 2\. Call x\(\)\. 3\. See 2\.\n/);
+    assert.match(
+      made.body,
+      /\n\*\*Reviewer blocked:\*\* nothing\n\*\*Should-haves declined:\*\* none\n\*\*Skipped \/ not checked:\*\* Windows paths were not tried\.\n$/,
+    );
+
+    const st = stateIn(p.wt);
+    assert.equal(st.state, 'draft-pr');
+    assert.equal(st.pr.number, 1);
+    assert.equal(st.pr.url, 'https://example.test/pull/1');
+    const last = st.history.at(-1);
+    assert.equal(last.evidence.testExit, 0);
+    assert.equal(last.evidence.checkExit, 0);
+    // The recorded head is the one pushed before the bookkeeping commit, which reached origin too.
+    assert.equal(st.pr.headSha, git(p.wt, ['rev-parse', 'HEAD^']));
+    assert.equal(git(p.wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 draft-pr');
+    assert.equal(git(p.remote, ['rev-parse', SLICE_BRANCH]), git(p.wt, ['rev-parse', 'HEAD']));
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+
+    // At draft-pr a re-run records nothing and updates the body, keeping what review wrote there.
+    const live = made.body
+      .replace('**Reviewer blocked:** nothing', '**Reviewer blocked:** B-1 fixed by the guard')
+      .replace('**Should-haves declined:** none', '**Should-haves declined:** https://example.test/issues/4');
+    fs.writeFileSync(path.join(p.host, 'pr-1.json'), `${JSON.stringify({ ...made, body: live }, null, 2)}\n`);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const again = await p.pr();
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, '#1 https://example.test/pull/1\n');
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(stateIn(p.wt).history.length, st.history.length);
+    const after = JSON.parse(fs.readFileSync(path.join(p.host, 'pr-1.json'), 'utf8')).body;
+    assert.match(after, /\n\*\*Reviewer blocked:\*\* B-1 fixed by the guard\n\*\*Should-haves declined:\*\* https:\/\/example\.test\/issues\/4\n/);
+    assert.deepEqual(prCalls(p.host).map((c) => c.op), ['openPullRequest', 'updatePullRequestBody']);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a re-run after a failed open opens the pull request once', async () => {
+  const p = await green();
+  try {
+    fs.writeFileSync(path.join(p.host, 'pr-create-error.txt'), 'GraphQL: something went wrong\n');
+    const failed = await p.pr();
+    assert.equal(failed.code, 1);
+    assert.match(failed.stderr, /gh pr create failed/);
+    // The push happened; the state did not move.
+    assert.equal(git(p.remote, ['rev-parse', SLICE_BRANCH]), git(p.wt, ['rev-parse', 'HEAD']));
+    assert.equal(stateIn(p.wt).state, 'building');
+
+    fs.rmSync(path.join(p.host, 'pr-create-error.txt'));
+    const again = await p.pr();
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'openPullRequest').length, 1);
+    const st = stateIn(p.wt);
+    assert.equal(st.state, 'draft-pr');
+    assert.equal(st.history.filter((h) => h.to === 'draft-pr').length, 1);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build pr refuses before any push: notes, a dirty worktree, a failing command, the runbook, check', async () => {
+  const p = await green();
+  try {
+    const pushed = () => git(p.remote, ['rev-parse', SLICE_BRANCH]);
+    const before = pushed();
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const untouched = (at = head) => {
+      assert.equal(pushed(), before);
+      assert.equal(git(p.wt, ['rev-parse', 'HEAD']), at);
+      assert.equal(stateIn(p.wt).state, 'building');
+      assert.deepEqual(prCalls(p.host), []);
+    };
+
+    fs.writeFileSync(p.notes, JSON.stringify({ tryIt: ['one', 'two'], skipped: 'x' }));
+    const twoSteps = await p.pr();
+    assert.equal(twoSteps.code, 2);
+    assert.match(twoSteps.stderr, /notes need tryIt \(three steps\) and skipped/);
+    fs.writeFileSync(p.notes, JSON.stringify({ tryIt: ['a', 'b', 'c'] }));
+    assert.equal((await p.pr()).code, 2);
+    untouched();
+    fs.writeFileSync(p.notes, JSON.stringify({ tryIt: ['a', 'b', 'c'], skipped: 'nothing else was tried' }));
+
+    // An uncommitted change is not what the commands would vouch for.
+    write(p.wt, 'src/t1.js', 'export const x = () => 5;\n');
+    const dirty = await p.pr();
+    assert.equal(dirty.code, 1);
+    assert.match(dirty.stderr, /uncommitted changes/);
+    untouched();
+    git(p.wt, ['checkout', '--', 'src/t1.js']);
+
+    // A failing lint command, and a build command that cannot run.
+    const cfgFile = path.join(p.root, '.slicekit', 'config.json');
+    const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    const withCommands = (extra) => fs.writeFileSync(cfgFile, `${JSON.stringify({ ...cfg, commands: { ...cfg.commands, ...extra } }, null, 2)}\n`);
+    withCommands({ lint: 'node -e "console.log(2 + 1 + \' problems\'); process.exit(3)"' });
+    const lint = await p.pr();
+    assert.equal(lint.code, 1);
+    assert.match(lint.stderr, /lint failed \(exit 3\): 3 problems/);
+    untouched();
+    withCommands({ build: 'slicekit-no-such-build-command' });
+    const notRun = await p.pr();
+    assert.equal(notRun.code, 1);
+    assert.match(notRun.stderr, /slicekit-no-such-build-command could not run/);
+    untouched();
+    fs.writeFileSync(cfgFile, `${JSON.stringify(cfg, null, 2)}\n`);
+
+    // A runbook slice must change the runbook or say why it need not.
+    const sliceFile = path.join(p.wt, ...SLICE_FILE.split('/'));
+    fs.writeFileSync(sliceFile, fs.readFileSync(sliceFile, 'utf8').replace('runbook: no', 'runbook: yes'));
+    commitIn(p.wt, 'runbook flag');
+    const flagged = git(p.wt, ['rev-parse', 'HEAD']);
+    const runbook = await p.pr();
+    assert.equal(runbook.code, 1);
+    assert.ok(
+      runbook.stderr.includes('the slice touches operations; change the runbook or give notes.runbook "no operational change: <reason>"'),
+      runbook.stderr,
+    );
+    untouched(flagged);
+    git(p.wt, ['reset', '-q', '--hard', head]);
+
+    // A check finding.
+    write(p.wt, 'docs/phases/P1-x/S-02-broken.md', '---\nslice: P1/S-01\n---\n');
+    commitIn(p.wt, 'broken plan');
+    const broken = git(p.wt, ['rev-parse', 'HEAD']);
+    const checked = await p.pr();
+    assert.equal(checked.code, 1);
+    assert.match(checked.stderr, /slicekit check failed/);
+    untouched(broken);
+  } finally {
+    p.cleanup();
   }
 });

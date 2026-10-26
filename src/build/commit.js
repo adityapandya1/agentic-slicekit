@@ -60,8 +60,10 @@ function frozenProblem(wt, current) {
   return null;
 }
 
-// The kit's own commits on the slice branch. They are recognised by subject, trailer and paths; a
-// hand commit that imitates all three passes (M8: only signing the kit's commits would close that).
+// The kit's own commits on the slice branch, recognised by subject, trailer and paths; a hand commit
+// that imitates all three passes. The test command is read from the MAIN checkout's
+// .slicekit/config.json, so someone writing outside the worktree could change commands.test and make
+// --require-green meaningless; CI, which runs the committed config, is the backstop.
 function kitCommit(id, subject, trailers, files, stateRel, buildRel, sliceRel) {
   if (trailers.Slice !== id) return false;
   if (subject.startsWith(`chore(slicekit): ${id} `)) return files.every((f) => f === stateRel || f === buildRel);
