@@ -4,9 +4,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { defaultConfig } from '../../src/config.js';
+import { defaultConfig, loadConfig } from '../../src/config.js';
 import { main } from '../../src/cli/index.js';
-import { git } from '../../src/git.js';
+import { git, parseTrailers } from '../../src/git.js';
+import { BuildError, findWorktree, startSlice } from '../../src/build/worktree.js';
 import { runCli } from '../helpers/run-cli.js';
 import { commit, makeRemote, makeRepo } from '../helpers/tmp-repo.js';
 
@@ -26,16 +27,16 @@ function write(root, rel, text) {
   fs.writeFileSync(file, text);
 }
 
-// One phase, P1, with a phase file carrying `order` (or no Order line) and one slice per entry.
-function writePhase(root, docsRoot, { order, slices }) {
-  const dir = docsRoot === '.' ? 'phases/P1-x' : `${docsRoot}/phases/P1-x`;
-  write(root, `${dir}/P1.md`, `# Phase 1 — X\n\n${order ? `**Order:** ${order}\n` : ''}`);
+// Phase P<phase> with a phase file carrying `order` (or no Order line) and one slice per entry.
+function writePhase(root, docsRoot, { phase = 1, order, slices }) {
+  const dir = docsRoot === '.' ? `phases/P${phase}-x` : `${docsRoot}/phases/P${phase}-x`;
+  write(root, `${dir}/P${phase}.md`, `# Phase ${phase} — X\n\n${order ? `**Order:** ${order}\n` : ''}`);
   for (const { n, group } of slices) {
     write(
       root,
       `${dir}/S-${pad(n)}-thing-${n}.md`,
       `---
-slice: P1/S-${pad(n)}
+slice: P${phase}/S-${pad(n)}
 name: Thing ${n}
 repo: .
 group: ${group}
@@ -67,10 +68,10 @@ function setSliceState(root, id, state) {
 }
 
 // A repository on main with a config and one phase committed; with `remote`, a bare origin holding main.
-function project({ order, slices, remote = false, docsRoot = 'docs' }) {
+function project({ order, slices, phases, remote = false, docsRoot = 'docs' }) {
   const cfg = defaultConfig({ name: 'demo', shape: 'backend', docsRoot });
   const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
-  writePhase(repo.root, docsRoot, { order, slices });
+  for (const ph of phases ?? [{ order, slices }]) writePhase(repo.root, docsRoot, ph);
   git(repo.root, ['add', '-A']);
   commit(repo.root, 'plan');
   const origin = remote ? makeRemote(repo.root) : null;
@@ -179,5 +180,245 @@ test('a slice started in one clone is skipped by next in another', async () => {
   } finally {
     fs.rmSync(b, { recursive: true, force: true });
     a.cleanup();
+  }
+});
+
+// A clone of `remote` in its own temp directory, with an identity; `cleanup` removes it.
+function cloneOf(remote) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-clone-'));
+  git(dir, ['clone', '-q', remote, '.']);
+  git(dir, ['config', 'user.name', 'Other']);
+  git(dir, ['config', 'user.email', 'other@example.com']);
+  git(dir, ['config', 'commit.gpgsign', 'false']);
+  return { root: dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+const quiet = { onWarning: () => {} };
+const READ_HERE = /build next and build start read slice states from the checkout they run in; run them in the main checkout on main/;
+
+test('next and start run only in the main checkout on the default branch', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }] });
+  try {
+    git(p.root, ['switch', '-q', '-c', 'feature']);
+    for (const args of [['build', 'next'], ['build', 'start', 'P1/S-01']]) {
+      const r = await cli(p.root, args);
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.stderr, READ_HERE);
+      assert.match(r.stderr, /\(this one is on feature\)/);
+    }
+    git(p.root, ['switch', '-q', '--detach', 'main']);
+    const detached = await cli(p.root, ['build', 'next']);
+    assert.equal(detached.code, 1);
+    assert.match(detached.stderr, /\(this one is on a detached HEAD\)/);
+
+    git(p.root, ['switch', '-q', 'main']);
+    const started = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(started.code, 0, started.stderr);
+    const wt = started.stdout.split('\n')[0];
+    const inside = await cli(wt, ['build', 'start', 'P1/S-02']);
+    assert.equal(inside.code, 1);
+    assert.match(inside.stderr, READ_HERE);
+    assert.match(inside.stderr, /\(this one is on slice\/P1-S-01-thing-1\)/);
+    assert.ok(!fs.existsSync(path.join(wt, '.worktrees')));
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a default branch behind or ahead of origin is refused', async () => {
+  const a = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }], remote: true });
+  const b = cloneOf(a.remote);
+  const c = cloneOf(a.remote);
+  try {
+    // C merges S-01 on origin and deletes its branch; B has not pulled.
+    setSliceState(c.root, 'P1/S-01', 'merged');
+    git(c.root, ['add', '-A']);
+    commit(c.root, 'merge S-01');
+    git(c.root, ['push', '-q', 'origin', 'main']);
+    for (const args of [['build', 'next'], ['build', 'start', 'P1/S-01']]) {
+      const r = await cli(b.root, args);
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.stderr, /main is behind origin; pull first/);
+    }
+    assert.ok(!fs.existsSync(path.join(b.root, '.worktrees')));
+
+    git(b.root, ['pull', '-q', '--ff-only']);
+    assert.equal((await cli(b.root, ['build', 'next'])).stdout, 'P1/S-02\n');
+    commit(b.root, 'local only');
+    const ahead = await cli(b.root, ['build', 'next']);
+    assert.equal(ahead.code, 1);
+    assert.match(ahead.stderr, /main has commits origin does not; push or reset first/);
+  } finally {
+    c.cleanup();
+    b.cleanup();
+    a.cleanup();
+  }
+});
+
+test('build start claims the slice with one commit on origin', async () => {
+  const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
+  try {
+    const r = await cli(a.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 0, r.stderr);
+    const [wt, branch] = r.stdout.trim().split('\n');
+    const head = git(wt, ['rev-parse', 'HEAD']);
+    assert.equal(git(a.remote, ['rev-parse', `refs/heads/${branch}`]), head);
+    assert.equal(git(wt, ['rev-parse', 'HEAD^']), git(a.root, ['rev-parse', 'origin/main']));
+    assert.equal(git(wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 started');
+    assert.equal(parseTrailers(git(wt, ['log', '-1', '--format=%B'])).Slice, 'P1/S-01');
+    assert.equal(git(wt, ['diff', '--name-only', 'HEAD^', 'HEAD']), '');
+  } finally {
+    a.cleanup();
+  }
+});
+
+test('two clones starting one slice at once claim it once', async () => {
+  for (const descr of [undefined, 'other']) {
+    const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
+    const b = cloneOf(a.remote);
+    try {
+      let aStarted;
+      const race = () => {
+        aStarted = startSlice(a.root, loadConfig(a.root), 'P1/S-01', quiet);
+      };
+      assert.throws(
+        () => startSlice(b.root, loadConfig(b.root), 'P1/S-01', { ...quiet, descr, beforePush: race }),
+        (e) => e instanceof BuildError && e.code === 1 && /^P1\/S-01 was claimed by slice\/P1-S-01-thing-1 while starting$/.test(e.message),
+        String(descr),
+      );
+      assert.equal(aStarted.branch, 'slice/P1-S-01-thing-1');
+      // Only A's branch is on origin, at A's claim; B kept nothing.
+      const heads = git(a.remote, ['for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/slice/']);
+      assert.equal(heads, `refs/heads/slice/P1-S-01-thing-1 ${git(aStarted.worktree, ['rev-parse', 'HEAD'])}`);
+      assert.ok(!fs.existsSync(path.join(b.root, '.worktrees', 'P1-S-01')));
+      assert.equal(git(b.root, ['branch', '--list', 'slice/*']), '');
+      assert.equal(git(b.root, ['worktree', 'list', '--porcelain']).split('\n').filter((l) => l.startsWith('worktree ')).length, 1);
+    } finally {
+      b.cleanup();
+      a.cleanup();
+    }
+  }
+});
+
+test('a failed push takes the start back', async () => {
+  const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
+  const hook = path.join(a.remote, 'hooks', 'pre-receive');
+  try {
+    fs.writeFileSync(hook, '#!/bin/sh\necho refused by the test >&2\nexit 1\n', { mode: 0o755 });
+    const r = await cli(a.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /could not push slice\/P1-S-01-thing-1 .*; P1\/S-01 was not started/);
+    assert.ok(!fs.existsSync(path.join(a.root, '.worktrees', 'P1-S-01')));
+    assert.equal(git(a.root, ['branch', '--list', 'slice/*']), '');
+    fs.rmSync(hook);
+    const again = await cli(a.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(again.code, 0, again.stderr);
+  } finally {
+    a.cleanup();
+  }
+});
+
+test('a failed fetch refuses next and start', async () => {
+  const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
+  try {
+    git(a.root, ['remote', 'set-url', 'origin', path.join(os.tmpdir(), 'slicekit-no-such-remote.git')]);
+    for (const args of [['build', 'next'], ['build', 'start', 'P1/S-01']]) {
+      const r = await cli(a.root, args);
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.stderr, /git fetch/);
+    }
+    assert.ok(!fs.existsSync(path.join(a.root, '.worktrees')));
+    assert.equal(git(a.root, ['branch', '--list', 'slice/*']), '');
+  } finally {
+    a.cleanup();
+  }
+});
+
+test('findWorktree finds one, refuses none and two, and takes --worktree', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }] });
+  try {
+    const { worktree } = startSlice(p.root, loadConfig(p.root), 'P1/S-01', quiet);
+    assert.equal(path.resolve(findWorktree(p.root, 'P1/S-01').path), path.resolve(worktree));
+    assert.throws(
+      () => findWorktree(p.root, 'P1/S-02'),
+      (e) => e instanceof BuildError && e.code === 1 && e.message === 'no worktree holds P1/S-02; run slicekit build start P1/S-02',
+    );
+    const two = path.join(p.root, '.worktrees', 'two');
+    git(p.root, ['worktree', 'add', '-q', '-b', 'slice/P1-S-01-two', two]);
+    assert.throws(
+      () => findWorktree(p.root, 'P1/S-01'),
+      (e) => e instanceof BuildError && e.code === 2 && /^two worktrees hold P1\/S-01: .+, .+; pass --worktree$/.test(e.message),
+    );
+    const picked = findWorktree(p.root, 'P1/S-01', { worktree: '.worktrees/two' });
+    assert.equal(picked.branch, 'slice/P1-S-01-two');
+    assert.throws(() => findWorktree(p.root, 'P1/S-01', { worktree: '.' }), (e) => e instanceof BuildError && e.code === 1);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a local branch holds its slice', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }] });
+  try {
+    git(p.root, ['branch', 'slice/P1-S-01-elsewhere']);
+    assert.equal((await cli(p.root, ['build', 'next'])).stdout, 'P1/S-02\n');
+    const r = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /P1\/S-01 is already started in slice\/P1-S-01-elsewhere/);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('the groups of one step run in parallel', async () => {
+  const p = project({ order: 'A; B, C', slices: [{ n: 1, group: 'A' }, { n: 2, group: 'B' }, { n: 3, group: 'C' }] });
+  try {
+    setSliceState(p.root, 'P1/S-01', 'released');
+    setSliceState(p.root, 'P1/S-02', 'building');
+    assert.equal((await cli(p.root, ['build', 'next'])).stdout, 'P1/S-03\n');
+    const r = await cli(p.root, ['build', 'start', 'P1/S-03']);
+    assert.equal(r.code, 0, r.stderr);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a slice waits on an earlier phase', async () => {
+  const p = project({
+    phases: [
+      { phase: 1, slices: [{ n: 1, group: 'A' }] },
+      { phase: 2, slices: [{ n: 1, group: 'A' }] },
+    ],
+  });
+  try {
+    setSliceState(p.root, 'P1/S-01', 'draft-pr');
+    const r = await cli(p.root, ['build', 'next']);
+    assert.equal(r.code, 1);
+    assert.ok(r.stdout.split('\n').includes('P2/S-01 waits on P1/S-01 (draft-pr)'), r.stdout);
+    const s = await cli(p.root, ['build', 'start', 'P2/S-01']);
+    assert.equal(s.code, 1);
+    assert.match(s.stderr, /P2\/S-01 waits on P1\/S-01 \(draft-pr\)/);
+    setSliceState(p.root, 'P1/S-01', 'merged');
+    assert.equal((await cli(p.root, ['build', 'next'])).stdout, 'P2/S-01\n');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a bad branch name and a stray directory are refused', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }] });
+  try {
+    for (const descr of ['a..b', 'x.lock', 'has space', 'trail.']) {
+      const r = await cli(p.root, ['build', 'start', 'P1/S-01', '--descr', descr]);
+      assert.equal(r.code, 2, descr);
+      assert.match(r.stderr, new RegExp(`branch name slice/P1-S-01-${descr.replace(/\./g, '\\.')} is not valid; pass --descr`));
+    }
+    const dir = path.join(p.root, '.worktrees', 'P1-S-02');
+    fs.mkdirSync(dir, { recursive: true });
+    const r = await cli(p.root, ['build', 'start', 'P1/S-02']);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes(`${dir} exists and holds no worktree of P1/S-02; remove it`), r.stderr);
+  } finally {
+    p.cleanup();
   }
 });

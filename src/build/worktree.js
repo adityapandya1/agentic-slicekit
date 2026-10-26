@@ -1,13 +1,14 @@
 // A slice's worktree (REQ-2.6 step 1): `build start` makes it at `<root>/.worktrees/P<n>-S-<nn>` on
-// `slice/P<n>-S-<nn>-<descr>` and pushes the branch at once, so another clone's `build next` skips
-// the slice; every later `build` subcommand finds it again from the slice ID.
+// `slice/P<n>-S-<nn>-<descr>`, commits one empty claim and pushes it at once, so another clone's
+// `build next` skips the slice; every later `build` subcommand finds it again from the slice ID.
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { GitError, assertRef, git, hasRemote } from '../git.js';
+import { GitError, assertRef, git, hasRemote, pushBranch } from '../git.js';
 import { parseSliceAddr, sliceFromBranch } from '../ids.js';
 import { findSliceFiles } from '../slicefile.js';
 import { readSlice } from '../state/index.js';
-import { heldSlices, runnable, waitingOn } from './order.js';
+import { heldSlices, prepare, runnable, waitingOn } from './order.js';
 
 // A refusal from a `build` step: `code` 1 refused, 2 usage or unknown ID (the CLI's exit code).
 export class BuildError extends Error {
@@ -23,7 +24,7 @@ export const branchPrefix = (addr) => `slice/P${addr.phase}-S-${pad(addr.slice)}
 export const worktreeDir = (root, addr) => path.join(root, '.worktrees', `P${addr.phase}-S-${pad(addr.slice)}`);
 
 // One spelling of a path, so `C:/x` from git and `C:\x` from path.resolve compare equal.
-function samePath(a, b) {
+export function samePath(a, b) {
   const norm = (p) => {
     let abs = path.resolve(p);
     try {
@@ -36,7 +37,8 @@ function samePath(a, b) {
   return norm(a) === norm(b);
 }
 
-// Every worktree of the repository as { path, branch }; branch is null when HEAD is detached.
+// Every worktree of the repository as { path, branch }, the main one first; branch is null when
+// HEAD is detached.
 export function listWorktrees(root) {
   const out = [];
   let cur = null;
@@ -65,18 +67,6 @@ export function findWorktree(root, id, { worktree } = {}) {
   return held[0];
 }
 
-const resolves = (root, ref) => {
-  try {
-    git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    return true;
-  } catch (e) {
-    if (e instanceof GitError) return false;
-    throw e;
-  }
-};
-
-const DESCR = /^[a-z0-9][a-z0-9._-]{0,59}$/i;
-
 function sliceFileOf(root, cfg, addr) {
   const name = `S-${pad(addr.slice)}`;
   return findSliceFiles(root, cfg).find(
@@ -84,9 +74,34 @@ function sliceFileOf(root, cfg, addr) {
   );
 }
 
+// `slice/P<n>-S-<nn>-<descr>` when git accepts it as a branch name, else a usage refusal.
+function branchName(root, addr, descr) {
+  const name = `${branchPrefix(addr)}-${descr}`;
+  try {
+    assertRef(name);
+    git(root, ['check-ref-format', '--branch', name]);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    throw new BuildError(`branch name ${name} is not valid; pass --descr`, 2);
+  }
+  return name;
+}
+
+// The slice's branches as origin has them now, not as the last fetch saw them.
+function claimsOnOrigin(root, id) {
+  const out = git(root, ['ls-remote', '--heads', 'origin']);
+  return (out === '' ? [] : out.split('\n'))
+    .map((l) => l.split(/\s+/)[1] ?? '')
+    .filter((ref) => ref.startsWith('refs/heads/'))
+    .map((ref) => ref.slice('refs/heads/'.length))
+    .filter((b) => sliceFromBranch(b) === id);
+}
+
 const stderrWarning = (msg) => process.stderr.write(`${msg}\n`);
 
-export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning } = {}) {
+// `beforePush` is a test seam: it runs between the claim commit and its push.
+export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, beforePush } = {}) {
+  prepare(root, cfg);
   const addr = parseSliceAddr(id);
   const file = addr && sliceFileOf(root, cfg, addr);
   if (!file) throw new BuildError(`unknown slice ${id}`, 2);
@@ -95,17 +110,13 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning } =
     if (!m) throw new BuildError(`${path.basename(file.path)} names no description; pass --descr`, 2);
     descr = m[1];
   }
-  if (!DESCR.test(descr)) {
-    throw new BuildError(`descr '${descr}' must be letters, digits, dots, dashes and underscores, at most 60`, 2);
-  }
-  const branch = assertRef(`${branchPrefix(addr)}-${descr}`);
+  const branch = branchName(root, addr, descr);
   const dir = worktreeDir(root, addr);
 
-  // runnable fetches origin, so a branch pushed from another clone is seen here too.
-  const ready = runnable(root, cfg);
+  const ready = runnable(root, cfg, { prepared: true });
   const held = heldSlices(root).get(id);
   if (held) throw new BuildError(`${id} is already started in ${held}`);
-  if (fs.existsSync(dir)) throw new BuildError(`${id} is already started in ${dir}`);
+  if (fs.existsSync(dir)) throw new BuildError(`${dir} exists and holds no worktree of ${id}; remove it`);
   if (!ready.some((s) => s.id === id)) {
     const line = waitingOn(root, cfg, id);
     if (line) throw new BuildError(line);
@@ -114,25 +125,51 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning } =
 
   const base = assertRef(cfg.defaultBranch);
   const origin = hasRemote(root, 'origin');
-  if (origin) git(root, ['fetch', '-q', 'origin', base]);
-  // Full refs: a tag named like the default branch is never what the branch is cut from.
-  const from = origin && resolves(root, `refs/remotes/origin/${base}`) ? `refs/remotes/origin/${base}` : `refs/heads/${base}`;
-  if (!resolves(root, from)) throw new BuildError(`${base} has no commit to start ${id} from`);
-  // --no-track: a branch cut from origin/main must never push to main.
+  // prepare fetched origin and found HEAD equal to its default branch. Full refs: a tag named like
+  // the default branch is never what the branch is cut from. --no-track: never push to main.
+  const from = origin ? `refs/remotes/origin/${base}` : `refs/heads/${base}`;
   git(root, ['worktree', 'add', '-q', '--no-track', '-b', branch, dir, from]);
+  const takeBack = () => {
+    git(root, ['worktree', 'remove', '--force', dir]);
+    git(root, ['branch', '-q', '-D', branch]);
+  };
 
-  if (origin) {
-    try {
-      git(dir, ['push', '-q', '-u', 'origin', `HEAD:refs/heads/${branch}`]);
-    } catch (e) {
-      if (!(e instanceof GitError)) throw e;
-      // Unclaimed on the host means not started: take the worktree and branch back so a re-run starts clean.
-      git(root, ['worktree', 'remove', '--force', dir]);
-      git(root, ['branch', '-q', '-D', branch]);
-      throw new BuildError(`could not push ${branch} (${e.stderr.split('\n')[0]}); ${id} was not started`);
-    }
-  } else {
+  // The claim: one empty commit of this start's own, so a second push of the same name is not a
+  // fast-forward and origin refuses it. The nonce keeps two claims made in one second distinct.
+  try {
+    const nonce = randomBytes(8).toString('hex');
+    git(dir, ['commit', '-q', '--allow-empty', '-m', `chore(slicekit): ${id} started\n\nclaim ${nonce}\n\nSlice: ${id}`]);
+  } catch (e) {
+    takeBack();
+    throw e;
+  }
+
+  if (!origin) {
     onWarning(`slicekit: no origin; other clones will not see ${branch}`);
+    return { worktree: dir, branch };
+  }
+  beforePush?.();
+  try {
+    pushBranch(dir, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    takeBack();
+    let other = null;
+    try {
+      other = claimsOnOrigin(root, id)[0] ?? null;
+    } catch (le) {
+      if (!(le instanceof GitError)) throw le;
+    }
+    if (other) throw new BuildError(`${id} was claimed by ${other} while starting`);
+    throw new BuildError(`could not push ${branch} (${e.stderr.split('\n')[0]}); ${id} was not started`);
+  }
+  // Another clone may have pushed a branch of another name for this slice between our fetch and our
+  // push: then we back out, deleting only the branch we just pushed.
+  const others = claimsOnOrigin(root, id).filter((b) => b !== branch);
+  if (others.length > 0) {
+    git(dir, ['push', '-q', 'origin', '--delete', branch]);
+    takeBack();
+    throw new BuildError(`${id} was claimed by ${others[0]} while starting`);
   }
   return { worktree: dir, branch };
 }
