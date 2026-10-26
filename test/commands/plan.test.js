@@ -95,3 +95,79 @@ test('plan check refuses a bad usage with exit 2', async () => {
     assert.equal((await cli(root, ['plan', 'write'])).code, 2);
   });
 });
+
+const TWO_REQS =
+  '# A\n\n### REQ-1.1 The thing works\n\nThe thing SHALL work.\n\nScenario: GIVEN a thing WHEN it runs THEN it works.\n\nCites: intake/2026-01-01-brief.md, D-01.\n\nEnforced by: advisory\n' +
+  '\n### REQ-1.2 The other thing works\n\nThe other thing SHALL work.\n\nScenario: GIVEN a thing WHEN it runs THEN it works.\n\nCites: D-01.\n\nEnforced by: advisory\n';
+const planSlice = (n, req, change) => `---
+slice: P1/S-0${n}
+name: Slice ${n}
+repo: .
+group: A
+runbook: no
+requirements: [${req}]
+decisions: [D-01]
+---
+
+## Done when
+
+1. It works.
+
+## Evaluation set
+
+| Test | Kind | Covers |
+|---|---|---|
+| \`s${n}.test.js » works\` | happy | ${req} |
+| \`s${n}.test.js » refuses\` | negative | ${req} |
+
+## Expected changes
+
+\`${change}\`
+`;
+
+test('every requirement is named by a slice and BUILD.md is regenerated', async () => {
+  // REQ-2.5: the plan names every REQ, and BUILD.md is regenerated from the slice files.
+  await withProgram(async (root) => {
+    write(root, 'docs/spec/a.md', TWO_REQS);
+    write(root, 'docs/spec/gaps.md', gaps('D-01'));
+    fs.mkdirSync(path.join(root, 'docs/phases/P1-x'), { recursive: true });
+    write(root, 'docs/phases/P1-x/P1.md', '# Phase 1 — X\n\nGoal: the thing works.\n\n**Order:** A\n');
+    write(root, 'docs/phases/P1-x/S-01-one.md', planSlice(1, 'REQ-1.1', 'src/one.js'));
+    write(root, 'docs/phases/P1-x/S-02-two.md', planSlice(2, 'REQ-1.2', 'src/two.js'));
+    const status = await cli(root, ['status', '--write']);
+    assert.equal(status.code, 0, status.stdout + status.stderr);
+    const build = fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8');
+    for (const id of ['P1/S-01', 'P1/S-02']) assert.match(build, new RegExp(`^\|.*${id}.*\|`, 'm'), id);
+    record(root, 'the plan');
+    const coverage = (r) => r.stdout.split('\n').filter((l) => l.startsWith('coverage '));
+    const ok = await cli(root, ['check']);
+    assert.deepEqual(coverage(ok), [], ok.stdout);
+
+    fs.rmSync(path.join(root, 'docs/phases/P1-x/S-02-two.md'));
+    const gone = await cli(root, ['check']);
+    assert.deepEqual(coverage(gone), ['coverage docs/spec/a.md:13 REQ-1.2 is named by no slice'], gone.stdout);
+  });
+});
+
+test('the procedure passes the brief lint', async () => {
+  const { briefProblems } = await import('../helpers/brief-lint.js');
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', 'instructions', 'commands', 'plan.md');
+  const text = fs.readFileSync(file, 'utf8');
+  assert.deepEqual(briefProblems(text, { kind: 'command' }), []);
+  for (const want of ['plan check', '**Order:**', 'status --write', 'pr open --title "[plan]']) assert.ok(text.includes(want), want);
+});
+
+test('the procedure opens the branch before plan check and instructions prints it', async () => {
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', 'instructions', 'commands', 'plan.md');
+  const text = fs.readFileSync(file, 'utf8');
+  const branch = text.indexOf('branch plan <slug>');
+  const gate = text.indexOf('plan check');
+  assert.ok(branch !== -1 && gate !== -1 && branch < gate, 'branch plan comes before plan check');
+  assert.match(text, /lower-cased/);
+  await withProgram(async (root) => {
+    const r = await cli(root, ['instructions', '--command', 'plan']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /plan check/);
+    assert.doesNotMatch(r.stdout, /\{\{cli\}\}/);
+  });
+});
