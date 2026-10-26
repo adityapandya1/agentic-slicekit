@@ -6,6 +6,7 @@ import path from 'node:path';
 import { readText } from '../fs.js';
 import { GitError, assertRef, currentBranch, git, hasRemote } from '../git.js';
 import { sliceFromBranch } from '../ids.js';
+import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseOrder, parsePhaseFile, parseSliceFile } from '../slicefile.js';
 import { readSlice } from '../state/index.js';
 import { BuildError, listWorktrees, samePath } from './worktree.js';
@@ -93,7 +94,8 @@ const resolves = (root, ref) => {
 
 // States are read from the checkout the command runs in, so it must be the main checkout, on the
 // default branch, and, with an origin, exactly where origin's default branch is after a fetch: a
-// stale main would offer a slice that is merged, or claimed and gone, on origin.
+// stale main would offer a slice that is merged, or claimed and gone, on origin. The state and plan
+// files must be committed, so what is read is what HEAD holds.
 export function prepare(root, cfg) {
   const base = assertRef(cfg.defaultBranch);
   const top = git(root, ['rev-parse', '--show-toplevel']);
@@ -102,6 +104,11 @@ export function prepare(root, cfg) {
     throw new BuildError(
       `build next and build start read slice states from the checkout they run in; run them in the main checkout on ${base} (this one is on ${branch ?? 'a detached HEAD'})`,
     );
+  }
+  const paths = kitPaths(root, cfg);
+  const rel = (abs) => path.relative(root, abs).split(path.sep).join('/') || '.';
+  if (git(root, ['--literal-pathspecs', 'status', '--porcelain', '--', rel(paths.state), rel(paths.phases)]) !== '') {
+    throw new BuildError('uncommitted changes to slice states or plan files; commit or stash them first');
   }
   if (!hasRemote(root, 'origin')) return;
   // --prune: a slice branch deleted on origin no longer holds its slice.

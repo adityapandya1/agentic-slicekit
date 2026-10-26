@@ -164,7 +164,9 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
     throw new BuildError(`could not push ${branch} (${e.stderr.split('\n')[0]}); ${id} was not started`);
   }
   // Another clone may have pushed a branch of another name for this slice between our fetch and our
-  // push: then we back out, deleting only the branch we just pushed.
+  // push: then we back out, deleting only the branch we just pushed. Whoever checks second backs out,
+  // whatever the names: a name tie-break would let a second checker with the lower name keep it
+  // while the first, which saw nothing, keeps it too.
   const others = claimsOnOrigin(root, id).filter((b) => b !== branch);
   if (others.length > 0) {
     git(dir, ['push', '-q', 'origin', '--delete', branch]);

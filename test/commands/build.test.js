@@ -63,8 +63,11 @@ decisions: []
   }
 }
 
+// Writes and commits a state file: build next and build start refuse uncommitted state changes.
 function setSliceState(root, id, state) {
   write(root, `.slicekit/state/${id.replace('/', '-')}.json`, `${JSON.stringify({ slice: id, state, history: [] }, null, 2)}\n`);
+  git(root, ['add', '--', '.slicekit/state']);
+  commit(root, `state ${id} ${state}`);
 }
 
 // A repository on main with a config and one phase committed; with `remote`, a bare origin holding main.
@@ -273,7 +276,9 @@ test('build start claims the slice with one commit on origin', async () => {
 });
 
 test('two clones starting one slice at once claim it once', async () => {
-  for (const descr of [undefined, 'other']) {
+  // B checks origin after A has pushed and checked, so A kept the slice: B backs out whichever name
+  // sorts first, or both would hold it ('other' sorts before 'thing-1', 'zzz' after).
+  for (const descr of [undefined, 'other', 'zzz']) {
     const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
     const b = cloneOf(a.remote);
     try {
@@ -418,6 +423,31 @@ test('a bad branch name and a stray directory are refused', async () => {
     const r = await cli(p.root, ['build', 'start', 'P1/S-02']);
     assert.equal(r.code, 1);
     assert.ok(r.stderr.includes(`${dir} exists and holds no worktree of P1/S-02; remove it`), r.stderr);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('uncommitted slice states or plan files are refused', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }, { n: 2, group: 'A' }] });
+  const DIRTY = 'slicekit: uncommitted changes to slice states or plan files; commit or stash them first\n';
+  try {
+    write(p.root, '.slicekit/state/P1-S-01.json', `${JSON.stringify({ slice: 'P1/S-01', state: 'merged', history: [] })}\n`);
+    for (const args of [['build', 'next'], ['build', 'start', 'P1/S-02']]) {
+      const r = await cli(p.root, args);
+      assert.equal(r.code, 1, args.join(' '));
+      assert.equal(r.stderr, DIRTY);
+    }
+    fs.rmSync(path.join(p.root, '.slicekit', 'state'), { recursive: true });
+    fs.appendFileSync(path.join(p.root, 'docs', 'phases', 'P1-x', 'P1.md'), '\nedited\n');
+    const r = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, DIRTY);
+    assert.ok(!fs.existsSync(path.join(p.root, '.worktrees')));
+    git(p.root, ['checkout', '--', 'docs']);
+    // Other uncommitted work does not stop a start.
+    write(p.root, 'notes.txt', 'mine');
+    assert.equal((await cli(p.root, ['build', 'next'])).stdout, 'P1/S-01\n');
   } finally {
     p.cleanup();
   }
