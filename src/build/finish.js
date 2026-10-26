@@ -1,6 +1,6 @@
-// `build finish` (REQ-2.6 step 9, REQ-1.8): a slice whose latest verdict on its head is clean has its
-// pull request marked ready, waits for CI on the head the git host holds, puts the run link in
-// "Proof" and records `ci-green` on that head. The live head may be a later one that adds only the
+// `build finish` (REQ-2.6 step 9, REQ-1.8): a slice whose latest verdict on its head is clean waits
+// for CI on the head the git host holds; on success its pull request's "Proof" takes the run link,
+// the pull request is marked ready and `ci-green` is recorded on that head. The live head may be a later one that adds only the
 // kit's bookkeeping (D-35): the verdict and in-review commits `build verdict` pushed. A head with any
 // other change is a fix push `build pr` has not recorded, and is refused before anything changes.
 import { headSha, pushBranch } from '../git.js';
@@ -94,13 +94,15 @@ export function finish(root, cfg, host, id, { worktree, wait = 600, interval = 1
   if (!headCovers(wt, recorded, local)) throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
   if (!headCovers(wt, live, local)) throw new BuildError(`the pull request head ${short(live)} is not in this worktree; pull first`);
 
-  if (pr.draft !== false) host.markReady(number);
   const status = pollCi(host, live, { wait, interval, sleep });
   if (status.status === 'failure') throw new BuildError(`CI failed on ${short(live)}${status.url ? `: ${status.url}` : ''}`);
   if (status.status !== 'success') throw new BuildError(`CI still running on ${short(live)}; run slicekit build finish ${id} again`);
 
   const ci = { status: 'success', sha: live, url: status.url ?? null };
   setProof(cfg, host, number, ci);
+  // Ready only on green CI, so a failed or running CI leaves a draft, as the in-review state says.
+  // CI runs on draft pull requests too, so nothing waits on this.
+  if (pr.draft !== false) host.markReady(number);
   recordState(wt, cfg, id, 'ci-green', { ci: { status: 'success', sha: live } });
   push(wt, cfg);
   return { ci };

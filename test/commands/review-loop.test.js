@@ -656,12 +656,15 @@ test('finish records ci-green only when CI succeeds on the head', async () => {
     assert.ok(failed.stderr.includes(`CI failed on ${sha7}: ${RUN_URL}`), failed.stderr);
     assert.equal(stateIn(p.wt).state, 'in-review');
     assert.match(getSection(prIn(p).body, 'Proof'), /CI: pending$/);
+    assert.equal(prIn(p).isDraft, true);
 
     setCi(p, p.head, 'in_progress');
     const pending = await finishCli(p, '--wait', '0');
     assert.equal(pending.code, 1);
     assert.ok(pending.stderr.includes(`CI still running on ${sha7}; run slicekit build finish P1/S-01 again`), pending.stderr);
     assert.equal(stateIn(p.wt).state, 'in-review');
+    assert.equal(prIn(p).isDraft, true);
+    assert.ok(!prCalls(p.host).some((c) => c.op === 'markReady'));
 
     setCi(p, p.head, 'completed', 'success');
     const ok = await finishCli(p);
