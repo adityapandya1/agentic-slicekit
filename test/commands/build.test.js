@@ -159,9 +159,11 @@ test('next skips a slice whose group waits on an unmerged step', async () => {
     assert.ok(!after.stdout.includes('P1/S-02'), after.stdout);
     assert.equal(after.code, 1);
 
+    // A second start in this clone resumes it; the path is printed with forward slashes.
+    assert.ok(!wt.includes('\\'), wt);
     const again = await cli(p.root, ['build', 'start', 'P1/S-02']);
-    assert.equal(again.code, 1);
-    assert.match(again.stderr, /P1\/S-02 is already started in /);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, `resumed ${wt} at todo\n`);
   } finally {
     p.cleanup();
   }
@@ -238,6 +240,36 @@ function cloneOf(remote) {
   git(dir, ['config', 'commit.gpgsign', 'false']);
   return { root: dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
+
+test('build start resumes a slice this clone started, at the state its worktree holds', async () => {
+  const p = await building({ remote: true });
+  try {
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const r = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `resumed ${path.resolve(p.wt).split(path.sep).join('/')} at building\n`);
+    // A resume makes no commit and pushes nothing.
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build start refuses a slice another clone started', async () => {
+  const a = project({ slices: [{ n: 1, group: 'A' }], remote: true });
+  const b = cloneOf(a.remote);
+  try {
+    const started = await cli(a.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(started.code, 0, started.stderr);
+    const r = await cli(b.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /P1\/S-01 is already started in origin\/slice\/P1-S-01-thing-1; another clone holds it/);
+    assert.equal(r.stdout, '');
+  } finally {
+    b.cleanup();
+    a.cleanup();
+  }
+});
 
 const quiet = { onWarning: () => {} };
 const READ_HERE = /build next and build start read slice states from the checkout they run in; run them in the main checkout on main/;
@@ -1256,13 +1288,15 @@ test('examples/backend goes from todo to draft-pr', async () => {
   const repo = makeRepo();
   const origin = makeRemote(repo.root);
   const host = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
+  // The session's scratch directory, outside the repository, where the procedure puts the notes.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-scratch-'));
   try {
     const { root } = repo;
     fs.cpSync(EXAMPLE, root, { recursive: true });
     const init = runCli(['init', '--shape', 'backend', '--cli', KIT_CLI], { cwd: root, shim: false });
     assert.equal(init.code, 0, init.stderr);
     // init adds the kit's layout around the example's files and keeps them as they were.
-    for (const rel of ['docs/spec/01-greeting.md', 'docs/decisions.md', 'docs/phases/P1-greeting/P1.md', 'docs/phases/P1-greeting/S-01-greet.md']) {
+    for (const rel of ['docs/spec/01-greeting.md', 'docs/spec/gaps.md', 'docs/spec/stack.md', 'docs/decisions.md', 'docs/runbook.md', 'docs/intake/2026-10-26-greeting.md', 'docs/phases/P1-greeting/P1.md', 'docs/phases/P1-greeting/S-01-greet.md']) {
       assert.equal(fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8'), exampleFile(rel), rel);
     }
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, '.slicekit', 'config.json'), 'utf8')), {
@@ -1277,6 +1311,10 @@ test('examples/backend goes from todo to draft-pr', async () => {
     // main is green before any slice starts.
     const onMain = runCli(['check'], { cwd: root, shim: false });
     assert.equal(onMain.code, 0, onMain.stdout + onMain.stderr);
+    // The example walked the real pipeline: intake, clarify, spec, gap scan, stack and plan are done.
+    const stage = await cli(root, ['stage', 'require', 'plan']);
+    assert.equal(stage.code, 0, stage.stderr);
+    assert.equal(stage.stdout, 'ready: plan\n');
 
     // Step 1.
     const next = await cli(root, ['build', 'next']);
@@ -1301,6 +1339,10 @@ test('examples/backend goes from todo to draft-pr', async () => {
     const red = await cli(root, ['build', 'red', 'P1/S-01', '--tests', 'test/greet.test.js,test/greet-empty.test.js', ...at]);
     assert.equal(red.code, 0, red.stderr);
     assert.equal(red.stdout.split('\n')[1], 'tests-red → building');
+    // A session that died here starts again with build start, which resumes at the worktree's state.
+    const resumed = await cli(root, ['build', 'start', 'P1/S-01']);
+    assert.equal(resumed.code, 0, resumed.stderr);
+    assert.equal(resumed.stdout, `resumed ${wt} at building\n`);
 
     // Step 4: the code, then an amendment the human approved: the negative test expects the wrong
     // message. The row stays the same, so the amendment is a note under it in the worktree's slice file.
@@ -1322,7 +1364,7 @@ test('examples/backend goes from todo to draft-pr', async () => {
     const done = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): green', '--require-green', ...at]);
     assert.equal(done.code, 0, done.stderr);
     assert.equal(done.stdout, 'nothing to commit\n');
-    const notes = path.join(host, 'slicekit-notes-P1-S-01.json');
+    const notes = path.join(scratch, 'slicekit-notes-P1-S-01.json');
     fs.writeFileSync(
       notes,
       JSON.stringify({ tryIt: ['Run npm test.', "Call greet('Ada').", 'See Hello, Ada!.'], skipped: 'Names with spaces were not tried.' }),
@@ -1343,6 +1385,7 @@ test('examples/backend goes from todo to draft-pr', async () => {
     assert.match(checked.stdout, /\b0 findings\b/);
   } finally {
     fs.rmSync(host, { recursive: true, force: true });
+    fs.rmSync(scratch, { recursive: true, force: true });
     origin.cleanup();
     repo.cleanup();
   }
@@ -1360,14 +1403,28 @@ test('the procedure and the developer brief pass the brief lint', () => {
   assert.ok(brief.includes('ran: <command> → exit <code>'), brief);
   assert.ok(brief.includes('amend:'), brief);
   // The amendment is made to the worktree's copy of the slice file, even when the row stays the same.
-  assert.ok(procedure.includes('<path>/<docs root>/phases/'), procedure);
+  assert.ok(procedure.includes('<path>/<docsRoot>/phases/'), procedure);
+  // The stage gate first; a resumed slice goes on at its state; another clone's slice stops the run.
+  assert.ok(procedure.includes('{{cli}} stage require plan'), procedure);
+  for (const s of ['resumed <path> at <state>', '`todo`', '`tests-red`', '`building`', '`draft-pr`', 'another clone']) assert.ok(procedure.includes(s), s);
+  // The wording the other procedures use: {{args}} once in the opening, <docsRoot>, the no-git sentence.
+  assert.equal(procedure.match(/\{\{args\}\}/g)?.length, 1, '{{args}}');
+  assert.ok(procedure.includes('run no git or gh command yourself'), procedure);
+  assert.ok(procedure.includes('`<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`'), procedure);
+  // Pull refusals go to the human, since the procedure runs no git.
+  assert.match(procedure, /pull first[\s\S]{0,200}human/);
   // `nothing to commit` is success; the notes file's shape and place are stated.
   assert.ok(procedure.includes('`nothing to commit`'), procedure);
   assert.ok(procedure.includes('a list of exactly three strings'), procedure);
   assert.ok(procedure.includes('one string'), procedure);
   assert.ok(procedure.includes('slicekit-notes-<id>.json'), procedure);
+  assert.ok(procedure.includes('your scratchpad or temp directory'), procedure);
+  assert.doesNotMatch(procedure, /\.git\//);
   assert.doesNotMatch(procedure, /npx/);
   // The brief says each thing once.
   assert.equal(brief.match(/\bdocument\b/gi)?.length, 1, 'document');
   assert.equal(brief.match(/outside the slice's expected/gi)?.length, 1, 'outside');
+  // A helper lives inside the evaluation test file, so it is frozen with it (D-10).
+  assert.doesNotMatch(brief, /helper a test imports/);
+  assert.match(brief, /helper[^.]*inside the evaluation test file/i);
 });

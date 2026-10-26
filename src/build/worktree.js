@@ -113,8 +113,14 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
   const branch = branchName(root, addr, descr);
   const dir = worktreeDir(root, addr);
 
+  // A worktree of this clone on the slice's branch: the start already happened, so this is a resume
+  // at the state that worktree holds. Nothing is committed or pushed.
+  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root));
+  if (mine) return { worktree: mine.path, branch: mine.branch, resumed: true, state: readSlice(mine.path, cfg, id).state };
+
   const ready = runnable(root, cfg, { prepared: true });
   const held = heldSlices(root).get(id);
+  if (held?.startsWith('origin/')) throw new BuildError(`${id} is already started in ${held}; another clone holds it`);
   if (held) throw new BuildError(`${id} is already started in ${held}`);
   if (fs.existsSync(dir)) throw new BuildError(`${dir} exists and holds no worktree of ${id}; remove it`);
   if (!ready.some((s) => s.id === id)) {

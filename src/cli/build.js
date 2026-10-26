@@ -1,5 +1,6 @@
 // `slicekit build <sub>` (REQ-2.6): the deterministic steps of `/slicekit build`. Each subcommand
 // lands with its task; S-15 and S-16 add theirs.
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { GitError } from '../git.js';
@@ -44,11 +45,14 @@ function next(root, io, positionals) {
 function start(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
-  const { worktree, branch } = startSlice(root, cfg, positionals[0], {
+  const { worktree, branch, resumed, state } = startSlice(root, cfg, positionals[0], {
     descr: values.descr,
     onWarning: (msg) => io.stderr(`${msg}\n`),
   });
-  io.stdout(`${worktree}\n${branch}\n`);
+  // Forward slashes on every platform, as the brief's Where section prints it: a backslash path
+  // pasted unquoted into a POSIX shell loses its separators.
+  const where = path.resolve(worktree).split(path.sep).join('/');
+  io.stdout(resumed ? `resumed ${where} at ${state}\n` : `${where}\n${branch}\n`);
   return 0;
 }
 

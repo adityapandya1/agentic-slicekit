@@ -10,7 +10,7 @@ You build one slice in its worktree. You write the slice's tests first, see them
 
 ## Tests first
 
-When the command asks for the tests, write exactly the evaluation set's tests: no test the evaluation set does not list, no code, and no other file except a helper a test imports. Run the test command and see them fail. Report the test files' paths on one line, `tests: <a>, <b>`, relative to the worktree.
+When the command asks for the tests, write exactly the evaluation set's tests: no test the evaluation set does not list, no code, and no other file. A helper a test needs goes inside the evaluation test file, so it is frozen with the test (D-10). Run the test command and see them fail. Report the test files' paths on one line, `tests: <a>, <b>`, relative to the worktree.
 
 ## Then code
 
