@@ -5,7 +5,7 @@
 import path from 'node:path';
 import { citedRefs, intakeExists } from './check/rules/citations.js';
 import { exists, listFiles, readText } from './fs.js';
-import { readDecisions } from './decisions.js';
+import { interfacesWithoutContract, readDecisions } from './decisions.js';
 import { prose } from './markdown.js';
 import { kitPaths } from './paths.js';
 import { clarificationMarkers, programStage, reqBlocks } from './stage.js';
@@ -40,6 +40,14 @@ export function verifySpec(root, cfg) {
   }
   for (const r of unsupportedReqs(root, cfg)) {
     findings.push({ file: r.file, line: r.line, message: `${r.req} cites nothing that exists; write [NEEDS CLARIFICATION: <question>] instead of a guess` });
+  }
+  const p = kitPaths(root, cfg);
+  if (exists(p.decisions)) {
+    const where = posix(path.relative(root, p.decisions));
+    const contracts = `${posix(path.relative(root, p.contracts))}/`;
+    for (const i of interfacesWithoutContract(root, cfg)) {
+      findings.push({ file: where, line: i.line, message: `interface ${i.name} (${i.id}) has no contract under ${contracts}` });
+    }
   }
   const found = markers(root, cfg);
   return {

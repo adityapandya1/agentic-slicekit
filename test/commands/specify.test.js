@@ -181,3 +181,46 @@ test('the kit spec has no clarification marker', async () => {
   const { verifySpec } = await import('../../src/spec-verify.js');
   assert.deepEqual(verifySpec(kit, loadConfig(kit)).markers, []);
 });
+
+async function addInterface(root, name, source) {
+  const r = await cli(root, ['decide', 'add', '--type', 'Decision', '--question', `Which shape for ${name}?`, '--answer', 'JSON', '--interface', name, '--source', source]);
+  assert.equal(r.code, 0, r.stderr);
+  return r.stdout.trim();
+}
+
+function writeContract(root, file, title, id) {
+  fs.mkdirSync(path.join(root, 'docs/spec/contracts'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs/spec/contracts', file), `# ${title}\n\nThe kit SHALL use it.\n\nCites: ${id}\n`);
+}
+
+async function withCapabilities(fn) {
+  await withProgram(async (root) => {
+    writeDecisions(root);
+    writeSpec(root, `${req('REQ-1.1', 'store orders', 'D-01')}\n${req('REQ-1.2', 'list orders', 'D-01')}`);
+    fs.writeFileSync(path.join(root, 'docs/spec/02-billing.md'), `# Billing\n\n${req('REQ-2.1', 'bill orders', 'D-01')}`);
+    const a = await addInterface(root, 'orders api', 'docs/intake/2026-01-01-brief.md:1');
+    const b = await addInterface(root, 'billing feed', 'docs/intake/2026-01-01-brief.md:1');
+    writeContract(root, 'C-1-orders-api.md', 'C-1 Orders API', a);
+    writeContract(root, 'C-2-billing-feed.md', 'C-2 Billing feed', b);
+    await fn(root);
+  });
+}
+
+test('one spec file per capability and one contract per interface named at intake', async () => {
+  await withCapabilities(async (root) => {
+    const r = await cli(root, ['spec', 'verify']);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(r.stdout, 'spec verified: 3 REQ, 2 contracts, 0 clarification markers\n');
+  });
+});
+
+test('an interface with no contract is a finding naming its decision row', async () => {
+  await withCapabilities(async (root) => {
+    const id = await addInterface(root, 'orders topic', 'docs/intake/x.md:12');
+    const line = fs.readFileSync(path.join(root, 'docs/decisions.md'), 'utf8').split('\n').findIndex((l) => l.startsWith(`| ${id} |`)) + 1;
+    assert.ok(line > 0);
+    const r = await cli(root, ['spec', 'verify']);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.equal(r.stdout, `docs/decisions.md:${line} interface orders topic (${id}) has no contract under docs/spec/contracts/\n`);
+  });
+});
