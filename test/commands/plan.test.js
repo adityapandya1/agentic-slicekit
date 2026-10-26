@@ -44,7 +44,7 @@ const MARKER = '[NEEDS CLARIFICATION: which thing?]';
 const spec = (claim) =>
   `# A\n\n### REQ-1.1 The thing works\n\nThe thing SHALL work ${claim}.\n\nScenario: GIVEN a thing WHEN it runs THEN it works.\n\nCites: intake/2026-01-01-brief.md, D-01.\n\nEnforced by: advisory\n`;
 const gaps = (closedBy) =>
-  `# Gaps\n\n| # | Class | Where | What | Closed by |\n|---|-------|-------|------|-----------|\n| G-1 | vague | REQ-1.1 | which thing | ${closedBy} |\n`;
+  `# Gaps\n\nScanned: 2026-01-01 at 0000000\n\n| # | Class | Where | What | Closed by |\n|---|-------|-------|------|-----------|\n| G-1 | vague | REQ-1.1 | which thing | ${closedBy} |\n`;
 
 test('refuses while a clarification marker or an open gap exists', async () => {
   await withProgram(async (root) => {
@@ -169,5 +169,36 @@ test('the procedure opens the branch before plan check and instructions prints i
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /plan check/);
     assert.doesNotMatch(r.stdout, /\{\{cli\}\}/);
+  });
+});
+
+test('on the plan branch with stack.md rewritten, an overlap in one Order step is a coverage finding', async () => {
+  // REQ-2.5, D-38: writing stack.md on the plan branch must not silence coverage there, committed or not.
+  await withProgram(async (root) => {
+    write(root, 'docs/spec/a.md', spec('everywhere'));
+    write(root, 'docs/spec/gaps.md', gaps('D-01'));
+    record(root, 'spec merged, gaps scanned');
+    const branch = await cli(root, ['branch', 'plan', 'demo']);
+    assert.equal(branch.code, 0, branch.stdout + branch.stderr);
+    assert.equal(branch.stdout, 'plan/demo\n');
+
+    write(root, 'docs/spec/stack.md', '# Stack\n\nNode 22, node:test, no database.\n');
+    fs.mkdirSync(path.join(root, 'docs/phases/P1-x'), { recursive: true });
+    write(root, 'docs/phases/P1-x/P1.md', '# Phase 1 — X\n\nGoal: the thing works.\n\n**Order:** A, B\n');
+    write(root, 'docs/phases/P1-x/S-01-one.md', planSlice(1, 'REQ-1.1', 'src/x.js'));
+    write(root, 'docs/phases/P1-x/S-02-two.md', planSlice(2, 'REQ-1.1', 'src/x.js').replace('group: A', 'group: B'));
+    const want = ['coverage docs/phases/P1-x/S-02-two.md:24 slices P1/S-01 and P1/S-02 in step A, B both expect src/x.js'];
+    const coverage = (r) => r.stdout.split('\n').filter((l) => l.startsWith('coverage '));
+
+    const ready = await cli(root, ['plan', 'check']);
+    assert.equal(ready.stdout, 'ready to plan\n', ready.stdout + ready.stderr);
+    const uncommitted = await cli(root, ['check']);
+    assert.deepEqual(coverage(uncommitted), want, uncommitted.stdout);
+
+    record(root, 'the plan');
+    const again = await cli(root, ['plan', 'check']);
+    assert.equal(again.stdout, 'ready to plan\n', again.stdout + again.stderr);
+    const committed = await cli(root, ['check']);
+    assert.deepEqual(coverage(committed), want, committed.stdout);
   });
 });
