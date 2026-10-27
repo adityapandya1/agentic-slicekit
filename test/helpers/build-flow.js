@@ -198,3 +198,21 @@ export const prCalls = (host) => {
   const file = path.join(host, 'pr-calls.jsonl');
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 };
+
+// The review worktree `review start` makes (S-16 Task 2), built by hand: `<root>/.worktrees/review-P1-S-01`
+// on `slice/P1-S-01-review` at origin's slice branch, tracking it, so a push lands on the slice branch.
+export function reviewWorktree(p, branch = 'slice/P1-S-01-thing-1') {
+  const dir = path.join(p.root, '.worktrees', 'review-P1-S-01');
+  git(p.root, ['fetch', '-q', 'origin']);
+  git(p.root, ['worktree', 'add', '-q', '--track', '-b', 'slice/P1-S-01-review', dir, `origin/${branch}`]);
+  return dir;
+}
+
+// The review worktree removed and the build worktree brought up to what it pushed, so the build
+// session's steps find one worktree holding the slice again.
+export function leaveReview(p, dir, branch = 'slice/P1-S-01-thing-1') {
+  git(p.root, ['worktree', 'remove', '--force', dir]);
+  git(p.root, ['branch', '-q', '-D', 'slice/P1-S-01-review']);
+  git(p.wt, ['fetch', '-q', 'origin']);
+  git(p.wt, ['merge', '-q', '--ff-only', `origin/${branch}`]);
+}

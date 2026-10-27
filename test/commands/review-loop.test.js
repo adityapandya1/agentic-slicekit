@@ -9,7 +9,7 @@ import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
 import { FINISH_WAIT, finish, proofWithCi } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
-import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitIn, commitWorkCli, green, leaveReview, prCalls, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES } from '../../src/instructions.js';
 
@@ -177,9 +177,11 @@ test('a finding that disappears and comes back takes a new number', async () => 
     // Round 3 (independent, outside the loop's cap): B-2 vanished in round 2, so it is new and reused.
     const file = `${REVIEWS}/P1-S-01i-r3.md`;
     write(p.root, file, verdictText('BLOCK', [['B-2', 'y is wrong again'], ['H-1', 'a name again']]));
-    const before = stateIn(p.wt);
+    // An independent verdict is recorded from the review worktree (S-16 ruling 6).
+    const rwt = reviewWorktree(p);
+    const before = stateIn(rwt);
     assert.throws(
-      () => recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true }),
+      () => recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt }),
       (e) =>
         e.code === 1 &&
         e.message ===
@@ -189,15 +191,15 @@ test('a finding that disappears and comes back takes a new number', async () => 
           ].join('\n'),
     );
     assert.ok(fs.existsSync(at(p.root, file)));
-    assert.deepEqual(stateIn(p.wt), before);
+    assert.deepEqual(stateIn(rwt), before);
 
     // Numbered afresh, the same findings are recorded.
     write(p.root, file, verdictText('BLOCK', [['B-3', 'y is wrong again'], ['H-3', 'a name again']]));
-    const ok = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
+    const ok = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt });
     assert.deepEqual(ok.blockers, ['B-3']);
     assert.equal(ok.roundsUsed, 2);
     assert.equal(ok.next, 'fix');
-    assert.equal(stateIn(p.wt).verdicts.at(-1).independent, true);
+    assert.equal(stateIn(rwt).verdicts.at(-1).independent, true);
   } finally {
     p.cleanup();
   }
@@ -437,14 +439,15 @@ test('an independent verdict after two rounds asks for a fix and does not stop t
 
     const file = `${REVIEWS}/P1-S-01i-r3.md`;
     write(p.root, file, verdictText('BLOCK', [['B-3', 'z is wrong']]));
-    const before = stateIn(p.wt).verdicts.length;
+    const rwt = reviewWorktree(p);
+    const before = stateIn(rwt).verdicts.length;
     // recordVerdict throws on every refusal and the CLI exits 1 only on `stuck`, so `fix` is exit 0.
-    const r = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
+    const r = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt });
     assert.equal(r.next, 'fix');
     assert.deepEqual(r.blockers, ['B-3']);
     assert.equal(r.roundsUsed, 2);
-    assert.equal(stateIn(p.wt).state, 'in-review');
-    assert.equal(stateIn(p.wt).verdicts.length, before + 1);
+    assert.equal(stateIn(rwt).state, 'in-review');
+    assert.equal(stateIn(rwt).verdicts.length, before + 1);
     assert.equal(
       getSection(prIn(p).body, 'Reviewer blocked'),
       'B-1 `x is wrong` — fixed in round 2; B-3 `z is wrong` — open after round 3',
@@ -536,8 +539,11 @@ test('with an independent round mid-loop the line and the stop name the real rou
     await fixPush(p, 1);
     const file = `${REVIEWS}/P1-S-01i-r2.md`;
     write(p.root, file, verdictText('BLOCK', [['B-1', 'x is wrong'], ['B-2', 'y is wrong']]));
-    assert.equal(recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true }).next, 'fix');
+    const rwt = reviewWorktree(p);
+    assert.equal(recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt }).next, 'fix');
     assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'B-1 `x is wrong` — open after round 1; B-2 `y is wrong` — open after round 2');
+    // The build session takes up what the review pushed, then fixes.
+    leaveReview(p, rwt);
     await fixPush(p, 2);
     const three = await p.verdict(review(p, 3, verdictText('BLOCK', [['B-3', 'z is wrong']])));
     assert.equal(three.code, 1, three.stderr);

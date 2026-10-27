@@ -15,18 +15,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { git, headSha, pushBranch } from '../git.js';
-import { verdictFileName, verdictFilePattern } from '../ids.js';
+import { parseSliceAddr, verdictFileName, verdictFilePattern } from '../ids.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
+import { INDEPENDENT_ONLY } from '../state/transitions.js';
 import { bannedPhrasesIn } from '../check/rules/style.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
-import { BuildError, findWorktree, samePath } from './worktree.js';
+import { BuildError, branchPrefix, findWorktree, samePath } from './worktree.js';
 
-// The states a verdict is recorded from: the `in-review` edges.
+// The states a verdict is recorded from: the `in-review` edges. An independent verdict (D-39) is
+// also recorded from in-review, ci-green and ready, and sends a green slice back to review.
 const FROM = ['draft-pr', 'changes-requested'];
+const fromStates = (independent) => (independent ? [...FROM, ...INDEPENDENT_ONLY] : FROM);
+const orList = (xs) => (xs.length < 3 ? xs.join(' or ') : `${xs.slice(0, -1).join(', ')} or ${xs.at(-1)}`);
 export const LOOP_ROUNDS = 2;
 const REVIEWS = '.slicekit/reviews';
 const BLOCKED = 'Reviewer blocked';
@@ -142,20 +146,22 @@ export function latestVerdictPath(root, verdicts = []) {
 }
 
 // The next verdict path after a round: only when the round asks for a fix or a should-have decision
-// and another in-loop round is allowed; `stuck` and `ci` name none.
-const withNextPath = (root, id, result, verdicts) => ({
+// and another in-loop round is allowed; `stuck` and `ci` name none. After an independent verdict
+// there is no in-loop path: the next independent round's path comes from `review start`.
+const withNextPath = (root, id, result, verdicts, independent) => ({
   ...result,
-  verdictPath: result.next === 'fix' || result.next === 'ask' ? nextVerdictPath(root, id, verdicts) : null,
+  verdictPath: !independent && (result.next === 'fix' || result.next === 'ask') ? nextVerdictPath(root, id, verdicts) : null,
 });
 
-// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never `stuck`.
+// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never
+// `stuck`, and without blockers it goes to CI; its should-haves are the review procedure's to list.
 function outcome(k, v, verdicts, independent) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
   const shouldHaves = v.findings.filter((f) => f.kind === 'should-have').map((f) => f.id);
   const roundsUsed = inLoop(verdicts);
   let next = 'ci';
   if (blockers.length > 0) next = independent || roundsUsed < LOOP_ROUNDS ? 'fix' : 'stuck';
-  else if (shouldHaves.length > 0) next = 'ask';
+  else if (shouldHaves.length > 0 && !independent) next = 'ask';
   return { round: k, blockers, shouldHaves, roundsUsed, next };
 }
 
@@ -248,11 +254,15 @@ function bannedProblems(cfg, v, text, shown) {
   return out;
 }
 
-// After a round is recorded: a stopped loop records changes-requested (once), then the branch is
-// pushed and the body's "Reviewer blocked" brought up to date.
-function finish(wt, cfg, host, id, current, result, verdicts) {
+// After a round is recorded: a stopped loop records changes-requested (once); an independent verdict
+// that sent a green slice back to review (D-39) marks a ready pull request draft again, so the host
+// agrees with the state; then the branch is pushed and the body's "Reviewer blocked" brought up to date.
+function finish(wt, cfg, host, id, current, result, verdicts, independent) {
   const stuck = result.next === 'stuck';
   if (stuck && current.state === 'in-review') recordState(wt, cfg, id, 'changes-requested', {});
+  if (independent && current.state === 'in-review' && host.getPullRequest(current.pr.number).draft === false) {
+    host.markDraft(current.pr.number);
+  }
   push(wt, cfg);
   updateBlocked(wt, cfg, host, current.pr.number, verdicts, stuck);
   return result;
@@ -269,13 +279,23 @@ function assertBuilt(wt, id, current) {
 // finding IDs; `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
 // `stuck` is returned, not thrown: the loop has stopped and changes-requested is recorded, and a
 // caller must exit 1 on it (the CLI does). `verdictPath` is the next round's file (nextVerdictPath)
-// on `fix` or `ask`, else null.
+// on `fix` or `ask` of an in-loop verdict, else null.
+//
+// `independent` (D-39): the verdict of an independent review, named `<P-S>i-r<k>.md`, recorded from
+// the review worktree `review start` makes, from draft-pr, changes-requested, in-review, ci-green or
+// ready, outside the two in-loop rounds.
 export function recordVerdict(root, cfg, host, id, file, { worktree, independent = false } = {}) {
-  const wt = findWorktree(root, id, { worktree }).path;
+  const held = findWorktree(root, id, { worktree });
+  const wt = held.path;
   const shown = typeof file === 'string' ? file.split(path.sep).join('/') : String(file);
   const name = path.basename(String(file));
   const m = verdictFilePattern(id, { independent }).exec(name);
-  if (!m) throw new BuildError(`a verdict of ${id} is named ${verdictFileName(id, '<k>', { independent })}`, 2);
+  if (!m) {
+    // The name and the flag disagree: an `i` name without --independent, or --independent without one.
+    const crossed = verdictFilePattern(id, { independent: !independent }).test(name);
+    const want = crossed ? `an independent verdict is named ${verdictFileName(id, '<k>', { independent: true })}` : `a verdict of ${id} is named ${verdictFileName(id, '<k>', { independent })}`;
+    throw new BuildError(want, 2);
+  }
   const k = Number(m[2]);
   const src = path.resolve(root, String(file));
   const dest = path.join(wt, ...REVIEWS.split('/'), name);
@@ -283,6 +303,13 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
 
   const current = readSlice(wt, cfg, id);
   const verdicts = current.verdicts ?? [];
+
+  // The building session never approves itself through its own worktree: an independent verdict is
+  // recorded only on the review branch `review start` makes. That the session is fresh is the person's
+  // to keep (D-18).
+  if (independent && held.branch !== `${branchPrefix(parseSliceAddr(id))}-review`) {
+    throw new BuildError(`an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`);
+  }
 
   // This round is the latest recorded: a run that stopped after recording it (before changes-requested,
   // the push or the body). Finish what is left; record the round nothing more. The push carries only
@@ -297,14 +324,15 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts), verdicts);
+    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts, independent), verdicts, independent);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
   if (!independent && inLoop(verdicts) >= LOOP_ROUNDS) throw new BuildError('two review rounds used; the loop stopped (D-18)');
 
-  if (!FROM.includes(current.state)) {
-    throw new BuildError(`${id} is ${current.state}; build verdict runs from ${FROM.join(' or ')}`);
+  const from = fromStates(independent);
+  if (!from.includes(current.state)) {
+    throw new BuildError(`${id} is ${current.state}; build verdict runs from ${orList(from)}`);
   }
   if (k !== verdicts.length + 1) throw new BuildError(`the next verdict of ${id} is round ${verdicts.length + 1}, not ${k}`);
   assertBuilt(wt, id, current);
@@ -328,5 +356,5 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts), state.verdicts);
+  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts, independent), state.verdicts, independent);
 }

@@ -165,7 +165,8 @@ Transitions and their mechanical preconditions:
 | todo → tests-red | a commit exists on the slice branch whose test run exit code was non-zero, recorded in the state file with the commit SHA |
 | tests-red → building | the test files listed in the state file are present and (if `freezeTests`) frozen |
 | building → draft-pr | the test command exits 0; `slicekit check` exits 0; a pull request exists whose title begins `[P<n>/S-<nn>]` |
-| draft-pr → in-review | a verdict file exists for round 1 |
+| draft-pr or changes-requested → in-review | a verdict file exists for the next round |
+| in-review, ci-green or ready → in-review | an independent verdict file exists for the next round |
 | in-review → changes-requested | the latest verdict has open blockers |
 | in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA or a later head D-35 covers |
 | ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35) |
@@ -177,7 +178,7 @@ Transitions and their mechanical preconditions:
 Scenario: GIVEN a slice at `building` WHEN the command tries to open a pull request while the test
 command exits 1 THEN the transition is refused and the failing test summary is printed.
 
-Cites: D-10, D-18, D-22, D-35.
+Cites: D-10, D-18, D-22, D-35, D-39.
 
 Enforced by: `slicekit state set` (the only writer), which checks the precondition and refuses
 otherwise.

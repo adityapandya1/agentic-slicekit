@@ -23,7 +23,7 @@ import { readSlice } from '../state/index.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -35,6 +35,7 @@ const OPTIONS = {
   reason: { type: 'string' },
   notes: { type: 'string' },
   wait: { type: 'string' },
+  independent: { type: 'boolean' },
 };
 
 function next(root, io, positionals) {
@@ -109,12 +110,15 @@ function prStep(root, io, positionals, values) {
 }
 
 // Prints the next step, the round's finding IDs and the in-loop rounds used; a stopped loop (D-18)
-// also says so and exits 1.
+// also says so and exits 1. `--independent` records an independent review's verdict (D-39).
 function verdictStep(root, io, positionals, values) {
   if (positionals.length !== 2) return usage(io);
   const cfg = loadConfig(root);
   const [id, file] = positionals;
-  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, { worktree: values.worktree });
+  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, {
+    worktree: values.worktree,
+    independent: Boolean(values.independent),
+  });
   const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
   const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
   if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');

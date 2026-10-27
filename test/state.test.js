@@ -59,7 +59,7 @@ test('states are the ten in order', () => {
   assert.equal(STATES.length, 10);
   assert.equal(STATES[0], 'todo');
   assert.deepEqual(nextStates('todo'), ['tests-red']);
-  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green', 'draft-pr']);
+  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green', 'draft-pr', 'in-review']);
   assert.deepEqual(nextStates('released'), []);
 });
 
@@ -227,6 +227,26 @@ test('skipping a state is refused', () => {
   withKit((root, cfg, [id]) => {
     assert.equal(refusal(() => setState(root, cfg, id, 'building', {})), 'todo cannot move to building');
     assert.equal(refusal(() => setState(root, cfg, id, 'todo', {})), 'todo cannot move to todo');
+  });
+});
+
+// D-39: an independent verdict can send a green slice back to review; an in-loop one cannot.
+test('ci-green moves to in-review only on an independent verdict', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
+    setState(root, cfg, id, 'ci-green', green());
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 2, 1, false))), 'ci-green takes only an independent verdict');
+    const s = setState(root, cfg, id, 'in-review', verdict(root, 2, 1, true));
+    assert.equal(s.state, 'in-review');
+    assert.deepEqual(s.verdicts.at(-1), { round: 2, path: 'v2.md', blockers: 1, independent: true, headSha: HEAD });
+    assert.equal(s.history.at(-1).from, 'ci-green');
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 3, 0, false))), 'in-review takes only an independent verdict');
+    setState(root, cfg, id, 'in-review', verdict(root, 3, 0, true));
+    setState(root, cfg, id, 'ci-green', green());
+    setState(root, cfg, id, 'ready', {});
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 4, 0, false))), 'ready takes only an independent verdict');
+    assert.equal(setState(root, cfg, id, 'in-review', verdict(root, 4, 0, true)).history.at(-1).from, 'ready');
   });
 });
 

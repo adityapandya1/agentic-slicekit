@@ -53,6 +53,9 @@ export function independentProblem(verdicts) {
 
 const SHA_SHAPE = '7 to 40 lowercase hex characters';
 
+// The states in-review is reached from only on an independent verdict (D-39).
+export const INDEPENDENT_ONLY = ['in-review', 'ci-green', 'ready'];
+
 // Every evidence value that is given must have the right type, whatever the target state.
 export function validateEvidence(ev) {
   const bad = (name, want) => `${name} must be ${want}`;
@@ -150,11 +153,14 @@ export const TRANSITIONS = {
       ci: null,
     }),
   },
+  // D-39: an independent verdict can also be given on a slice already in review, CI-green or ready,
+  // and sends it back to review; an in-loop verdict cannot.
   'in-review': {
-    from: ['draft-pr', 'changes-requested'],
+    from: ['draft-pr', 'changes-requested', 'in-review', 'ci-green', 'ready'],
     required: ['verdict'],
     check(current, ev, ctx) {
       const v = ev.verdict;
+      if (INDEPENDENT_ONLY.includes(current.state) && v?.independent !== true) return `${current.state} takes only an independent verdict`;
       if (!v || !isInt(v.round) || v.round < 1) return 'in-review needs a verdict with round 1 or more';
       if (!isInt(v.blockers)) return 'in-review needs the verdict blocker count';
       if (!isStr(v.path)) return 'in-review needs the verdict file path (verdict.path)';
