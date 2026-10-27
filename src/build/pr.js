@@ -136,6 +136,11 @@ function runCommands(wt, cfg) {
   return summary;
 }
 
+function assertNoOverlap(wt, cfg, id) {
+  const defects = overlapWith(wt, cfg, id);
+  if (defects.length > 0) throw new BuildError(defects.map((d) => planDefectLine(id, d)).join('\n'));
+}
+
 function checkClean(wt) {
   const result = check(wt);
   if (result.exitCode === 0) return;
@@ -168,9 +173,9 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   // A path another slice of the same Order step already changes on origin (D-06): a plan defect,
   // refused before the notes, the body and the commands, so a defect in the plan stops the run before
   // minutes of test runs, and before anything is pushed. After the behind-origin refusal, which a
-  // sync answers, and the nothing-new refusal, whose head was pushed and checked before.
-  const defects = overlapWith(wt, cfg, id);
-  if (defects.length > 0) throw new BuildError(defects.map((d) => planDefectLine(id, d)).join('\n'));
+  // sync answers, and the nothing-new refusal, whose head was pushed and checked before. Asked again,
+  // with a fresh fetch, just before the first push (below).
+  assertNoOverlap(wt, cfg, id);
 
   // The pull request already open for the branch, and its live body, asked once when first needed.
   let asked = null;
@@ -233,6 +238,10 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
     throw e;
   }
 
+  // Again just before openOrUpdate's push: another slice of the step may have pushed while the
+  // commands ran. What is left is the moment between this fetch and the push; only a check on the
+  // server could close that.
+  assertNoOverlap(wt, cfg, id);
   const made = openOrUpdate(wt, cfg, host, { title, body, draft: true });
   // The absolute session-root path the next in-loop reviewer writes (null once the loop's rounds are
   // used): recording draft-pr adds no verdict, so the count read before is the count after.

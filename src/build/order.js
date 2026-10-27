@@ -55,10 +55,11 @@ function slices(root, cfg) {
   }));
 }
 
-// Slice ID → { phase, step }: the phase it belongs to and the index of its Order step there (each
-// group its own step without an Order line). Read from the checkout `root`.
+// Slice ID → { phase, step, state }, in phase and slice order: the phase it belongs to, the index of
+// its Order step there (each group its own step without an Order line) and its state. Read from the
+// checkout `root`.
 export function sliceSteps(root, cfg) {
-  return new Map(slices(root, cfg).map((s) => [s.id, { phase: s.phase, step: s.step }]));
+  return new Map(slices(root, cfg).map((s) => [s.id, { phase: s.phase, step: s.step, state: s.state }]));
 }
 
 // The first slice `s` waits on: of an earlier phase, then of an earlier step of its own; or null.

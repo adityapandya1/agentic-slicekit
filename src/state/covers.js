@@ -21,9 +21,16 @@ function bookkeeping(root) {
 
 const inBookkeeping = ({ dirs, files }, f) => files.includes(f) || dirs.some((d) => f.startsWith(d));
 
+// A test of whether a repository-relative POSIX path of the repository at `root` is bookkeeping,
+// with the bookkeeping paths worked out once (one git process) for every path it is asked about.
+export function bookkeepingTest(root) {
+  const kept = bookkeeping(root);
+  return (rel) => inBookkeeping(kept, rel);
+}
+
 // Whether `rel`, a repository-relative POSIX path of the repository at `root`, is bookkeeping.
 export function isBookkeepingPath(root, rel) {
-  return inBookkeeping(bookkeeping(root), rel);
+  return bookkeepingTest(root)(rel);
 }
 
 export function headCovers(root, from, to) {
