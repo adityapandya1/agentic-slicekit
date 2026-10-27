@@ -10,7 +10,7 @@ decisions: [D-28]
 
 ## Done when
 
-1. `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; repository public (D-28).
+1. `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; the repository went public as a preview at the end of Phase 2 (P2/S-25, D-28), and this slice publishes 0.1 to npm.
 2. An older `configVersion` is migrated forward on first run, printing what changed.
 
 ## Evaluation set
