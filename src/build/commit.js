@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { GitError, commitPaths, git, parseTrailers } from '../git.js';
-import { stateFileName } from '../ids.js';
+import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { TransitionError, readSlice, unfreeze } from '../state/index.js';
 import { isKitFile, posixRel, runCommand, sliceIn, toWorktreePath, unusableRun } from './red.js';
@@ -14,9 +14,13 @@ import { BuildError, findWorktree } from './worktree.js';
 const short = (sha) => sha.slice(0, 7);
 const lines = (out) => out.split('\n').filter((l) => l !== '');
 
-function building(wt, cfg, id, step) {
+// A fix for review findings is committed the same way while the pull request is in review, and after
+// CI or the independent review passed (build pr then takes the slice back to draft-pr).
+const COMMIT_FROM = ['building', 'in-review', 'changes-requested', 'ci-green', 'ready'];
+
+function building(wt, cfg, id, step, from = ['building']) {
   const current = readSlice(wt, cfg, id);
-  if (current.state !== 'building') throw new BuildError(`${id} is ${current.state}; ${step} runs from building`);
+  if (!from.includes(current.state)) throw new BuildError(`${id} is ${current.state}; ${step} runs from ${from.join(', ')}`);
   return current;
 }
 
@@ -60,13 +64,25 @@ function frozenProblem(wt, current) {
   return null;
 }
 
+const REVIEWS = '.slicekit/reviews/';
+
 // The kit's own commits on the slice branch, recognised by subject, trailer and paths; a hand commit
 // that imitates all three passes. The test command is read from the MAIN checkout's
 // .slicekit/config.json, so someone writing outside the worktree could change commands.test and make
 // --require-green meaningless; CI, which runs the committed config, is the backstop.
-function kitCommit(id, subject, trailers, files, stateRel, buildRel, sliceRel) {
+// `changes` are the commit's { status, file }, POSIX paths.
+function kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel) {
   if (trailers.Slice !== id) return false;
-  if (subject.startsWith(`chore(slicekit): ${id} `)) return files.every((f) => f === stateRel || f === buildRel);
+  const files = changes.map((c) => c.file);
+  if (subject.startsWith(`chore(slicekit): ${id} `)) {
+    const pattern = verdictFilePattern(id);
+    const round = (f) => (f.startsWith(REVIEWS) ? pattern.exec(f.slice(REVIEWS.length))?.[2] : undefined);
+    if (!files.some((f) => round(f) !== undefined)) return files.every((f) => f === stateRel || f === buildRel);
+    // build verdict's commit: one verdict file, added, of the round its subject names, and nothing else.
+    // A change or removal of a recorded verdict, or a second one, is never the kit's.
+    if (changes.length !== 1 || changes[0].status !== 'A') return false;
+    return subject === `chore(slicekit): ${id} verdict r${round(files[0])}`;
+  }
   if (subject === `docs(${id}): amend evaluation set`) return files.length === 1 && files[0] === sliceRel;
   return false;
 }
@@ -79,12 +95,15 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
   for (const sha of lines(git(wt, ['rev-list', '--no-merges', `${current.redCommit}..HEAD`]))) {
-    const files = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-only', '-r', sha]));
-    const kit = files.find((f) => isKitFile(wt, cfg, slice, f));
+    const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
+      const [status, ...rest] = l.split('\t');
+      return { status, file: rest.join('\t') };
+    });
+    const kit = changes.map((c) => c.file).find((f) => isKitFile(wt, cfg, slice, f));
     if (!kit) continue;
     const subject = git(wt, ['log', '-1', '--format=%s', sha]);
     const trailers = parseTrailers(git(wt, ['log', '-1', '--format=%B', sha]));
-    if (!kitCommit(id, subject, trailers, files, stateRel, buildRel, sliceRel)) {
+    if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
     }
   }
@@ -94,7 +113,7 @@ function forgedKitChange(wt, cfg, id, current, slice) {
 export function commitWork(root, cfg, id, { message, requireGreen = false, worktree } = {}) {
   if (typeof message !== 'string' || message.trim() === '') throw new BuildError('--message is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
-  const current = building(wt, cfg, id, 'commit');
+  const current = building(wt, cfg, id, 'commit', COMMIT_FROM);
   const slice = sliceIn(wt, cfg, id);
   const forged = forgedKitChange(wt, cfg, id, current, slice);
   if (forged) throw new BuildError(forged);

@@ -35,8 +35,8 @@ export function ghExitError(args, stderr) {
 }
 
 // `input`, when given, is piped to gh's stdin (a body passed as `--body-file -`, never on the
-// command line).
-function gh(exec, args, { input, ...opts } = {}) {
+// command line). Exported for the tracker adapter (C-2), which spawns gh the same way.
+export function gh(exec, args, { input, ...opts } = {}) {
   const stdin = input === undefined ? 'ignore' : 'pipe';
   try {
     return exec('gh', args, { encoding: 'utf8', stdio: [stdin, 'pipe', 'pipe'], ...opts, ...(input === undefined ? {} : { input }) });
@@ -103,6 +103,11 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
     markReady(n) {
       assertPrNumber(n);
       gh(exec, ['pr', 'ready', String(n)], { env, cwd: root });
+    },
+    // Back to draft: a slice that returns to draft-pr after its pull request was marked ready.
+    markDraft(n) {
+      assertPrNumber(n);
+      gh(exec, ['pr', 'ready', String(n), '--undo'], { env, cwd: root });
     },
     // The open pull request whose head is `branch` in this repository, as { number, url, base }, or
     // null. Every open one with that head name is listed (a fork's included), then filtered.

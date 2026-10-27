@@ -188,7 +188,9 @@ export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES
   parts.push(`## Decisions\n\n${slice ? decisions(root, cfg, asList(slice.data.decisions)) : none}`);
   parts.push(slice ? `## Slice ${sliceId}\n\n${sliceSummary(slice)}` : `## Slice\n\n${none}`);
   parts.push(`## Team commands\n\n${TEAM_COMMANDS.map((k) => `- ${k}: ${cfg.commands?.[k] || 'not declared'}`).join('\n')}`);
-  if (worktree) parts.push(`## Where\n\nWork only under ${posix(path.resolve(root, worktree))}; use absolute paths.`);
+  // The reviewer's verdict goes in the session root, where `build verdict` and the stop hook read it.
+  const verdictFile = role === 'reviewer' ? ' The one exception is the verdict file: write it at the absolute path the command gives you, in the session root.' : '';
+  if (worktree) parts.push(`## Where\n\nWork only under ${posix(path.resolve(root, worktree))}; use absolute paths.${verdictFile}`);
   const tasks = slice ? sliceSections(slice.body).get('tasks') : undefined;
   if (tasks) parts.push(`## Tasks\n\n${demote(tasks.text)}`.trim());
   return parts.join('\n\n');

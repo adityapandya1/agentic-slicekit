@@ -6,18 +6,24 @@ import { ConfigError, loadConfig } from '../config.js';
 import { GitError } from '../git.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
+import { getTracker, TrackerError } from '../adapters/tracker/index.js';
 import { PrError } from '../pr.js';
+import { PrBodyError } from '../prbody.js';
 import { SliceFileError } from '../slicefile.js';
 import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
+import { declineFinding } from '../build/decline.js';
+import { finish } from '../build/finish.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
+import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
+import { readSlice } from '../state/index.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -28,6 +34,7 @@ const OPTIONS = {
   test: { type: 'string' },
   reason: { type: 'string' },
   notes: { type: 'string' },
+  wait: { type: 'string' },
 };
 
 function next(root, io, positionals) {
@@ -52,7 +59,14 @@ function start(root, io, positionals, values) {
   // Forward slashes on every platform, as the brief's Where section prints it: a backslash path
   // pasted unquoted into a POSIX shell loses its separators.
   const where = path.resolve(worktree).split(path.sep).join('/');
-  io.stdout(resumed ? `resumed ${where} at ${state}\n` : `${where}\n${branch}\n`);
+  if (!resumed) {
+    io.stdout(`${where}\n${branch}\n`);
+    return 0;
+  }
+  // At in-review the latest round is recorded and its next step not yet acted on: `build verdict`
+  // with that round's file re-prints the step and records nothing again.
+  const latest = state === 'in-review' ? latestVerdictPath(root, readSlice(worktree, cfg, positionals[0]).verdicts ?? []) : null;
+  io.stdout(`resumed ${where} at ${state}\n${latest ? `verdict ${latest}\n` : ''}`);
   return 0;
 }
 
@@ -88,13 +102,59 @@ function prStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.notes === undefined) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
-  const { number, url } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
-  io.stdout(`#${number} ${url}
-`);
+  const { number, url, verdictPath } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  // Last, the path the next reviewer writes; none once the loop's rounds are used.
+  io.stdout(`#${number} ${url}\n${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep };
+// Prints the next step, the round's finding IDs and the in-loop rounds used; a stopped loop (D-18)
+// also says so and exits 1.
+function verdictStep(root, io, positionals, values) {
+  if (positionals.length !== 2) return usage(io);
+  const cfg = loadConfig(root);
+  const [id, file] = positionals;
+  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, { worktree: values.worktree });
+  const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
+  const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
+  if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
+  if (r.verdictPath) out.push(`verdict ${r.verdictPath}`);
+  io.stdout(out.map((l) => `${l}\n`).join(''));
+  if (r.next === 'stuck') {
+    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${r.round}; the pull request stays draft\n`);
+    return 1;
+  }
+  return 0;
+}
+
+// Prints the issue's URL, and `(already filed)` (`, closed` for a closed one) when the finding's issue
+// was there before.
+function declineStep(root, io, positionals, values) {
+  if (positionals.length !== 2) return usage(io);
+  const cfg = loadConfig(root);
+  const env = io.env ?? process.env;
+  const [id, finding] = positionals;
+  const { url, created, state } = declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
+  const filed = state === 'closed' ? 'already filed, closed' : 'already filed';
+  io.stdout(created ? `${url}\n` : `${url} (${filed})\n`);
+  return 0;
+}
+
+// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head.
+function finishStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  let wait;
+  if (values.wait !== undefined) {
+    if (!/^\d+$/.test(values.wait)) return usage(io);
+    wait = Number(values.wait);
+  }
+  const cfg = loadConfig(root);
+  const { ci } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
+  io.stdout(`ci-green\n${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}\n`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
@@ -124,7 +184,7 @@ async function run(args, io) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 2;
     }
-    if (e instanceof GitError || e instanceof GitHostError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
+    if (e instanceof GitError || e instanceof GitHostError || e instanceof TrackerError || e instanceof PrBodyError || e instanceof SliceFileError || e instanceof TransitionError || e instanceof LockError) {
       io.stderr(`slicekit: ${e.message}\n`);
       return 1;
     }

@@ -231,6 +231,26 @@ test('the fixture host marks a pull request ready and records it', async () => {
   });
 });
 
+test('markDraft returns a pull request to draft on both hosts', async () => {
+  const seen = [];
+  githubHost({}, '/p', (cmd, args, opts) => {
+    seen.push({ args, opts });
+    return '';
+  }).markDraft(42);
+  assert.deepEqual(seen[0].args, ['pr', 'ready', '42', '--undo']);
+  assert.equal(seen[0].opts.cwd, '/p');
+  await withRepo(async ({ fixture }) => {
+    const host = fixtureHost(fixture);
+    host.openPullRequest({ branch: 'slice/x', base: 'main', title: 't', body: 'b', draft: true });
+    host.markReady(1);
+    host.markDraft(1);
+    assert.equal(host.getPullRequest(1).draft, true);
+    assert.deepEqual(calls(fixture).map((c) => c.op), ['openPullRequest', 'markReady', 'markDraft']);
+    assert.deepEqual(calls(fixture).at(-1), { op: 'markDraft', number: 1 });
+    assert.throws(() => host.markDraft(9), /not found/);
+  });
+});
+
 // Fix round 1.
 const sliceBody = () => renderPrBody({ slice: 'P1/S-01', name: 'Thing', sections: Object.fromEntries(REQUIRED_SECTIONS.map((n) => [n, `text for ${n}`])) });
 

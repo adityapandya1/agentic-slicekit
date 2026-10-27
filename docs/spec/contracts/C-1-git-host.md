@@ -12,6 +12,7 @@ second file, not a second kit.
 | `openPullRequest` | branch, base, title, body, draft | number, url |
 | `updatePullRequestBody` | number, body | — |
 | `markReady` | number | — |
+| `markDraft` | number | — (a ready pull request returns to draft when its slice returns to draft-pr) |
 | `setLabel` / `removeLabel` | number, label | — |
 | `pullRequestForBranch` | branch, base (optional) | number, url and base of its open pull request in this repository (never a fork's; the one into base first, else the newest), or none |
 | `getPullRequest` | number | state, headSha, headRef, draft, mergedAt, url, title, body, labels |
