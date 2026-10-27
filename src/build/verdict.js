@@ -111,6 +111,21 @@ function verdictSource(wt, id, k, src, dest, rel, shown) {
 
 const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 
+// The session-root path the next in-loop reviewer writes, `.slicekit/reviews/<P-S>-r<k>.md` with k the
+// slice's verdict count plus one; null once the in-loop rounds are used (D-18). `build pr` and
+// `build verdict` print it so the procedure never computes k.
+export function nextVerdictPath(id, verdicts = []) {
+  if (inLoop(verdicts) >= LOOP_ROUNDS) return null;
+  return `${REVIEWS}/${verdictFileName(id, verdicts.length + 1)}`;
+}
+
+// The next verdict path after a round: only when the round asks for a fix or a should-have decision
+// and another in-loop round is allowed; `stuck` and `ci` name none.
+const withNextPath = (id, result, verdicts) => ({
+  ...result,
+  verdictPath: result.next === 'fix' || result.next === 'ask' ? nextVerdictPath(id, verdicts) : null,
+});
+
 // An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never `stuck`.
 function outcome(k, v, verdicts, independent) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
@@ -228,10 +243,11 @@ function assertBuilt(wt, id, current) {
   }
 }
 
-// -> {round, blockers, shouldHaves, roundsUsed, next}: `blockers` and `shouldHaves` are finding IDs;
-// `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
+// -> {round, blockers, shouldHaves, roundsUsed, next, verdictPath}: `blockers` and `shouldHaves` are
+// finding IDs; `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
 // `stuck` is returned, not thrown: the loop has stopped and changes-requested is recorded, and a
-// caller must exit 1 on it (the CLI does).
+// caller must exit 1 on it (the CLI does). `verdictPath` is the next round's file (nextVerdictPath)
+// on `fix` or `ask`, else null.
 export function recordVerdict(root, cfg, host, id, file, { worktree, independent = false } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const shown = typeof file === 'string' ? file.split(path.sep).join('/') : String(file);
@@ -258,7 +274,7 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts);
+    return withNextPath(id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts), verdicts);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
@@ -289,5 +305,5 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts);
+  return withNextPath(id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts), state.verdicts);
 }

@@ -10,6 +10,8 @@ import { finish, proofWithCi } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
 import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, write } from '../helpers/build-flow.js';
+import { briefProblems } from '../helpers/brief-lint.js';
+import { TEMPLATES } from '../../src/instructions.js';
 
 const REVIEWS = '.slicekit/reviews';
 
@@ -68,7 +70,7 @@ test('each round writes a verdict file', async () => {
     const file = review(p, 1, verdictText('BLOCK', [['B-1', 'x returns the wrong value']]));
     const r = await p.verdict(file);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\n');
+    assert.equal(r.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\nverdict .slicekit/reviews/P1-S-01-r2.md\n');
     assert.ok(fs.existsSync(at(p.wt, `${REVIEWS}/P1-S-01-r1.md`)));
     assert.ok(!fs.existsSync(at(p.root, file)));
 
@@ -264,7 +266,7 @@ test('a verdict moved but not committed is finished on a re-run', async () => {
     assert.ok(!fs.existsSync(at(p.root, file)));
     const r = await p.verdict(file);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\n');
+    assert.equal(r.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\nverdict .slicekit/reviews/P1-S-01-r2.md\n');
     assert.equal(git(p.wt, ['status', '--porcelain']), '');
     assert.ok(git(p.wt, ['log', '--format=%s']).split('\n').includes('chore(slicekit): P1/S-01 verdict r1'));
     assert.equal(stateIn(p.wt).verdicts.length, 1);
@@ -289,7 +291,7 @@ test('a recorded verdict whose push failed is pushed on a re-run', async () => {
     git(p.root, ['remote', 'set-url', 'origin', p.remote]);
     const again = await p.verdict(file);
     assert.equal(again.code, 0, again.stderr);
-    assert.equal(again.stdout, 'next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\n');
+    assert.equal(again.stdout, 'next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\nverdict .slicekit/reviews/P1-S-01-r2.md\n');
     assert.deepEqual(stateIn(p.wt), recorded);
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), head);
@@ -801,4 +803,79 @@ test('Proof takes the run URL literally and replaces the CI part it holds', () =
   assert.equal(proofWithCi('t · CI: https://old/run · notes', RUN_URL), `t · CI: ${RUN_URL} · notes`);
   assert.equal(proofWithCi('t · CI: https://old/run', 'https://x/$&'), 't · CI: https://x/$&');
   assert.equal(proofWithCi('tests pass', RUN_URL), `tests pass · CI: ${RUN_URL}`);
+});
+
+// Task 5: the procedure never computes k. `build pr` and `build verdict` print, last, the session-root
+// path the next in-loop reviewer writes; no path once no further in-loop round is allowed.
+test('build pr and build verdict print the next verdict path last', async () => {
+  const p = await green();
+  try {
+    const verdict = (file) => cli(p.root, ['build', 'verdict', 'P1/S-01', file], p.env);
+    const first = await p.pr();
+    assert.equal(first.code, 0, first.stderr);
+    assert.equal(first.stdout, '#1 https://example.test/pull/1\nverdict .slicekit/reviews/P1-S-01-r1.md\n');
+    // A re-run at draft-pr prints the same path.
+    const rerun = await p.pr();
+    assert.equal(rerun.stdout.split('\n').at(-2), 'verdict .slicekit/reviews/P1-S-01-r1.md');
+
+    const one = await verdict(review(p, 1, verdictText('BLOCK', [['B-1', 'x returns the wrong value']])));
+    assert.equal(one.code, 0, one.stderr);
+    assert.equal(one.stdout, 'next: fix\nblockers: B-1\nshould-haves: none\nrounds: 1 of 2\nverdict .slicekit/reviews/P1-S-01-r2.md\n');
+
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // fix 1\n');
+    assert.equal((await commitWorkCli(p, '--message', 'fix: B-1', '--require-green')).code, 0);
+    const fixed = await p.pr();
+    assert.equal(fixed.code, 0, fixed.stderr);
+    assert.equal(fixed.stdout.split('\n').at(-2), 'verdict .slicekit/reviews/P1-S-01-r2.md');
+
+    // next: stuck allows no further in-loop round: no path.
+    const two = await verdict(review(p, 2, verdictText('BLOCK', [['B-1', 'x still returns the wrong value']])));
+    assert.equal(two.code, 1);
+    assert.equal(two.stdout, 'next: stuck\nblockers: B-1\nshould-haves: none\nrounds: 2 of 2\n');
+    // A fix push after the loop stopped: build pr names no round either.
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // fix 2\n');
+    assert.equal((await commitWorkCli(p, '--message', 'fix: B-1 again', '--require-green')).code, 0);
+    const after = await p.pr();
+    assert.equal(after.code, 0, after.stderr);
+    assert.equal(after.stdout, '#1 https://example.test/pull/1\n');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('next: ci prints no verdict path, and a round-1 ask prints the next', async () => {
+  const p = await drafted();
+  try {
+    const ci = await p.verdict(review(p, 1, verdictText('APPROVE')));
+    assert.equal(ci.stdout, 'next: ci\nblockers: none\nshould-haves: none\nrounds: 1 of 2\n');
+  } finally {
+    p.cleanup();
+  }
+  const q = await drafted();
+  try {
+    const ask = await q.verdict(review(q, 1, verdictText('CHANGES', [['H-1', 'names are long']])));
+    assert.equal(ask.stdout, 'next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\nverdict .slicekit/reviews/P1-S-01-r2.md\n');
+  } finally {
+    q.cleanup();
+  }
+});
+
+test('the reviewer, fixer and build briefs pass the brief lint', () => {
+  const read = (rel) => fs.readFileSync(path.join(TEMPLATES, ...rel.split('/')), 'utf8').replace(/\r\n/g, '\n');
+  const reviewer = read('agents/reviewer.md');
+  const fixer = read('agents/fixer.md');
+  const build = read('commands/build.md');
+  assert.deepEqual(briefProblems(reviewer, { kind: 'agent' }), []);
+  assert.deepEqual(briefProblems(fixer, { kind: 'agent' }), []);
+  assert.deepEqual(briefProblems(build, { kind: 'command' }), []);
+  for (const s of ['build verdict', 'build decline', 'build finish', 'next: stuck', 'next: ask', 'next: fix', 'next: ci', '/slicekit review']) {
+    assert.ok(build.includes(s), s);
+  }
+  assert.doesNotMatch(build, /Steps 6 to 9 are not in this version/);
+  assert.match(reviewer, /^## Reviewing a slice$/m);
+  assert.ok(reviewer.includes('Verdict: BLOCK|CHANGES|APPROVE'));
+  assert.ok(reviewer.includes('How verified'));
+  assert.match(fixer, /^## Fixing findings$/m);
+  assert.ok(fixer.includes('no test the verdict did not ask for'));
+  assert.ok(fixer.includes('`<ID>: <what changed> (<file>)`'));
 });

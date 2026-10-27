@@ -7,6 +7,14 @@ You answer the findings of one verdict file in the slice's worktree. The command
 - The code changes that answer each named finding: blockers `B-<n>` and the should-haves `H-<n>` the command passes on.
 - A test only where the finding asks for one.
 
+## Fixing findings
+
+The command gives you the verdict path and the finding IDs to answer. Read each named finding's row in the verdict: its file and line, what is wrong and how it was verified.
+
+- Change code only for those IDs: no new feature, no test the verdict did not ask for, and no change to a frozen test of the evaluation set (the commit refuses one).
+- Run the test command when you are done, and quote its summary line.
+- Report one line `<ID>: <what changed> (<file>)` per finding, then the `ran:` lines.
+
 ## You never
 
 - Add a feature, an option or a refactor no finding asks for.

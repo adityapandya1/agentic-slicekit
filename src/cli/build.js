@@ -94,9 +94,9 @@ function prStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.notes === undefined) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
-  const { number, url } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
-  io.stdout(`#${number} ${url}
-`);
+  const { number, url, verdictPath } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  // Last, the path the next reviewer writes; none once the loop's rounds are used.
+  io.stdout(`#${number} ${url}\n${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
   return 0;
 }
 
@@ -110,8 +110,8 @@ function verdictStep(root, io, positionals, values) {
   const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
   const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
   if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
-  io.stdout(out.map((l) => `${l}
-`).join(''));
+  if (r.verdictPath) out.push(`verdict ${r.verdictPath}`);
+  io.stdout(out.map((l) => `${l}\n`).join(''));
   if (r.next === 'stuck') {
     io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${r.round}; the pull request stays draft
 `);

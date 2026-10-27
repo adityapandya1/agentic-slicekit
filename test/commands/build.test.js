@@ -877,7 +877,7 @@ test('the draft pull request body carries every section', async () => {
   try {
     const r = await p.pr();
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '#1 https://example.test/pull/1\n');
+    assert.equal(r.stdout, '#1 https://example.test/pull/1\nverdict .slicekit/reviews/P1-S-01-r1.md\n');
     const made = JSON.parse(fs.readFileSync(path.join(p.host, 'pr-1.json'), 'utf8'));
     assert.equal(made.isDraft, true);
     assert.equal(made.title, '[P1/S-01] Thing 1');
@@ -918,7 +918,7 @@ test('the draft pull request body carries every section', async () => {
     const head = git(p.wt, ['rev-parse', 'HEAD']);
     const again = await p.pr();
     assert.equal(again.code, 0, again.stderr);
-    assert.equal(again.stdout, '#1 https://example.test/pull/1\n');
+    assert.equal(again.stdout, '#1 https://example.test/pull/1\nverdict .slicekit/reviews/P1-S-01-r1.md\n');
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.equal(stateIn(p.wt).history.length, st.history.length);
     const after = JSON.parse(fs.readFileSync(path.join(p.host, 'pr-1.json'), 'utf8')).body;
@@ -1207,7 +1207,7 @@ test('examples/backend goes from todo to draft-pr', async () => {
     );
     const pr = await cli(root, ['build', 'pr', 'P1/S-01', '--notes', notes, ...at], { ...process.env, SLICEKIT_GITHOST_FIXTURE: host });
     assert.equal(pr.code, 0, pr.stderr);
-    assert.equal(pr.stdout, '#1 https://example.test/pull/1\n');
+    assert.equal(pr.stdout, '#1 https://example.test/pull/1\nverdict .slicekit/reviews/P1-S-01-r1.md\n');
 
     assert.equal(stateIn(wt).state, 'draft-pr');
     const made = fs.readdirSync(host).filter((f) => /^pr-\d+\.json$/.test(f));
