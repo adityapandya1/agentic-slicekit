@@ -283,14 +283,15 @@ test('a recorded verdict whose push failed is pushed on a re-run', async () => {
   const p = await drafted();
   try {
     const file = review(p, 1, verdictText('CHANGES', [['H-1', 'a long name']]));
-    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    // Only the push fails: a new round needs a fresh fetch (S-16), so the fetch still reaches origin.
+    git(p.root, ['remote', 'set-url', '--push', 'origin', path.join(p.root, 'no-such-remote')]);
     const failed = await p.verdict(file);
     assert.equal(failed.code, 1);
     const recorded = stateIn(p.wt);
     assert.equal(recorded.state, 'in-review');
     const head = git(p.wt, ['rev-parse', 'HEAD']);
 
-    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    git(p.root, ['remote', 'set-url', '--push', 'origin', p.remote]);
     const again = await p.verdict(file);
     assert.equal(again.code, 0, again.stderr);
     assert.equal(again.stdout, `next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\nverdict ${vpath(p.root, 'P1-S-01-r2.md')}\n`);
@@ -354,7 +355,8 @@ test('a stopped round whose push failed is finished on a re-run, recording nothi
     assert.equal(one.code, 0, one.stderr);
     await fixPush(p, 1);
     const file = review(p, 2, verdictText('BLOCK', [['B-1', 'x is still wrong']]));
-    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    // Only the push fails; the fetch still reaches origin.
+    git(p.root, ['remote', 'set-url', '--push', 'origin', path.join(p.root, 'no-such-remote')]);
     const failed = await p.verdict(file);
     assert.equal(failed.code, 1);
     const recorded = stateIn(p.wt);
@@ -362,7 +364,7 @@ test('a stopped round whose push failed is finished on a re-run, recording nothi
     // The push failed before the body was touched.
     const updates = bodyUpdates(p).length;
 
-    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    git(p.root, ['remote', 'set-url', '--push', 'origin', p.remote]);
     const again = await p.verdict(file);
     assert.equal(again.code, 1, again.stderr);
     assert.equal(again.stdout, 'next: stuck\nblockers: B-1\nshould-haves: none\nrounds: 2 of 2\n');

@@ -58,13 +58,21 @@ export function listWorktrees(root) {
   return out;
 }
 
+// The review worktree `review start` makes for the slice at `addr`, known by its branch or its path.
+export const isReviewWorktree = (root, addr, w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));
+
+// The worktree holding `id`: the one `--worktree` names, else the build worktree. Without
+// `--worktree` the review worktree is never picked, so the building session needs no flag while a
+// review session runs; the review session always names its worktree.
 export function findWorktree(root, id, { worktree } = {}) {
-  const held = listWorktrees(root).filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
+  const all = listWorktrees(root).filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
   if (worktree !== undefined) {
-    const match = held.find((w) => samePath(w.path, path.resolve(root, worktree)));
+    const match = all.find((w) => samePath(w.path, path.resolve(root, worktree)));
     if (!match) throw new BuildError(`${worktree} is not a worktree holding ${id}`);
     return match;
   }
+  const addr = parseSliceAddr(id);
+  const held = addr ? all.filter((w) => !isReviewWorktree(root, addr, w)) : all;
   if (held.length === 0) throw new BuildError(`no worktree holds ${id}; run slicekit build start ${id}`);
   if (held.length > 1) {
     throw new BuildError(`two worktrees hold ${id}: ${held.map((w) => w.path).join(', ')}; pass --worktree`, 2);
@@ -129,8 +137,7 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
   // A worktree of this clone on the slice's branch: the start already happened, so this is a resume
   // at the state that worktree holds. Nothing is committed or pushed. The review worktree `review
   // start` made is never the build worktree (M-3).
-  const isReview = (w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));
-  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root) && !isReview(w));
+  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root) && !isReviewWorktree(root, addr, w));
   if (mine) return { worktree: mine.path, branch: mine.branch, resumed: true, state: readSlice(mine.path, cfg, id).state };
 
   const ready = runnable(root, cfg, { prepared: true });

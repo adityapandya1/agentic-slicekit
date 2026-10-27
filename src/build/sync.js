@@ -5,6 +5,8 @@
 import { GitError, behindUpstream, git, headSha } from '../git.js';
 import { BuildError, findWorktree } from './worktree.js';
 
+export const commits = (n) => `${n} commit${n === 1 ? '' : 's'}`;
+
 // The commits of the upstream as the last fetch left it that HEAD lacks; 0 without one.
 function behindLastFetch(wt) {
   try {
@@ -15,19 +17,20 @@ function behindLastFetch(wt) {
   }
 }
 
-// Refuses, before anything is pushed, a worktree whose upstream has commits it lacks. With
-// `offline`, a fetch that fails is judged on the last fetch instead: `build verdict` records a round
-// and then pushes, and a re-run is how a push that failed is finished; a push to an origin that has
-// moved on is refused by git as not a fast-forward anyway.
-export function assertNotBehind(wt, branch, id, { offline = false } = {}) {
+// Refuses, before anything is pushed, a worktree whose upstream has commits it lacks. A fetch that
+// fails is git's refusal, unless `onFetchFail` says otherwise: 'last-fetch' judges on the last fetch
+// (`build verdict` finishing a round already recorded, whose push failed: nothing new is recorded,
+// and git refuses a push that is not a fast-forward anyway); a string is the refusal to give.
+export function assertNotBehind(wt, branch, id, { onFetchFail } = {}) {
   let n;
   try {
     n = behindUpstream(wt);
   } catch (e) {
-    if (!offline || !(e instanceof GitError)) throw e;
+    if (!(e instanceof GitError) || onFetchFail === undefined) throw e;
+    if (onFetchFail !== 'last-fetch') throw new BuildError(onFetchFail);
     n = behindLastFetch(wt);
   }
-  if (n > 0) throw new BuildError(`${branch} is ${n} commits behind origin; run slicekit build sync ${id}`);
+  if (n > 0) throw new BuildError(`${branch} is ${commits(n)} behind origin; run slicekit build sync ${id}`);
 }
 
 // -> {head, behind}: the worktree's head after the fast-forward, and how many commits it took.

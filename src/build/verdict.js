@@ -332,15 +332,21 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   if (independent && !isReviewWorktree(root, parseSliceAddr(id), held)) {
     throw new BuildError(`an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`);
   }
-  // Every path below pushes: a worktree behind its branch on origin takes the other worktree's
-  // commits first (build sync), before anything moves.
-  assertNotBehind(wt, held.branch, id, { offline: true });
-
   // This round is the latest recorded: a run that stopped after recording it (before changes-requested,
   // the push or the body). Finish what is left; record the round nothing more. The push carries only
   // what build pr has seen.
   const last = verdicts.at(-1);
-  if (['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel) {
+  const resuming = ['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel;
+
+  // Every path below pushes: a worktree behind its branch on origin takes the other worktree's
+  // commits first (build sync), before anything moves. Only a round already recorded is finished on
+  // the last fetch when origin cannot be reached; a new round needs a fresh one, so a stale worktree
+  // never records on a head origin has moved past.
+  assertNotBehind(wt, held.branch, id, {
+    onFetchFail: resuming ? 'last-fetch' : `could not reach origin to check ${held.branch}; a new verdict needs a fresh fetch`,
+  });
+
+  if (resuming) {
     assertBuilt(wt, id, current);
     // The round as committed: a hand edit of the working copy since does not change what it says.
     const text = committedVerdictText(wt, rel);

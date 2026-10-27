@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
@@ -144,7 +145,11 @@ test('an independent verdict is recorded only from the review worktree', async (
     // The build worktree with its branch renamed to the review name (I-2): the path decides too.
     git(p.wt, ['branch', '-m', 'slice/P1-S-01-review']);
     refused(await independent(p, file, p.wt));
-    refused(await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env));
+    // Without --worktree a worktree on the review branch is never picked, so none is found.
+    const none = await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env);
+    assert.equal(none.code, 1);
+    assert.equal(none.stderr, 'slicekit: no worktree holds P1/S-01; run slicekit build start P1/S-01\n');
+    assert.deepEqual(stateIn(p.wt), before);
     git(p.wt, ['branch', '-m', 'slice/P1-S-01-thing-1']);
 
     // The review branch in a worktree somewhere other than review start's path.
@@ -155,12 +160,9 @@ test('an independent verdict is recorded only from the review worktree', async (
     git(p.root, ['worktree', 'remove', '--force', elsewhere]);
     git(p.root, ['branch', '-q', '-D', 'slice/P1-S-01-review']);
 
-    // With the review worktree there, two worktrees hold the slice: --worktree is needed (M-2).
+    // With the review worktree there, a call without --worktree finds the build worktree, and is refused.
     reviewWorktree(p);
-    const both = await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env);
-    assert.equal(both.code, 2);
-    assert.match(both.stderr, /two worktrees hold P1\/S-01: .*; pass --worktree/);
-    assert.deepEqual(stateIn(p.wt), before);
+    refused(await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env));
   } finally {
     p.cleanup();
   }
@@ -257,7 +259,17 @@ const SLICE_BRANCH = 'slice/P1-S-01-thing-1';
 const REVIEW_BRANCH = 'slice/P1-S-01-review';
 const fwd = (p) => path.resolve(p).split(path.sep).join('/');
 const reviewDir = (p) => path.join(p.root, '.worktrees', 'review-P1-S-01');
-const reviewStart = (p, n = '1') => cli(p.root, ['review', 'start', n], p.env);
+// The fixture's head of pull request #1 is origin's tip, as the git host reports it.
+function liveHeadIsOrigin(p) {
+  const file = path.join(p.host, 'pr-1.json');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, `${JSON.stringify({ ...raw, headRefOid: git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']) }, null, 2)}\n`);
+}
+const reviewStart = (p, n = '1') => {
+  liveHeadIsOrigin(p);
+  return cli(p.root, ['review', 'start', n], p.env);
+};
+const commits = (n) => `${n} commit${n === 1 ? '' : 's'}`;
 const originHeads = (p) => git(p.remote, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']).split('\n');
 const originTip = (p) => git(p.remote, ['rev-parse', `refs/heads/${SLICE_BRANCH}`]);
 
@@ -298,7 +310,7 @@ test('start checks out the pull request head in a fresh worktree', async () => {
     localCommit(dir, 'export const x = () => 2; // review\n', 'review only');
     const ahead = await reviewStart(p);
     assert.equal(ahead.code, 1);
-    assert.equal(ahead.stderr, `slicekit: ${fwd(dir)} has 1 commits not on origin; push them with slicekit build pr P1/S-01 --worktree ${fwd(dir)}, or remove the worktree by hand\n`);
+    assert.equal(ahead.stderr, `slicekit: ${fwd(dir)} has 1 commit not on origin; push them with slicekit build pr P1/S-01 --worktree ${fwd(dir)}, or remove the worktree by hand\n`);
   } finally {
     p.cleanup();
   }
@@ -395,7 +407,7 @@ test('a worktree behind origin is refused until synced', async () => {
     const head = git(p.wt, ['rev-parse', 'HEAD']);
     const n = Number(git(p.remote, ['rev-list', '--count', `${head}..refs/heads/${SLICE_BRANCH}`]));
     assert.ok(n > 0);
-    const behind = `slicekit: ${SLICE_BRANCH} is ${n} commits behind origin; run slicekit build sync P1/S-01\n`;
+    const behind = `slicekit: ${SLICE_BRANCH} is ${commits(n)} behind origin; run slicekit build sync P1/S-01\n`;
     const calls = prCalls(p.host).length;
     const tip = originTip(p);
     const refusedHere = (r) => {
@@ -420,9 +432,11 @@ test('a worktree behind origin is refused until synced', async () => {
     write(p.wt, 'src/t1.js', 'export const x = () => 2; // fix 2\n');
     const done = await commitWorkCli(p, '--message', 'fix: B-2', '--require-green', ...at);
     assert.equal(done.code, 0, done.stderr);
-    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', p.notes, ...at], p.env);
+    // From the main checkout with no --worktree: the build worktree, never the review one (ruling 1).
+    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', p.notes], p.env);
     assert.equal(pr.code, 0, pr.stderr);
     assert.equal(stateIn(p.wt).state, 'draft-pr');
+    assert.equal(originTip(p), git(p.wt, ['rev-parse', 'HEAD']));
   } finally {
     p.cleanup();
   }
@@ -444,6 +458,132 @@ test('build sync refuses a branch that has diverged from origin', async () => {
     const review = await cli(p.root, ['build', 'sync', 'P1/S-01', '--worktree', reviewDir(p)], p.env);
     assert.equal(review.code, 0, review.stderr);
     assert.equal(review.stdout, `${git(reviewDir(p), ['rev-parse', 'HEAD'])}\n`);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// ---- Task 2 fix round 1 ----
+
+// A copy of pull request #1 in the fixture as #<n>, with `over` changed.
+function copyPr(p, n, over) {
+  liveHeadIsOrigin(p);
+  write(p.host, `pr-${n}.json`, JSON.stringify({ ...prIn(p), number: n, ...over }));
+}
+
+test('review start takes only the pull request whose head origin holds', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    // I-1: a fork's pull request with the slice branch's name: its head is not origin's.
+    copyPr(p, 7, { title: '[P1/S-01] Fork copy', headRefOid: 'deadbeef'.repeat(5) });
+    const fork = await cli(p.root, ['review', 'start', '7'], p.env);
+    assert.equal(fork.code, 1);
+    assert.equal(fork.stderr, `slicekit: pull request #7's head deadbee is not origin/${SLICE_BRANCH}; is it from a fork?\n`);
+    assert.equal(fs.existsSync(reviewDir(p)), false);
+
+    // The same head, but the slice's state records another pull request.
+    copyPr(p, 8, {});
+    const other = await cli(p.root, ['review', 'start', '8'], p.env);
+    assert.equal(other.code, 1);
+    assert.equal(other.stderr, 'slicekit: pull request #8 is not the one recorded for P1/S-01 (#1)\n');
+    assert.equal(fs.existsSync(reviewDir(p)), false);
+    assert.equal(git(p.root, ['branch', '--list', REVIEW_BRANCH]), '');
+
+    // M-1: a branch origin does not have.
+    copyPr(p, 9, { headRefName: 'slice/P1-S-01-nothere' });
+    const gone = await cli(p.root, ['review', 'start', '9'], p.env);
+    assert.equal(gone.code, 1);
+    assert.equal(gone.stderr, "slicekit: pull request #9's branch slice/P1-S-01-nothere is not on origin; a fork's pull request cannot be reviewed here\n");
+
+    // M-2: a name git does not take as a branch is refused before any fetch.
+    for (const bad of ['slice/P1-S-01-a*b', 'slice/P1-S-01-a:b', 'slice/P1-S-01-@{u}']) {
+      copyPr(p, 10, { headRefName: bad });
+      const r = await cli(p.root, ['review', 'start', '10'], p.env);
+      assert.equal(r.code, 2, bad);
+      assert.equal(r.stderr, `slicekit: pull request #10's branch ${bad} is not a valid branch name\n`, bad);
+    }
+    assert.equal(fs.existsSync(reviewDir(p)), false);
+
+    // M-3: a review worktree whose folder was deleted by hand is pruned, and the start goes on.
+    assert.equal((await reviewStart(p)).code, 0);
+    fs.rmSync(reviewDir(p), { recursive: true, force: true });
+    const again = await reviewStart(p);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(git(reviewDir(p), ['rev-parse', 'HEAD']), originTip(p));
+  } finally {
+    p.cleanup();
+  }
+});
+
+// A clone of the bare origin with an identity.
+function cloneOf(remote) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-clone-'));
+  git(dir, ['clone', '-q', remote, '.']);
+  git(dir, ['config', 'user.name', 'Other']);
+  git(dir, ['config', 'user.email', 'other@example.com']);
+  git(dir, ['config', 'commit.gpgsign', 'false']);
+  return { root: dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+test('a new verdict is refused when origin cannot be reached', async () => {
+  const p = await greenAfterTwoRounds();
+  const other = cloneOf(p.remote);
+  try {
+    assert.equal((await reviewStart(p)).code, 0);
+    const dir = reviewDir(p);
+    // Another clone moves the slice branch on; this worktree has not fetched it.
+    git(other.root, ['switch', '-q', SLICE_BRANCH]);
+    git(other.root, ['commit', '-q', '--allow-empty', '-m', 'elsewhere\n\nSlice: P1/S-01']);
+    git(other.root, ['push', '-q', 'origin', SLICE_BRANCH]);
+    const url = git(p.root, ['remote', 'get-url', 'origin']);
+    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    const head = git(dir, ['rev-parse', 'HEAD']);
+    const before = stateIn(dir);
+    const calls = prCalls(p.host).length;
+    const file = independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']]));
+    const off = await independent(p, file, dir);
+    assert.equal(off.code, 1);
+    assert.equal(off.stderr, `slicekit: could not reach origin to check ${REVIEW_BRANCH}; a new verdict needs a fresh fetch\n`);
+    assert.equal(git(dir, ['rev-parse', 'HEAD']), head);
+    assert.deepEqual(stateIn(dir), before);
+    assert.equal(prCalls(p.host).length, calls);
+    assert.equal(prIn(p).isDraft, false);
+
+    // Online again: behind, synced, then recorded.
+    git(p.root, ['remote', 'set-url', 'origin', url]);
+    const behind = await independent(p, file, dir);
+    assert.equal(behind.code, 1);
+    assert.equal(behind.stderr, `slicekit: ${REVIEW_BRANCH} is 1 commit behind origin; run slicekit build sync P1/S-01\n`);
+    assert.equal((await cli(p.root, ['build', 'sync', 'P1/S-01', '--worktree', dir], p.env)).code, 0);
+    const on = await independent(p, file, dir);
+    assert.equal(on.code, 0, on.stderr);
+    assert.equal(stateIn(dir).verdicts.length, 3);
+    assert.equal(originTip(p), git(dir, ['rev-parse', 'HEAD']));
+  } finally {
+    other.cleanup();
+    p.cleanup();
+  }
+});
+
+test('build pr without notes needs every section in the live body', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    assert.equal((await reviewStart(p)).code, 0);
+    const dir = reviewDir(p);
+    const v = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), dir);
+    assert.equal(v.code, 0, v.stderr);
+    const file = path.join(p.host, 'pr-1.json');
+    const raw = prIn(p);
+    fs.writeFileSync(file, JSON.stringify({ ...raw, body: raw.body.split('\n').filter((l) => !l.startsWith('**Try it:**')).join('\n') }));
+    // A fix that fails its test: were the commands run first, the refusal would be the test's.
+    write(dir, 'src/t1.js', 'export const x = () => 3;\n');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-q', '-m', 'fix: B-2\n\nSlice: P1/S-01']);
+    const calls = prCalls(p.host).length;
+    const r = await cli(p.root, ['build', 'pr', 'P1/S-01', '--worktree', dir], p.env);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, 'slicekit: the pull request body has no "Try it"; pass --notes <file> to supply it\n');
+    assert.equal(prCalls(p.host).length, calls);
   } finally {
     p.cleanup();
   }

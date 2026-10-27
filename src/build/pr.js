@@ -24,6 +24,8 @@ const NOTES_SHAPE = 'notes need tryIt (three steps) and skipped';
 const NO_CHANGE = 'no operational change: the slice touches no configuration, infrastructure, migration, alert, queue or integration';
 const RUNBOOK_REFUSAL = 'the slice touches operations; change the runbook or give notes.runbook "no operational change: <reason>"';
 const COMMANDS = ['test', 'lint', 'build'];
+// The sections the notes give: with no notes, the live body must hold each of them.
+const NOTED_SECTIONS = ['Decisions', 'Runbook', 'Infra / migration', 'Try it', 'Skipped / not checked'];
 
 const text = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -178,6 +180,13 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   };
   // A field the notes give, else the live body's section when one is open, else the fallback.
   const noted = (field, name, fallback) => given?.[field] ?? kept(name, fallback);
+  // With no notes, every section they would give comes from the live body: checked before any command runs.
+  if (!given) {
+    const { open, livePr } = openPr();
+    if (!open) throw new BuildError(`${id} has no open pull request; build pr needs --notes to open one`, 2);
+    const missing = NOTED_SECTIONS.find((name) => !(getSection(livePr?.body ?? '', name) ?? '').trim());
+    if (missing) throw new BuildError(`the pull request body has no "${missing}"; pass --notes <file> to supply it`);
+  }
 
   const runbookRel = cfg.docsRoot === '.' ? 'runbook.md' : `${cfg.docsRoot}/runbook.md`;
   const changed = runbookChanged(wt, cfg, runbookRel);
@@ -193,7 +202,6 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (current.state !== 'building' && (!open || open.number !== current.pr?.number)) {
     throw new BuildError(`pull request #${current.pr?.number} of ${id} is not open for ${target}`);
   }
-  if (!given && !open) throw new BuildError(`${id} has no open pull request; build pr needs --notes to open one`, 2);
 
   const title = `[${id}] ${slice.name}`;
   let body;
