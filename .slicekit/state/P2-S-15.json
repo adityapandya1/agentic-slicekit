@@ -1,18 +1,18 @@
 {
   "slice": "P2/S-15",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 17,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/17",
-    "headSha": "d983274876867897bb8356f5ea41df7fe0b604c9"
+    "headSha": "bbeddea165f3991bdfc8c0b4e34dda53902d5b3b"
   },
   "redCommit": null,
   "frozenTests": [],
   "unfrozen": [],
   "verdicts": [],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-10-27T07:58:25Z",
   "handoff": null,
   "history": [
     {
@@ -27,6 +27,21 @@
           "headSha": "d983274876867897bb8356f5ea41df7fe0b604c9",
           "title": "[P2/S-15] Reviewer, fixer, the loop cap, should-haves"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-10-27T07:58:36.503Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-27T07:58:25Z",
+        "pr": {
+          "number": 17,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/17",
+          "headSha": "bbeddea165f3991bdfc8c0b4e34dda53902d5b3b"
+        },
+        "source": "host"
       }
     }
   ]
