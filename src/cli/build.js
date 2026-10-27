@@ -15,6 +15,7 @@ import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
 import { declineFinding } from '../build/decline.js';
 import { finish } from '../build/finish.js';
+import { startParallel } from '../build/parallel.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
 import { syncWorktree } from '../build/sync.js';
@@ -23,9 +24,9 @@ import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
 import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -76,6 +77,21 @@ function start(root, io, positionals, values) {
   else if (last) line = `verdict ${latestVerdictPath(root, current.verdicts)}\n`;
   io.stdout(`resumed ${where} at ${state}\n${line}`);
   return 0;
+}
+
+// Prints `<id> <worktree> <branch>` for each slice started, and a refusal on stderr for each that
+// was not. Each start is claimed on its own, so the ones that started stay started when another
+// fails: the exit is 0 only when every runnable slice of the step started, else 1, with the started
+// lines still printed so the caller knows which worktrees exist.
+function parallel(root, io, positionals) {
+  if (positionals.length !== 1 || !/^P\d+$/.test(positionals[0])) return usage(io);
+  const cfg = loadConfig(root);
+  const outcomes = startParallel(root, cfg, positionals[0], { onWarning: (msg) => io.stderr(`${msg}\n`) });
+  for (const o of outcomes) {
+    if (o.error === undefined) io.stdout(`${o.id} ${path.resolve(o.worktree).split(path.sep).join('/')} ${o.branch}\n`);
+    else io.stderr(`slicekit: ${o.id} not started: ${o.error}\n`);
+  }
+  return outcomes.every((o) => o.error === undefined) ? 0 : 1;
 }
 
 function redStep(root, io, positionals, values) {
@@ -178,7 +194,7 @@ function syncStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
+const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

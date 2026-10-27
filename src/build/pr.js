@@ -15,6 +15,7 @@ import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { posixRel, runCommand, sliceIn, unusableRun } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
+import { overlapWith, planDefectLine } from './overlap.js';
 import { assertNotBehind } from './sync.js';
 import { nextVerdictPath } from './verdict.js';
 import { BuildError, findWorktree } from './worktree.js';
@@ -164,6 +165,12 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt))) {
     throw new BuildError(`${id} has nothing new since review of ${current.pr.headSha.slice(0, 7)}; push a fix to return to draft-pr`);
   }
+  // A path another slice of the same Order step already changes on origin (D-06): a plan defect,
+  // refused before the notes, the body and the commands, so a defect in the plan stops the run before
+  // minutes of test runs, and before anything is pushed. After the behind-origin refusal, which a
+  // sync answers, and the nothing-new refusal, whose head was pushed and checked before.
+  const defects = overlapWith(wt, cfg, id);
+  if (defects.length > 0) throw new BuildError(defects.map((d) => planDefectLine(id, d)).join('\n'));
 
   // The pull request already open for the branch, and its live body, asked once when first needed.
   let asked = null;

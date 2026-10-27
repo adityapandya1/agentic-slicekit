@@ -104,6 +104,9 @@ export function expand(p) {
 // touches) and the runbook (every operational slice appends a section to it). The runbook is
 // passed in as resolved from the config, because the docs root is the team's to choose.
 const ALWAYS_SHARED = (n, runbook) => n === '' || n === '.' || n === 'test' || n.startsWith('test/') || n === 'src/cli/index.js' || n === runbook;
+// The same test for one normalised repository-relative path (POSIX separators, no leading `./`), as
+// `build pr`'s overlap stop asks it of a path two branches change.
+export const isSharedRoot = (p, runbookRel) => ALWAYS_SHARED(p, runbookRel);
 
 function normalise(p, runbook) {
   return expand(p)
