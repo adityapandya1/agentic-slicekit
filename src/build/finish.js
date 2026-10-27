@@ -11,6 +11,7 @@ import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { verdictsOnHead } from '../state/transitions.js';
 import { recordState } from './record.js';
+import { assertNotBehind } from './sync.js';
 import { committedVerdict } from './verdict.js';
 import { BuildError, findWorktree } from './worktree.js';
 
@@ -75,9 +76,12 @@ export const FINISH_WAIT = 90;
 // running or never ran is code 1 and records nothing.
 export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, interval = 15, sleep = (s) => sleepMs(s * 1000) } = {}) {
   assertTimes(wait, interval);
-  const wt = findWorktree(root, id, { worktree }).path;
+  const held = findWorktree(root, id, { worktree });
+  const wt = held.path;
   const current = readSlice(wt, cfg, id);
   const number = current.pr?.number;
+  // Behind origin first, before the head guards below: commits another worktree pushed are synced.
+  assertNotBehind(wt, held.branch, id);
 
   // A run that recorded ci-green but stopped before the push (or the body) finishes here, citing the
   // run recorded with ci-green. It pushes only bookkeeping on top of the reviewed, green head.

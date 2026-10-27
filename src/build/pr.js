@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { check } from '../check/index.js';
-import { behindUpstream, git, headSha, pushBranch, pushTarget } from '../git.js';
+import { git, headSha, pushBranch, pushTarget } from '../git.js';
 import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { openOrUpdate } from '../pr.js';
@@ -15,6 +15,7 @@ import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { posixRel, runCommand, sliceIn, unusableRun } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
+import { assertNotBehind } from './sync.js';
 import { nextVerdictPath } from './verdict.js';
 import { BuildError, findWorktree } from './worktree.js';
 
@@ -139,12 +140,20 @@ function checkClean(wt) {
   throw new BuildError(['slicekit check failed:', ...found.slice(0, 10), result.lines.at(-1)].join('\n'));
 }
 
+// `notes` may be left out for a slice that already has a pull request (the reviewing session does not
+// have the building session's notes): each section the notes do not give keeps the live body's text.
 export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
-  const given = readNotes(root, notes);
-  const wt = findWorktree(root, id, { worktree }).path;
+  const given = notes === undefined ? null : readNotes(root, notes);
+  const held = findWorktree(root, id, { worktree });
+  const wt = held.path;
   const current = readSlice(wt, cfg, id);
   if (!FROM.includes(current.state)) throw new BuildError(`${id} is ${current.state}; build pr runs from building to ready`);
+  if (!given && !current.pr) throw new BuildError(`${id} has no pull request yet; build pr needs --notes to open it`, 2);
   const slice = sliceIn(wt, cfg, id);
+  // Behind origin first: a head with commits origin has and this worktree lacks is synced, not
+  // judged against the reviewed head (a different refusal, below).
+  const { target } = pushTarget(wt);
+  assertNotBehind(wt, held.branch, id);
   cleanOrFinish(wt, cfg, id, current);
   // After a verdict, a return to draft-pr needs a new head (the state refuses the same one): refused
   // here, before the push, rather than after it.
@@ -153,25 +162,38 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt))) {
     throw new BuildError(`${id} has nothing new since review of ${current.pr.headSha.slice(0, 7)}; push a fix to return to draft-pr`);
   }
-  const { target } = pushTarget(wt);
-  if (behindUpstream(wt) > 0) throw new BuildError(`origin/${target} has commits this worktree does not: pull first`);
+
+  // The pull request already open for the branch, and its live body, asked once when first needed.
+  let asked = null;
+  const openPr = () => {
+    if (!asked) {
+      const open = host.pullRequestForBranch(target);
+      asked = { open, livePr: open ? host.getPullRequest(open.number) : null };
+    }
+    return asked;
+  };
+  const kept = (name, fallback) => {
+    const { open, livePr } = openPr();
+    return (open ? getSection(livePr?.body ?? '', name) : null) ?? fallback;
+  };
+  // A field the notes give, else the live body's section when one is open, else the fallback.
+  const noted = (field, name, fallback) => given?.[field] ?? kept(name, fallback);
 
   const runbookRel = cfg.docsRoot === '.' ? 'runbook.md' : `${cfg.docsRoot}/runbook.md`;
   const changed = runbookChanged(wt, cfg, runbookRel);
-  if (slice.runbook && !changed && !(given.runbook ?? '').trim().startsWith('no operational change')) {
+  const runbookNote = changed ? null : (given?.runbook ?? (current.pr ? kept('Runbook', null) : null));
+  if (slice.runbook && !changed && !(runbookNote ?? '').trim().startsWith('no operational change')) {
     throw new BuildError(RUNBOOK_REFUSAL);
   }
   const summary = runCommands(wt, cfg);
   checkClean(wt);
 
   // The pull request already open for the branch: the recorded one once there is a recording.
-  const open = host.pullRequestForBranch(target);
+  const { open, livePr } = openPr();
   if (current.state !== 'building' && (!open || open.number !== current.pr?.number)) {
     throw new BuildError(`pull request #${current.pr?.number} of ${id} is not open for ${target}`);
   }
-  const livePr = open ? host.getPullRequest(open.number) : null;
-  const live = livePr?.body ?? '';
-  const kept = (name, fallback) => (open ? getSection(live, name) : null) ?? fallback;
+  if (!given && !open) throw new BuildError(`${id} has no open pull request; build pr needs --notes to open one`, 2);
 
   const title = `[${id}] ${slice.name}`;
   let body;
@@ -182,13 +204,13 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
       sections: {
         'Done when': slice.doneWhen.map((c, i) => `${i + 1}. ${c}`).join(' '),
         Proof: `\`${cfg.commands.test}\` → ${summary} · CI: pending`,
-        Decisions: given.decisions?.length ? given.decisions.join('; ') : 'none',
-        Runbook: changed ? `changed: ${runbookRel}` : (given.runbook ?? NO_CHANGE),
-        'Infra / migration': given.infra ?? 'none',
-        'Try it': given.tryIt.map((s, i) => `${i + 1}. ${s.trim()}`).join(' '),
+        Decisions: given?.decisions === undefined ? kept('Decisions', 'none') : given.decisions.join('; ') || 'none',
+        Runbook: changed ? `changed: ${runbookRel}` : (runbookNote ?? NO_CHANGE),
+        'Infra / migration': noted('infra', 'Infra / migration', 'none'),
+        'Try it': given ? given.tryIt.map((s, i) => `${i + 1}. ${s.trim()}`).join(' ') : kept('Try it', ''),
         'Reviewer blocked': kept('Reviewer blocked', 'nothing'),
         'Should-haves declined': kept('Should-haves declined', 'none'),
-        'Skipped / not checked': given.skipped,
+        'Skipped / not checked': given ? given.skipped : kept('Skipped / not checked', ''),
       },
     });
   } catch (e) {

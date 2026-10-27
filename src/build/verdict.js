@@ -24,6 +24,7 @@ import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.j
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
+import { assertNotBehind } from './sync.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 import { BuildError, findWorktree, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from './worktree.js';
 
@@ -138,6 +139,10 @@ export function nextVerdictPath(root, id, verdicts = []) {
   if (inLoop(verdicts) >= LOOP_ROUNDS) return null;
   return inSessionRoot(root, verdictFileName(id, verdicts.length + 1));
 }
+
+// The absolute session-root path an independent reviewer writes, `<root>/.slicekit/reviews/<P-S>i-r<k>.md`
+// with k the slice's verdict count plus one: `review start` prints it.
+export const independentVerdictPath = (root, id, verdicts = []) => inSessionRoot(root, verdictFileName(id, verdicts.length + 1, { independent: true }));
 
 // The latest recorded verdict's session-root path, or null: `build verdict` with it re-prints that
 // round's next step and records nothing again (a session resumed at in-review).
@@ -327,6 +332,9 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   if (independent && !isReviewWorktree(root, parseSliceAddr(id), held)) {
     throw new BuildError(`an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`);
   }
+  // Every path below pushes: a worktree behind its branch on origin takes the other worktree's
+  // commits first (build sync), before anything moves.
+  assertNotBehind(wt, held.branch, id, { offline: true });
 
   // This round is the latest recorded: a run that stopped after recording it (before changes-requested,
   // the push or the body). Finish what is left; record the round nothing more. The push carries only

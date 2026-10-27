@@ -17,13 +17,14 @@ import { declineFinding } from '../build/decline.js';
 import { finish } from '../build/finish.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
+import { syncWorktree } from '../build/sync.js';
 import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -65,9 +66,14 @@ function start(root, io, positionals, values) {
     return 0;
   }
   // At in-review the latest round is recorded and its next step not yet acted on: `build verdict`
-  // with that round's file re-prints the step and records nothing again.
-  const latest = state === 'in-review' ? latestVerdictPath(root, readSlice(worktree, cfg, positionals[0]).verdicts ?? []) : null;
-  io.stdout(`resumed ${where} at ${state}\n${latest ? `verdict ${latest}\n` : ''}`);
+  // with that round's file re-prints the step and records nothing again. After an independent round
+  // that file is recorded only from the review worktree: the next review is a new session's.
+  const current = state === 'in-review' ? readSlice(worktree, cfg, positionals[0]) : null;
+  const last = current?.verdicts?.at(-1);
+  let line = '';
+  if (last?.independent) line = `next review: /slicekit review ${current.pr?.number ?? '<PR>'} in a new session\n`;
+  else if (last) line = `verdict ${latestVerdictPath(root, current.verdicts)}\n`;
+  io.stdout(`resumed ${where} at ${state}\n${line}`);
   return 0;
 }
 
@@ -100,7 +106,7 @@ function amendStep(root, io, positionals, values) {
 }
 
 function prStep(root, io, positionals, values) {
-  if (positionals.length !== 1 || values.notes === undefined) return usage(io);
+  if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
   const { number, url, verdictPath } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
@@ -158,7 +164,16 @@ function finishStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep };
+// Prints the worktree's head once it is fast-forwarded to its branch on origin.
+function syncStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  const cfg = loadConfig(root);
+  const { head } = syncWorktree(root, cfg, positionals[0], { worktree: values.worktree });
+  io.stdout(`${head}\n`);
+  return 0;
+}
+
+const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

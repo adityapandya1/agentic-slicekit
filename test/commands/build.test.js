@@ -1087,7 +1087,7 @@ test('build pr refuses a worktree behind its branch on origin', async () => {
     const head = git(p.wt, ['rev-parse', 'HEAD']);
     const r = await p.pr();
     assert.equal(r.code, 1);
-    assert.ok(r.stderr.includes('origin/slice/P1-S-01-thing-1 has commits this worktree does not: pull first'), r.stderr);
+    assert.equal(r.stderr, 'slicekit: slice/P1-S-01-thing-1 is 1 commits behind origin; run slicekit build sync P1/S-01\n');
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.equal(stateIn(p.wt).state, 'building');
     assert.deepEqual(prCalls(p.host), []);

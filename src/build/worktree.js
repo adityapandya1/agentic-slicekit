@@ -127,8 +127,10 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
   const dir = worktreeDir(root, addr);
 
   // A worktree of this clone on the slice's branch: the start already happened, so this is a resume
-  // at the state that worktree holds. Nothing is committed or pushed.
-  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root));
+  // at the state that worktree holds. Nothing is committed or pushed. The review worktree `review
+  // start` made is never the build worktree (M-3).
+  const isReview = (w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));
+  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root) && !isReview(w));
   if (mine) return { worktree: mine.path, branch: mine.branch, resumed: true, state: readSlice(mine.path, cfg, id).state };
 
   const ready = runnable(root, cfg, { prepared: true });

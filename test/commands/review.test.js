@@ -250,3 +250,201 @@ test('build start refuses the review branch name', async () => {
     p.cleanup();
   }
 });
+
+// ---- Task 2: review start, build sync, the behind-origin refusals ----
+
+const SLICE_BRANCH = 'slice/P1-S-01-thing-1';
+const REVIEW_BRANCH = 'slice/P1-S-01-review';
+const fwd = (p) => path.resolve(p).split(path.sep).join('/');
+const reviewDir = (p) => path.join(p.root, '.worktrees', 'review-P1-S-01');
+const reviewStart = (p, n = '1') => cli(p.root, ['review', 'start', n], p.env);
+const originHeads = (p) => git(p.remote, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']).split('\n');
+const originTip = (p) => git(p.remote, ['rev-parse', `refs/heads/${SLICE_BRANCH}`]);
+
+// A commit of the worktree's own, never pushed.
+function localCommit(wt, text, message) {
+  write(wt, 'src/t1.js', text);
+  git(wt, ['add', '-A']);
+  git(wt, ['commit', '-q', '-m', `${message}\n\nSlice: P1/S-01`]);
+}
+
+test('start checks out the pull request head in a fresh worktree', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const dir = reviewDir(p);
+    const r = await reviewStart(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `slice P1/S-01\nworktree ${fwd(dir)}\nround 3\nverdict ${vpath(p.root, 'P1-S-01i-r3.md')}\n`);
+    // The head of the pull request's branch, tracking it (M-3): a push from here goes to the slice branch.
+    assert.equal(git(dir, ['rev-parse', 'HEAD']), originTip(p));
+    assert.equal(git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']), REVIEW_BRANCH);
+    assert.equal(git(dir, ['rev-parse', '--abbrev-ref', '@{u}']), `origin/${SLICE_BRANCH}`);
+
+    // A clean review worktree is made again from the pull request head.
+    const again = await reviewStart(p);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, r.stdout);
+    assert.equal(git(dir, ['rev-parse', 'HEAD']), originTip(p));
+
+    // One with an untracked file is refused, and left as it is.
+    write(dir, 'notes.txt', 'mine');
+    const dirty = await reviewStart(p);
+    assert.equal(dirty.code, 1);
+    assert.equal(dirty.stderr, `slicekit: ${fwd(dir)} has uncommitted changes\n`);
+    assert.ok(fs.existsSync(path.join(dir, 'notes.txt')));
+    fs.rmSync(path.join(dir, 'notes.txt'));
+
+    // One holding a commit origin does not have is refused too: starting fresh would lose it.
+    localCommit(dir, 'export const x = () => 2; // review\n', 'review only');
+    const ahead = await reviewStart(p);
+    assert.equal(ahead.code, 1);
+    assert.equal(ahead.stderr, `slicekit: ${fwd(dir)} has 1 commits not on origin; push them with slicekit build pr P1/S-01 --worktree ${fwd(dir)}, or remove the worktree by hand\n`);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('review start refuses a pull request that is not an open slice pull request', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const raw = prIn(p);
+    write(p.host, 'pr-2.json', JSON.stringify({ ...raw, number: 2, title: 'chore: tidy' }));
+    const notSlice = await reviewStart(p, '2');
+    assert.equal(notSlice.code, 2);
+    assert.equal(notSlice.stderr, 'slicekit: pull request #2 is not a slice pull request\n');
+    write(p.host, 'pr-3.json', JSON.stringify({ ...raw, number: 3, state: 'CLOSED' }));
+    const closed = await reviewStart(p, '3');
+    assert.equal(closed.code, 1);
+    assert.equal(closed.stderr, 'slicekit: pull request #3 is closed; review start runs on an open pull request\n');
+    for (const args of [['review', 'start'], ['review', 'start', 'x'], ['review', 'start', '0'], ['review', 'go', '1']]) {
+      const usage = await cli(p.root, args, p.env);
+      assert.equal(usage.code, 2, args.join(' '));
+    }
+    assert.equal(fs.existsSync(reviewDir(p)), false);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a push from the review worktree lands on the slice branch', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const started = await reviewStart(p);
+    assert.equal(started.code, 0, started.stderr);
+    const dir = reviewDir(p);
+    const v = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), dir);
+    assert.equal(v.code, 0, v.stderr);
+    // The reviewing session fixes it and opens the round with no notes: the live body's sections stay.
+    const before = prIn(p).body;
+    write(dir, 'src/t1.js', 'export const x = () => 2; // fix 2\n');
+    const done = await cli(p.root, ['build', 'commit', 'P1/S-01', '--message', 'fix: B-2', '--require-green', '--worktree', dir], p.env);
+    assert.equal(done.code, 0, done.stderr);
+    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--worktree', dir], p.env);
+    assert.equal(pr.code, 0, pr.stderr);
+    assert.equal(originTip(p), git(dir, ['rev-parse', 'HEAD']));
+    assert.ok(!originHeads(p).includes(REVIEW_BRANCH), originHeads(p).join(' '));
+    const line = (b, section) => b.split('\n').find((l) => l.startsWith(`**${section}:**`));
+    const body = prIn(p).body;
+    for (const section of ['Decisions', 'Runbook', 'Infra / migration', 'Try it', 'Skipped / not checked']) {
+      assert.ok(line(before, section), section);
+      assert.equal(line(body, section), line(before, section), section);
+    }
+    assert.equal(stateIn(dir).state, 'draft-pr');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build pr needs the notes for a slice with no pull request', async () => {
+  const p = await green();
+  try {
+    const r = await cli(p.root, ['build', 'pr', 'P1/S-01'], p.env);
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, 'slicekit: P1/S-01 has no pull request yet; build pr needs --notes to open it\n');
+    assert.deepEqual(prCalls(p.host), []);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build start resumes the build worktree, not the review worktree', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    assert.equal((await reviewStart(p)).code, 0);
+    const v = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), reviewDir(p));
+    assert.equal(v.code, 0, v.stderr);
+    const synced = await cli(p.root, ['build', 'sync', 'P1/S-01', '--worktree', p.wt], p.env);
+    assert.equal(synced.code, 0, synced.stderr);
+    const r = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 0, r.stderr);
+    // After an independent round the next review is a new session's, not an `i` path to re-run.
+    assert.equal(r.stdout, `resumed ${fwd(p.wt)} at in-review\nnext review: /slicekit review 1 in a new session\n`);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a worktree behind origin is refused until synced', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    assert.equal((await reviewStart(p)).code, 0);
+    const dir = reviewDir(p);
+    const v = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), dir);
+    assert.equal(v.code, 0, v.stderr);
+    const at = ['--worktree', p.wt];
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const n = Number(git(p.remote, ['rev-list', '--count', `${head}..refs/heads/${SLICE_BRANCH}`]));
+    assert.ok(n > 0);
+    const behind = `slicekit: ${SLICE_BRANCH} is ${n} commits behind origin; run slicekit build sync P1/S-01\n`;
+    const calls = prCalls(p.host).length;
+    const tip = originTip(p);
+    const refusedHere = (r) => {
+      assert.equal(r.code, 1, r.stderr);
+      assert.equal(r.stderr, behind);
+      assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+      assert.equal(originTip(p), tip);
+      assert.equal(prCalls(p.host).length, calls);
+    };
+    // build pr names the behind branch before the head it has already seen (S-15's refusal).
+    refusedHere(await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', p.notes, ...at], p.env));
+    write(p.root, `${REVIEWS}/P1-S-01-r4.md`, verdictText('APPROVE'));
+    refusedHere(await cli(p.root, ['build', 'verdict', 'P1/S-01', `${REVIEWS}/P1-S-01-r4.md`, ...at], p.env));
+    refusedHere(await cli(p.root, ['build', 'finish', 'P1/S-01', ...at], p.env));
+
+    const synced = await cli(p.root, ['build', 'sync', 'P1/S-01', ...at], p.env);
+    assert.equal(synced.code, 0, synced.stderr);
+    assert.equal(synced.stdout, `${tip}\n`);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), tip);
+    assert.equal(stateIn(p.wt).verdicts.at(-1).independent, true);
+
+    write(p.wt, 'src/t1.js', 'export const x = () => 2; // fix 2\n');
+    const done = await commitWorkCli(p, '--message', 'fix: B-2', '--require-green', ...at);
+    assert.equal(done.code, 0, done.stderr);
+    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', p.notes, ...at], p.env);
+    assert.equal(pr.code, 0, pr.stderr);
+    assert.equal(stateIn(p.wt).state, 'draft-pr');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build sync refuses a branch that has diverged from origin', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    assert.equal((await reviewStart(p)).code, 0);
+    const v = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), reviewDir(p));
+    assert.equal(v.code, 0, v.stderr);
+    localCommit(p.wt, 'export const x = () => 2; // local\n', 'local');
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const r = await cli(p.root, ['build', 'sync', 'P1/S-01', '--worktree', p.wt], p.env);
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr, `slicekit: ${SLICE_BRANCH} has diverged from origin; resolve it by hand\n`);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    // Up to date: sync prints the head and changes nothing.
+    const review = await cli(p.root, ['build', 'sync', 'P1/S-01', '--worktree', reviewDir(p)], p.env);
+    assert.equal(review.code, 0, review.stderr);
+    assert.equal(review.stdout, `${git(reviewDir(p), ['rev-parse', 'HEAD'])}\n`);
+  } finally {
+    p.cleanup();
+  }
+});
