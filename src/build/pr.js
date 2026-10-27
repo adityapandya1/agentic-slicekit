@@ -197,9 +197,10 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   }
 
   const made = openOrUpdate(wt, cfg, host, { title, body, draft: true });
-  // The path the next in-loop reviewer writes (null once the loop's rounds are used): recording
-  // draft-pr adds no verdict, so the count read before is the count after.
-  const result = { number: made.number, url: made.url, created: made.created, verdictPath: nextVerdictPath(id, current.verdicts ?? []) };
+  // The absolute session-root path the next in-loop reviewer writes (null once the loop's rounds are
+  // used): recording draft-pr adds no verdict, so the count read before is the count after.
+  const verdictPath = nextVerdictPath(root, id, current.verdicts ?? []);
+  const result = { number: made.number, url: made.url, created: made.created, verdictPath };
   // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
   if (livePr?.draft === false) host.markDraft(made.number);
   // At draft-pr there is no draft-pr → draft-pr move: the reviewer reads the live head.

@@ -12,6 +12,9 @@ import { git } from '../../src/git.js';
 import { runCli } from './run-cli.js';
 import { commit, makeRemote, makeRepo } from './tmp-repo.js';
 
+// The absolute session-root path of a verdict file, as `build pr` and `build verdict` print it.
+export const vpath = (root, name) => path.resolve(root, '.slicekit', 'reviews', name).split(path.sep).join('/');
+
 export async function cli(root, args, env) {
   let stdout = '';
   let stderr = '';

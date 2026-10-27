@@ -22,14 +22,17 @@ on exit 1, print those lines and stop.
 
 Run `{{cli}} build start <id>`. A new start prints the worktree path on its first line and the
 branch on its second; keep the path: every later step passes it as `<path>`. A slice this clone
-already started prints one line, `resumed <path> at <state>`; keep the path and go on at the state's
-step:
+already started prints `resumed <path> at <state>`; keep the path and go on at the state's step:
 
 - `todo`: step 2.
 - `tests-red`: step 3, with the same test paths; `build red` finishes the move to `building`.
 - `building`: step 4.
 - `draft-pr`: run step 5's `{{cli}} build pr` (write the notes file again when it is gone), then
   step 6 with the verdict path it prints.
+- `in-review`: step 6, from its `build verdict` command. The resume prints a second line,
+  `verdict <file>`, the latest recorded round's file; with it, `build verdict` records nothing
+  again and prints that round's `next:`.
+- `changes-requested`: the loop stopped with a blocker after round 2. Stop and tell the human.
 - any later state: stop and tell the human the slice is in review, at that state.
 
 When it refuses with `already started in origin/<branch>; another clone holds it`, stop and tell the
@@ -94,8 +97,8 @@ Write the notes file from the developer's report to a file outside the repositor
 
 Run `{{cli}} build pr <id> --notes <the notes file's absolute path> --worktree <path>`. It runs the
 test, lint and build commands and `{{cli}} check`, pushes, opens the draft pull request and prints
-`#<n> <url>`, then last `verdict <file>`: the path, under the session root, where the next reviewer
-writes its verdict. On a refusal, fix what it names (through the developer when it is code) and run
+`#<n> <url>`, then last `verdict <file>`: the absolute path, in the session root, where the next
+reviewer writes its verdict. On a refusal, fix what it names (through the developer when it is code) and run
 it again; a re-run never opens a second pull request. Keep the number `<n>` and the verdict path.
 
 ## 6. The reviewer gives a verdict
@@ -112,7 +115,9 @@ path. It commits the verdict into the worktree, pushes, and prints `next: <step>
 finding with no "How verified", a reused finding number, a banned phrase, a `<!--`) goes back to the
 reviewer with the printed message; run this command again with the file it writes. A refusal that
 says `run slicekit build pr <id> first` means code was committed that `build pr` has not seen: run
-step 5's `build pr`, then this command again. Then act on `next:`:
+step 5's `build pr`, then step 6 again from the start with the path it prints, since that code needs
+a review of its own. A refusal that says a file `differs from` another goes to the human: print it
+and stop. Then act on `next:`:
 
 - `next: fix`: step 7.
 - `next: ask`: step 8.
@@ -158,16 +163,18 @@ After round 2 no fix is offered: `build verdict` prints
 `fix: not available after round 2; decline or leave for the independent review`. Ask only whether
 to decline each should-have or leave it for the independent review, then go to step 9.
 
-## 9. Green CI, then a human merges
+## 9. Green CI, then the independent review
 
-Run `{{cli}} build finish <id> --worktree <path>`. It waits for CI on the pull request's head, and
-only on success marks the pull request ready, records `ci-green` and prints `ci-green` and the CI
-run's URL. On exit 1, by what it prints:
+Run `{{cli}} build finish <id> --worktree <path>`. Each call waits at most 90 seconds for CI on the
+pull request's head, and only on success marks the pull request ready, records `ci-green` and
+prints `ci-green` and the CI run's URL. On exit 1, by what it prints:
 
 - `CI failed on <sha7>: <url>`: print it and stop; tell the human CI failed on the reviewed head.
-- `CI still running on <sha7>; …`: run the same command again later; nothing has changed.
+- `CI still running on <sha7>; …`: nothing has changed; run the same command again. When it still
+  says so after five tries, print it and stop; tell the human CI has not finished.
 - `no CI run found for <sha7>; check that the workflow ran`: print it and stop; tell the human the
   workflow did not run on that head.
 
-On success, print the pull request's number and URL and the CI run's URL, and stop. A human merges
-the pull request; `/slicekit review <n>`, run in a new session, gives the independent verdict.
+On success, print the pull request's number and URL and the CI run's URL, and stop. Tell the human
+to run `/slicekit review <n>` in a new session for the independent verdict, which comes before
+the merge (D-18). A human merges once the slice is `ready`.

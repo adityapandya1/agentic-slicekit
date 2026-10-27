@@ -17,12 +17,13 @@ import { declineFinding } from '../build/decline.js';
 import { finish } from '../build/finish.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
-import { LOOP_ROUNDS, recordVerdict } from '../build/verdict.js';
+import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
+import { readSlice } from '../state/index.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>] [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -58,7 +59,14 @@ function start(root, io, positionals, values) {
   // Forward slashes on every platform, as the brief's Where section prints it: a backslash path
   // pasted unquoted into a POSIX shell loses its separators.
   const where = path.resolve(worktree).split(path.sep).join('/');
-  io.stdout(resumed ? `resumed ${where} at ${state}\n` : `${where}\n${branch}\n`);
+  if (!resumed) {
+    io.stdout(`${where}\n${branch}\n`);
+    return 0;
+  }
+  // At in-review the latest round is recorded and its next step not yet acted on: `build verdict`
+  // with that round's file re-prints the step and records nothing again.
+  const latest = state === 'in-review' ? latestVerdictPath(root, readSlice(worktree, cfg, positionals[0]).verdicts ?? []) : null;
+  io.stdout(`resumed ${where} at ${state}\n${latest ? `verdict ${latest}\n` : ''}`);
   return 0;
 }
 
@@ -113,8 +121,7 @@ function verdictStep(root, io, positionals, values) {
   if (r.verdictPath) out.push(`verdict ${r.verdictPath}`);
   io.stdout(out.map((l) => `${l}\n`).join(''));
   if (r.next === 'stuck') {
-    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${r.round}; the pull request stays draft
-`);
+    io.stderr(`slicekit: stopped: ${r.blockers.join(', ')} survive round ${r.round}; the pull request stays draft\n`);
     return 1;
   }
   return 0;

@@ -11,6 +11,7 @@ import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { verdictsOnHead } from '../state/transitions.js';
 import { recordState } from './record.js';
+import { committedVerdict } from './verdict.js';
 import { BuildError, findWorktree } from './worktree.js';
 
 const PROOF = 'Proof';
@@ -66,9 +67,13 @@ function assertTimes(wait, interval) {
   if (!(Number.isFinite(interval) && interval > 0)) throw new BuildError('the poll interval must be a number of seconds above 0', 2);
 }
 
+// Seconds one `build finish` waits for CI by default: a Claude Code Bash call stops at 120 s, so the
+// procedure runs it again on "CI still running" rather than waiting longer in one call.
+export const FINISH_WAIT = 90;
+
 // -> {ci: {status: 'success', sha, url}}. Every refusal is a BuildError; CI that failed, is still
 // running or never ran is code 1 and records nothing.
-export function finish(root, cfg, host, id, { worktree, wait = 600, interval = 15, sleep = (s) => sleepMs(s * 1000) } = {}) {
+export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, interval = 15, sleep = (s) => sleepMs(s * 1000) } = {}) {
   assertTimes(wait, interval);
   const wt = findWorktree(root, id, { worktree }).path;
   const current = readSlice(wt, cfg, id);
@@ -92,6 +97,11 @@ export function finish(root, cfg, host, id, { worktree, wait = 600, interval = 1
 
   const latest = verdictsOnHead(current, recorded, wt).at(-1);
   if (!latest) throw new BuildError(`${id} has no verdict on its head; finish needs a clean verdict`);
+  // The committed verdict decides, not the count the state file holds: either can be edited by hand.
+  const found = committedVerdict(wt, latest.path).findings.filter((f) => f.kind === 'blocker').length;
+  if (found !== latest.blockers) {
+    throw new BuildError(`the state says round ${latest.round} has ${latest.blockers} blockers but ${latest.path} holds ${found}`);
+  }
   if (latest.blockers !== 0) throw new BuildError(`${id} has open blockers; finish needs a clean verdict`);
 
   const pr = host.getPullRequest(number);

@@ -40,11 +40,22 @@ function readText(file, shown) {
   }
 }
 
-// Every finding ID of an earlier verdict, read from its file in the worktree, in round order.
+// A recorded verdict's text as the commit that added it holds it: a hand edit of the working copy
+// after recording changes nothing the kit judges.
+export function committedVerdictText(wt, rel) {
+  const sha = git(wt, ['--literal-pathspecs', 'log', '-1', '--format=%H', '--diff-filter=A', '--', rel]);
+  if (sha === '') throw new BuildError(`the recorded verdict ${rel} is not committed`);
+  return git(wt, ['show', `${sha}:${rel}`]);
+}
+
+// A recorded verdict, parsed from its commit.
+export const committedVerdict = (wt, rel) => parseVerdict(committedVerdictText(wt, rel), rel);
+
+// Every finding ID of an earlier verdict, read from its commit, in round order.
 function earlierIds(wt, verdicts) {
   return [...verdicts]
     .sort((a, b) => a.round - b.round)
-    .map((v) => parseVerdict(readText(path.resolve(wt, v.path), v.path), v.path).findings.map((f) => f.id));
+    .map((v) => committedVerdict(wt, v.path).findings.map((f) => f.id));
 }
 
 // One line per new ID that does not take a number above every number the slice has used.
@@ -111,19 +122,30 @@ function verdictSource(wt, id, k, src, dest, rel, shown) {
 
 const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 
-// The session-root path the next in-loop reviewer writes, `.slicekit/reviews/<P-S>-r<k>.md` with k the
-// slice's verdict count plus one; null once the in-loop rounds are used (D-18). `build pr` and
-// `build verdict` print it so the procedure never computes k.
-export function nextVerdictPath(id, verdicts = []) {
+// A verdict file's absolute path in the session root, with forward slashes: the reviewer works in
+// the worktree, so a relative path would land there.
+const inSessionRoot = (root, name) => path.resolve(root, ...REVIEWS.split('/'), name).split(path.sep).join('/');
+
+// The absolute session-root path the next in-loop reviewer writes, `<root>/.slicekit/reviews/<P-S>-r<k>.md`
+// with k the slice's verdict count plus one; null once the in-loop rounds are used (D-18). `build pr`
+// and `build verdict` print it so the procedure never computes k.
+export function nextVerdictPath(root, id, verdicts = []) {
   if (inLoop(verdicts) >= LOOP_ROUNDS) return null;
-  return `${REVIEWS}/${verdictFileName(id, verdicts.length + 1)}`;
+  return inSessionRoot(root, verdictFileName(id, verdicts.length + 1));
+}
+
+// The latest recorded verdict's session-root path, or null: `build verdict` with it re-prints that
+// round's next step and records nothing again (a session resumed at in-review).
+export function latestVerdictPath(root, verdicts = []) {
+  const last = verdicts.at(-1);
+  return last ? inSessionRoot(root, path.posix.basename(last.path)) : null;
 }
 
 // The next verdict path after a round: only when the round asks for a fix or a should-have decision
 // and another in-loop round is allowed; `stuck` and `ci` name none.
-const withNextPath = (id, result, verdicts) => ({
+const withNextPath = (root, id, result, verdicts) => ({
   ...result,
-  verdictPath: result.next === 'fix' || result.next === 'ask' ? nextVerdictPath(id, verdicts) : null,
+  verdictPath: result.next === 'fix' || result.next === 'ask' ? nextVerdictPath(root, id, verdicts) : null,
 });
 
 // An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never `stuck`.
@@ -179,7 +201,7 @@ export function reviewerBlocked(verdicts, { stuck = false } = {}) {
 
 // The recorded verdicts as reviewerBlocked takes them, read from their files in the worktree.
 const parsedVerdicts = (wt, verdicts) =>
-  verdicts.map((x) => ({ round: x.round, findings: parseVerdict(readText(path.resolve(wt, x.path), x.path), x.path).findings }));
+  verdicts.map((x) => ({ round: x.round, findings: committedVerdict(wt, x.path).findings }));
 
 const BREAKS = 'the section would break the body: ';
 
@@ -268,13 +290,14 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   const last = verdicts.at(-1);
   if (['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel) {
     assertBuilt(wt, id, current);
-    const text = readText(dest, rel);
+    // The round as committed: a hand edit of the working copy since does not change what it says.
+    const text = committedVerdictText(wt, rel);
     if (!samePath(src, dest) && fs.existsSync(src)) {
-      if (fs.readFileSync(src, 'utf8') !== text) throw new BuildError(`round ${k} of ${id} is already recorded from ${rel}; ${shown} differs from it`);
+      if (fs.readFileSync(src, 'utf8').trim() !== text.trim()) throw new BuildError(`round ${k} of ${id} is already recorded from ${rel}; ${shown} differs from it`);
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return withNextPath(id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts), verdicts);
+    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts), verdicts);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
@@ -305,5 +328,5 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return withNextPath(id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts), state.verdicts);
+  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts), state.verdicts);
 }
