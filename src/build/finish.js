@@ -4,14 +4,15 @@
 // later one that adds only the kit's bookkeeping (D-35): the verdict and in-review commits `build
 // verdict` pushed. A head with any other change is a fix push `build pr` has not recorded, and is
 // refused before anything changes. After `ci-green` it records `ready` when the ready label's own
-// decision passes: the function the CI job calls, so the two cannot disagree.
+// decision passes: the function the CI job calls, with `review.independent` read from the default
+// branch as that job reads it.
 import { headSha, pushBranch, resolveCommit } from '../git.js';
 import { sleep as sleepMs } from '../lock.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
-import { verdictsOnHead } from '../state/transitions.js';
-import { decideReady } from '../ready-label.js';
+import { INDEPENDENT_MISSING, verdictsOnHead } from '../state/transitions.js';
+import { decideReady, withBaseReviewMode } from '../ready-label.js';
 import { recordState } from './record.js';
 import { assertNotBehind } from './sync.js';
 import { committedVerdict } from './verdict.js';
@@ -137,14 +138,16 @@ export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, inte
 // verdict is on the head yet so the independent reviewer is asked to review a ready pull request.
 // After a clean independent verdict sent the slice back to in-review and the pull request to draft
 // (D-39), it is ready again only once CI is green and the decision passes. Then the bookkeeping is
-// pushed. -> {ready, reason, number}.
+// pushed. At `ready` the decision is made again: one that fails records nothing and marks nothing.
+// `review.independent` is the default branch's on origin (withBaseReviewMode), as the label job
+// reads it, never the pull request's own. -> {ready, reason, number}.
 function readyStep(wt, cfg, host, id, state, head) {
   const number = state.pr.number;
+  const gate = withBaseReviewMode(wt, cfg, cfg.defaultBranch);
   let current = state;
-  const decision =
-    current.state === 'ready' ? { ready: true, reason: 'ready is recorded' } : decideReady(current, cfg, { headSha: head, number, root: wt });
-  if (decision.ready && current.state !== 'ready') current = recordState(wt, cfg, id, 'ready', {});
-  const awaited = !verdictsOnHead(current, head, wt).some((v) => v.independent);
+  const decision = decideReady(current, gate, { headSha: head, number, root: wt });
+  if (decision.ready && current.state !== 'ready') current = recordState(wt, gate, id, 'ready', {});
+  const awaited = state.state !== 'ready' && decision.reason === INDEPENDENT_MISSING;
   if ((decision.ready || awaited) && host.getPullRequest(number).draft !== false) host.markReady(number);
   push(wt, cfg);
   return { ready: decision.ready, reason: decision.reason, number };

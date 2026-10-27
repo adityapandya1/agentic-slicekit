@@ -10,7 +10,7 @@ import { getHost } from '../../src/adapters/githost/index.js';
 import { GitHostError } from '../../src/adapters/githost/errors.js';
 import { recordVerdict } from '../../src/build/verdict.js';
 import { git } from '../../src/git.js';
-import { cli, commitAll, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitAll, commitIn, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 
 const REVIEWS = '.slicekit/reviews';
 const RUN_URL = 'https://example.test/runs/1';
@@ -698,16 +698,132 @@ test('a clean independent verdict at ready ends at ready with the pull request r
   }
 });
 
-test('finish records ready on green CI when independent review is optional', async () => {
+// ---- Task 3 fix round 1: hand edits, the base branch's gate ----
+
+const stateFile = (p) => path.join(p.wt, '.slicekit', 'state', 'P1-S-01.json');
+function editState(p, fn) {
+  const st = JSON.parse(fs.readFileSync(stateFile(p), 'utf8'));
+  fs.writeFileSync(stateFile(p), `${JSON.stringify(fn(st), null, 2)}\n`);
+}
+const markReadies = (p) => prCalls(p.host).filter((c) => c.op === 'markReady').length;
+const finishOf = (p) => cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+function setReviewMode(file, mode) {
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, `${JSON.stringify({ ...cfg, review: { ...cfg.review, independent: mode } }, null, 2)}\n`);
+}
+
+// I-1: an in-loop APPROVE flipped to independent in the state file.
+test('an in-loop verdict marked independent by hand reaches neither ready nor the label', async () => {
   const p = await greenAfterTwoRounds();
   try {
-    const file = path.join(p.root, '.slicekit', 'config.json');
-    const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-    fs.writeFileSync(file, `${JSON.stringify({ ...cfg, review: { ...cfg.review, independent: 'optional' } }, null, 2)}\n`);
-    const r = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    editState(p, (st) => ({ ...st, verdicts: st.verdicts.map((v) => (v.round === 2 ? { ...v, independent: true } : v)) }));
+    const r = await finishOf(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `ci-green\n${RUN_URL}\nready: not yet: state does not match ${REVIEWS}/P1-S-01-r2.md: the state records it as independent\n`);
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+    const label = await readyLabel(p);
+    assert.ok(label.stdout.includes(`not ready: state does not match ${REVIEWS}/P1-S-01-r2.md`), label.stdout);
+    assert.deepEqual(labelCalls(p), [{ number: 1, name: 'ready', present: false }]);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-1: an independent BLOCK cleared by hand, hidden behind an appended clean in-loop verdict.
+test('an independent blocker cleared by hand behind a later clean verdict is caught', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    await independentRound(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']]));
+    write(p.wt, `${REVIEWS}/P1-S-01-r4.md`, verdictText('APPROVE'));
+    editState(p, (st) => ({
+      ...st,
+      verdicts: [
+        ...st.verdicts.map((v) => (v.round === 3 ? { ...v, blockers: 0 } : v)),
+        { round: 4, path: `${REVIEWS}/P1-S-01-r4.md`, blockers: 0, independent: false, headSha: st.pr.headSha },
+      ],
+    }));
+    commitIn(p.wt, 'chore(slicekit): P1/S-01 hand edit\n\nSlice: P1/S-01');
+    const r = await finishOf(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `ci-green\n${RUN_URL}\nready: not yet: state does not match ${REVIEWS}/P1-S-01i-r3.md: the state records 0 blockers, the file holds 1\n`);
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+    assert.equal(prIn(p).isDraft, true);
+    const label = await readyLabel(p);
+    assert.ok(label.stdout.includes(`not ready: state does not match ${REVIEWS}/P1-S-01i-r3.md`), label.stdout);
+    assert.deepEqual(labelCalls(p).at(-1), { number: 1, name: 'ready', present: false });
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-1: the latest verdict, an independent BLOCK, cleared by hand.
+test('the latest blocker cleared by hand is refused by finish and the label', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    await independentRound(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']]));
+    editState(p, (st) => ({ ...st, verdicts: st.verdicts.map((v) => (v.round === 3 ? { ...v, blockers: 0 } : v)) }));
+    const r = await finishOf(p);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes(`the state says round 3 has 0 blockers but ${REVIEWS}/P1-S-01i-r3.md holds 1`), r.stderr);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+    const label = await readyLabel(p);
+    assert.ok(label.stdout.includes(`not ready: state does not match ${REVIEWS}/P1-S-01i-r3.md`), label.stdout);
+    assert.deepEqual(labelCalls(p).at(-1), { number: 1, name: 'ready', present: false });
+  } finally {
+    p.cleanup();
+  }
+});
+
+// M-1: at ready the decision is made again; a failed one records and marks nothing.
+test('finish at a ready set by hand makes the decision again', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    editState(p, (st) => ({ ...st, state: 'ready' }));
+    fs.writeFileSync(path.join(p.host, 'pr-1.json'), `${JSON.stringify({ ...prIn(p), isDraft: true }, null, 2)}\n`);
+    const before = markReadies(p);
+    const r = await finishOf(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
+    assert.equal(markReadies(p), before);
+    assert.equal(prIn(p).isDraft, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// M-2, M-3: optional only in the pull request's branch or a working tree switches nothing off.
+test('optional set outside the default branch still requires the independent review', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    setReviewMode(path.join(p.wt, '.slicekit', 'config.json'), 'optional');
+    setReviewMode(path.join(p.root, '.slicekit', 'config.json'), 'optional');
+    const r = await finishOf(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+    const label = await readyLabel(p);
+    assert.ok(label.stdout.includes('not ready: independent review missing'), label.stdout);
+    assert.deepEqual(labelCalls(p), [{ number: 1, name: 'ready', present: false }]);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// M-2, M-3: optional committed on the default branch lets both pass without an independent review.
+test('optional committed on the default branch lets finish and the label pass', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    setReviewMode(path.join(p.root, '.slicekit', 'config.json'), 'optional');
+    commitAll(p.root, 'chore: independent review optional');
+    git(p.root, ['push', '-q', '--no-verify', 'origin', 'HEAD:refs/heads/main']);
+    const r = await finishOf(p);
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, `ci-green\n${RUN_URL}\nready\n`);
     assert.equal(stateIn(p.wt).state, 'ready');
+    liveHeadIsOrigin(p);
+    const label = await readyLabel(p);
+    assert.ok(label.stdout.includes('P1/S-01 ready'), label.stdout);
+    assert.deepEqual(labelCalls(p).at(-1), { number: 1, name: 'ready', present: true });
   } finally {
     p.cleanup();
   }

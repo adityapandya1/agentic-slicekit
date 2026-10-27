@@ -38,6 +38,7 @@ function withHistory(fn) {
     const H = commitAll(root, 'code');
     write(root, '.slicekit/state/P1-S-01.json', '{}\n');
     write(root, '.slicekit/reviews/P1-S-01-r1.md', '# review\n');
+    write(root, '.slicekit/reviews/P1-S-01i-r1.md', 'Verdict: APPROVE\n');
     write(root, '.slicekit/journal/main--abc123.log', 'line\n');
     write(root, 'BUILD.md', '# Build\n');
     const H1 = commitAll(root, 'bookkeeping');
@@ -83,8 +84,8 @@ test('outside a git repository nothing is covered but the same head', () => {
 
 test('decideReady and the ready transition count a verdict whose head covers the live one', () => {
   withHistory(({ root, cfg, id, H, H1, H2 }) => {
-    const verdicts = [{ round: 1, path: 'r1.md', blockers: 0, independent: true, headSha: H }];
-    const state = { state: 'ci-green', pr: { number: 3, headSha: H1 }, verdicts };
+    const verdicts = [{ round: 1, path: '.slicekit/reviews/P1-S-01i-r1.md', blockers: 0, independent: true, headSha: H }];
+    const state = { slice: id, state: 'ci-green', pr: { number: 3, headSha: H1 }, verdicts };
     assert.equal(decideReady(state, cfg, { headSha: H1, root }).ready, true);
     assert.deepEqual(decideReady(state, cfg, { headSha: H2, root }), { ready: false, reason: 'no review verdict on the current head' });
     // Without a repository to look in, only the exact head counts.

@@ -44,9 +44,10 @@ const onHead = (current, ctx) => verdictsOnHead(current, current.pr?.headSha, ct
 
 // The independent-review rule `ready` and the ready label share: the latest independent verdict on
 // the head decides, so a later independent verdict with blockers is not hidden by an earlier clean one.
+export const INDEPENDENT_MISSING = 'independent review missing';
 export function independentProblem(verdicts) {
   const ind = verdicts.filter((v) => v.independent).at(-1);
-  if (!ind) return 'independent review missing';
+  if (!ind) return INDEPENDENT_MISSING;
   if (ind.blockers !== 0) return `independent review found ${ind.blockers} blocker${ind.blockers === 1 ? '' : 's'}`;
   return null;
 }

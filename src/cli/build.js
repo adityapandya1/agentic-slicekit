@@ -21,6 +21,7 @@ import { syncWorktree } from '../build/sync.js';
 import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
+import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync'];
 const USAGE =
@@ -160,9 +161,11 @@ function finishStep(root, io, positionals, values) {
     wait = Number(values.wait);
   }
   const cfg = loadConfig(root);
-  const { ci, ready, number } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
+  const { ci, ready, reason, number } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
   io.stdout(`ci-green\n${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}\n`);
-  io.stdout(ready ? 'ready\n' : `ready: waiting for an independent review; run /slicekit review ${number} in a new session\n`);
+  if (ready) io.stdout('ready\n');
+  else if (reason === INDEPENDENT_MISSING) io.stdout(`ready: waiting for an independent review; run /slicekit review ${number} in a new session\n`);
+  else io.stdout(`ready: not yet: ${reason}\n`);
   return 0;
 }
 
