@@ -588,3 +588,127 @@ test('build pr without notes needs every section in the live body', async () => 
     p.cleanup();
   }
 });
+
+// ---- Task 3: ready only after an independent verdict ----
+
+const WAITING = 'ready: waiting for an independent review; run /slicekit review 1 in a new session\n';
+const labelCalls = (p) => {
+  const file = path.join(p.host, 'label-calls.jsonl');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+};
+// The ready-label job, run in the slice worktree on an event for pull request #1 at its live head
+// that already carries the label.
+function readyLabel(p) {
+  const pr = prIn(p);
+  const event = path.join(p.host, 'event.json');
+  fs.writeFileSync(event, JSON.stringify({ pull_request: { number: 1, title: pr.title, head: { sha: pr.headRefOid }, labels: [{ name: 'ready' }] } }));
+  return cli(p.wt, ['ready-label'], { ...p.env, GITHUB_EVENT_PATH: event, SLICEKIT_CHECKS_OK: 'true', GH_TOKEN: 'x' });
+}
+// An independent round `k` from a fresh review worktree, then the build worktree synced and CI green
+// on origin's new tip, which is the pull request's live head.
+async function independentRound(p, k, text) {
+  const started = await reviewStart(p);
+  assert.equal(started.code, 0, started.stderr);
+  const r = await independent(p, independentFile(p, k, text), reviewDir(p));
+  assert.equal(r.code, 0, r.stderr);
+  const synced = await cli(p.root, ['build', 'sync', 'P1/S-01'], p.env);
+  assert.equal(synced.code, 0, synced.stderr);
+  liveHeadIsOrigin(p);
+  setCi(p, originTip(p));
+  return r;
+}
+
+test('the ready label is withheld without an independent verdict', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    // greenAfterTwoRounds ran finish: ci-green, not ready, and the pull request is ready for the reviewer.
+    const st = stateIn(p.wt);
+    assert.equal(st.state, 'ci-green');
+    assert.ok(!st.history.some((h) => h.to === 'ready'));
+    const again = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
+    assert.equal(stateIn(p.wt).state, 'ci-green');
+
+    const label = await readyLabel(p);
+    assert.equal(label.code, 0, label.stderr);
+    assert.ok(label.stdout.includes('independent review missing'), label.stdout);
+    assert.deepEqual(labelCalls(p), [{ number: 1, name: 'ready', present: false }]);
+
+    await independentRound(p, 3, verdictText('APPROVE'));
+    assert.equal(stateIn(p.wt).state, 'in-review');
+    const done = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    assert.equal(done.code, 0, done.stderr);
+    assert.equal(done.stdout, `ci-green\n${RUN_URL}\nready\n`);
+    const after = stateIn(p.wt);
+    assert.equal(after.state, 'ready');
+    assert.deepEqual(after.history.slice(-2).map((h) => h.to), ['ci-green', 'ready']);
+    assert.equal(prIn(p).isDraft, false);
+    assert.equal(git(p.remote, ['rev-parse', `refs/heads/${SLICE_BRANCH}`]), git(p.wt, ['rev-parse', 'HEAD']));
+
+    // The label job reaches the same answer from the same state.
+    liveHeadIsOrigin(p);
+    const added = await readyLabel(p);
+    assert.equal(added.code, 0, added.stderr);
+    assert.ok(added.stdout.includes('P1/S-01 ready'), added.stdout);
+    assert.deepEqual(labelCalls(p).at(-1), { number: 1, name: 'ready', present: true });
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Task 1's review, M-4: a clean independent verdict at ready sends the pull request back to draft;
+// finish brings it to ready again only once CI is green and the ready decision passes.
+test('a clean independent verdict at ready ends at ready with the pull request ready', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    await independentRound(p, 3, verdictText('APPROVE'));
+    assert.equal((await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env)).code, 0);
+    assert.equal(stateIn(p.wt).state, 'ready');
+
+    await independentRound(p, 4, verdictText('APPROVE'));
+    const back = stateIn(p.wt);
+    assert.equal(back.state, 'in-review');
+    assert.equal(back.history.at(-1).from, 'ready');
+    assert.equal(prIn(p).isDraft, true);
+    const readies = prCalls(p.host).filter((c) => c.op === 'markReady').length;
+
+    // CI still running: the pull request stays draft and nothing is recorded.
+    write(p.host, `ci-${originTip(p)}.json`, JSON.stringify([{ status: 'in_progress', conclusion: null, url: RUN_URL, createdAt: '2026-10-26T00:00:00Z' }]));
+    const pending = await cli(p.root, ['build', 'finish', 'P1/S-01', '--wait', '0'], p.env);
+    assert.equal(pending.code, 1);
+    assert.equal(prIn(p).isDraft, true);
+    assert.equal(stateIn(p.wt).state, 'in-review');
+
+    setCi(p, originTip(p));
+    const done = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    assert.equal(done.code, 0, done.stderr);
+    assert.equal(done.stdout, `ci-green\n${RUN_URL}\nready\n`);
+    assert.equal(stateIn(p.wt).state, 'ready');
+    assert.equal(prIn(p).isDraft, false);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies + 1);
+
+    // A re-run at ready pushes and marks nothing new.
+    const again = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, `ci-green\n${RUN_URL}\nready\n`);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies + 1);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('finish records ready on green CI when independent review is optional', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const file = path.join(p.root, '.slicekit', 'config.json');
+    const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, `${JSON.stringify({ ...cfg, review: { ...cfg.review, independent: 'optional' } }, null, 2)}\n`);
+    const r = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, `ci-green\n${RUN_URL}\nready\n`);
+    assert.equal(stateIn(p.wt).state, 'ready');
+  } finally {
+    p.cleanup();
+  }
+});

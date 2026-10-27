@@ -578,6 +578,8 @@ function setLiveHead(p, sha) {
   fs.writeFileSync(file, `${JSON.stringify({ ...raw, headRefOid: sha }, null, 2)}\n`);
 }
 const RUN_URL = 'https://example.test/runs/1';
+// S-16: with independent review required, finish stops at ci-green until an independent verdict.
+const WAITING = 'ready: waiting for an independent review; run /slicekit review 1 in a new session\n';
 function setCi(p, sha, status, conclusion = null) {
   write(p.host, `ci-${sha}.json`, JSON.stringify([{ status, conclusion, url: RUN_URL, createdAt: '2026-10-26T00:00:00Z' }]));
 }
@@ -684,7 +686,7 @@ test('finish records ci-green only when CI succeeds on the head', async () => {
     setCi(p, p.head, 'completed', 'success');
     const ok = await finishCli(p);
     assert.equal(ok.code, 0, ok.stderr);
-    assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n`);
+    assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
     const st = stateIn(p.wt);
     assert.equal(st.state, 'ci-green');
     assert.deepEqual(st.ci, { sha: p.head, status: 'success', url: RUN_URL });
@@ -781,7 +783,7 @@ test('finish at ci-green cites the recorded run', async () => {
     write(p.host, `ci-${p.head}.json`, JSON.stringify([{ status: 'completed', conclusion: 'failure', url: 'https://example.test/runs/2', createdAt: '2026-10-27T00:00:00Z' }]));
     const again = await finishCli(p);
     assert.equal(again.code, 0, again.stderr);
-    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n`);
+    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
     assert.ok(getSection(prIn(p).body, 'Proof').endsWith(`CI: ${RUN_URL}`));
   } finally {
     p.cleanup();

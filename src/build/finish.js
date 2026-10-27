@@ -3,13 +3,15 @@
 // the pull request is marked ready and `ci-green` is recorded on that head. The live head may be a
 // later one that adds only the kit's bookkeeping (D-35): the verdict and in-review commits `build
 // verdict` pushed. A head with any other change is a fix push `build pr` has not recorded, and is
-// refused before anything changes.
+// refused before anything changes. After `ci-green` it records `ready` when the ready label's own
+// decision passes: the function the CI job calls, so the two cannot disagree.
 import { headSha, pushBranch, resolveCommit } from '../git.js';
 import { sleep as sleepMs } from '../lock.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { verdictsOnHead } from '../state/transitions.js';
+import { decideReady } from '../ready-label.js';
 import { recordState } from './record.js';
 import { assertNotBehind } from './sync.js';
 import { committedVerdict } from './verdict.js';
@@ -72,8 +74,8 @@ function assertTimes(wait, interval) {
 // procedure runs it again on "CI still running" rather than waiting longer in one call.
 export const FINISH_WAIT = 90;
 
-// -> {ci: {status: 'success', sha, url}}. Every refusal is a BuildError; CI that failed, is still
-// running or never ran is code 1 and records nothing.
+// -> {ci: {status, sha, url}, ready, reason, number}. Every refusal is a BuildError; CI that
+// failed, is still running or never ran is code 1 and records nothing.
 export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, interval = 15, sleep = (s) => sleepMs(s * 1000) } = {}) {
   assertTimes(wait, interval);
   const held = findWorktree(root, id, { worktree });
@@ -83,17 +85,17 @@ export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, inte
   // Behind origin first, before the head guards below: commits another worktree pushed are synced.
   assertNotBehind(wt, held.branch, id);
 
-  // A run that recorded ci-green but stopped before the push (or the body) finishes here, citing the
-  // run recorded with ci-green. It pushes only bookkeeping on top of the reviewed, green head.
-  if (current.state === 'ci-green' && current.ci?.sha && Number.isInteger(number)) {
+  // A slice at ci-green skips the CI wait and goes to the ready decision, citing the run recorded
+  // with ci-green; one at ready finishes a run that stopped before the pull request or the push. It
+  // pushes only bookkeeping on top of the reviewed, green head.
+  if ((current.state === 'ci-green' || current.state === 'ready') && current.ci?.sha && Number.isInteger(number)) {
     const local = headSha(wt);
     if (!headCovers(wt, current.pr.headSha, local) || !headCovers(wt, current.ci.sha, local)) {
       throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
     }
     const ci = { status: 'success', sha: current.ci.sha, url: current.ci.url ?? null };
     setProof(cfg, host, number, ci);
-    push(wt, cfg);
-    return { ci };
+    return { ci, ...readyStep(wt, cfg, host, id, current, ci.sha) };
   }
   if (current.state !== 'in-review') throw new BuildError(`${id} is ${current.state}; build finish runs from in-review`);
   if (!Number.isInteger(number)) throw new BuildError(`${id} has no recorded pull request`);
@@ -125,10 +127,25 @@ export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, inte
 
   const ci = { status: 'success', sha: live, url: status.url ?? null };
   setProof(cfg, host, number, ci);
-  // Ready only on green CI, so a failed or running CI leaves a draft, as the in-review state says.
-  // CI runs on draft pull requests too, so nothing waits on this.
-  if (pr.draft !== false) host.markReady(number);
-  recordState(wt, cfg, id, 'ci-green', { ci: { status: 'success', sha: live, ...(ci.url ? { url: ci.url } : {}) } });
+  const green = recordState(wt, cfg, id, 'ci-green', { ci: { status: 'success', sha: live, ...(ci.url ? { url: ci.url } : {}) } });
+  return { ci, ...readyStep(wt, cfg, host, id, green, live) };
+}
+
+// The step after ci-green, `head` being the green CI sha: `ready` is recorded when the ready label's
+// decision passes. The pull request is marked ready only here, on green CI, so a failed or running CI
+// leaves a draft, as in-review says. It is marked when the decision passes, or when no independent
+// verdict is on the head yet so the independent reviewer is asked to review a ready pull request.
+// After a clean independent verdict sent the slice back to in-review and the pull request to draft
+// (D-39), it is ready again only once CI is green and the decision passes. Then the bookkeeping is
+// pushed. -> {ready, reason, number}.
+function readyStep(wt, cfg, host, id, state, head) {
+  const number = state.pr.number;
+  let current = state;
+  const decision =
+    current.state === 'ready' ? { ready: true, reason: 'ready is recorded' } : decideReady(current, cfg, { headSha: head, number, root: wt });
+  if (decision.ready && current.state !== 'ready') current = recordState(wt, cfg, id, 'ready', {});
+  const awaited = !verdictsOnHead(current, head, wt).some((v) => v.independent);
+  if ((decision.ready || awaited) && host.getPullRequest(number).draft !== false) host.markReady(number);
   push(wt, cfg);
-  return { ci };
+  return { ready: decision.ready, reason: decision.reason, number };
 }

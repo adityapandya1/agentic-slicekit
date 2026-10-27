@@ -150,7 +150,8 @@ function declineStep(root, io, positionals, values) {
   return 0;
 }
 
-// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head.
+// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head, then
+// `ready`, or that the slice is waiting for an independent review.
 function finishStep(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   let wait;
@@ -159,8 +160,9 @@ function finishStep(root, io, positionals, values) {
     wait = Number(values.wait);
   }
   const cfg = loadConfig(root);
-  const { ci } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
+  const { ci, ready, number } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
   io.stdout(`ci-green\n${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}\n`);
+  io.stdout(ready ? 'ready\n' : `ready: waiting for an independent review; run /slicekit review ${number} in a new session\n`);
   return 0;
 }
 
