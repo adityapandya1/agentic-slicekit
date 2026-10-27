@@ -24,7 +24,8 @@ import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.j
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
-import { BuildError, branchPrefix, findWorktree, samePath } from './worktree.js';
+import { GitHostError } from '../adapters/githost/errors.js';
+import { BuildError, findWorktree, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from './worktree.js';
 
 // The states a verdict is recorded from: the `in-review` edges. An independent verdict (D-39) is
 // also recorded from in-review, ci-green and ready, and sends a green slice back to review.
@@ -165,6 +166,12 @@ function outcome(k, v, verdicts, independent) {
   return { round: k, blockers, shouldHaves, roundsUsed, next };
 }
 
+// The review worktree: at review start's path (real paths compared, so a junction to it counts), on
+// the review branch, and not the slice's build worktree.
+function isReviewWorktree(root, addr, held) {
+  return held.branch === reviewBranch(addr) && samePath(held.path, reviewWorktreeDir(root, addr)) && !samePath(held.path, worktreeDir(root, addr));
+}
+
 const push = (wt, cfg) => pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
 
 const blockersOf = (v) => (v?.findings ?? []).filter((f) => f.kind === 'blocker');
@@ -254,15 +261,24 @@ function bannedProblems(cfg, v, text, shown) {
   return out;
 }
 
+// The round is committed and recorded when this runs; a host failure says so, and a re-run of the
+// same command resumes and finishes it.
+function markDraft(host, number, round) {
+  try {
+    if (host.getPullRequest(number).draft === false) host.markDraft(number);
+  } catch (e) {
+    if (!(e instanceof GitHostError)) throw e;
+    throw new BuildError(`could not mark pull request #${number} draft: ${e.message}; round ${round} is recorded locally; run the same command again to finish`);
+  }
+}
+
 // After a round is recorded: a stopped loop records changes-requested (once); an independent verdict
 // that sent a green slice back to review (D-39) marks a ready pull request draft again, so the host
 // agrees with the state; then the branch is pushed and the body's "Reviewer blocked" brought up to date.
 function finish(wt, cfg, host, id, current, result, verdicts, independent) {
   const stuck = result.next === 'stuck';
   if (stuck && current.state === 'in-review') recordState(wt, cfg, id, 'changes-requested', {});
-  if (independent && current.state === 'in-review' && host.getPullRequest(current.pr.number).draft === false) {
-    host.markDraft(current.pr.number);
-  }
+  if (independent && current.state === 'in-review') markDraft(host, current.pr.number, result.round);
   push(wt, cfg);
   updateBlocked(wt, cfg, host, current.pr.number, verdicts, stuck);
   return result;
@@ -305,9 +321,10 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   const verdicts = current.verdicts ?? [];
 
   // The building session never approves itself through its own worktree: an independent verdict is
-  // recorded only on the review branch `review start` makes. That the session is fresh is the person's
-  // to keep (D-18).
-  if (independent && held.branch !== `${branchPrefix(parseSliceAddr(id))}-review`) {
+  // recorded only in the review worktree `review start` makes, decided by its path and its branch
+  // together, and never in the worktree `build start` made. That the session is fresh is the
+  // person's to keep (D-18).
+  if (independent && !isReviewWorktree(root, parseSliceAddr(id), held)) {
     throw new BuildError(`an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`);
   }
 

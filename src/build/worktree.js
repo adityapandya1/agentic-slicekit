@@ -22,6 +22,11 @@ export class BuildError extends Error {
 const pad = (n) => String(n).padStart(2, '0');
 export const branchPrefix = (addr) => `slice/P${addr.phase}-S-${pad(addr.slice)}`;
 export const worktreeDir = (root, addr) => path.join(root, '.worktrees', `P${addr.phase}-S-${pad(addr.slice)}`);
+// The review worktree `review start` makes, at a fixed path on a fixed branch: an independent verdict
+// is recorded only there (D-39), so no build branch may take that name.
+export const REVIEW_DESCR = 'review';
+export const reviewBranch = (addr) => `${branchPrefix(addr)}-${REVIEW_DESCR}`;
+export const reviewWorktreeDir = (root, addr) => path.join(root, '.worktrees', `review-P${addr.phase}-S-${pad(addr.slice)}`);
 
 // One spelling of a path, so `C:/x` from git and `C:\x` from path.resolve compare equal.
 export function samePath(a, b) {
@@ -74,9 +79,15 @@ function sliceFileOf(root, cfg, addr) {
   );
 }
 
-// `slice/P<n>-S-<nn>-<descr>` when git accepts it as a branch name, else a usage refusal.
-function branchName(root, addr, descr) {
+// `slice/P<n>-S-<nn>-<descr>` when git accepts it as a branch name and it is not the review
+// branch, else a usage refusal. `file` is the slice file the descr was taken from, if it was. The
+// review name is refused in any case: on a case-insensitive file system `Review` is the same ref.
+function branchName(root, addr, descr, file) {
   const name = `${branchPrefix(addr)}-${descr}`;
+  if (descr.toLowerCase() === REVIEW_DESCR) {
+    const from = file ? `the slice file ${file} gives that name, so ` : '';
+    throw new BuildError(`the branch name ${name} is kept for the review worktree; ${from}choose another --descr`, 2);
+  }
   try {
     assertRef(name);
     git(root, ['check-ref-format', '--branch', name]);
@@ -105,12 +116,14 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
   const addr = parseSliceAddr(id);
   const file = addr && sliceFileOf(root, cfg, addr);
   if (!file) throw new BuildError(`unknown slice ${id}`, 2);
+  let sliceFile;
   if (descr === undefined) {
     const m = /^S-\d+-(.+)\.md$/.exec(path.basename(file.path));
     if (!m) throw new BuildError(`${path.basename(file.path)} names no description; pass --descr`, 2);
     descr = m[1];
+    sliceFile = path.basename(file.path);
   }
-  const branch = branchName(root, addr, descr);
+  const branch = branchName(root, addr, descr, sliceFile);
   const dir = worktreeDir(root, addr);
 
   // A worktree of this clone on the slice's branch: the start already happened, so this is a resume

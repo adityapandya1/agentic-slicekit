@@ -4,8 +4,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadConfig } from '../../src/config.js';
+import { getHost } from '../../src/adapters/githost/index.js';
+import { GitHostError } from '../../src/adapters/githost/errors.js';
+import { recordVerdict } from '../../src/build/verdict.js';
 import { git } from '../../src/git.js';
-import { cli, commitWorkCli, green, prCalls, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitAll, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 
 const REVIEWS = '.slicekit/reviews';
 const RUN_URL = 'https://example.test/runs/1';
@@ -125,11 +129,38 @@ test('an independent verdict is recorded only from the review worktree', async (
   try {
     const file = independentFile(p, 3, verdictText('APPROVE'));
     const before = stateIn(p.wt);
-    const r = await independent(p, file, p.wt);
-    assert.equal(r.code, 1);
-    assert.equal(r.stderr, 'slicekit: an independent verdict is recorded from the review worktree; run slicekit review start 1 in a new session\n');
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const refused = (r) => {
+      assert.equal(r.code, 1, r.stderr);
+      assert.equal(r.stderr, 'slicekit: an independent verdict is recorded from the review worktree; run slicekit review start 1 in a new session\n');
+      assert.deepEqual(stateIn(p.wt), before);
+      assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+      assert.ok(fs.existsSync(path.join(p.root, ...REVIEWS.split('/'), 'P1-S-01i-r3.md')));
+    };
+    // From the build worktree, named or found.
+    refused(await independent(p, file, p.wt));
+    refused(await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env));
+
+    // The build worktree with its branch renamed to the review name (I-2): the path decides too.
+    git(p.wt, ['branch', '-m', 'slice/P1-S-01-review']);
+    refused(await independent(p, file, p.wt));
+    refused(await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env));
+    git(p.wt, ['branch', '-m', 'slice/P1-S-01-thing-1']);
+
+    // The review branch in a worktree somewhere other than review start's path.
+    const elsewhere = path.join(p.root, '.worktrees', 'elsewhere');
+    git(p.root, ['fetch', '-q', 'origin']);
+    git(p.root, ['worktree', 'add', '-q', '--track', '-b', 'slice/P1-S-01-review', elsewhere, 'origin/slice/P1-S-01-thing-1']);
+    refused(await independent(p, file, elsewhere));
+    git(p.root, ['worktree', 'remove', '--force', elsewhere]);
+    git(p.root, ['branch', '-q', '-D', 'slice/P1-S-01-review']);
+
+    // With the review worktree there, two worktrees hold the slice: --worktree is needed (M-2).
+    reviewWorktree(p);
+    const both = await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env);
+    assert.equal(both.code, 2);
+    assert.match(both.stderr, /two worktrees hold P1\/S-01: .*; pass --worktree/);
     assert.deepEqual(stateIn(p.wt), before);
-    assert.ok(fs.existsSync(path.join(p.root, ...REVIEWS.split('/'), 'P1-S-01i-r3.md')));
   } finally {
     p.cleanup();
   }
@@ -155,6 +186,66 @@ test('an independent verdict and its name agree', async () => {
     assert.equal(inLoop.code, 1);
     assert.ok(inLoop.stderr.includes('two review rounds used; the loop stopped (D-18)'), inLoop.stderr);
     assert.equal(stateIn(wt).state, 'ci-green');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// M-1: a host that cannot mark the pull request draft leaves the round recorded locally; the same
+// command run again finishes it.
+test('a failed markDraft says the round is recorded and to run the command again', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const wt = reviewWorktree(p);
+    const file = independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']]));
+    const cfg = loadConfig(p.root);
+    const real = getHost(cfg, p.env, p.root);
+    const down = {
+      ...real,
+      markDraft: () => {
+        throw new GitHostError('gh: network down');
+      },
+    };
+    assert.throws(
+      () => recordVerdict(p.root, cfg, down, 'P1/S-01', file, { independent: true, worktree: wt }),
+      (e) =>
+        e.name === 'BuildError' &&
+        e.code === 1 &&
+        e.message === 'could not mark pull request #1 draft: gh: network down; round 3 is recorded locally; run the same command again to finish',
+    );
+    assert.equal(stateIn(wt).state, 'in-review');
+    assert.equal(prIn(p).isDraft, false);
+    const again = await independent(p, file, wt);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(again.stdout, 'next: fix\nblockers: B-2\nshould-haves: none\nrounds: 2 of 2\n');
+    assert.equal(prIn(p).isDraft, true);
+    assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(wt, ['rev-parse', 'HEAD']));
+  } finally {
+    p.cleanup();
+  }
+});
+
+// I-1: the review branch name is never a build branch, whether --descr or the slice file gives it.
+test('build start refuses the review branch name', async () => {
+  const p = project({ slices: [{ n: 1, group: 'A' }] });
+  try {
+    for (const descr of ['review', 'Review']) {
+      const r = await cli(p.root, ['build', 'start', 'P1/S-01', '--descr', descr]);
+      assert.equal(r.code, 2, descr);
+      assert.equal(r.stderr, `slicekit: the branch name slice/P1-S-01-${descr} is kept for the review worktree; choose another --descr\n`);
+    }
+    const dir = path.join(p.root, 'docs', 'phases', 'P1-x');
+    fs.renameSync(path.join(dir, 'S-01-thing-1.md'), path.join(dir, 'S-01-review.md'));
+    commitAll(p.root, 'rename');
+    const r = await cli(p.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(r.code, 2);
+    assert.equal(
+      r.stderr,
+      'slicekit: the branch name slice/P1-S-01-review is kept for the review worktree; the slice file S-01-review.md gives that name, so choose another --descr\n',
+    );
+    assert.equal(git(p.root, ['branch', '--list', 'slice/*']), '');
+    const ok = await cli(p.root, ['build', 'start', 'P1/S-01', '--descr', 'reviewed']);
+    assert.equal(ok.code, 0, ok.stderr);
   } finally {
     p.cleanup();
   }
