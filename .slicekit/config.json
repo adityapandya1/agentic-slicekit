@@ -45,6 +45,7 @@
   ],
   "ci": {
     "matrix": true,
-    "observabilitySteps": []
+    "observabilitySteps": [],
+    "timeoutMinutes": 60
   }
 }
