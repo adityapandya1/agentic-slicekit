@@ -1,0 +1,33 @@
+{
+  "slice": "P2/S-25",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 20,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/20",
+    "headSha": "e1ae992ea4b3765c78316954ecf06991696f7c31"
+  },
+  "redCommit": null,
+  "frozenTests": [],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "draft-pr",
+      "at": "2026-10-28T19:46:18.581Z",
+      "by": "backfill",
+      "evidence": {
+        "pr": {
+          "number": 20,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/20",
+          "headSha": "e1ae992ea4b3765c78316954ecf06991696f7c31",
+          "title": "[P2/S-25] Preview: the README walkthrough and going public"
+        }
+      }
+    }
+  ]
+}

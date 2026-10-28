@@ -40,7 +40,7 @@ test('probe order: a local install, then slicekit on PATH, else the PATH form wi
   assert.deepEqual(probeCli(bare, { env: {} }), { cli: 'slicekit', warning: NOT_INSTALLED });
   assert.equal(
     NOT_INSTALLED,
-    'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)',
+    'slicekit is not installed locally or on PATH; hooks will fail until it is. From a clone of the kit, run init with --cli "node <path-to-kit>/bin/slicekit.js" (quote the path if it has spaces), or set cli in .slicekit/config.json; npm has no release of slicekit until 0.1',
   );
 });
 
@@ -77,4 +77,21 @@ test('checkCli: null when the command prints the kit version, a warning when it 
   assert.equal(checkCli(self, { version: '9.9.9', cwd }), warning(self));
   const failing = 'node -e "process.exit(3)"';
   assert.equal(checkCli(failing, { version: actual, cwd }), warning(failing));
+});
+
+// S-25 review M-8: when the probe fails, the warning names the likely cause it can see in the command.
+test('checkCli names an unquoted path with spaces, and on Windows an MSYS path, as the likely cause', () => {
+  const cwd = tmp('slicekit-check-');
+  const actual = JSON.parse(fs.readFileSync(path.join(path.dirname(binPath), '..', 'package.json'), 'utf8')).version;
+  const spaced = checkCli('node /no such/dir/bin/slicekit.js', { version: actual, cwd, platform: 'linux' });
+  assert.match(spaced, /did not answer/);
+  assert.match(spaced, /quote a path that has spaces/);
+  assert.doesNotMatch(spaced, /pwd -W/);
+  const msys = checkCli('node /c/nowhere/bin/slicekit.js', { version: actual, cwd, platform: 'win32' });
+  assert.match(msys, /pwd -W/);
+  assert.doesNotMatch(msys, /quote a path/);
+  // The same path off Windows is a real path: no Windows hint.
+  assert.doesNotMatch(checkCli('node /c/nowhere/bin/slicekit.js', { version: actual, cwd, platform: 'linux' }), /pwd -W/);
+  // A quoted command gives no spaces hint.
+  assert.doesNotMatch(checkCli('node "/no such/bin/slicekit.js"', { version: actual, cwd, platform: 'linux' }), /quote a path/);
 });

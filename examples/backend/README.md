@@ -19,3 +19,5 @@ The docs are at the end of the plan stage, so `/slicekit build` can start. Each 
 4. Run `node <kit>/bin/slicekit.js status --write`, so `BUILD.md` gets its generated region.
 5. Commit everything on `main` with `ALLOW_PROTECTED_COMMIT=1` set, because the kit's git hook refuses a commit on `main` without it, and push `main` to `origin`. On `main`, `node <kit>/bin/slicekit.js check` now reports 0 findings and `node <kit>/bin/slicekit.js stage require plan` prints `ready: plan`.
 6. Run `/slicekit build` to build P1/S-01 from `todo` to a draft pull request.
+
+The kit's `README.md` runs these steps and the rest of the build, to `merged`, in its "Walkthrough" section.

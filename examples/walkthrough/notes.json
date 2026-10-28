@@ -1,0 +1,8 @@
+{
+  "tryIt": [
+    "Run npm test.",
+    "Call greet('Ada').",
+    "See Hello, Ada!."
+  ],
+  "skipped": "Names with spaces were not tried."
+}

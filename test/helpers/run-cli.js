@@ -30,7 +30,7 @@ function withShim(env) {
 
 // The pull request a CI runner is building, as check --ci reads it. A test that wants an event
 // passes one in env; by default the CLI under test never sees the runner's own.
-const CI_PULL_REQUEST = ['GITHUB_EVENT_PATH', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'SLICEKIT_PR_TITLE', 'SLICEKIT_PR_BODY'];
+export const CI_PULL_REQUEST = ['GITHUB_EVENT_PATH', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'SLICEKIT_PR_TITLE', 'SLICEKIT_PR_BODY'];
 function hermetic(env) {
   const out = { ...env };
   for (const k of Object.keys(out)) if (CI_PULL_REQUEST.includes(k.toUpperCase())) delete out[k];

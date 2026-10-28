@@ -42,7 +42,15 @@ test('briefs.test.js » no brief tells an agent to run git', () => {
 
 test('briefs » each pointer names its own command', () => {
   const dir = path.join(KIT, 'claude-code', 'commands');
-  const names = mdIn(dir).map((f) => path.basename(f, '.md').replace(/^slicekit-/, '')).sort();
+  const all = mdIn(dir).map((f) => path.basename(f, '.md'));
+  // `slicekit.md` is `/slicekit <command> [args]`: the same pointer, with the command as its first argument.
+  assert.ok(all.includes('slicekit'));
+  const dispatcher = read(path.join(dir, 'slicekit.md')).replace(/^---\n[\s\S]*?\n---\n/, '');
+  assert.equal(
+    dispatcher.trim(),
+    "Run `{{cli}} instructions --command $ARGUMENTS` and follow the procedure it prints. The procedure is the only source of this command's rules.\n\nWriting rules: `.claude/skills/slicekit-writing/SKILL.md`.",
+  );
+  const names = all.filter((n) => n !== 'slicekit').map((n) => n.replace(/^slicekit-/, '')).sort();
   assert.deepEqual(names, [...PROCEDURES].sort());
   for (const name of names) {
     const text = read(path.join(dir, `slicekit-${name}.md`));
