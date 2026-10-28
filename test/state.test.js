@@ -278,7 +278,7 @@ test('backfill skips the from check and records by backfill', () => {
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1 } })), /pr.headSha/);
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1.5, headSha: HEAD } })), /pr.number/);
     assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 1 } })), /pr.headSha/);
-    assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: HEAD, status: 'success' } })), /pr.number and pr.headSha/);
+    assert.equal(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: HEAD, status: 'success' } })), 'backfill records only draft-pr or merged; later states come from the build commands');
     const s = setState(root, cfg, id, 'merged', {
       backfill: true,
       mergedAt: AT,
@@ -336,7 +336,7 @@ test('write is atomic: 20 slices in one process, 5 parallel processes', async ()
     const ids = writeSliceFixtures(repo.root, 20);
     const cfg = loadConfig(repo.root);
     await Promise.all(
-      ids.map(async (id) => setState(repo.root, cfg, id, 'tests-red', { backfill: true, commit: RED, tests: ['f.js'] })),
+      ids.map(async (id) => setState(repo.root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: ['f.js'] })),
     );
     const procs = ids.slice(0, 5).map(
       (id) =>
@@ -522,14 +522,37 @@ test('backfill from a non-todo state is refused', () => {
   });
 });
 
-test('backfill to ready under required needs an independent clean verdict', () => {
+// Backfill adopts a slice built outside the loop: it records an open pull request or a merge, never
+// a review, CI or ready state, which only the build commands record (so no hand-committed verdict
+// reaches ready through it).
+test('backfill records only draft-pr or merged', () => {
   withKit((root, cfg, [id]) => {
-    const bad = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: false } };
-    assert.match(refusal(() => setState(root, cfg, id, 'ready', bad)), /independent/);
-    assert.match(refusal(() => setState(root, cfg, id, 'ready', { backfill: true })), /independent/);
-    const good = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: true } };
-    assert.equal(setState(root, cfg, id, 'ready', good).state, 'ready');
+    fs.writeFileSync(path.join(root, 'v.md'), '');
+    const verdict = { round: 1, path: 'v.md', blockers: 0, independent: true };
+    const tries = {
+      'tests-red': { commit: RED, testExit: 1, tests: ['a.test.js'] },
+      building: {},
+      'in-review': { verdict },
+      'changes-requested': {},
+      'ci-green': { pr: PR, ci: { sha: HEAD, status: 'success' } },
+      ready: { pr: PR, verdict },
+      released: { release: 'v.md' },
+    };
+    for (const [to, ev] of Object.entries(tries)) {
+      assert.equal(refusal(() => setState(root, cfg, id, to, { backfill: true, ...ev })), 'backfill records only draft-pr or merged; later states come from the build commands', to);
+    }
+    assert.equal(readSlice(root, cfg, id).state, 'todo');
   });
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend' });
+    const id = writeSliceFixture(repo.root, { n: 1 });
+    const r = runCli(['state', 'set', id, 'ready', '--backfill', '--verdict', 'v.md', '--round', '1', '--blockers', '0', '--independent'], { cwd: repo.root });
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr.trim(), 'refused: backfill records only draft-pr or merged; later states come from the build commands');
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('a string for tests is refused, as is a bad number', () => {
@@ -593,7 +616,7 @@ test('parallel processes writing the same slice all land', async () => {
     const [id] = writeSliceFixtures(repo.root, 1);
     const cfg = loadConfig(repo.root);
     const paths = ['a.js', 'b.js', 'c.js', 'd.js'];
-    setState(repo.root, cfg, id, 'tests-red', { backfill: true, commit: RED, tests: paths });
+    setState(repo.root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: paths });
     const codes = await Promise.all(paths.map((p) => spawnCli(['state', 'unfreeze', id, p], repo.root)));
     assert.deepEqual(codes, [0, 0, 0, 0]);
     const s = readSlice(repo.root, cfg, id);
@@ -628,8 +651,8 @@ test('a held lock is a one-line message and exit 2 from state and status, after 
     const [id] = writeSliceFixtures(repo.root, 1);
     const cfg = loadConfig(repo.root);
     const dir = kitPaths(repo.root, cfg).state;
-    // A slice parked at ready, so status --sync tries to write it.
-    setState(repo.root, cfg, id, 'ready', { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: true } });
+    // A slice parked at draft-pr, so status --sync tries to write it.
+    setState(repo.root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 14, headSha: 'abc1234def5678', title: '[P1/S-01] x' } });
     const file = path.join(dir, 'P1-S-01.json');
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     fs.writeFileSync(file, JSON.stringify({ ...raw, pr: { number: 14, headSha: 'abc1234def5678' } }));
