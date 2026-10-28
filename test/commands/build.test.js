@@ -1268,3 +1268,17 @@ test('the procedure and the developer brief pass the brief lint', () => {
   assert.doesNotMatch(brief, /helper a test imports/);
   assert.match(brief, /helper[^.]*inside the evaluation test file/i);
 });
+
+// S-25 review M-7: the verdict path build pr prints can be written at once, without a mkdir first.
+test('build pr creates the directory of the verdict path it prints', async () => {
+  const p = await green();
+  try {
+    fs.rmSync(path.join(p.root, '.slicekit', 'reviews'), { recursive: true, force: true });
+    const r = await p.pr();
+    assert.equal(r.code, 0, r.stderr);
+    const printed = r.stdout.split('\n').find((l) => l.startsWith('verdict ')).slice('verdict '.length);
+    assert.equal(fs.statSync(path.dirname(printed)).isDirectory(), true);
+  } finally {
+    p.cleanup();
+  }
+});

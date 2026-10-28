@@ -992,3 +992,17 @@ test('build pr prints no in-loop verdict path after an independent verdict', asy
     p.cleanup();
   }
 });
+
+// S-25 review M-7: the verdict path review start prints can be written at once, without a mkdir first.
+test('review start creates the directory of the verdict path it prints', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    fs.rmSync(path.join(p.root, ...REVIEWS.split('/')), { recursive: true, force: true });
+    const r = await reviewStart(p);
+    assert.equal(r.code, 0, r.stderr);
+    const printed = r.stdout.split('\n').find((l) => l.startsWith('verdict ')).slice('verdict '.length);
+    assert.equal(fs.statSync(path.dirname(printed)).isDirectory(), true);
+  } finally {
+    p.cleanup();
+  }
+});

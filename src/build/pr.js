@@ -246,6 +246,8 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   // The absolute session-root path the next in-loop reviewer writes (null once the loop's rounds are
   // used or an independent verdict is recorded): recording draft-pr adds no verdict, so the count read before is the count after.
   const verdictPath = nextVerdictPath(root, id, current.verdicts ?? []);
+  // The reviewer writes there at once: its directory is made here, as the path is printed.
+  if (verdictPath) fs.mkdirSync(path.dirname(verdictPath), { recursive: true });
   const result = { number: made.number, url: made.url, created: made.created, verdictPath };
   // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
   if (livePr?.draft === false) host.markDraft(made.number);

@@ -116,5 +116,8 @@ export function startReview(root, cfg, host, number) {
   git(root, ['worktree', 'add', '-q', '--track', '-b', branch, dir, tracking]);
 
   const verdicts = readSlice(dir, cfg, id).verdicts ?? [];
-  return { id, worktree: dir, branch, round: verdicts.length + 1, verdictPath: independentVerdictPath(root, id, verdicts) };
+  const verdictPath = independentVerdictPath(root, id, verdicts);
+  // The reviewer writes there at once: its directory is made here, as the path is printed.
+  fs.mkdirSync(path.dirname(verdictPath), { recursive: true });
+  return { id, worktree: dir, branch, round: verdicts.length + 1, verdictPath };
 }

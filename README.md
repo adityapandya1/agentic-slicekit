@@ -2,25 +2,29 @@
 
 Agentic SliceKit is a zero-dependency Node 22 kit for building software with AI coding agents on
 Claude Code, one slice at a time, with a traceable line from every requirement to its tests,
-commits, pull requests and releases. The spec stays true because a machine checks it on every stop
-and in CI, not because anyone remembers to update it.
+commits, pull requests and releases. The spec stays true because a machine checks it each time the
+agent finishes a turn and again in CI, not because anyone remembers to update it.
 
 ## Status: preview
 
 Phases 1 and 2 work: intake, specify, the gap scan, plan, the build from red tests to green, the
-review loop, the independent review and `/slicekit build --parallel`. Phases 3 and 4 add the
-traceability graph and its queries, release, ops and audit, and the other examples (`fullstack`
-and `data`).
+review loop, the independent review and `/slicekit build --parallel`. Phase 3 will add the
+traceability graph, its queries and views, and workspaces that span several repositories. Phase 4
+will add release, ops and audit, and the other examples (`fullstack` and `data`). Phases 3 and 4
+are not built yet.
 
 npm holds only the 0.0.1 placeholder under the name `slicekit`, and it does nothing. The first real
-release on npm is 0.1. Until then, run the kit from a clone. It needs Node 22 or later and git. It
-has no dependencies, so there is nothing to install:
+release on npm will be 0.1. Until then, run the kit from a clone. It needs Node 22 or later and git.
+It has no dependencies, so there is nothing to install:
 
 ```sh
 git clone https://github.com/adityapandya1/agentic-slicekit
 cd agentic-slicekit
 node bin/slicekit.js --version
 ```
+
+The last line prints the version the clone carries. Until 0.1 that is also 0.0.1; it comes from
+your clone, not from npm.
 
 `docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every choice
 made so far, and `BUILD.md` shows the order the kit is built in. The kit is built with itself.
@@ -40,6 +44,11 @@ account, no agent and no network.
 
 Run it from the root of your clone, in bash. On Windows, use Git Bash. The kit's own test runs these
 blocks as written, in order, in one shell.
+
+git needs a name and an email set (`git config --global user.name` and `user.email`), since the kit
+makes commits. If your git signs commits, it signs these too, and may ask for your key at each of
+them. To skip that for this run, run `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false`
+first.
 
 ### 1. A project to build in
 
@@ -63,18 +72,19 @@ of calling `gh`. `SLICEKIT_TRACKER_FIXTURE` does the same for issues.
 
 These are the steps in `examples/backend/README.md`. `init` adds the hooks, the Claude Code
 commands and the rest of the docs layout. `--cli` tells the hooks how to run the kit from your
-clone.
+clone. The path inside it is quoted, so a clone under a folder with a space in its name still works.
 
 ```sh
 cd "$WORK/greeting"
 git init -q -b main
 git remote add origin "$WORK/origin.git"
-node "$KIT/bin/slicekit.js" init --shape backend --cli "node $KIT/bin/slicekit.js"
+node "$KIT/bin/slicekit.js" init --shape backend --cli "node \"$KIT/bin/slicekit.js\""
 node "$KIT/bin/slicekit.js" status --write
 ```
 
 The kit's git hook refuses a commit on `main` unless `ALLOW_PROTECTED_COMMIT=1` is set. This first
-commit is the one time it is needed.
+commit is the one time it is needed. On Windows, git may print warnings that LF will be replaced by
+CRLF; they are harmless.
 
 ```sh
 git add -A
@@ -129,7 +139,6 @@ In `/slicekit build` the reviewer agent writes the verdict now. The copy here is
 no findings. `build verdict` checks it, commits it to the branch and prints the next step, `ci`.
 
 ```sh
-mkdir -p "$(dirname "$VERDICT")"
 cp "$KIT/examples/walkthrough/P1-S-01-r1.md" "$VERDICT"
 node "$KIT/bin/slicekit.js" build verdict P1/S-01 "$VERDICT" --worktree "$WT"
 ```
@@ -176,8 +185,9 @@ node "$KIT/bin/slicekit.js" build finish P1/S-01 --worktree .worktrees/review-P1
 ### 8. The merge
 
 A human merges. On GitHub you press Merge; here `host.js merge` makes the same merge in the bare
-repository. Then pull `main`, and `status --sync` reads the merge from the git host and moves the
-slice to `merged`.
+repository. The merge happened on the remote, and the slice's state is kept in files on `main`, so
+pull `main` first. Then `status --sync` reads the merge from the git host and moves the slice to
+`merged`.
 
 ```sh
 node "$KIT/examples/walkthrough/host.js" merge 1
@@ -186,15 +196,31 @@ node "$KIT/bin/slicekit.js" status --sync
 node "$KIT/bin/slicekit.js" status
 ```
 
-The last line reads `P1/S-01  merged  PR #1  Greet a name`. `$WORK` holds the project, the bare
-repository and the fixture directories. Remove it when you are done.
+The last line reads `P1/S-01  merged  PR #1  Greet a name`.
+
+### 9. Clean up
+
+Unset the two fixture variables. Otherwise a later slicekit command in this shell writes pull
+requests and issues into a folder you are about to delete, instead of calling `gh`. Then remove
+`$WORK`, which holds the project, the bare repository and the fixture directories.
+
+```sh
+unset SLICEKIT_GITHOST_FIXTURE SLICEKIT_TRACKER_FIXTURE
+```
 
 ## Scope
 
-The kit does not parse source code. Its graph is built from its own IDs and from git: requirements,
-decisions, slices, tests, commits, pull requests and releases. It infers no calls or imports. For a
-code graph, graphify or a similar tool sits alongside. With graphify installed as its own README
-says, one Claude Code session runs both: `/graphify .` for the code graph, then `/slicekit build`.
+The kit does not parse source code. Its graph, coming in Phase 3, will be built from its own IDs and
+from git: requirements, decisions, slices, tests, commits, pull requests and releases. It will infer
+no calls or imports. For a code graph,
+[graphify](https://github.com/Graphify-Labs/graphify) or a similar tool sits alongside. This line
+installs graphify and its Claude Code skill:
+
+```sh
+pip install graphifyy && graphify install
+```
+
+Then one Claude Code session runs both: `/graphify .` for the code graph, then `/slicekit build`.
 
 ## How the hooks find slicekit
 
@@ -202,7 +228,8 @@ says, one Claude Code session runs both: `/graphify .` for the code graph, then 
 repository has a local install, and `slicekit` otherwise, which needs slicekit on PATH. When neither
 is found, init still writes `slicekit` and warns that the hooks will fail until it is installed; it
 never fetches slicekit from the registry. `cli` in `.slicekit/config.json` (or `init --cli <command>`)
-overrides that choice, and init and update warn when the command does not answer `--version`. The hooks run from the session's working directory, so
-a worktree outside the repository tree needs an absolute path in `cli` or a global install (D-30).
+overrides that choice, and init and update warn when the command does not answer `--version`. The
+hooks run from the session's working directory, so a worktree outside the repository tree needs an
+absolute path in `cli` or a global install.
 
 License: MIT.

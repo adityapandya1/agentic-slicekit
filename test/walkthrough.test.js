@@ -504,6 +504,9 @@ test("the README walkthrough's commands exit 0 on examples/backend", { timeout: 
   }
   const tail = (s) => s.split('\n').slice(-40).join('\n');
   assert.equal(r.code, 0, `${tail(r.stderr)}\n--- stdout ---\n${tail(r.stdout)}`);
-  const slice = r.stdout.split('\n').filter((l) => /\bP1\/S-01\b/.test(l));
-  assert.match(slice.at(-1) ?? '', /\bmerged\b/, tail(r.stdout));
+  // The final `status`, not the `synced` line of `status --sync`.
+  const last = r.stdout.trimEnd().split('\n').at(-1) ?? '';
+  assert.match(last, /^P1\/S-01\s+merged\s+PR #1\b/, tail(r.stdout));
+  // init's hook probe answered: the --cli path is quoted and in a form Node reads.
+  assert.doesNotMatch(r.stderr, /did not answer/);
 });

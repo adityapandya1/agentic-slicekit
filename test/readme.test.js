@@ -40,18 +40,26 @@ test('the README opens with two sentences, then Status: preview, the walkthrough
   assert.match(status, /npm/);
   assert.match(status, /0\.0\.1/);
   assert.match(status, /placeholder/);
-  assert.match(status, /\b0\.1\b/);
+  // 0.1 as the first real release, not the 0.1 inside 0.0.1: no dot between the phrase and the
+  // number, and no `.<digit>` after it.
+  const firstRelease = /first\s+real\s+release[^.]*\b0\.1\b(?!\.\d)/;
+  assert.match(status, firstRelease);
+  assert.doesNotMatch('the first real release will be 0.0.1', firstRelease);
   assert.match(status, /Phases? 1 and 2/);
   assert.match(status, /Phases? 3 and 4/);
   assert.match(status, /git clone https:\/\/github\.com\/adityapandya1\/agentic-slicekit/);
   assert.match(status, /node bin\/slicekit\.js --version/);
-  assert.match(readme, /^License: MIT\.$/m);
+  assert.match(readme.trimEnd(), /\nLicense: MIT\.$/);
+  // No internal shorthand a newcomer cannot read: decision numbers, hook names.
+  assert.doesNotMatch(readme, /\bD-\d+\b/);
+  assert.doesNotMatch(readme, /on every stop/);
 });
 
 test('the scope line says the kit parses no source code and names graphify', () => {
   const scope = section('Scope');
   assert.match(scope, /does not parse (your )?source code/);
-  assert.match(scope, /graphify/);
+  assert.match(scope, /https:\/\/github\.com\/Graphify-Labs\/graphify/);
+  assert.match(scope, /```sh\npip install graphifyy && graphify install\n```/);
   // The one line that runs both in one Claude Code session.
   assert.match(scope, /`\/graphify [^`]*`[^\n]*`\/slicekit [^`]*`/);
 });
