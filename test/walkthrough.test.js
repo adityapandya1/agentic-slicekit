@@ -489,3 +489,21 @@ test('examples/walkthrough uses no banned phrase and says it is not an example p
   // It is no project: no kit config, so nothing treats it as one.
   assert.equal(fs.existsSync(path.join(WALK, '.slicekit')), false);
 });
+
+// The README's own walkthrough, run as a reader runs it from a checkout of the kit: every command
+// exits 0, and the last `status` shows the slice merged. A failing step names its README line.
+test("the README walkthrough's commands exit 0 on examples/backend", { timeout: 900_000 }, () => {
+  const readme = fs.readFileSync(path.join(KIT_ROOT, 'README.md'), 'utf8');
+  // mktemp honours TMPDIR, so the walkthrough's WORK lands in a directory this test removes.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-readme-'));
+  let r;
+  try {
+    r = runWalkthrough(walkthroughCommands(readme), { cwd: KIT_ROOT, env: { TMPDIR: tmp.split(path.sep).join('/') }, timeoutMs: 840_000 });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  const tail = (s) => s.split('\n').slice(-40).join('\n');
+  assert.equal(r.code, 0, `${tail(r.stderr)}\n--- stdout ---\n${tail(r.stdout)}`);
+  const slice = r.stdout.split('\n').filter((l) => /\bP1\/S-01\b/.test(l));
+  assert.match(slice.at(-1) ?? '', /\bmerged\b/, tail(r.stdout));
+});
