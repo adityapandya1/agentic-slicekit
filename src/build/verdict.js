@@ -15,18 +15,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { git, headSha, pushBranch } from '../git.js';
-import { verdictFileName, verdictFilePattern } from '../ids.js';
+import { sliceFromBranch, verdictFileName, verdictFilePattern } from '../ids.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
+import { INDEPENDENT_ONLY } from '../state/transitions.js';
 import { bannedPhrasesIn } from '../check/rules/style.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
+import { assertNotBehind } from './sync.js';
+import { GitHostError } from '../adapters/githost/errors.js';
+import { isReviewWorktreeAt, listWorktrees } from '../worktrees.js';
 import { BuildError, findWorktree, samePath } from './worktree.js';
 
-// The states a verdict is recorded from: the `in-review` edges.
+// The states a verdict is recorded from: the `in-review` edges. An independent verdict (D-39) is
+// also recorded from in-review, ci-green and ready, and sends a green slice back to review.
 const FROM = ['draft-pr', 'changes-requested'];
+const fromStates = (independent) => (independent ? [...FROM, ...INDEPENDENT_ONLY] : FROM);
+const orList = (xs) => (xs.length < 3 ? xs.join(' or ') : `${xs.slice(0, -1).join(', ')} or ${xs.at(-1)}`);
 export const LOOP_ROUNDS = 2;
 const REVIEWS = '.slicekit/reviews';
 const BLOCKED = 'Reviewer blocked';
@@ -130,9 +137,14 @@ const inSessionRoot = (root, name) => path.resolve(root, ...REVIEWS.split('/'), 
 // with k the slice's verdict count plus one; null once the in-loop rounds are used (D-18). `build pr`
 // and `build verdict` print it so the procedure never computes k.
 export function nextVerdictPath(root, id, verdicts = []) {
-  if (inLoop(verdicts) >= LOOP_ROUNDS) return null;
+  // Once an independent review has given a verdict, the next review is a new session's `review start`.
+  if (inLoop(verdicts) >= LOOP_ROUNDS || verdicts.some((v) => v.independent)) return null;
   return inSessionRoot(root, verdictFileName(id, verdicts.length + 1));
 }
+
+// The absolute session-root path an independent reviewer writes, `<root>/.slicekit/reviews/<P-S>i-r<k>.md`
+// with k the slice's verdict count plus one: `review start` prints it.
+export const independentVerdictPath = (root, id, verdicts = []) => inSessionRoot(root, verdictFileName(id, verdicts.length + 1, { independent: true }));
 
 // The latest recorded verdict's session-root path, or null: `build verdict` with it re-prints that
 // round's next step and records nothing again (a session resumed at in-review).
@@ -142,20 +154,22 @@ export function latestVerdictPath(root, verdicts = []) {
 }
 
 // The next verdict path after a round: only when the round asks for a fix or a should-have decision
-// and another in-loop round is allowed; `stuck` and `ci` name none.
-const withNextPath = (root, id, result, verdicts) => ({
+// and another in-loop round is allowed; `stuck` and `ci` name none. After an independent verdict
+// there is no in-loop path: the next independent round's path comes from `review start`.
+const withNextPath = (root, id, result, verdicts, independent) => ({
   ...result,
-  verdictPath: result.next === 'fix' || result.next === 'ask' ? nextVerdictPath(root, id, verdicts) : null,
+  verdictPath: !independent && (result.next === 'fix' || result.next === 'ask') ? nextVerdictPath(root, id, verdicts) : null,
 });
 
-// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never `stuck`.
+// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never
+// `stuck`, and without blockers it goes to CI; its should-haves are the review procedure's to list.
 function outcome(k, v, verdicts, independent) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
   const shouldHaves = v.findings.filter((f) => f.kind === 'should-have').map((f) => f.id);
   const roundsUsed = inLoop(verdicts);
   let next = 'ci';
   if (blockers.length > 0) next = independent || roundsUsed < LOOP_ROUNDS ? 'fix' : 'stuck';
-  else if (shouldHaves.length > 0) next = 'ask';
+  else if (shouldHaves.length > 0 && !independent) next = 'ask';
   return { round: k, blockers, shouldHaves, roundsUsed, next };
 }
 
@@ -174,12 +188,14 @@ function quoted(wrong) {
 }
 
 // The pull request body's "Reviewer blocked" (REQ-2.10) over the slice's verdicts in round order,
-// each `{round, findings}` with findings as parseVerdict reads them. A blocker of an earlier round
-// that the latest does not hold is fixed in the round after its last appearance. Each blocker of the
-// latest is open after the round it was first seen in, or, when the loop stopped (`stuck`), not
-// fixed after the latest round. `nothing` when there are none. Round numbers are shared with
-// independent rounds, so each names the real round.
-export function reviewerBlocked(verdicts, { stuck = false } = {}) {
+// each `{round, findings, headSha?, independent?}` with findings as parseVerdict reads them. A
+// blocker of an earlier round that the latest does not hold is fixed in the round after its last
+// appearance when code changed between the two verdicts' heads; when only bookkeeping lies between
+// them (`covers(from, to)`, by default the same sha), the next verdict just did not raise it. Each
+// blocker of the latest is open after the round it was first seen in, or, when the loop stopped
+// (`stuck`), not fixed after the latest round. `nothing` when there are none. Round numbers are
+// shared with independent rounds, so each names the real round.
+export function reviewerBlocked(verdicts, { stuck = false, covers = sameHead } = {}) {
   const sorted = [...verdicts].sort((a, b) => a.round - b.round);
   const latest = sorted.at(-1);
   const open = new Set(blockersOf(latest).map((f) => f.id));
@@ -189,7 +205,11 @@ export function reviewerBlocked(verdicts, { stuck = false } = {}) {
   const fixed = new Map();
   sorted.slice(0, -1).forEach((v, i) => {
     for (const f of blockersOf(v)) {
-      if (!open.has(f.id)) fixed.set(f.id, `${f.id} ${quoted(f.wrong)} — fixed in round ${sorted[i + 1].round}`);
+      if (open.has(f.id)) continue;
+      const after = sorted[i + 1];
+      const unchanged = typeof v.headSha === 'string' && typeof after.headSha === 'string' && covers(v.headSha, after.headSha);
+      const how = !unchanged ? 'fixed in' : after.independent ? 'not raised by the independent review in' : 'not raised in';
+      fixed.set(f.id, `${f.id} ${quoted(f.wrong)} — ${how} round ${after.round}`);
     }
   });
   const out = [...fixed.values()];
@@ -201,7 +221,11 @@ export function reviewerBlocked(verdicts, { stuck = false } = {}) {
 
 // The recorded verdicts as reviewerBlocked takes them, read from their files in the worktree.
 const parsedVerdicts = (wt, verdicts) =>
-  verdicts.map((x) => ({ round: x.round, findings: committedVerdict(wt, x.path).findings }));
+  verdicts.map((x) => ({ round: x.round, findings: committedVerdict(wt, x.path).findings, headSha: x.headSha, independent: Boolean(x.independent) }));
+
+const sameHead = (a, b) => a === b;
+// Whether only the kit's bookkeeping lies between two verdicts' heads in the worktree.
+const coversIn = (wt) => (a, b) => headCovers(wt, a, b);
 
 const BREAKS = 'the section would break the body: ';
 
@@ -226,7 +250,7 @@ function withBlocked(host, number, text, cfg) {
 // Sets the pull request's "Reviewer blocked" from the recorded verdict files, writing the body only
 // when the line changes.
 function updateBlocked(wt, cfg, host, number, verdicts, stuck) {
-  const { next, problems } = withBlocked(host, number, reviewerBlocked(parsedVerdicts(wt, verdicts), { stuck }), cfg);
+  const { next, problems } = withBlocked(host, number, reviewerBlocked(parsedVerdicts(wt, verdicts), { stuck, covers: coversIn(wt) }), cfg);
   if (problems.length > 0) throw new BuildError(`cannot set "${BLOCKED}" on pull request #${number}: ${problems.join('; ')}`);
   if (next !== null) host.updatePullRequestBody(number, next);
 }
@@ -248,14 +272,34 @@ function bannedProblems(cfg, v, text, shown) {
   return out;
 }
 
-// After a round is recorded: a stopped loop records changes-requested (once), then the branch is
-// pushed and the body's "Reviewer blocked" brought up to date.
-function finish(wt, cfg, host, id, current, result, verdicts) {
+// The round is committed and recorded when this runs; a host failure says so, and a re-run of the
+// same command resumes and finishes it.
+function markDraft(host, number, round) {
+  try {
+    if (host.getPullRequest(number).draft === false) host.markDraft(number);
+  } catch (e) {
+    if (!(e instanceof GitHostError)) throw e;
+    throw new BuildError(`could not mark pull request #${number} draft: ${e.message}; round ${round} is recorded locally; run the same command again to finish`);
+  }
+}
+
+// After a round is recorded: a stopped loop records changes-requested (once); an independent verdict
+// with blockers that sent a green slice back to review (D-39) marks a ready pull request draft again,
+// so the host agrees with the state, and a clean one leaves it as it is, so GitHub does not notify
+// its reviewers a second time; then the branch is pushed and the body's "Reviewer blocked" brought up to date.
+function finish(wt, cfg, host, id, current, result, verdicts, independent) {
   const stuck = result.next === 'stuck';
   if (stuck && current.state === 'in-review') recordState(wt, cfg, id, 'changes-requested', {});
+  if (independent && current.state === 'in-review' && result.blockers.length > 0) markDraft(host, current.pr.number, result.round);
   push(wt, cfg);
   updateBlocked(wt, cfg, host, current.pr.number, verdicts, stuck);
   return result;
+}
+
+// The path of the slice's review worktree, or null when review start has not made one.
+function reviewWorktreeOf(root, id) {
+  const w = listWorktrees(root).find((x) => x.branch !== null && sliceFromBranch(x.branch) === id && isReviewWorktreeAt(x.path, id));
+  return w ? w.path : null;
 }
 
 // The verdict is given on the recorded head; code committed since has not been through build pr.
@@ -269,13 +313,26 @@ function assertBuilt(wt, id, current) {
 // finding IDs; `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
 // `stuck` is returned, not thrown: the loop has stopped and changes-requested is recorded, and a
 // caller must exit 1 on it (the CLI does). `verdictPath` is the next round's file (nextVerdictPath)
-// on `fix` or `ask`, else null.
+// on `fix` or `ask` of an in-loop verdict, else null.
+//
+// `independent` (D-39): the verdict of an independent review, named `<P-S>i-r<k>.md`, recorded from
+// the review worktree `review start` makes, from draft-pr, changes-requested, in-review, ci-green or
+// ready, outside the two in-loop rounds.
 export function recordVerdict(root, cfg, host, id, file, { worktree, independent = false } = {}) {
-  const wt = findWorktree(root, id, { worktree }).path;
+  // Without --worktree an independent verdict goes to the review worktree when there is one; with
+  // none, the build worktree is found and refused below.
+  const review = independent && worktree === undefined ? reviewWorktreeOf(root, id) : null;
+  const held = findWorktree(root, id, { worktree: review ?? worktree });
+  const wt = held.path;
   const shown = typeof file === 'string' ? file.split(path.sep).join('/') : String(file);
   const name = path.basename(String(file));
   const m = verdictFilePattern(id, { independent }).exec(name);
-  if (!m) throw new BuildError(`a verdict of ${id} is named ${verdictFileName(id, '<k>', { independent })}`, 2);
+  if (!m) {
+    // The name and the flag disagree: an `i` name without --independent, or --independent without one.
+    const crossed = verdictFilePattern(id, { independent: !independent }).test(name);
+    const want = crossed ? `an independent verdict is named ${verdictFileName(id, '<k>', { independent: true })}` : `a verdict of ${id} is named ${verdictFileName(id, '<k>', { independent })}`;
+    throw new BuildError(want, 2);
+  }
   const k = Number(m[2]);
   const src = path.resolve(root, String(file));
   const dest = path.join(wt, ...REVIEWS.split('/'), name);
@@ -284,11 +341,28 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   const current = readSlice(wt, cfg, id);
   const verdicts = current.verdicts ?? [];
 
+  // The building session never approves itself through its own worktree: an independent verdict is
+  // recorded only in the review worktree `review start` makes, decided by its path and its branch
+  // together, and never in the worktree `build start` made. That the session is fresh is the
+  // person's to keep (D-18).
+  if (independent && !isReviewWorktreeAt(held.path, id)) {
+    throw new BuildError(`an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`);
+  }
   // This round is the latest recorded: a run that stopped after recording it (before changes-requested,
   // the push or the body). Finish what is left; record the round nothing more. The push carries only
   // what build pr has seen.
   const last = verdicts.at(-1);
-  if (['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel) {
+  const resuming = ['in-review', 'changes-requested'].includes(current.state) && last?.round === k && last.path === rel;
+
+  // Every path below pushes: a worktree behind its branch on origin takes the other worktree's
+  // commits first (build sync), before anything moves. Only a round already recorded is finished on
+  // the last fetch when origin cannot be reached; a new round needs a fresh one, so a stale worktree
+  // never records on a head origin has moved past.
+  assertNotBehind(wt, held.branch, id, {
+    onFetchFail: resuming ? 'last-fetch' : `could not reach origin to check ${held.branch}; a new verdict needs a fresh fetch`,
+  });
+
+  if (resuming) {
     assertBuilt(wt, id, current);
     // The round as committed: a hand edit of the working copy since does not change what it says.
     const text = committedVerdictText(wt, rel);
@@ -297,14 +371,15 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts), verdicts);
+    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts, independent), verdicts, independent);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
   if (!independent && inLoop(verdicts) >= LOOP_ROUNDS) throw new BuildError('two review rounds used; the loop stopped (D-18)');
 
-  if (!FROM.includes(current.state)) {
-    throw new BuildError(`${id} is ${current.state}; build verdict runs from ${FROM.join(' or ')}`);
+  const from = fromStates(independent);
+  if (!from.includes(current.state)) {
+    throw new BuildError(`${id} is ${current.state}; build verdict runs from ${orList(from)}`);
   }
   if (k !== verdicts.length + 1) throw new BuildError(`the next verdict of ${id} is round ${verdicts.length + 1}, not ${k}`);
   assertBuilt(wt, id, current);
@@ -317,7 +392,10 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   if (banned.length > 0) throw new BuildError(banned.join('\n'));
   // The line this round would write, judged against the live body before anything moves.
   const stuck = outcome(k, v, [...verdicts, { independent }], independent).next === 'stuck';
-  const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings }], { stuck });
+  const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings, headSha: current.pr.headSha, independent }], {
+    stuck,
+    covers: coversIn(wt),
+  });
   const { problems } = withBlocked(host, current.pr.number, line, cfg);
   if (problems.length > 0) {
     throw new BuildError(problems.map((p) => `verdict ${shown}: the Reviewer blocked line would break the pull request body: ${p}`).join('\n'));
@@ -328,5 +406,5 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts), state.verdicts);
+  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts, independent), state.verdicts, independent);
 }

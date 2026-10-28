@@ -19,6 +19,20 @@ function bookkeeping(root) {
   };
 }
 
+const inBookkeeping = ({ dirs, files }, f) => files.includes(f) || dirs.some((d) => f.startsWith(d));
+
+// A test of whether a repository-relative POSIX path of the repository at `root` is bookkeeping,
+// with the bookkeeping paths worked out once (one git process) for every path it is asked about.
+export function bookkeepingTest(root) {
+  const kept = bookkeeping(root);
+  return (rel) => inBookkeeping(kept, rel);
+}
+
+// Whether `rel`, a repository-relative POSIX path of the repository at `root`, is bookkeeping.
+export function isBookkeepingPath(root, rel) {
+  return bookkeepingTest(root)(rel);
+}
+
 export function headCovers(root, from, to) {
   if (!isSha(from) || !isSha(to)) return false;
   if (sameSha(from, to)) return true;
@@ -35,8 +49,8 @@ export function headCovers(root, from, to) {
     }
     const out = git(root, ['diff', '--name-only', '--no-renames', a, b, '--']);
     const changed = out === '' ? [] : out.split('\n');
-    const { dirs, files } = bookkeeping(root);
-    return changed.every((f) => files.includes(f) || dirs.some((d) => f.startsWith(d)));
+    const kept = bookkeeping(root);
+    return changed.every((f) => inBookkeeping(kept, f));
   } catch (e) {
     if (e instanceof GitError) return false;
     throw e;

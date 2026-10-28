@@ -1087,7 +1087,7 @@ test('build pr refuses a worktree behind its branch on origin', async () => {
     const head = git(p.wt, ['rev-parse', 'HEAD']);
     const r = await p.pr();
     assert.equal(r.code, 1);
-    assert.ok(r.stderr.includes('origin/slice/P1-S-01-thing-1 has commits this worktree does not: pull first'), r.stderr);
+    assert.equal(r.stderr, 'slicekit: slice/P1-S-01-thing-1 is 1 commit behind origin; run slicekit build sync P1/S-01\n');
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.equal(stateIn(p.wt).state, 'building');
     assert.deepEqual(prCalls(p.host), []);
@@ -1248,8 +1248,11 @@ test('the procedure and the developer brief pass the brief lint', () => {
   assert.equal(procedure.match(/\{\{args\}\}/g)?.length, 1, '{{args}}');
   assert.ok(procedure.includes('run no git or gh command yourself'), procedure);
   assert.ok(procedure.includes('`<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`'), procedure);
-  // Pull refusals go to the human, since the procedure runs no git.
-  assert.match(procedure, /pull first[\s\S]{0,200}human/);
+  // The default branch's pull refusal goes to the human, since the procedure runs no git; a slice
+  // branch behind origin is synced by the command it names.
+  assert.match(procedure, /default branch is behind origin\s+\(`pull first`\)[\s\S]{0,120}human/);
+  assert.ok(procedure.includes('ends `run slicekit build sync <id>`'), procedure);
+  assert.doesNotMatch(procedure, /is not in the worktree; pull first/);
   // `nothing to commit` is success; the notes file's shape and place are stated.
   assert.ok(procedure.includes('`nothing to commit`'), procedure);
   assert.ok(procedure.includes('a list of exactly three strings'), procedure);

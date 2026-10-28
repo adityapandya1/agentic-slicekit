@@ -10,7 +10,7 @@ import { kitPaths } from '../paths.js';
 import { EXEMPT_TITLE, readCiEvent } from '../check/ci-event.js';
 import { titleSlice } from '../check/rules/ci-title.js';
 import { readSlice } from '../state/index.js';
-import { READY_LABEL, READY_LABEL_COLOR, READY_LABEL_DESCRIPTION, decideReady } from '../ready-label.js';
+import { READY_LABEL, READY_LABEL_COLOR, READY_LABEL_DESCRIPTION, decideReady, withBaseReviewMode } from '../ready-label.js';
 import { getHost } from '../adapters/githost/index.js';
 
 const USAGE = 'ready-label';
@@ -42,7 +42,11 @@ function decide(root, env, pr) {
       return { slice, ready: false, reason: `slice ${slice} has no state file` };
     }
     const state = readSlice(root, cfg, slice);
-    return { slice, ...decideReady(state, cfg, { headSha: pr.headSha ?? undefined, number: pr.number, root }) };
+    // review.independent comes from the base branch on origin, never from the pull request's own
+    // checkout, so a pull request cannot switch off its independent-review gate. GitHub names the
+    // base in GITHUB_BASE_REF; the config's defaultBranch is the fallback.
+    const gate = withBaseReviewMode(root, cfg, env.GITHUB_BASE_REF || cfg.defaultBranch);
+    return { slice, ...decideReady(state, gate, { headSha: pr.headSha ?? undefined, number: pr.number, root }) };
   } catch (e) {
     return { slice, ready: false, reason: e.message };
   }

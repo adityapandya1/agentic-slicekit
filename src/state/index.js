@@ -117,6 +117,9 @@ function resolveShas(root, ev) {
   return out;
 }
 
+// The only states backfill records.
+const BACKFILL_TO = ['draft-pr', 'merged'];
+
 export function setState(root, cfg, id, to, evidence = {}) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
@@ -127,20 +130,15 @@ export function setState(root, cfg, id, to, evidence = {}) {
     if (typeError) throw new TransitionError(typeError);
     const ev = resolveShas(root, given);
     if (backfill) {
+      // Backfill adopts a slice built outside the loop: an open pull request or a merge. A review,
+      // CI or ready state is recorded only by the build commands, whose checks backfill would skip.
+      if (!BACKFILL_TO.includes(to)) throw new TransitionError('backfill records only draft-pr or merged; later states come from the build commands');
       if (current.state !== 'todo') throw new TransitionError('backfill is only allowed from todo');
       const missing = rule.required.filter((k) => ev[k] === undefined);
       if (missing.length > 0) throw new TransitionError(`backfill to ${to} needs ${missing.join(', ')}`);
-      if (['draft-pr', 'ci-green', 'merged'].includes(to)) {
-        const pr = ev.pr;
-        if (!pr || !Number.isInteger(pr.number) || typeof pr.headSha !== 'string' || pr.headSha === '') {
-          throw new TransitionError(`backfill to ${to} needs pr.number and pr.headSha`);
-        }
-      }
-      if (to === 'ready' && cfg.review.independent !== 'optional') {
-        const v = ev.verdict;
-        if (!v || v.independent !== true || v.blockers !== 0) {
-          throw new TransitionError('backfill to ready needs an independent verdict with no blockers');
-        }
+      const pr = ev.pr;
+      if (!pr || !Number.isInteger(pr.number) || typeof pr.headSha !== 'string' || pr.headSha === '') {
+        throw new TransitionError(`backfill to ${to} needs pr.number and pr.headSha`);
       }
     } else {
       if (!allowedMove(current.state, to, ev)) {

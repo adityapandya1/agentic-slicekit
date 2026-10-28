@@ -12,16 +12,24 @@ import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli, binPath } from './helpers/run-cli.js';
 import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
 
-function withKit(fn, { slices = 1, freeze = true, commits = 0 } = {}) {
+// The kit in a fresh repository. With no commits, it runs in P1/S-01's review worktree, made as an
+// orphan (no commit needed), since an independent verdict is recorded only there (D-39); `review:
+// false` keeps it in the main checkout.
+function withKit(fn, { slices = 1, freeze = true, commits = 0, review = commits === 0 } = {}) {
   const repo = makeRepo({ commits });
   try {
-    init(repo.root, { name: 'demo', shape: 'backend' });
-    const cfgFile = path.join(repo.root, '.slicekit', 'config.json');
+    let root = repo.root;
+    if (review) {
+      root = path.join(repo.root, '.worktrees', 'review-P1-S-01');
+      execFileSync('git', ['worktree', 'add', '-q', '--orphan', '-b', 'slice/P1-S-01-review', root], { cwd: repo.root, stdio: 'pipe' });
+    }
+    init(root, { name: 'demo', shape: 'backend' });
+    const cfgFile = path.join(root, '.slicekit', 'config.json');
     const raw = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
     raw.freezeTests = freeze;
     fs.writeFileSync(cfgFile, JSON.stringify(raw, null, 2));
-    const ids = writeSliceFixtures(repo.root, slices);
-    return fn(repo.root, loadConfig(repo.root), ids);
+    const ids = writeSliceFixtures(root, slices);
+    return fn(root, loadConfig(root), ids);
   } finally {
     repo.cleanup();
   }
@@ -59,7 +67,7 @@ test('states are the ten in order', () => {
   assert.equal(STATES.length, 10);
   assert.equal(STATES[0], 'todo');
   assert.deepEqual(nextStates('todo'), ['tests-red']);
-  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green', 'draft-pr']);
+  assert.deepEqual(nextStates('in-review').sort(), ['changes-requested', 'ci-green', 'draft-pr', 'in-review']);
   assert.deepEqual(nextStates('released'), []);
 });
 
@@ -230,6 +238,26 @@ test('skipping a state is refused', () => {
   });
 });
 
+// D-39: an independent verdict can send a green slice back to review; an in-loop one cannot.
+test('ci-green moves to in-review only on an independent verdict', () => {
+  withKit((root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
+    setState(root, cfg, id, 'ci-green', green());
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 2, 1, false))), 'ci-green takes only an independent verdict');
+    const s = setState(root, cfg, id, 'in-review', verdict(root, 2, 1, true));
+    assert.equal(s.state, 'in-review');
+    assert.deepEqual(s.verdicts.at(-1), { round: 2, path: 'v2.md', blockers: 1, independent: true, headSha: HEAD });
+    assert.equal(s.history.at(-1).from, 'ci-green');
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 3, 0, false))), 'in-review takes only an independent verdict');
+    setState(root, cfg, id, 'in-review', verdict(root, 3, 0, true));
+    setState(root, cfg, id, 'ci-green', green());
+    setState(root, cfg, id, 'ready', {});
+    assert.equal(refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 4, 0, false))), 'ready takes only an independent verdict');
+    assert.equal(setState(root, cfg, id, 'in-review', verdict(root, 4, 0, true)).history.at(-1).from, 'ready');
+  });
+});
+
 test('changes-requested can go back to draft-pr after a fix push', () => {
   withKit((root, cfg, [id]) => {
     toDraftPr(root, cfg, id);
@@ -250,7 +278,7 @@ test('backfill skips the from check and records by backfill', () => {
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1 } })), /pr.headSha/);
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1.5, headSha: HEAD } })), /pr.number/);
     assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 1 } })), /pr.headSha/);
-    assert.match(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: HEAD, status: 'success' } })), /pr.number and pr.headSha/);
+    assert.equal(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: HEAD, status: 'success' } })), 'backfill records only draft-pr or merged; later states come from the build commands');
     const s = setState(root, cfg, id, 'merged', {
       backfill: true,
       mergedAt: AT,
@@ -308,7 +336,7 @@ test('write is atomic: 20 slices in one process, 5 parallel processes', async ()
     const ids = writeSliceFixtures(repo.root, 20);
     const cfg = loadConfig(repo.root);
     await Promise.all(
-      ids.map(async (id) => setState(repo.root, cfg, id, 'tests-red', { backfill: true, commit: RED, tests: ['f.js'] })),
+      ids.map(async (id) => setState(repo.root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: ['f.js'] })),
     );
     const procs = ids.slice(0, 5).map(
       (id) =>
@@ -429,7 +457,7 @@ test('in a repository with commits, the commit must resolve and short shas are s
       assert.equal(s.history.at(-1).evidence.commit, full);
       setState(root, cfg, id, 'building', {});
       assert.equal(setState(root, cfg, id, 'draft-pr', push(short)).pr.headSha, full);
-      setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+      setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
       assert.equal(setState(root, cfg, id, 'ci-green', green(short)).ci.sha, full);
     },
     { commits: 1 },
@@ -445,7 +473,7 @@ test('a head sha the repository cannot resolve stays as given; ci-green matches 
       setState(root, cfg, id, 'building', {});
       setState(root, cfg, id, 'draft-pr', push(HEAD));
       assert.equal(readSlice(root, cfg, id).pr.headSha, HEAD);
-      setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+      setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
       assert.match(refusal(() => setState(root, cfg, id, 'ci-green', green('abc1235'))), /sha/);
       assert.equal(setState(root, cfg, id, 'ci-green', green(`${HEAD}${'0'.repeat(33)}`)).state, 'ci-green');
     },
@@ -494,14 +522,37 @@ test('backfill from a non-todo state is refused', () => {
   });
 });
 
-test('backfill to ready under required needs an independent clean verdict', () => {
+// Backfill adopts a slice built outside the loop: it records an open pull request or a merge, never
+// a review, CI or ready state, which only the build commands record (so no hand-committed verdict
+// reaches ready through it).
+test('backfill records only draft-pr or merged', () => {
   withKit((root, cfg, [id]) => {
-    const bad = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: false } };
-    assert.match(refusal(() => setState(root, cfg, id, 'ready', bad)), /independent/);
-    assert.match(refusal(() => setState(root, cfg, id, 'ready', { backfill: true })), /independent/);
-    const good = { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: true } };
-    assert.equal(setState(root, cfg, id, 'ready', good).state, 'ready');
+    fs.writeFileSync(path.join(root, 'v.md'), '');
+    const verdict = { round: 1, path: 'v.md', blockers: 0, independent: true };
+    const tries = {
+      'tests-red': { commit: RED, testExit: 1, tests: ['a.test.js'] },
+      building: {},
+      'in-review': { verdict },
+      'changes-requested': {},
+      'ci-green': { pr: PR, ci: { sha: HEAD, status: 'success' } },
+      ready: { pr: PR, verdict },
+      released: { release: 'v.md' },
+    };
+    for (const [to, ev] of Object.entries(tries)) {
+      assert.equal(refusal(() => setState(root, cfg, id, to, { backfill: true, ...ev })), 'backfill records only draft-pr or merged; later states come from the build commands', to);
+    }
+    assert.equal(readSlice(root, cfg, id).state, 'todo');
   });
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend' });
+    const id = writeSliceFixture(repo.root, { n: 1 });
+    const r = runCli(['state', 'set', id, 'ready', '--backfill', '--verdict', 'v.md', '--round', '1', '--blockers', '0', '--independent'], { cwd: repo.root });
+    assert.equal(r.code, 1);
+    assert.equal(r.stderr.trim(), 'refused: backfill records only draft-pr or merged; later states come from the build commands');
+  } finally {
+    repo.cleanup();
+  }
 });
 
 test('a string for tests is refused, as is a bad number', () => {
@@ -565,7 +616,7 @@ test('parallel processes writing the same slice all land', async () => {
     const [id] = writeSliceFixtures(repo.root, 1);
     const cfg = loadConfig(repo.root);
     const paths = ['a.js', 'b.js', 'c.js', 'd.js'];
-    setState(repo.root, cfg, id, 'tests-red', { backfill: true, commit: RED, tests: paths });
+    setState(repo.root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: paths });
     const codes = await Promise.all(paths.map((p) => spawnCli(['state', 'unfreeze', id, p], repo.root)));
     assert.deepEqual(codes, [0, 0, 0, 0]);
     const s = readSlice(repo.root, cfg, id);
@@ -600,8 +651,8 @@ test('a held lock is a one-line message and exit 2 from state and status, after 
     const [id] = writeSliceFixtures(repo.root, 1);
     const cfg = loadConfig(repo.root);
     const dir = kitPaths(repo.root, cfg).state;
-    // A slice parked at ready, so status --sync tries to write it.
-    setState(repo.root, cfg, id, 'ready', { backfill: true, verdict: { round: 1, path: 'v.md', blockers: 0, independent: true } });
+    // A slice parked at draft-pr, so status --sync tries to write it.
+    setState(repo.root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 14, headSha: 'abc1234def5678', title: '[P1/S-01] x' } });
     const file = path.join(dir, 'P1-S-01.json');
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     fs.writeFileSync(file, JSON.stringify({ ...raw, pr: { number: 14, headSha: 'abc1234def5678' } }));
@@ -677,5 +728,20 @@ test('ci-green accepts CI on a later head that only adds bookkeeping', () => {
       fs.mkdirSync(path.join(root, 'src'), { recursive: true });
       fs.writeFileSync(path.join(root, 'src', 'x.js'), 'export const x = 1;\n');
     },
+  );
+});
+
+// Whole-branch I-1: an independent verdict is recorded only where the review worktree is, whatever
+// command records it; a root with no worktree to check refuses it.
+test('an independent verdict outside the review worktree is refused', () => {
+  withKit(
+    (root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    assert.equal(
+      refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 1, 0))),
+      'an independent verdict is recorded from the review worktree; run slicekit review start 7 in a new session',
+    );
+    },
+    { review: false },
   );
 });

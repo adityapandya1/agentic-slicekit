@@ -15,15 +15,18 @@ import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
 import { declineFinding } from '../build/decline.js';
 import { finish } from '../build/finish.js';
+import { startParallel } from '../build/parallel.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
+import { syncWorktree } from '../build/sync.js';
 import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
+import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> --notes <file> [--worktree <p>] | build verdict <id> <file> [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -35,6 +38,7 @@ const OPTIONS = {
   reason: { type: 'string' },
   notes: { type: 'string' },
   wait: { type: 'string' },
+  independent: { type: 'boolean' },
 };
 
 function next(root, io, positionals) {
@@ -64,10 +68,30 @@ function start(root, io, positionals, values) {
     return 0;
   }
   // At in-review the latest round is recorded and its next step not yet acted on: `build verdict`
-  // with that round's file re-prints the step and records nothing again.
-  const latest = state === 'in-review' ? latestVerdictPath(root, readSlice(worktree, cfg, positionals[0]).verdicts ?? []) : null;
-  io.stdout(`resumed ${where} at ${state}\n${latest ? `verdict ${latest}\n` : ''}`);
+  // with that round's file re-prints the step and records nothing again. After an independent round
+  // that file is recorded only from the review worktree: the next review is a new session's.
+  const current = state === 'in-review' ? readSlice(worktree, cfg, positionals[0]) : null;
+  const last = current?.verdicts?.at(-1);
+  let line = '';
+  if (last?.independent) line = `next review: /slicekit review ${current.pr?.number ?? '<PR>'} in a new session\n`;
+  else if (last) line = `verdict ${latestVerdictPath(root, current.verdicts)}\n`;
+  io.stdout(`resumed ${where} at ${state}\n${line}`);
   return 0;
+}
+
+// Prints `<id> <worktree> <branch>` for each slice started, and a refusal on stderr for each that
+// was not, `held in <where>` for one another clone holds. Each start is claimed on its own, so the ones that started stay started when another
+// fails: the exit is 0 only when every runnable slice of the step started, else 1, with the started
+// lines still printed so the caller knows which worktrees exist.
+function parallel(root, io, positionals) {
+  if (positionals.length !== 1 || !/^P\d+$/.test(positionals[0])) return usage(io);
+  const cfg = loadConfig(root);
+  const outcomes = startParallel(root, cfg, positionals[0], { onWarning: (msg) => io.stderr(`${msg}\n`) });
+  for (const o of outcomes) {
+    if (o.error === undefined) io.stdout(`${o.id} ${path.resolve(o.worktree).split(path.sep).join('/')} ${o.branch}\n`);
+    else io.stderr(`slicekit: ${o.id} not started: ${o.error}\n`);
+  }
+  return outcomes.every((o) => o.error === undefined || o.held) ? 0 : 1;
 }
 
 function redStep(root, io, positionals, values) {
@@ -99,7 +123,7 @@ function amendStep(root, io, positionals, values) {
 }
 
 function prStep(root, io, positionals, values) {
-  if (positionals.length !== 1 || values.notes === undefined) return usage(io);
+  if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
   const { number, url, verdictPath } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
@@ -109,12 +133,15 @@ function prStep(root, io, positionals, values) {
 }
 
 // Prints the next step, the round's finding IDs and the in-loop rounds used; a stopped loop (D-18)
-// also says so and exits 1.
+// also says so and exits 1. `--independent` records an independent review's verdict (D-39).
 function verdictStep(root, io, positionals, values) {
   if (positionals.length !== 2) return usage(io);
   const cfg = loadConfig(root);
   const [id, file] = positionals;
-  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, { worktree: values.worktree });
+  const r = recordVerdict(root, cfg, getHost(cfg, io.env ?? process.env, root), id, file, {
+    worktree: values.worktree,
+    independent: Boolean(values.independent),
+  });
   const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
   const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
   if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
@@ -140,7 +167,8 @@ function declineStep(root, io, positionals, values) {
   return 0;
 }
 
-// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head.
+// Prints `ci-green` and the CI run's URL once CI succeeds on the pull request's live head, then
+// `ready`, or that the slice is waiting for an independent review.
 function finishStep(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   let wait;
@@ -149,12 +177,24 @@ function finishStep(root, io, positionals, values) {
     wait = Number(values.wait);
   }
   const cfg = loadConfig(root);
-  const { ci } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
+  const { ci, ready, reason, number } = finish(root, cfg, getHost(cfg, io.env ?? process.env, root), positionals[0], { worktree: values.worktree, ...(wait === undefined ? {} : { wait }) });
   io.stdout(`ci-green\n${ci.url ?? `passed on ${ci.sha.slice(0, 7)}`}\n`);
+  if (ready) io.stdout('ready\n');
+  else if (reason === INDEPENDENT_MISSING) io.stdout(`ready: waiting for an independent review; run /slicekit review ${number} in a new session\n`);
+  else io.stdout(`ready: not yet: ${reason}\n`);
   return 0;
 }
 
-const HANDLERS = { next, start, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep };
+// Prints the worktree's head once it is fast-forwarded to its branch on origin.
+function syncStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  const cfg = loadConfig(root);
+  const { head } = syncWorktree(root, cfg, positionals[0], { worktree: values.worktree });
+  io.stdout(`${head}\n`);
+  return 0;
+}
+
+const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

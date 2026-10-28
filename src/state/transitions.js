@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDate, isSha, sameSha } from '../evidence.js';
+import { isReviewWorktreeAt } from '../worktrees.js';
 import { headCovers } from './covers.js';
 
 export const STATES = [
@@ -44,14 +45,18 @@ const onHead = (current, ctx) => verdictsOnHead(current, current.pr?.headSha, ct
 
 // The independent-review rule `ready` and the ready label share: the latest independent verdict on
 // the head decides, so a later independent verdict with blockers is not hidden by an earlier clean one.
+export const INDEPENDENT_MISSING = 'independent review missing';
 export function independentProblem(verdicts) {
   const ind = verdicts.filter((v) => v.independent).at(-1);
-  if (!ind) return 'independent review missing';
+  if (!ind) return INDEPENDENT_MISSING;
   if (ind.blockers !== 0) return `independent review found ${ind.blockers} blocker${ind.blockers === 1 ? '' : 's'}`;
   return null;
 }
 
 const SHA_SHAPE = '7 to 40 lowercase hex characters';
+
+// The states in-review is reached from only on an independent verdict (D-39).
+export const INDEPENDENT_ONLY = ['in-review', 'ci-green', 'ready'];
 
 // Every evidence value that is given must have the right type, whatever the target state.
 export function validateEvidence(ev) {
@@ -150,11 +155,20 @@ export const TRANSITIONS = {
       ci: null,
     }),
   },
+  // D-39: an independent verdict can also be given on a slice already in review, CI-green or ready,
+  // and sends it back to review; an in-loop verdict cannot.
   'in-review': {
-    from: ['draft-pr', 'changes-requested'],
+    from: ['draft-pr', 'changes-requested', 'in-review', 'ci-green', 'ready'],
     required: ['verdict'],
     check(current, ev, ctx) {
       const v = ev.verdict;
+      if (INDEPENDENT_ONLY.includes(current.state) && v?.independent !== true) return `${current.state} takes only an independent verdict`;
+      // The building session never approves itself: an independent verdict is recorded only in the
+      // review worktree `review start` makes, whichever command records it (D-39). A root that is no
+      // worktree cannot show it is that one, so it is refused too.
+      if (v?.independent === true && !isReviewWorktreeAt(ctx.root, ctx.id)) {
+        return `an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`;
+      }
       if (!v || !isInt(v.round) || v.round < 1) return 'in-review needs a verdict with round 1 or more';
       if (!isInt(v.blockers)) return 'in-review needs the verdict blocker count';
       if (!isStr(v.path)) return 'in-review needs the verdict file path (verdict.path)';

@@ -13,10 +13,15 @@ import { READY_LABEL_COLOR, READY_LABEL_DESCRIPTION, decideReady } from '../src/
 import { githubHost } from '../src/adapters/githost/github.js';
 import { fixtureHost } from '../src/adapters/githost/fixture.js';
 import { GitHostError } from '../src/adapters/githost/errors.js';
+import { execFileSync } from 'node:child_process';
+import { verdictFileName } from '../src/ids.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
 import { writeSliceFixtures } from './helpers/slice-fixture.js';
 
+// ALLOW_PROTECTED_COMMIT: init installs the kit's hooks, which refuse a commit on main.
+const git = (root, ...args) =>
+  execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } }).trim();
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
 const required = { review: { independent: 'required' } };
@@ -167,8 +172,23 @@ function withCli(fn) {
   }
 }
 
+// A verdict file holding `blockers` blocker rows.
+function verdictText(blockers) {
+  const rows = Array.from({ length: blockers }, (_, i) => `| B-${i + 1} | src/a.js:1 | wrong | it matters | ran it |`);
+  return [`Verdict: ${blockers > 0 ? 'BLOCK' : 'APPROVE'}`, '', '| ID | File:line | What is wrong | Why it matters | How verified |', '|---|---|---|---|---|', ...rows, ''].join('\n');
+}
+
+// The slice parked at ci-green on #9 with these verdicts, each committed as the file its state names
+// (S-16: the ready decision checks the state against the committed verdict files).
 function park(root, cfg, id, verdicts) {
-  writeSlice(root, cfg, { ...readSlice(root, cfg, id), state: 'ci-green', pr: { number: 9, headSha: HEAD }, verdicts });
+  const placed = verdicts.map((v) => ({ ...v, path: `.slicekit/reviews/${verdictFileName(id, v.round, { independent: v.independent })}` }));
+  for (const v of placed) {
+    fs.mkdirSync(path.join(root, '.slicekit', 'reviews'), { recursive: true });
+    fs.writeFileSync(path.join(root, ...v.path.split('/')), verdictText(v.blockers));
+  }
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '--allow-empty', '-m', 'verdicts');
+  writeSlice(root, cfg, { ...readSlice(root, cfg, id), state: 'ci-green', pr: { number: 9, headSha: HEAD }, verdicts: placed });
 }
 
 test('ready-label: no pull request event does nothing', () => {

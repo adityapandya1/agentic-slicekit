@@ -7,9 +7,16 @@ steps 1 to 9). Arguments: {{args}}.
 `<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`. Every step that touches the
 repository's history goes through `{{cli}}`; run no git or gh command yourself. The developer writes
 files and reports; you read its report and run the next command. Stop at the first command that
-exits non-zero and act on what it prints. A refusal that says `pull first`, or that the default
-branch is behind or ahead of origin, goes to the human: print it and stop, since only the human
-pulls or pushes by hand.
+exits non-zero and act on what it prints. A refusal that ends `run slicekit build sync <id>` means
+another worktree, such as an independent review's, pushed to the slice branch: run
+`{{cli}} build sync <id> --worktree <path>`, then the refused command again; when it refuses the
+same way after the sync, print it and stop. A refusal that says the default branch is behind origin
+(`pull first`) or ahead of it, or that a branch `has diverged from origin`, goes to the human: print
+it and stop, since only the human pulls or pushes by hand. So does any other refusal a step below
+does not say how to fix.
+
+When the arguments are `--parallel P<n>`, build that phase's next Order step side by side: see
+"Building a step in parallel" at the end.
 
 ## 1. Check the stage, pick the slice, start it
 
@@ -27,11 +34,13 @@ already started prints `resumed <path> at <state>`; keep the path and go on at t
 - `todo`: step 2.
 - `tests-red`: step 3, with the same test paths; `build red` finishes the move to `building`.
 - `building`: step 4.
-- `draft-pr`: run step 5's `{{cli}} build pr` (write the notes file again when it is gone), then
-  step 6 with the verdict path it prints.
+- `draft-pr`: run step 5's `{{cli}} build pr` (without `--notes` when the notes file is gone; see
+  step 7), then step 6 with the verdict path it prints.
 - `in-review`: step 6, from its `build verdict` command. The resume prints a second line,
   `verdict <file>`, the latest recorded round's file; with it, `build verdict` records nothing
-  again and prints that round's `next:`.
+  again and prints that round's `next:`. After an independent round the second line is
+  `next review: /slicekit review <n> in a new session` instead: stop and tell the human to run that
+  in a new session, since this session built the slice.
 - `changes-requested`: the loop stopped with a blocker after round 2. Stop and tell the human.
 - any later state: stop and tell the human the slice is in review, at that state.
 
@@ -101,6 +110,12 @@ test, lint and build commands and `{{cli}} check`, pushes, opens the draft pull 
 reviewer writes its verdict. On a refusal, fix what it names (through the developer when it is code) and run
 it again; a re-run never opens a second pull request. Keep the number `<n>` and the verdict path.
 
+A refusal that starts `plan defect:` prints one line per overlap,
+`plan defect: <id> and <other> both change <path>; the plan said they do not overlap`. It is checked
+before the commands run and again just before the push. No change in this slice answers it: print
+every line and stop, and tell the human the plan is at fault, since it put two slices that change
+one path in the same Order step. The slice stops here; nothing was pushed.
+
 ## 6. The reviewer gives a verdict
 
 Run `{{cli}} instructions reviewer <id> --worktree <path>`. Spawn the reviewer with that output as
@@ -114,6 +129,8 @@ path. It commits the verdict into the worktree, pushes, and prints `next: <step>
 `verdict <file>` line when another round is allowed. A refusal that names the verdict's content (a
 finding with no "How verified", a reused finding number, a banned phrase, a `<!--`) goes back to the
 reviewer with the printed message; run this command again with the file it writes. A refusal that
+says `a new verdict needs a fresh fetch` means origin could not be reached: print it and stop, and
+tell the human to run the step again once origin answers. A refusal that
 says `run slicekit build pr <id> first` means code was committed that `build pr` has not seen: run
 step 5's `build pr`, then step 6 again from the start with the path it prints, since that code needs
 a review of its own. A refusal that says a file `differs from` another goes to the human: print it
@@ -140,8 +157,10 @@ When the fixer reports, run these two in this order:
    answered IDs joined by `, `. A failing test run or a frozen test is refused, and
    `nothing to commit` means the fixer changed nothing: send the fixer back with what was printed.
 2. `{{cli}} build pr <id> --notes <the notes file's absolute path> --worktree <path>`, with step 5's
-   notes file (write it again when it is gone). It updates the same pull request, returns it to
-   draft and prints the next verdict path last.
+   notes file. When that file is gone, run `{{cli}} build pr <id> --worktree <path>` without
+   `--notes`: it keeps the pull request's live body. When that refuses with `pass --notes <file>`,
+   the body lacks a section: write the notes file again from step 5 and run it with `--notes`. It
+   updates the same pull request, returns it to draft and prints the next verdict path last.
 
 Then go back to step 6 with that path. Run no other build command between these two: after a
 commit, `build verdict` and `build finish` refuse until `build pr` has run.
@@ -166,15 +185,50 @@ to decline each should-have or leave it for the independent review, then go to s
 ## 9. Green CI, then the independent review
 
 Run `{{cli}} build finish <id> --worktree <path>`. Each call waits at most 90 seconds for CI on the
-pull request's head, and only on success marks the pull request ready, records `ci-green` and
-prints `ci-green` and the CI run's URL. On exit 1, by what it prints:
+pull request's head, and only on success marks the pull request ready and records `ci-green`. On
+exit 1, by what it prints:
 
 - `CI failed on <sha7>: <url>`: print it and stop; tell the human CI failed on the reviewed head.
 - `CI still running on <sha7>; …`: nothing has changed; run the same command again. When it still
   says so after five tries, print it and stop; tell the human CI has not finished.
 - `no CI run found for <sha7>; check that the workflow ran`: print it and stop; tell the human the
   workflow did not run on that head.
+- one that ends `run slicekit build sync <id>`, such as the pull request head
+  `is not in the worktree`: sync and run it again, as the opening says.
 
-On success, print the pull request's number and URL and the CI run's URL, and stop. Tell the human
-to run `/slicekit review <n>` in a new session for the independent verdict, which comes before
-the merge (D-18). A human merges once the slice is `ready`.
+On exit 0 it prints `ci-green` and the CI run's URL, then one line:
+
+- `ready: waiting for an independent review; run /slicekit review <n> in a new session`: print the
+  pull request's number and URL and the CI run's URL, and stop. Tell the human to run
+  `/slicekit review <n>` in a new session for the independent verdict, which comes before the merge
+  (D-18). A human merges once the slice is `ready`.
+- `ready: not yet: <reason>`: print it and stop; tell the human the reason the slice is not ready.
+- `ready`: the independent verdict is already on this head, or review is optional. Print the pull
+  request's number and URL and the CI run's URL, and stop: a human merges.
+
+## Building a step in parallel
+
+With `--parallel P<n>`, run step 1's `{{cli}} stage require plan`, then
+`{{cli}} build parallel P<n>` in place of `build next` and `build start`. It starts every runnable
+slice of the phase's next Order step, each in its own worktree, and prints one line per slice
+started: `<id> <worktree> <branch>`. Keep each slice's ID and worktree path. Each slice of the step
+it did not start is a line `slicekit: <id> not started: <reason>` on stderr; print those lines to
+the human and go on with the slices that started. A slice another clone holds is
+`slicekit: <id> not started: held in origin/<branch>`: it is not this clone's to build, and it does
+not count as a failed start. The command exits 1 when a slice it could have started did not; the
+slices on stdout started all the same. When none started, it exits 1 with
+`slicekit: no slice of P<n> is ready to build` and one line per slice saying what it waits on or
+where it was started; print them and stop.
+
+Then:
+
+1. For every slice printed, steps 2 to 5 in its own worktree, each command with that slice's ID and
+   `--worktree` path. Spawn the slices' developers together, one per slice, each with its own brief;
+   run each slice's next command as its developer reports.
+2. Then steps 6 to 9 for each slice in turn, one slice's review loop and CI finished before the next
+   one's starts (D-06). Where a step says stop, that slice stops: tell the human what the step says
+   to tell, then go on with the next slice.
+
+A slice whose `build pr` prints `plan defect` stops there, as step 5 says; the other slices go on.
+Report each overlap to the human as a defect of the plan: the plan said those slices of one step do
+not change one path.

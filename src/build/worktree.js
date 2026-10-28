@@ -7,6 +7,7 @@ import path from 'node:path';
 import { GitError, assertRef, git, hasRemote, pushBranch } from '../git.js';
 import { parseSliceAddr, sliceFromBranch } from '../ids.js';
 import { findSliceFiles } from '../slicefile.js';
+import { REVIEW_DESCR, branchPrefix, listWorktrees, pad, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from '../worktrees.js';
 import { readSlice } from '../state/index.js';
 import { heldSlices, prepare, runnable, waitingOn } from './order.js';
 
@@ -19,47 +20,23 @@ export class BuildError extends Error {
   }
 }
 
-const pad = (n) => String(n).padStart(2, '0');
-export const branchPrefix = (addr) => `slice/P${addr.phase}-S-${pad(addr.slice)}`;
-export const worktreeDir = (root, addr) => path.join(root, '.worktrees', `P${addr.phase}-S-${pad(addr.slice)}`);
+export { REVIEW_DESCR, branchPrefix, listWorktrees, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from '../worktrees.js';
 
-// One spelling of a path, so `C:/x` from git and `C:\x` from path.resolve compare equal.
-export function samePath(a, b) {
-  const norm = (p) => {
-    let abs = path.resolve(p);
-    try {
-      abs = fs.realpathSync.native(abs);
-    } catch {
-      // A path that is gone is compared as written.
-    }
-    return process.platform === 'win32' ? abs.toLowerCase() : abs;
-  };
-  return norm(a) === norm(b);
-}
+// The review worktree `review start` makes for the slice at `addr`, known by its branch or its path.
+export const isReviewWorktree = (root, addr, w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));
 
-// Every worktree of the repository as { path, branch }, the main one first; branch is null when
-// HEAD is detached.
-export function listWorktrees(root) {
-  const out = [];
-  let cur = null;
-  for (const line of git(root, ['worktree', 'list', '--porcelain']).split('\n')) {
-    if (line.startsWith('worktree ')) {
-      cur = { path: path.resolve(line.slice('worktree '.length)), branch: null };
-      out.push(cur);
-    } else if (cur && line.startsWith('branch refs/heads/')) {
-      cur.branch = line.slice('branch refs/heads/'.length);
-    }
-  }
-  return out;
-}
-
+// The worktree holding `id`: the one `--worktree` names, else the build worktree. Without
+// `--worktree` the review worktree is never picked, so the building session needs no flag while a
+// review session runs; the review session always names its worktree.
 export function findWorktree(root, id, { worktree } = {}) {
-  const held = listWorktrees(root).filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
+  const all = listWorktrees(root).filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
   if (worktree !== undefined) {
-    const match = held.find((w) => samePath(w.path, path.resolve(root, worktree)));
+    const match = all.find((w) => samePath(w.path, path.resolve(root, worktree)));
     if (!match) throw new BuildError(`${worktree} is not a worktree holding ${id}`);
     return match;
   }
+  const addr = parseSliceAddr(id);
+  const held = addr ? all.filter((w) => !isReviewWorktree(root, addr, w)) : all;
   if (held.length === 0) throw new BuildError(`no worktree holds ${id}; run slicekit build start ${id}`);
   if (held.length > 1) {
     throw new BuildError(`two worktrees hold ${id}: ${held.map((w) => w.path).join(', ')}; pass --worktree`, 2);
@@ -74,9 +51,15 @@ function sliceFileOf(root, cfg, addr) {
   );
 }
 
-// `slice/P<n>-S-<nn>-<descr>` when git accepts it as a branch name, else a usage refusal.
-function branchName(root, addr, descr) {
+// `slice/P<n>-S-<nn>-<descr>` when git accepts it as a branch name and it is not the review
+// branch, else a usage refusal. `file` is the slice file the descr was taken from, if it was. The
+// review name is refused in any case: on a case-insensitive file system `Review` is the same ref.
+function branchName(root, addr, descr, file) {
   const name = `${branchPrefix(addr)}-${descr}`;
+  if (descr.toLowerCase() === REVIEW_DESCR) {
+    const from = file ? `the slice file ${file} gives that name, so ` : '';
+    throw new BuildError(`the branch name ${name} is kept for the review worktree; ${from}choose another --descr`, 2);
+  }
   try {
     assertRef(name);
     git(root, ['check-ref-format', '--branch', name]);
@@ -105,17 +88,20 @@ export function startSlice(root, cfg, id, { descr, onWarning = stderrWarning, be
   const addr = parseSliceAddr(id);
   const file = addr && sliceFileOf(root, cfg, addr);
   if (!file) throw new BuildError(`unknown slice ${id}`, 2);
+  let sliceFile;
   if (descr === undefined) {
     const m = /^S-\d+-(.+)\.md$/.exec(path.basename(file.path));
     if (!m) throw new BuildError(`${path.basename(file.path)} names no description; pass --descr`, 2);
     descr = m[1];
+    sliceFile = path.basename(file.path);
   }
-  const branch = branchName(root, addr, descr);
+  const branch = branchName(root, addr, descr, sliceFile);
   const dir = worktreeDir(root, addr);
 
   // A worktree of this clone on the slice's branch: the start already happened, so this is a resume
-  // at the state that worktree holds. Nothing is committed or pushed.
-  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root));
+  // at the state that worktree holds. Nothing is committed or pushed. The review worktree `review
+  // start` made is never the build worktree (M-3).
+  const mine = listWorktrees(root).find((w) => w.branch !== null && sliceFromBranch(w.branch) === id && !samePath(w.path, root) && !isReviewWorktree(root, addr, w));
   if (mine) return { worktree: mine.path, branch: mine.branch, resumed: true, state: readSlice(mine.path, cfg, id).state };
 
   const ready = runnable(root, cfg, { prepared: true });

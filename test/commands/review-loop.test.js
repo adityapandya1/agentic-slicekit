@@ -9,7 +9,7 @@ import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
 import { FINISH_WAIT, finish, proofWithCi } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
-import { cli, commitIn, commitWorkCli, green, prCalls, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitIn, commitWorkCli, green, leaveReview, prCalls, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES } from '../../src/instructions.js';
 
@@ -177,9 +177,11 @@ test('a finding that disappears and comes back takes a new number', async () => 
     // Round 3 (independent, outside the loop's cap): B-2 vanished in round 2, so it is new and reused.
     const file = `${REVIEWS}/P1-S-01i-r3.md`;
     write(p.root, file, verdictText('BLOCK', [['B-2', 'y is wrong again'], ['H-1', 'a name again']]));
-    const before = stateIn(p.wt);
+    // An independent verdict is recorded from the review worktree (S-16 ruling 6).
+    const rwt = reviewWorktree(p);
+    const before = stateIn(rwt);
     assert.throws(
-      () => recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true }),
+      () => recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt }),
       (e) =>
         e.code === 1 &&
         e.message ===
@@ -189,15 +191,15 @@ test('a finding that disappears and comes back takes a new number', async () => 
           ].join('\n'),
     );
     assert.ok(fs.existsSync(at(p.root, file)));
-    assert.deepEqual(stateIn(p.wt), before);
+    assert.deepEqual(stateIn(rwt), before);
 
     // Numbered afresh, the same findings are recorded.
     write(p.root, file, verdictText('BLOCK', [['B-3', 'y is wrong again'], ['H-3', 'a name again']]));
-    const ok = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
+    const ok = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt });
     assert.deepEqual(ok.blockers, ['B-3']);
     assert.equal(ok.roundsUsed, 2);
     assert.equal(ok.next, 'fix');
-    assert.equal(stateIn(p.wt).verdicts.at(-1).independent, true);
+    assert.equal(stateIn(rwt).verdicts.at(-1).independent, true);
   } finally {
     p.cleanup();
   }
@@ -281,14 +283,15 @@ test('a recorded verdict whose push failed is pushed on a re-run', async () => {
   const p = await drafted();
   try {
     const file = review(p, 1, verdictText('CHANGES', [['H-1', 'a long name']]));
-    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    // Only the push fails: a new round needs a fresh fetch (S-16), so the fetch still reaches origin.
+    git(p.root, ['remote', 'set-url', '--push', 'origin', path.join(p.root, 'no-such-remote')]);
     const failed = await p.verdict(file);
     assert.equal(failed.code, 1);
     const recorded = stateIn(p.wt);
     assert.equal(recorded.state, 'in-review');
     const head = git(p.wt, ['rev-parse', 'HEAD']);
 
-    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    git(p.root, ['remote', 'set-url', '--push', 'origin', p.remote]);
     const again = await p.verdict(file);
     assert.equal(again.code, 0, again.stderr);
     assert.equal(again.stdout, `next: ask\nblockers: none\nshould-haves: H-1\nrounds: 1 of 2\nverdict ${vpath(p.root, 'P1-S-01-r2.md')}\n`);
@@ -352,7 +355,8 @@ test('a stopped round whose push failed is finished on a re-run, recording nothi
     assert.equal(one.code, 0, one.stderr);
     await fixPush(p, 1);
     const file = review(p, 2, verdictText('BLOCK', [['B-1', 'x is still wrong']]));
-    git(p.root, ['remote', 'set-url', 'origin', path.join(p.root, 'no-such-remote')]);
+    // Only the push fails; the fetch still reaches origin.
+    git(p.root, ['remote', 'set-url', '--push', 'origin', path.join(p.root, 'no-such-remote')]);
     const failed = await p.verdict(file);
     assert.equal(failed.code, 1);
     const recorded = stateIn(p.wt);
@@ -360,7 +364,7 @@ test('a stopped round whose push failed is finished on a re-run, recording nothi
     // The push failed before the body was touched.
     const updates = bodyUpdates(p).length;
 
-    git(p.root, ['remote', 'set-url', 'origin', p.remote]);
+    git(p.root, ['remote', 'set-url', '--push', 'origin', p.remote]);
     const again = await p.verdict(file);
     assert.equal(again.code, 1, again.stderr);
     assert.equal(again.stdout, 'next: stuck\nblockers: B-1\nshould-haves: none\nrounds: 2 of 2\n');
@@ -437,14 +441,15 @@ test('an independent verdict after two rounds asks for a fix and does not stop t
 
     const file = `${REVIEWS}/P1-S-01i-r3.md`;
     write(p.root, file, verdictText('BLOCK', [['B-3', 'z is wrong']]));
-    const before = stateIn(p.wt).verdicts.length;
+    const rwt = reviewWorktree(p);
+    const before = stateIn(rwt).verdicts.length;
     // recordVerdict throws on every refusal and the CLI exits 1 only on `stuck`, so `fix` is exit 0.
-    const r = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true });
+    const r = recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt });
     assert.equal(r.next, 'fix');
     assert.deepEqual(r.blockers, ['B-3']);
     assert.equal(r.roundsUsed, 2);
-    assert.equal(stateIn(p.wt).state, 'in-review');
-    assert.equal(stateIn(p.wt).verdicts.length, before + 1);
+    assert.equal(stateIn(rwt).state, 'in-review');
+    assert.equal(stateIn(rwt).verdicts.length, before + 1);
     assert.equal(
       getSection(prIn(p).body, 'Reviewer blocked'),
       'B-1 `x is wrong` — fixed in round 2; B-3 `z is wrong` — open after round 3',
@@ -536,8 +541,11 @@ test('with an independent round mid-loop the line and the stop name the real rou
     await fixPush(p, 1);
     const file = `${REVIEWS}/P1-S-01i-r2.md`;
     write(p.root, file, verdictText('BLOCK', [['B-1', 'x is wrong'], ['B-2', 'y is wrong']]));
-    assert.equal(recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true }).next, 'fix');
+    const rwt = reviewWorktree(p);
+    assert.equal(recordVerdict(p.root, cfg, host, 'P1/S-01', file, { independent: true, worktree: rwt }).next, 'fix');
     assert.equal(getSection(prIn(p).body, 'Reviewer blocked'), 'B-1 `x is wrong` — open after round 1; B-2 `y is wrong` — open after round 2');
+    // The build session takes up what the review pushed, then fixes.
+    leaveReview(p, rwt);
     await fixPush(p, 2);
     const three = await p.verdict(review(p, 3, verdictText('BLOCK', [['B-3', 'z is wrong']])));
     assert.equal(three.code, 1, three.stderr);
@@ -570,6 +578,8 @@ function setLiveHead(p, sha) {
   fs.writeFileSync(file, `${JSON.stringify({ ...raw, headRefOid: sha }, null, 2)}\n`);
 }
 const RUN_URL = 'https://example.test/runs/1';
+// S-16: with independent review required, finish stops at ci-green until an independent verdict.
+const WAITING = 'ready: waiting for an independent review; run /slicekit review 1 in a new session\n';
 function setCi(p, sha, status, conclusion = null) {
   write(p.host, `ci-${sha}.json`, JSON.stringify([{ status, conclusion, url: RUN_URL, createdAt: '2026-10-26T00:00:00Z' }]));
 }
@@ -676,7 +686,7 @@ test('finish records ci-green only when CI succeeds on the head', async () => {
     setCi(p, p.head, 'completed', 'success');
     const ok = await finishCli(p);
     assert.equal(ok.code, 0, ok.stderr);
-    assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n`);
+    assert.equal(ok.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
     const st = stateIn(p.wt);
     assert.equal(st.state, 'ci-green');
     assert.deepEqual(st.ci, { sha: p.head, status: 'success', url: RUN_URL });
@@ -773,7 +783,7 @@ test('finish at ci-green cites the recorded run', async () => {
     write(p.host, `ci-${p.head}.json`, JSON.stringify([{ status: 'completed', conclusion: 'failure', url: 'https://example.test/runs/2', createdAt: '2026-10-27T00:00:00Z' }]));
     const again = await finishCli(p);
     assert.equal(again.code, 0, again.stderr);
-    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n`);
+    assert.equal(again.stdout, `ci-green\n${RUN_URL}\n${WAITING}`);
     assert.ok(getSection(prIn(p).body, 'Proof').endsWith(`CI: ${RUN_URL}`));
   } finally {
     p.cleanup();
@@ -781,7 +791,7 @@ test('finish at ci-green cites the recorded run', async () => {
 });
 
 // Review M-6: a live head this worktree does not hold is a pull, not a fix push.
-test('finish says pull first for a live head missing from the worktree', async () => {
+test('finish says build sync for a live head missing from the worktree', async () => {
   const p = await approved();
   try {
     const missing = 'a'.repeat(40);
@@ -789,7 +799,7 @@ test('finish says pull first for a live head missing from the worktree', async (
     setCi(p, missing, 'completed', 'success');
     const r = await finishCli(p);
     assert.equal(r.code, 1);
-    assert.ok(r.stderr.includes("P1/S-01's pull request head aaaaaaa is not in the worktree; pull first"), r.stderr);
+    assert.ok(r.stderr.includes("P1/S-01's pull request head aaaaaaa is not in the worktree; run slicekit build sync P1/S-01"), r.stderr);
     assert.equal(prIn(p).isDraft, true);
   } finally {
     p.cleanup();

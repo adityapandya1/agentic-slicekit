@@ -168,12 +168,8 @@ export const commitWorkCli = (p, ...args) => cli(p.root, ['build', 'commit', 'P1
 
 export const GREEN = 'export const x = () => 2;\n';
 
-// A green slice P1/S-01 with a bare origin and the fixture git host; `notes` is the notes file.
-export async function green() {
-  const p = await building({ remote: true, init: true });
-  write(p.wt, 'src/t1.js', GREEN);
-  const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
-  assert.equal(done.code, 0, done.stderr);
+// The fixture git host and a notes file for `build pr`, in a fresh directory.
+export function fixtureHost() {
   const host = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
   const notes = path.join(host, 'notes.json');
   fs.writeFileSync(
@@ -181,20 +177,67 @@ export async function green() {
     JSON.stringify({ tryIt: ['Run the tests.', 'Call x().', 'See 2.'], skipped: 'Windows paths were not tried.', decisions: ['x returns 2'] }),
   );
   const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: host };
+  return { host, notes, env, cleanup: () => fs.rmSync(host, { recursive: true, force: true }) };
+}
+
+// A green slice P1/S-01 with a bare origin and the fixture git host; `notes` is the notes file.
+export async function green() {
+  const p = await building({ remote: true, init: true });
+  write(p.wt, 'src/t1.js', GREEN);
+  const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+  assert.equal(done.code, 0, done.stderr);
+  const h = fixtureHost();
   const cleanup = p.cleanup;
   return {
     ...p,
-    host,
-    notes,
-    env,
-    pr: (...args) => cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', notes, ...args], env),
+    host: h.host,
+    notes: h.notes,
+    env: h.env,
+    pr: (...args) => cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', h.notes, ...args], h.env),
     cleanup() {
-      fs.rmSync(host, { recursive: true, force: true });
+      h.cleanup();
       cleanup();
     },
   };
+}
+
+// Slice P1/S-<nn> of project `p` (made with `init` and `node --test`) taken through build start, red
+// on test/t<n>.test.js and a green build commit that also writes `files` ({ rel: text }). -> the
+// slice's id, worktree, branch and claim commit.
+export async function greenSlice(p, n, files = {}) {
+  const id = `P1/S-${pad(n)}`;
+  const started = await cli(p.root, ['build', 'start', id]);
+  assert.equal(started.code, 0, started.stderr);
+  const [wt, branch] = started.stdout.split('\n');
+  const claim = git(wt, ['rev-parse', 'HEAD']);
+  write(wt, `test/t${n}.test.js`, IMPORTING.replace('../src/t1.js', `../src/t${n}.js`));
+  const r = await cli(p.root, ['build', 'red', id, '--tests', `test/t${n}.test.js`]);
+  assert.equal(r.code, 0, r.stderr);
+  write(wt, `src/t${n}.js`, GREEN);
+  for (const [rel, text] of Object.entries(files)) write(wt, rel, text);
+  const done = await cli(p.root, ['build', 'commit', id, '--message', `feat(${id}): x`, '--require-green']);
+  assert.equal(done.code, 0, done.stderr);
+  return { id, wt, branch, claim };
 }
 export const prCalls = (host) => {
   const file = path.join(host, 'pr-calls.jsonl');
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 };
+
+// The review worktree `review start` makes (S-16 Task 2), built by hand: `<root>/.worktrees/review-P1-S-01`
+// on `slice/P1-S-01-review` at origin's slice branch, tracking it, so a push lands on the slice branch.
+export function reviewWorktree(p, branch = 'slice/P1-S-01-thing-1') {
+  const dir = path.join(p.root, '.worktrees', 'review-P1-S-01');
+  git(p.root, ['fetch', '-q', 'origin']);
+  git(p.root, ['worktree', 'add', '-q', '--track', '-b', 'slice/P1-S-01-review', dir, `origin/${branch}`]);
+  return dir;
+}
+
+// The review worktree removed and the build worktree brought up to what it pushed, so the build
+// session's steps find one worktree holding the slice again.
+export function leaveReview(p, dir, branch = 'slice/P1-S-01-thing-1') {
+  git(p.root, ['worktree', 'remove', '--force', dir]);
+  git(p.root, ['branch', '-q', '-D', 'slice/P1-S-01-review']);
+  git(p.wt, ['fetch', '-q', 'origin']);
+  git(p.wt, ['merge', '-q', '--ff-only', `origin/${branch}`]);
+}
