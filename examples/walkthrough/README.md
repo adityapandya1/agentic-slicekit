@@ -32,7 +32,8 @@ node examples/walkthrough/host.js merge <n>
 - `ci` sets the pull request's head to the tip of its branch in `origin` and records one finished
   CI run on that commit with the status given.
 - `merge` merges the pull request's branch into its base in `origin` with a merge commit, then
-  marks the pull request merged, so `slicekit status --sync` moves the slice to `merged`.
+  marks the pull request merged, so `slicekit status --sync` moves the slice to `merged`. As on
+  GitHub, a draft or a conflicting pull request is refused and nothing changes.
 
 It writes only in the `SLICEKIT_GITHOST_FIXTURE` directory and in the bare `origin`; the merge is
 made in a temporary clone inside the fixture directory. Your checkout is never changed: pull to

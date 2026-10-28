@@ -56,10 +56,15 @@ function tip(remote, branch) {
   return sha;
 }
 
+function mustBeOpen(n, pr) {
+  if (pr.state !== 'OPEN') throw new Stop(`pull request #${n} is ${String(pr.state).toLowerCase()}, not open`);
+}
+
 // CI reports on the pull request's head: the head is set to origin's tip of its branch, as GitHub
 // does on a push, and one completed run with that conclusion is recorded for it.
 function ci(dir, n, status) {
   const { file, pr } = pullRequest(dir, n);
+  mustBeOpen(n, pr);
   const sha = tip(origin(), pr.headRefName);
   writeJson(file, { ...pr, headRefOid: sha });
   const run = { name: 'slicekit', status: 'completed', conclusion: status, headSha: sha, url: `https://example.test/runs/${n}` };
@@ -71,7 +76,8 @@ function ci(dir, n, status) {
 // button does, then the pull request marked merged and listed among the merged ones.
 function merge(dir, n) {
   const { file, pr } = pullRequest(dir, n);
-  if (pr.state !== 'OPEN') throw new Stop(`pull request #${n} is ${String(pr.state).toLowerCase()}, not open`);
+  mustBeOpen(n, pr);
+  if (pr.isDraft === true) throw new Stop(`pull request #${n} is a draft; GitHub refuses to merge it`);
   const remote = origin();
   const base = pr.baseRefName || 'main';
   const head = tip(remote, pr.headRefName);
@@ -81,7 +87,13 @@ function merge(dir, n) {
     git(['clone', '-q', '--branch', base, remote, clone]);
     // Identity and hooks are given for these commands only; no git config is written.
     const as = ['-c', 'user.name=slicekit host', '-c', 'user.email=host@example.test', '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${path.join(clone, '.no-hooks')}`];
-    git([...as, 'merge', '-q', '--no-ff', '-m', `Merge pull request #${n} from ${pr.headRefName}`, head], clone);
+    try {
+      git([...as, 'merge', '-q', '--no-ff', '-m', `Merge pull request #${n} from ${pr.headRefName}`, head], clone);
+    } catch (e) {
+      // A conflict leaves unmerged paths in the clone, which is thrown away: origin is unchanged.
+      if (git(['diff', '--name-only', '--diff-filter=U'], clone) !== '') throw new Stop(`merge #${n} conflicts with ${base}; nothing was changed`);
+      throw e;
+    }
     merged = git(['rev-parse', 'HEAD'], clone);
     git([...as, 'push', '-q', 'origin', `HEAD:refs/heads/${base}`], clone);
   } finally {

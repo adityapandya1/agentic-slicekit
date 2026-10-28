@@ -124,17 +124,136 @@ test('bash is SLICEKIT_BASH, else Git for Windows bash on Windows, never the WSL
   assert.doesNotMatch(real.replace(/\\/g, '/').toLowerCase(), /windows\/system32/);
 });
 
-// Run from inside `node --test`, the session must not inherit NODE_TEST_CONTEXT: under it the
-// walkthrough's own `node --test` reports to this runner and exits 0 whatever its tests do.
-test('the walkthrough runs as a reader runs it, outside the test runner', () => {
+// A temp directory for one test, removed after it.
+function inTemp(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-walk-'));
   try {
-    const r = runWalkthrough([{ line: 1, command: 'printf %s "${NODE_TEST_CONTEXT-unset}"' }], { cwd: dir, env: { ...process.env, NODE_TEST_CONTEXT: 'child-v8' } });
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'unset');
+    return fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// `vars` set in this process's environment for the length of `fn` (undefined removes one).
+function withEnv(vars, fn) {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  const put = (k, v) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
+  try {
+    for (const [k, v] of Object.entries(vars)) put(k, v);
+    return fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) put(k, v);
+  }
+}
+
+// One command that fails, then `touch after`: the run must stop at the first.
+function stopsAt(command) {
+  inTemp((dir) => {
+    const r = runWalkthrough([{ line: 7, command }, { line: 8, command: 'touch after' }], { cwd: dir });
+    assert.equal(r.code, 1, `${command}: ${r.stdout}${r.stderr}`);
+    assert.equal(r.stderr, `walkthrough failed at README.md:7: ${command}\n`, command);
+    assert.equal(fs.existsSync(path.join(dir, 'after')), false, command);
+  });
+}
+
+const inWalkthrough = (...lines) => `# Kit\n\n## Walkthrough\n\n${lines.join('\n')}\n`;
+
+test('a trailing comment does not swallow the stop', () => stopsAt('false # this step fails'));
+
+test('a failing command in a pipe stops the run', () => stopsAt('false | cat'));
+
+test('a ; list, a heredoc and a trailing & are refused with their README line', () => {
+  // README line 6 is the command: four lines of heading, then the fence on line 5.
+  const refused = [
+    ['false; true', /^README\.md:6: .*";"/],
+    ['cat > f <<EOF', /^README\.md:6: .*heredoc/],
+    ['sleep 0 &', /^README\.md:6: .*"&"/],
+  ];
+  for (const [command, message] of refused) {
+    assert.throws(() => walkthroughCommands(inWalkthrough('```sh', command, '```')), { message }, command);
+    // Given straight to the runner, the same command is refused before anything runs.
+    assert.throws(() => runWalkthrough([{ line: 6, command }], { cwd: os.tmpdir() }), { message }, command);
+  }
+  // Quoted, escaped or commented, the characters are not the shell's.
+  const allowed = ['echo "a;b"', "echo 'a;b'", 'echo a\\;b', 'node x # prints a; b', 'true && true', 'echo "<<"'];
+  assert.deepEqual(
+    walkthroughCommands(inWalkthrough('```sh', ...allowed, '```')).map((c) => c.command),
+    allowed,
+  );
+});
+
+test('a shell block that is not ```sh, another fence or an unclosed block is refused, naming its line', () => {
+  for (const fence of ['```bash', '```shell', '```console', '~~~sh', '````sh']) {
+    const close = fence.startsWith('~') ? '~~~' : fence.startsWith('````') ? '````' : '```';
+    assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'true', '```', '', fence, 'npm i', close)), { message: /^README\.md:9: / }, fence);
+  }
+  assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'npm i')), { message: /^README\.md:5: .*never closed/ });
+  // `sh` with an info string after it is still sh.
+  assert.deepEqual(walkthroughCommands(inWalkthrough('```sh title="x"', 'npm i', '```')), [{ line: 6, command: 'npm i' }]);
+});
+
+test('a ## Walkthrough inside an earlier code block is not the section', () => {
+  const text = '# Kit\n\n```md\n## Walkthrough\n```\n\n## Walkthrough\n\n```sh\nnpm i\n```\n';
+  assert.deepEqual(walkthroughCommands(text), [{ line: 10, command: 'npm i' }]);
+});
+
+// Run from inside `node --test`, the session must not inherit NODE_TEST_CONTEXT: under it the
+// walkthrough's own `node --test` reports to this runner and exits 0 whatever its tests do.
+test('the walkthrough runs as a reader runs it, outside the test runner', () =>
+  withEnv({ NODE_TEST_CONTEXT: 'child-v8' }, () =>
+    inTemp((dir) => {
+      const r = runWalkthrough([{ line: 1, command: 'printf %s "${NODE_TEST_CONTEXT-unset}"' }], { cwd: dir });
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stdout, 'unset');
+    }),
+  ));
+
+test("the walkthrough gets a clean environment and its own git identity, with the caller's entries on top", () =>
+  inTemp((dir) => {
+    // A parent with no git identity anywhere, and the variables a hook, CI or a test may leave.
+    const home = path.join(dir, 'home');
+    fs.mkdirSync(home);
+    const empty = path.join(dir, 'empty.gitconfig');
+    fs.writeFileSync(empty, '');
+    const parent = {
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: home,
+      GIT_CONFIG_GLOBAL: empty,
+      GIT_DIR: path.join(dir, 'nowhere'),
+      GIT_AUTHOR_NAME: 'Leaked',
+      GITHUB_HEAD_REF: 'leaked',
+      SLICEKIT_NOW: '2020-01-01',
+      SLICEKIT_GITHOST_FIXTURE: path.join(dir, 'stray'),
+    };
+    withEnv(parent, () => {
+      const show = 'printf "%s|" "${GIT_DIR-unset}" "${GIT_AUTHOR_NAME-unset}" "${GITHUB_HEAD_REF-unset}" "${SLICEKIT_NOW-unset}" "${SLICEKIT_GITHOST_FIXTURE-unset}" "${SLICEKIT_TRACKER_FIXTURE-unset}"';
+      const r = runWalkthrough(
+        [
+          { line: 1, command: show },
+          { line: 2, command: 'git init -q repo' },
+          { line: 3, command: 'cd repo' },
+          { line: 4, command: 'git commit -q --allow-empty -m one' },
+          { line: 5, command: 'git log -1 --format=%an/%ae/%G?' },
+          { line: 6, command: 'git symbolic-ref --short HEAD' },
+        ],
+        { cwd: dir, env: { SLICEKIT_TRACKER_FIXTURE: 'given' } },
+      );
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stdout, 'unset|unset|unset|unset|unset|given|Walkthrough/walkthrough@example.test/N\nmain\n');
+    });
+  }));
+
+test('a walkthrough that runs too long is stopped, and a large output is kept', () =>
+  inTemp((dir) => {
+    assert.throws(() => runWalkthrough([{ line: 1, command: 'sleep 5' }], { cwd: dir, timeoutMs: 500 }), { message: 'walkthrough timed out after 0.5 s' });
+    const big = runWalkthrough([{ line: 1, command: `node -e "process.stdout.write('a'.repeat(3000000))"` }], { cwd: dir });
+    assert.equal(big.code, 0, big.stderr);
+    assert.equal(big.stdout.length, 3000000);
+  }));
+
+test('bash is found on the PATH of the environment given', { skip: process.platform !== 'win32' && 'git --exec-path is read only on Windows' }, () => {
+  assert.throws(() => resolveBash({ env: { PATH: '' } }), /Git for Windows bash/);
 });
 
 // ---- Task 2: examples/walkthrough, what the walkthrough copies, and host.js ----
@@ -208,6 +327,7 @@ test('the host helper records CI and a merge only inside the fixture directory',
       runs.map((r) => [r.status, r.conclusion, r.url]),
       [['completed', 'success', 'https://example.test/runs/1']],
     );
+    assert.deepEqual(listing(h.root), before);
 
     // A second push moves the head; ci follows origin's tip and records a failure for it.
     fs.writeFileSync(path.join(h.root, 'greet.txt'), 'hello again\n');
@@ -237,6 +357,47 @@ test('the host helper records CI and a merge only inside the fixture directory',
     assert.deepEqual(listing(h.root), before2);
     assert.notDeepEqual(before, before2);
     assert.deepEqual(fs.readdirSync(h.fixture).sort(), [`ci-${h.head}.json`, `ci-${head2}.json`, 'merged-since.json', 'pr-1.json'].sort());
+
+    // CI does not run on a merged pull request, and it cannot be merged twice.
+    for (const args of [['ci', '1', 'success'], ['merge', '1']]) {
+      const again = hostCli(args, { cwd: h.root, env: h.env });
+      assert.equal(again.code, 1, args.join(' '));
+      assert.equal(again.stderr, 'pull request #1 is merged, not open\n', args.join(' '));
+    }
+    assert.equal(gitIn(h.remote, ['rev-parse', 'refs/heads/main']), tip);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('the host helper refuses to merge a draft or a conflicting pull request, and changes nothing', () => {
+  const h = hosted();
+  try {
+    const main = () => gitIn(h.remote, ['rev-parse', 'refs/heads/main']);
+    const start = main();
+    const asFiled = fs.readFileSync(path.join(h.fixture, 'pr-1.json'), 'utf8');
+    fs.writeFileSync(path.join(h.fixture, 'pr-1.json'), JSON.stringify({ ...h.pr(), isDraft: true }));
+    const draft = hostCli(['merge', '1'], { cwd: h.root, env: h.env });
+    assert.equal(draft.code, 1);
+    assert.equal(draft.stderr, 'pull request #1 is a draft; GitHub refuses to merge it\n');
+    assert.equal(main(), start);
+    fs.writeFileSync(path.join(h.fixture, 'pr-1.json'), asFiled);
+
+    // main moves on in origin with its own greet.txt, which the branch's conflicts with.
+    gitIn(h.root, ['checkout', '-q', 'main']);
+    fs.writeFileSync(path.join(h.root, 'greet.txt'), 'hi from main\n');
+    gitIn(h.root, ['add', 'greet.txt']);
+    gitIn(h.root, ['commit', '-q', '-m', 'main greets too']);
+    gitIn(h.root, ['push', '-q', 'origin', 'main']);
+    const moved = main();
+    const before = listing(h.root);
+    const r = hostCli(['merge', '1'], { cwd: h.root, env: h.env });
+    assert.equal(r.code, 1, r.stdout);
+    assert.equal(r.stderr, 'merge #1 conflicts with main; nothing was changed\n');
+    assert.equal(main(), moved);
+    assert.equal(h.pr().state, 'OPEN');
+    assert.deepEqual(fs.readdirSync(h.fixture), ['pr-1.json']);
+    assert.deepEqual(listing(h.root), before);
   } finally {
     h.cleanup();
   }
