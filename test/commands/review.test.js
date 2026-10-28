@@ -11,6 +11,8 @@ import { GitHostError } from '../../src/adapters/githost/errors.js';
 import { recordVerdict } from '../../src/build/verdict.js';
 import { git } from '../../src/git.js';
 import { cli, commitAll, commitIn, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { briefProblems } from '../helpers/brief-lint.js';
+import { TEMPLATES, renderProcedure } from '../../src/instructions.js';
 
 const REVIEWS = '.slicekit/reviews';
 const RUN_URL = 'https://example.test/runs/1';
@@ -827,4 +829,45 @@ test('optional committed on the default branch lets finish and the label pass', 
   } finally {
     p.cleanup();
   }
+});
+
+test('the review and parallel procedures pass the brief lint', () => {
+  const read = (rel) => fs.readFileSync(path.join(TEMPLATES, ...rel.split('/')), 'utf8').replace(/\r\n/g, '\n');
+  const review = read('commands/review.md');
+  const build = read('commands/build.md');
+  assert.deepEqual(briefProblems(review, { kind: 'command' }), []);
+  assert.deepEqual(briefProblems(build, { kind: 'command' }), []);
+  for (const s of ['review start', '--independent', 'build finish']) assert.ok(review.includes(s), s);
+  for (const s of ['build parallel', 'plan defect']) assert.ok(build.includes(s), s);
+  // The review session: D-18 left to the person, every build call in the review worktree, the
+  // reviewer given the verdict path review start printed, should-haves declined or left.
+  assert.ok(review.includes('D-18'));
+  assert.ok(review.includes('`{{cli}} review start {{args}}`'));
+  assert.ok(review.includes('`(none)`'));
+  assert.ok(review.includes('`{{cli}} instructions reviewer <id> --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} build verdict <id> <path> --independent --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} build decline <id> <H-n> --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} instructions fixer <id> --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} build commit <id> --worktree <wt> --message "fix: <ids>" --require-green`'));
+  assert.ok(review.includes('`{{cli}} build pr <id> --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} build finish <id> --worktree <wt>`'));
+  assert.ok(review.includes('`{{cli}} build sync <id> --worktree <wt>`'));
+  for (const s of ['next: fix', 'next: ci', 'ready: not yet', 'a human merges']) assert.ok(review.includes(s), s);
+  for (const line of review.split('\n').filter((l) => l.includes('{{cli}} build '))) {
+    for (const m of line.matchAll(/`\{\{cli\}\} build (?:verdict|decline|commit|pr|finish|sync) [^`]*`/g)) assert.match(m[0], /--worktree <(wt|dir)>/, m[0]);
+  }
+  // The build procedure: a slice branch behind origin is synced, not sent to the human; finish's
+  // three outcomes; the parallel section.
+  assert.ok(build.includes('`{{cli}} build sync <id> --worktree <path>`'));
+  assert.ok(build.includes('`ready: waiting for an independent review; run /slicekit review <n> in a new session`'));
+  assert.ok(build.includes('`ready: not yet: <reason>`'));
+  assert.ok(build.includes('next review: /slicekit review <n> in a new session'));
+  assert.ok(build.includes('`{{cli}} build parallel P<n>`'));
+  assert.ok(build.includes('<id> not started: <reason>'));
+  assert.match(build, /^## Building a step in parallel$/m);
+  assert.doesNotMatch(build, /A refusal that says `pull first`, or that the default\s+branch/);
+  // `/slicekit review` is built now: the procedure renders, the arguments filled in.
+  const rendered = renderProcedure(process.cwd(), { cli: 'npx slicekit' }, 'review', ['7']);
+  assert.ok(rendered.includes('`npx slicekit review start 7`'));
+  assert.ok(!rendered.includes('{{'));
 });
