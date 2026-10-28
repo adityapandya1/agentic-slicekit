@@ -11,8 +11,9 @@ export function onPath(name, env) {
   return which(name, env) !== null;
 }
 
+// Until 0.1 the npm name holds only a placeholder, so the advice is the clone form, not an install.
 export const NOT_INSTALLED =
-  'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)';
+  'slicekit is not installed locally or on PATH; hooks will fail until it is. From a clone of the kit, run init with --cli "node <path-to-kit>/bin/slicekit.js" (quote the path if it has spaces), or set cli in .slicekit/config.json; npm has no release of slicekit until 0.1';
 
 // The command the hooks call, D-30: a local install, else slicekit on PATH, else the PATH form with
 // NOT_INSTALLED. Never a registry fetch: the npm name is unclaimed (D-26), so a hook must not install it.

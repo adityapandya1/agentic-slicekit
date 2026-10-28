@@ -63,3 +63,20 @@ test('the scope line says the kit parses no source code and names graphify', () 
   // The one line that runs both in one Claude Code session.
   assert.match(scope, /`\/graphify [^`]*`[^\n]*`\/slicekit [^`]*`/);
 });
+
+// S-25 whole-branch review: what a newcomer needs after the walkthrough and from the hooks section.
+test('the walkthrough cleans up after itself, and the hooks section points a clone at --cli', () => {
+  const walk = section('Walkthrough');
+  assert.match(walk, /^cd "\$KIT"$/m);
+  assert.match(walk, /^rm -rf "\$WORK"$/m);
+  const unset = walk.split('\n').find((l) => l.startsWith('unset ')) ?? '';
+  for (const v of ['SLICEKIT_GITHOST_FIXTURE', 'SLICEKIT_TRACKER_FIXTURE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) {
+    assert.ok(unset.split(/\s+/).includes(v), v);
+  }
+  // The independent verdict is round 2, while `rounds: 1 of 2` counts only the in-loop rounds.
+  assert.match(walk, /rounds: 1 of 2/);
+  const hooks = section('How the hooks find slicekit');
+  assert.match(hooks, /--cli/);
+  assert.match(hooks, /clone/);
+  assert.doesNotMatch(readme, /npm i -D/);
+});

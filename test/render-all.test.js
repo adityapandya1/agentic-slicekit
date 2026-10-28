@@ -193,3 +193,23 @@ test('the rendered pre-edit hook matches Edit, Write, MultiEdit and NotebookEdit
   const group = settings.hooks.PreToolUse.find((g) => g.hooks.some((h) => h.command.endsWith(' hook pre-edit')));
   assert.equal(group.matcher, 'Edit|Write|MultiEdit|NotebookEdit');
 });
+
+// S-25 whole-branch I-1: `/slicekit <command> [args]` is a real command, beside the per-command ones.
+test('init renders /slicekit, which runs instructions --command with its arguments', async () => {
+  const { init } = await import('../src/init.js');
+  for (const shape of SHAPES) {
+    const root = tmp();
+    init(root, { name: 'demo', shape, cli: 'node "/kit/bin/slicekit.js"' });
+    const text = fs.readFileSync(path.join(root, '.claude/commands/slicekit.md'), 'utf8');
+    assert.match(text, /^Run `node "\/kit\/bin\/slicekit\.js" instructions --command \$ARGUMENTS` /m, shape);
+    const description = text.match(/^description: (.*)$/m)?.[1] ?? '';
+    for (const name of ['intake', 'specify', 'gaps', 'plan', 'build', 'review']) {
+      assert.ok(description.split(/[^a-z]+/).includes(name), `${shape}: ${name}`);
+    }
+    assert.match(description, /\/slicekit <command> \[args\]/, shape);
+    // Every per-command file stays.
+    for (const name of ['intake', 'specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit']) {
+      assert.ok(fs.existsSync(path.join(root, `.claude/commands/slicekit-${name}.md`)), `${shape}: slicekit-${name}.md`);
+    }
+  }
+});

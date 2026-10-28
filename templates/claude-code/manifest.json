@@ -1,5 +1,14 @@
 [
   {
+    "src": "commands/slicekit.md",
+    "dest": ".claude/commands/slicekit.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
     "src": "commands/slicekit-intake.md",
     "dest": ".claude/commands/slicekit-intake.md",
     "shapes": [

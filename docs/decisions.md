@@ -54,3 +54,4 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | # | Type | Question | Why it matters | Recommendation |
 |---|---|---|---|---|
 | D-27 | Information | More seed phrases for the filler list, from the author's reading of agent output. | The ratchet is only as good as its seed. | Author adds phrases to `templates/style.json` as they meet them; the kit ships with those given so far. |
+| D-40 | Action | Which version does S-24 publish first, given npm already lists 0.1.0 from the name's previous owner? | npm never allows a version number to be reused | Run npm publish --dry-run for 0.1.0 first; if refused, publish 0.1.1 |

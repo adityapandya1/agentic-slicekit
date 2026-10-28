@@ -36,7 +36,8 @@ from `todo` to `merged`: red tests, green code, a review round, an independent r
 the merge.
 
 In your own project you type two commands into Claude Code, `/slicekit build` and
-`/slicekit review`, and the kit's agents write the tests, the code and the verdicts. Here each step
+`/slicekit review`, and the kit's agents write the tests, the code and the verdicts. (Each command
+also has a file of its own, so `/slicekit-build` and `/slicekit-review` work too.) Here each step
 is the command line that those two commands run, and the files the agents would write are copied
 in from `examples/walkthrough`. A local bare repository stands in for GitHub's copy of the project,
 and two fixture directories stand in for its pull requests and issues. So the walkthrough needs no
@@ -168,7 +169,9 @@ VERDICT="$(sed -n 's/^verdict //p' "$WORK/review.txt")"
 ```
 
 The independent reviewer's verdict is round 2, also an `APPROVE`. `build verdict --independent`
-commits it in the review worktree and pushes it. CI reports on that new head.
+commits it in the review worktree and pushes it. CI reports on that new head. It still prints
+`rounds: 1 of 2`: round 2 counts all of the slice's verdicts, while `rounds` counts only the two
+review rounds inside `/slicekit build`, and the independent review uses neither of them.
 
 ```sh
 cp "$KIT/examples/walkthrough/P1-S-01i-r2.md" "$VERDICT"
@@ -201,11 +204,14 @@ The last line reads `P1/S-01  merged  PR #1  Greet a name`.
 ### 9. Clean up
 
 Unset the two fixture variables. Otherwise a later slicekit command in this shell writes pull
-requests and issues into a folder you are about to delete, instead of calling `gh`. Then remove
-`$WORK`, which holds the project, the bare repository and the fixture directories.
+requests and issues into a deleted folder, instead of calling `gh`. The same line unsets the
+`GIT_CONFIG_*` variables, in case you set them above to turn signing off. Then go back to your
+clone and remove `$WORK`, which holds the project, the bare repository and the fixture directories.
 
 ```sh
-unset SLICEKIT_GITHOST_FIXTURE SLICEKIT_TRACKER_FIXTURE
+unset SLICEKIT_GITHOST_FIXTURE SLICEKIT_TRACKER_FIXTURE GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+cd "$KIT"
+rm -rf "$WORK"
 ```
 
 ## Scope
@@ -228,7 +234,9 @@ Then one Claude Code session runs both: `/graphify .` for the code graph, then `
 repository has a local install, and `slicekit` otherwise, which needs slicekit on PATH. When neither
 is found, init still writes `slicekit` and warns that the hooks will fail until it is installed; it
 never fetches slicekit from the registry. `cli` in `.slicekit/config.json` (or `init --cli <command>`)
-overrides that choice, and init and update warn when the command does not answer `--version`. The
+overrides that choice, and init and update warn when the command does not answer `--version`. Until
+0.1 is on npm, run the kit from a clone and pass `--cli` to init, as the walkthrough does:
+`--cli "node \"<path-to-kit>/bin/slicekit.js\""`. The
 hooks run from the session's working directory, so a worktree outside the repository tree needs an
 absolute path in `cli` or a global install.
 
