@@ -12,16 +12,24 @@ import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli, binPath } from './helpers/run-cli.js';
 import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
 
-function withKit(fn, { slices = 1, freeze = true, commits = 0 } = {}) {
+// The kit in a fresh repository. With no commits, it runs in P1/S-01's review worktree, made as an
+// orphan (no commit needed), since an independent verdict is recorded only there (D-39); `review:
+// false` keeps it in the main checkout.
+function withKit(fn, { slices = 1, freeze = true, commits = 0, review = commits === 0 } = {}) {
   const repo = makeRepo({ commits });
   try {
-    init(repo.root, { name: 'demo', shape: 'backend' });
-    const cfgFile = path.join(repo.root, '.slicekit', 'config.json');
+    let root = repo.root;
+    if (review) {
+      root = path.join(repo.root, '.worktrees', 'review-P1-S-01');
+      execFileSync('git', ['worktree', 'add', '-q', '--orphan', '-b', 'slice/P1-S-01-review', root], { cwd: repo.root, stdio: 'pipe' });
+    }
+    init(root, { name: 'demo', shape: 'backend' });
+    const cfgFile = path.join(root, '.slicekit', 'config.json');
     const raw = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
     raw.freezeTests = freeze;
     fs.writeFileSync(cfgFile, JSON.stringify(raw, null, 2));
-    const ids = writeSliceFixtures(repo.root, slices);
-    return fn(repo.root, loadConfig(repo.root), ids);
+    const ids = writeSliceFixtures(root, slices);
+    return fn(root, loadConfig(root), ids);
   } finally {
     repo.cleanup();
   }
@@ -449,7 +457,7 @@ test('in a repository with commits, the commit must resolve and short shas are s
       assert.equal(s.history.at(-1).evidence.commit, full);
       setState(root, cfg, id, 'building', {});
       assert.equal(setState(root, cfg, id, 'draft-pr', push(short)).pr.headSha, full);
-      setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+      setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
       assert.equal(setState(root, cfg, id, 'ci-green', green(short)).ci.sha, full);
     },
     { commits: 1 },
@@ -465,7 +473,7 @@ test('a head sha the repository cannot resolve stays as given; ci-green matches 
       setState(root, cfg, id, 'building', {});
       setState(root, cfg, id, 'draft-pr', push(HEAD));
       assert.equal(readSlice(root, cfg, id).pr.headSha, HEAD);
-      setState(root, cfg, id, 'in-review', verdict(root, 1, 0));
+      setState(root, cfg, id, 'in-review', verdict(root, 1, 0, false));
       assert.match(refusal(() => setState(root, cfg, id, 'ci-green', green('abc1235'))), /sha/);
       assert.equal(setState(root, cfg, id, 'ci-green', green(`${HEAD}${'0'.repeat(33)}`)).state, 'ci-green');
     },
@@ -697,5 +705,20 @@ test('ci-green accepts CI on a later head that only adds bookkeeping', () => {
       fs.mkdirSync(path.join(root, 'src'), { recursive: true });
       fs.writeFileSync(path.join(root, 'src', 'x.js'), 'export const x = 1;\n');
     },
+  );
+});
+
+// Whole-branch I-1: an independent verdict is recorded only where the review worktree is, whatever
+// command records it; a root with no worktree to check refuses it.
+test('an independent verdict outside the review worktree is refused', () => {
+  withKit(
+    (root, cfg, [id]) => {
+    toDraftPr(root, cfg, id);
+    assert.equal(
+      refusal(() => setState(root, cfg, id, 'in-review', verdict(root, 1, 0))),
+      'an independent verdict is recorded from the review worktree; run slicekit review start 7 in a new session',
+    );
+    },
+    { review: false },
   );
 });

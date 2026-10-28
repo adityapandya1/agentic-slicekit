@@ -31,8 +31,10 @@ Run `{{cli}} review start {{args}}`. It prints four lines:
 - `round <k>`: the round this verdict records.
 - `verdict <path>`: the absolute path, in the session root, where the reviewer writes its verdict.
 
-Keep all four. It refuses a pull request that is not open, not a slice pull request, from a fork,
-or whose head is not its branch on origin, and a review worktree with uncommitted changes: print the
+Keep all four. A refusal that the head `is not origin/<branch>` and ends `run the same command again
+in a minute` can be a push the git host has not seen yet: run this step once more after a minute;
+when it refuses again, print it and stop. It also refuses a pull request that is not open, not a
+slice pull request or from a fork, and a review worktree with uncommitted changes: print the
 refusal and stop, since the human decides each of these. A refusal that names
 `build pr <id> --worktree <dir>` means an earlier review session committed a fix it did not push:
 run `{{cli}} build pr <id> --worktree <dir>` with the path it names, then this step again.
@@ -102,9 +104,9 @@ pull request's head. On exit 1, by what it prints:
 - `CI still running on <sha7>; …`: nothing has changed; run the same command again. When it still
   says so after five tries, print it and stop; tell the human CI has not finished.
 - `no CI run found for <sha7>; check that the workflow ran`: print it and stop.
-- A refusal that the branch is behind origin, ending `run slicekit build sync <id>`, or that the
-  head `is not in the worktree; pull first`: run `{{cli}} build sync <id> --worktree <wt>`, then this
-  command again. When it refuses the same way after the sync, print it and stop.
+- A refusal that ends `run slicekit build sync <id>`, such as the branch behind origin or the head
+  not in the worktree: run `{{cli}} build sync <id> --worktree <wt>`, then this command again. When
+  it refuses the same way after the sync, print it and stop.
 
 On exit 0 it prints `ci-green` and the CI run's URL, then one line:
 

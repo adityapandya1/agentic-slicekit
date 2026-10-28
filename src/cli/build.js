@@ -80,7 +80,7 @@ function start(root, io, positionals, values) {
 }
 
 // Prints `<id> <worktree> <branch>` for each slice started, and a refusal on stderr for each that
-// was not. Each start is claimed on its own, so the ones that started stay started when another
+// was not, `held in <where>` for one another clone holds. Each start is claimed on its own, so the ones that started stay started when another
 // fails: the exit is 0 only when every runnable slice of the step started, else 1, with the started
 // lines still printed so the caller knows which worktrees exist.
 function parallel(root, io, positionals) {
@@ -91,7 +91,7 @@ function parallel(root, io, positionals) {
     if (o.error === undefined) io.stdout(`${o.id} ${path.resolve(o.worktree).split(path.sep).join('/')} ${o.branch}\n`);
     else io.stderr(`slicekit: ${o.id} not started: ${o.error}\n`);
   }
-  return outcomes.every((o) => o.error === undefined) ? 0 : 1;
+  return outcomes.every((o) => o.error === undefined || o.held) ? 0 : 1;
 }
 
 function redStep(root, io, positionals, values) {

@@ -1248,8 +1248,11 @@ test('the procedure and the developer brief pass the brief lint', () => {
   assert.equal(procedure.match(/\{\{args\}\}/g)?.length, 1, '{{args}}');
   assert.ok(procedure.includes('run no git or gh command yourself'), procedure);
   assert.ok(procedure.includes('`<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`'), procedure);
-  // Pull refusals go to the human, since the procedure runs no git.
-  assert.match(procedure, /pull first[\s\S]{0,200}human/);
+  // The default branch's pull refusal goes to the human, since the procedure runs no git; a slice
+  // branch behind origin is synced by the command it names.
+  assert.match(procedure, /default branch is behind origin\s+\(`pull first`\)[\s\S]{0,120}human/);
+  assert.ok(procedure.includes('ends `run slicekit build sync <id>`'), procedure);
+  assert.doesNotMatch(procedure, /is not in the worktree; pull first/);
   // `nothing to commit` is success; the notes file's shape and place are stated.
   assert.ok(procedure.includes('`nothing to commit`'), procedure);
   assert.ok(procedure.includes('a list of exactly three strings'), procedure);

@@ -8,7 +8,8 @@ import path from 'node:path';
 import { loadConfig } from '../../src/config.js';
 import { getHost } from '../../src/adapters/githost/index.js';
 import { GitHostError } from '../../src/adapters/githost/errors.js';
-import { recordVerdict } from '../../src/build/verdict.js';
+import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
+import { getSection } from '../../src/prbody.js';
 import { git } from '../../src/git.js';
 import { cli, commitAll, commitIn, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 import { briefProblems } from '../helpers/brief-lint.js';
@@ -97,9 +98,9 @@ test('the verdict of an independent review is marked independent', async () => {
     assert.equal(st.verdicts.at(-1).round, 3);
     assert.equal(st.verdicts.at(-1).path, `${REVIEWS}/P1-S-01i-r3.md`);
     assert.ok(fs.existsSync(path.join(wt, ...REVIEWS.split('/'), 'P1-S-01i-r3.md')));
-    // The pull request goes back to draft with the state (ruling 4), and the slice branch has the round.
-    assert.equal(prIn(p).isDraft, true);
-    assert.equal(prCalls(p.host).filter((c) => c.op === 'markDraft').length, 1);
+    // A clean verdict leaves the pull request ready (whole-branch M-2); the slice branch has the round.
+    assert.equal(prIn(p).isDraft, false);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markDraft').length, 0);
     assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(wt, ['rev-parse', 'HEAD']));
 
     // A re-run of the recorded round records nothing again and marks nothing again.
@@ -107,7 +108,7 @@ test('the verdict of an independent review is marked independent', async () => {
     assert.equal(again.code, 0, again.stderr);
     assert.equal(again.stdout, r.stdout);
     assert.equal(stateIn(wt).verdicts.length, 3);
-    assert.equal(prCalls(p.host).filter((c) => c.op === 'markDraft').length, 1);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markDraft').length, 0);
   } finally {
     p.cleanup();
   }
@@ -162,9 +163,12 @@ test('an independent verdict is recorded only from the review worktree', async (
     git(p.root, ['worktree', 'remove', '--force', elsewhere]);
     git(p.root, ['branch', '-q', '-D', 'slice/P1-S-01-review']);
 
-    // With the review worktree there, a call without --worktree finds the build worktree, and is refused.
-    reviewWorktree(p);
-    refused(await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env));
+    // With the review worktree there, a call without --worktree records there (whole-branch M-1).
+    const wt = reviewWorktree(p);
+    const found = await cli(p.root, ['build', 'verdict', 'P1/S-01', file, '--independent'], p.env);
+    assert.equal(found.code, 0, found.stderr);
+    assert.equal(stateIn(wt).verdicts.at(-1).independent, true);
+    assert.deepEqual(stateIn(p.wt), before);
   } finally {
     p.cleanup();
   }
@@ -480,7 +484,7 @@ test('review start takes only the pull request whose head origin holds', async (
     copyPr(p, 7, { title: '[P1/S-01] Fork copy', headRefOid: 'deadbeef'.repeat(5) });
     const fork = await cli(p.root, ['review', 'start', '7'], p.env);
     assert.equal(fork.code, 1);
-    assert.equal(fork.stderr, `slicekit: pull request #7's head deadbee is not origin/${SLICE_BRANCH}; is it from a fork?\n`);
+    assert.equal(fork.stderr, `slicekit: pull request #7's head deadbee is not origin/${SLICE_BRANCH}; is it from a fork? If the branch was just pushed, run the same command again in a minute\n`);
     assert.equal(fs.existsSync(reviewDir(p)), false);
 
     // The same head, but the slice's state records another pull request.
@@ -672,14 +676,15 @@ test('a clean independent verdict at ready ends at ready with the pull request r
     const back = stateIn(p.wt);
     assert.equal(back.state, 'in-review');
     assert.equal(back.history.at(-1).from, 'ready');
-    assert.equal(prIn(p).isDraft, true);
+    // A clean verdict keeps the pull request ready (whole-branch M-2): no draft, no second markReady.
+    assert.equal(prIn(p).isDraft, false);
     const readies = prCalls(p.host).filter((c) => c.op === 'markReady').length;
 
-    // CI still running: the pull request stays draft and nothing is recorded.
+    // CI still running: nothing is recorded.
     write(p.host, `ci-${originTip(p)}.json`, JSON.stringify([{ status: 'in_progress', conclusion: null, url: RUN_URL, createdAt: '2026-10-26T00:00:00Z' }]));
     const pending = await cli(p.root, ['build', 'finish', 'P1/S-01', '--wait', '0'], p.env);
     assert.equal(pending.code, 1);
-    assert.equal(prIn(p).isDraft, true);
+    assert.equal(prIn(p).isDraft, false);
     assert.equal(stateIn(p.wt).state, 'in-review');
 
     setCi(p, originTip(p));
@@ -688,13 +693,13 @@ test('a clean independent verdict at ready ends at ready with the pull request r
     assert.equal(done.stdout, `ci-green\n${RUN_URL}\nready\n`);
     assert.equal(stateIn(p.wt).state, 'ready');
     assert.equal(prIn(p).isDraft, false);
-    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies + 1);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies);
 
     // A re-run at ready pushes and marks nothing new.
     const again = await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env);
     assert.equal(again.code, 0, again.stderr);
     assert.equal(again.stdout, `ci-green\n${RUN_URL}\nready\n`);
-    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies + 1);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markReady').length, readies);
   } finally {
     p.cleanup();
   }
@@ -863,11 +868,127 @@ test('the review and parallel procedures pass the brief lint', () => {
   assert.ok(build.includes('`ready: not yet: <reason>`'));
   assert.ok(build.includes('next review: /slicekit review <n> in a new session'));
   assert.ok(build.includes('`{{cli}} build parallel P<n>`'));
-  assert.ok(build.includes('<id> not started: <reason>'));
+  assert.ok(build.includes('`slicekit: <id> not started: <reason>`'));
+  assert.ok(build.includes('`slicekit: <id> not started: held in origin/<branch>`'));
+  assert.match(review, /run the same command again\s+in a minute/);
+  for (const text of [review, build]) assert.doesNotMatch(text, /pull first`:/);
   assert.match(build, /^## Building a step in parallel$/m);
   assert.doesNotMatch(build, /A refusal that says `pull first`, or that the default\s+branch/);
   // `/slicekit review` is built now: the procedure renders, the arguments filled in.
   const rendered = renderProcedure(process.cwd(), { cli: 'npx slicekit' }, 'review', ['7']);
   assert.ok(rendered.includes('`npx slicekit review start 7`'));
   assert.ok(!rendered.includes('{{'));
+});
+
+// Whole-branch I-1: the review-worktree rule lives in the in-review transition, so `slicekit state
+// set --independent` from the build worktree is refused as `build verdict --independent` is.
+test('state set records an independent verdict only in the review worktree', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const rel = `${REVIEWS}/P1-S-01i-r3.md`;
+    const args = ['state', 'set', 'P1/S-01', 'in-review', '--verdict', rel, '--round', '3', '--blockers', '0', '--independent'];
+    write(p.wt, rel, verdictText('APPROVE'));
+    commitIn(p.wt, 'chore(slicekit): P1/S-01 verdict r3');
+    const before = stateIn(p.wt);
+    const r = await cli(p.wt, args, p.env);
+    assert.equal(r.code, 1, r.stdout);
+    assert.ok(r.stderr.includes('an independent verdict is recorded from the review worktree; run slicekit review start 1 in a new session'), r.stderr);
+    assert.deepEqual(stateIn(p.wt), before);
+
+    const wt = reviewWorktree(p);
+    write(wt, rel, verdictText('APPROVE'));
+    commitIn(wt, 'chore(slicekit): P1/S-01 verdict r3');
+    const ok = await cli(wt, args, p.env);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.equal(stateIn(wt).verdicts.at(-1).independent, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Whole-branch I-2: a blocker an independent verdict does not raise again, with no fix commit between,
+// is not "fixed".
+test('a blocker gone without a fix commit is not raised, not fixed', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const wt = reviewWorktree(p);
+    const three = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), wt);
+    assert.equal(three.code, 0, three.stderr);
+    const four = await independent(p, independentFile(p, 4, verdictText('APPROVE')), wt);
+    assert.equal(four.code, 0, four.stderr);
+    assert.equal(
+      getSection(prIn(p).body, 'Reviewer blocked'),
+      'B-1 `x is wrong` — fixed in round 2; B-2 `y is wrong` — not raised by the independent review in round 4',
+    );
+  } finally {
+    p.cleanup();
+  }
+  const f = (id) => ({ id, kind: 'blocker', wrong: 'x' });
+  const sha = 'a'.repeat(40);
+  assert.equal(reviewerBlocked([{ round: 1, findings: [f('B-1')], headSha: sha }, { round: 2, findings: [], headSha: sha }]), 'B-1 `x` — not raised in round 2');
+  assert.equal(reviewerBlocked([{ round: 1, findings: [f('B-1')], headSha: sha }, { round: 2, findings: [], headSha: 'b'.repeat(40) }]), 'B-1 `x` — fixed in round 2');
+});
+
+// Whole-branch M-1: without --worktree, an independent verdict goes to the review worktree when there is one.
+test('an independent verdict without --worktree uses the review worktree', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const wt = reviewWorktree(p);
+    const r = await cli(p.root, ['build', 'verdict', 'P1/S-01', independentFile(p, 3, verdictText('APPROVE')), '--independent'], p.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(stateIn(wt).verdicts.at(-1).round, 3);
+    assert.equal(stateIn(wt).verdicts.at(-1).independent, true);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Whole-branch M-2: only an independent verdict with blockers sends the pull request back to draft.
+test('a clean independent verdict at ready leaves the pull request ready', async () => {
+  const p = await greenAfterTwoRounds();
+  try {
+    const wt = reviewWorktree(p);
+    const three = await independent(p, independentFile(p, 3, verdictText('APPROVE')), wt);
+    assert.equal(three.code, 0, three.stderr);
+    const head = git(wt, ['rev-parse', 'HEAD']);
+    setLiveHead(p, head);
+    setCi(p, head);
+    const done = await cli(p.root, ['build', 'finish', 'P1/S-01', '--worktree', wt], p.env);
+    assert.equal(done.code, 0, done.stderr);
+    assert.equal(stateIn(wt).state, 'ready');
+    const four = await independent(p, independentFile(p, 4, verdictText('APPROVE')), wt);
+    assert.equal(four.code, 0, four.stderr);
+    assert.equal(stateIn(wt).state, 'in-review');
+    assert.equal(prIn(p).isDraft, false);
+    assert.equal(prCalls(p.host).filter((c) => c.op === 'markDraft').length, 0);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Whole-branch queued item: once an independent verdict is recorded, the next review is a new
+// session's, so `build pr` prints no in-loop verdict path even with an in-loop round left.
+test('build pr prints no in-loop verdict path after an independent verdict', async () => {
+  const p = await green();
+  try {
+    assert.equal((await p.pr()).code, 0);
+    write(p.root, `${REVIEWS}/P1-S-01-r1.md`, verdictText('APPROVE'));
+    const one = await cli(p.root, ['build', 'verdict', 'P1/S-01', `${REVIEWS}/P1-S-01-r1.md`], p.env);
+    assert.equal(one.code, 0, one.stderr);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    setLiveHead(p, head);
+    setCi(p, head);
+    assert.equal((await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env)).code, 0);
+    const wt = reviewWorktree(p);
+    const two = await independent(p, independentFile(p, 2, verdictText('BLOCK', [['B-1', 'x is wrong']])), wt);
+    assert.equal(two.code, 0, two.stderr);
+    write(wt, 'src/t1.js', 'export const x = () => 2; // fix\n');
+    const fixed = await cli(p.root, ['build', 'commit', 'P1/S-01', '--worktree', wt, '--message', 'fix: B-1', '--require-green'], p.env);
+    assert.equal(fixed.code, 0, fixed.stderr);
+    const pushed = await cli(p.root, ['build', 'pr', 'P1/S-01', '--worktree', wt], p.env);
+    assert.equal(pushed.code, 0, pushed.stderr);
+    assert.match(pushed.stdout, /^#1 \S+\n$/);
+  } finally {
+    p.cleanup();
+  }
 });

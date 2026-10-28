@@ -791,7 +791,7 @@ test('finish at ci-green cites the recorded run', async () => {
 });
 
 // Review M-6: a live head this worktree does not hold is a pull, not a fix push.
-test('finish says pull first for a live head missing from the worktree', async () => {
+test('finish says build sync for a live head missing from the worktree', async () => {
   const p = await approved();
   try {
     const missing = 'a'.repeat(40);
@@ -799,7 +799,7 @@ test('finish says pull first for a live head missing from the worktree', async (
     setCi(p, missing, 'completed', 'success');
     const r = await finishCli(p);
     assert.equal(r.code, 1);
-    assert.ok(r.stderr.includes("P1/S-01's pull request head aaaaaaa is not in the worktree; pull first"), r.stderr);
+    assert.ok(r.stderr.includes("P1/S-01's pull request head aaaaaaa is not in the worktree; run slicekit build sync P1/S-01"), r.stderr);
     assert.equal(prIn(p).isDraft, true);
   } finally {
     p.cleanup();

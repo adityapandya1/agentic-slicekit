@@ -106,7 +106,7 @@ export function startReview(root, cfg, host, number) {
   // branch does not.
   const tip = git(root, ['rev-parse', tracking]);
   if (typeof pr.headSha === 'string' && pr.headSha !== '' && pr.headSha !== tip) {
-    throw new BuildError(`pull request #${number}'s head ${pr.headSha.slice(0, 7)} is not origin/${headRef}; is it from a fork?`);
+    throw new BuildError(`pull request #${number}'s head ${pr.headSha.slice(0, 7)} is not origin/${headRef}; is it from a fork? If the branch was just pushed, run the same command again in a minute`);
   }
   const recorded = recordedNumber(root, cfg, id, tracking);
   if (recorded !== null && recorded !== number) throw new BuildError(`pull request #${number} is not the one recorded for ${id} (#${recorded})`);

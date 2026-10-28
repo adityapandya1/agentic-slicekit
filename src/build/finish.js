@@ -114,7 +114,7 @@ export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, inte
   const pr = host.getPullRequest(number);
   const live = pr.headSha;
   if (typeof live !== 'string' || live === '') throw new BuildError(`pull request #${number} reports no head sha`);
-  const pull = `${id}'s pull request head ${short(live)} is not in the worktree; pull first`;
+  const pull = `${id}'s pull request head ${short(live)} is not in the worktree; run slicekit build sync ${id}`;
   if (resolveCommit(wt, live) === null) throw new BuildError(pull);
   if (!headCovers(wt, recorded, live)) throw new BuildError(`a fix push is not recorded; run slicekit build pr ${id}`);
   const local = headSha(wt);
@@ -136,8 +136,9 @@ export function finish(root, cfg, host, id, { worktree, wait = FINISH_WAIT, inte
 // decision passes. The pull request is marked ready only here, on green CI, so a failed or running CI
 // leaves a draft, as in-review says. It is marked when the decision passes, or when no independent
 // verdict is on the head yet so the independent reviewer is asked to review a ready pull request.
-// After a clean independent verdict sent the slice back to in-review and the pull request to draft
-// (D-39), it is ready again only once CI is green and the decision passes. Then the bookkeeping is
+// After an independent verdict with blockers sent the slice back to in-review and the pull request to
+// draft (D-39), it is ready again only once CI is green and the decision passes; a clean one leaves
+// the pull request ready. Then the bookkeeping is
 // pushed. At `ready` the decision is made again: one that fails records nothing and marks nothing.
 // `review.independent` is the default branch's on origin (withBaseReviewMode), as the label job
 // reads it, never the pull request's own. -> {ready, reason, number}.

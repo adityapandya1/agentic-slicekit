@@ -7,6 +7,7 @@ import path from 'node:path';
 import { GitError, assertRef, git, hasRemote, pushBranch } from '../git.js';
 import { parseSliceAddr, sliceFromBranch } from '../ids.js';
 import { findSliceFiles } from '../slicefile.js';
+import { REVIEW_DESCR, branchPrefix, listWorktrees, pad, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from '../worktrees.js';
 import { readSlice } from '../state/index.js';
 import { heldSlices, prepare, runnable, waitingOn } from './order.js';
 
@@ -19,44 +20,7 @@ export class BuildError extends Error {
   }
 }
 
-const pad = (n) => String(n).padStart(2, '0');
-export const branchPrefix = (addr) => `slice/P${addr.phase}-S-${pad(addr.slice)}`;
-export const worktreeDir = (root, addr) => path.join(root, '.worktrees', `P${addr.phase}-S-${pad(addr.slice)}`);
-// The review worktree `review start` makes, at a fixed path on a fixed branch: an independent verdict
-// is recorded only there (D-39), so no build branch may take that name.
-export const REVIEW_DESCR = 'review';
-export const reviewBranch = (addr) => `${branchPrefix(addr)}-${REVIEW_DESCR}`;
-export const reviewWorktreeDir = (root, addr) => path.join(root, '.worktrees', `review-P${addr.phase}-S-${pad(addr.slice)}`);
-
-// One spelling of a path, so `C:/x` from git and `C:\x` from path.resolve compare equal.
-export function samePath(a, b) {
-  const norm = (p) => {
-    let abs = path.resolve(p);
-    try {
-      abs = fs.realpathSync.native(abs);
-    } catch {
-      // A path that is gone is compared as written.
-    }
-    return process.platform === 'win32' ? abs.toLowerCase() : abs;
-  };
-  return norm(a) === norm(b);
-}
-
-// Every worktree of the repository as { path, branch }, the main one first; branch is null when
-// HEAD is detached.
-export function listWorktrees(root) {
-  const out = [];
-  let cur = null;
-  for (const line of git(root, ['worktree', 'list', '--porcelain']).split('\n')) {
-    if (line.startsWith('worktree ')) {
-      cur = { path: path.resolve(line.slice('worktree '.length)), branch: null };
-      out.push(cur);
-    } else if (cur && line.startsWith('branch refs/heads/')) {
-      cur.branch = line.slice('branch refs/heads/'.length);
-    }
-  }
-  return out;
-}
+export { REVIEW_DESCR, branchPrefix, listWorktrees, reviewBranch, reviewWorktreeDir, samePath, worktreeDir } from '../worktrees.js';
 
 // The review worktree `review start` makes for the slice at `addr`, known by its branch or its path.
 export const isReviewWorktree = (root, addr, w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDate, isSha, sameSha } from '../evidence.js';
+import { isReviewWorktreeAt } from '../worktrees.js';
 import { headCovers } from './covers.js';
 
 export const STATES = [
@@ -162,6 +163,12 @@ export const TRANSITIONS = {
     check(current, ev, ctx) {
       const v = ev.verdict;
       if (INDEPENDENT_ONLY.includes(current.state) && v?.independent !== true) return `${current.state} takes only an independent verdict`;
+      // The building session never approves itself: an independent verdict is recorded only in the
+      // review worktree `review start` makes, whichever command records it (D-39). A root that is no
+      // worktree cannot show it is that one, so it is refused too.
+      if (v?.independent === true && !isReviewWorktreeAt(ctx.root, ctx.id)) {
+        return `an independent verdict is recorded from the review worktree; run slicekit review start ${current.pr?.number ?? '<PR>'} in a new session`;
+      }
       if (!v || !isInt(v.round) || v.round < 1) return 'in-review needs a verdict with round 1 or more';
       if (!isInt(v.blockers)) return 'in-review needs the verdict blocker count';
       if (!isStr(v.path)) return 'in-review needs the verdict file path (verdict.path)';

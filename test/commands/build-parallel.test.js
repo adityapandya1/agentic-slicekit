@@ -258,7 +258,10 @@ test('parallel with every slice of the step started says where each is held', as
   try {
     git(p.root, ['push', '-q', 'origin', 'main:refs/heads/slice/P1-S-02-elsewhere']);
     const first = await cli(p.root, ['build', 'parallel', 'P1']);
+    // A slice another clone holds is named, and does not count as one that failed to start.
     assert.equal(first.code, 0, first.stderr);
+    assert.equal(first.stderr, 'slicekit: P1/S-02 not started: held in origin/slice/P1-S-02-elsewhere\n');
+    assert.equal(first.stdout.trim().split('\n').length, 1, first.stdout);
     const wt = first.stdout.split(' ')[1];
     const r = await cli(p.root, ['build', 'parallel', 'P1']);
     assert.equal(r.code, 1);

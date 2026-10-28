@@ -7,12 +7,13 @@ steps 1 to 9). Arguments: {{args}}.
 `<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`. Every step that touches the
 repository's history goes through `{{cli}}`; run no git or gh command yourself. The developer writes
 files and reports; you read its report and run the next command. Stop at the first command that
-exits non-zero and act on what it prints. A refusal that says the slice's branch is behind origin
-and ends `run slicekit build sync <id>` means another worktree, such as an independent review's,
-pushed to it: run `{{cli}} build sync <id> --worktree <path>`, then the
-refused command again. A refusal that says the default branch is behind origin (`pull first`) or
-ahead of it, or that a branch `has diverged from origin`, goes to the human: print it and stop, since only the human
-pulls or pushes by hand. So does any other refusal a step below does not say how to fix.
+exits non-zero and act on what it prints. A refusal that ends `run slicekit build sync <id>` means
+another worktree, such as an independent review's, pushed to the slice branch: run
+`{{cli}} build sync <id> --worktree <path>`, then the refused command again; when it refuses the
+same way after the sync, print it and stop. A refusal that says the default branch is behind origin
+(`pull first`) or ahead of it, or that a branch `has diverged from origin`, goes to the human: print
+it and stop, since only the human pulls or pushes by hand. So does any other refusal a step below
+does not say how to fix.
 
 When the arguments are `--parallel P<n>`, build that phase's next Order step side by side: see
 "Building a step in parallel" at the end.
@@ -192,9 +193,8 @@ exit 1, by what it prints:
   says so after five tries, print it and stop; tell the human CI has not finished.
 - `no CI run found for <sha7>; check that the workflow ran`: print it and stop; tell the human the
   workflow did not run on that head.
-- A refusal that the pull request head `is not in the worktree; pull first`: run
-  `{{cli}} build sync <id> --worktree <path>`, then this command again. When it refuses the same
-  way after the sync, print it and stop.
+- one that ends `run slicekit build sync <id>`, such as the pull request head
+  `is not in the worktree`: sync and run it again, as the opening says.
 
 On exit 0 it prints `ci-green` and the CI run's URL, then one line:
 
@@ -211,11 +211,14 @@ On exit 0 it prints `ci-green` and the CI run's URL, then one line:
 With `--parallel P<n>`, run step 1's `{{cli}} stage require plan`, then
 `{{cli}} build parallel P<n>` in place of `build next` and `build start`. It starts every runnable
 slice of the phase's next Order step, each in its own worktree, and prints one line per slice
-started: `<id> <worktree> <branch>`. Keep each slice's ID and worktree path. It exits 1 when not
-every slice started: the slices on stdout started all the same, and each one that did not is a line
-`<id> not started: <reason>` on stderr. Print those lines to the human and go on with the slices that
-started. When none started, it prints `no slice of P<n> is ready to build` and one line per slice
-saying what it waits on or where it was started; print them and stop.
+started: `<id> <worktree> <branch>`. Keep each slice's ID and worktree path. Each slice of the step
+it did not start is a line `slicekit: <id> not started: <reason>` on stderr; print those lines to
+the human and go on with the slices that started. A slice another clone holds is
+`slicekit: <id> not started: held in origin/<branch>`: it is not this clone's to build, and it does
+not count as a failed start. The command exits 1 when a slice it could have started did not; the
+slices on stdout started all the same. When none started, it exits 1 with
+`slicekit: no slice of P<n> is ready to build` and one line per slice saying what it waits on or
+where it was started; print them and stop.
 
 Then:
 
