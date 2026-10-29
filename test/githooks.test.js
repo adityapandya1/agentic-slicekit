@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { init } from '../src/init.js';
@@ -144,6 +145,52 @@ test('pre-commit refuses a merge on a protected branch', { skip: noSh }, () => {
     assert.notEqual(r.code, 0);
     assert.match(r.stderr, /main is protected/);
   }, { branch: 'main', commits: 1 });
+});
+
+// S-27: a stand-in node first on PATH that leaves a mark when a hook starts it, and fails.
+function markingNode() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-node-'));
+  const mark = path.join(dir, 'ran');
+  fs.writeFileSync(path.join(dir, 'node'), `#!/bin/sh\necho ran >> '${mark.split(path.sep).join('/')}'\nexit 1\n`, { mode: 0o755 });
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  return { env: { [key]: `${dir}${path.delimiter}${process.env[key]}` }, ran: () => fs.existsSync(mark) };
+}
+
+const writeProtected = (root, branches, raw) => {
+  const file = path.join(root, '.slicekit', 'config.json');
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.protectedBranches = branches;
+  const text = `${JSON.stringify(cfg, null, 2)}\n`;
+  fs.writeFileSync(file, raw ? raw(text) : text);
+};
+
+test('a commit on a slice branch the config does not name starts no node and is stamped', { skip: noSh }, () => {
+  withHooks((root) => {
+    const node = markingNode();
+    const r = commit(root, ['-m', 'work'], node.env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(count(body(root), 'Slice: P1/S-06'), 1);
+    assert.equal(node.ran(), false, 'a hook started node');
+  });
+});
+
+test('a branch listed in protectedBranches is still refused', { skip: noSh }, () => {
+  withHooks((root) => {
+    writeProtected(root, ['main', 'release/x']);
+    const r = commit(root, ['-m', 'on release']);
+    assert.notEqual(r.code, 0);
+    assert.match(r.stderr, /release\/x is protected/);
+  }, { branch: 'release/x' });
+});
+
+test('a branch named only through a JSON escape in the config is still refused', { skip: noSh }, () => {
+  withHooks((root) => {
+    // "release" is "release" to JSON, but its text never holds "release" in quotes.
+    writeProtected(root, ['main', 'RELEASE'], (text) => text.replace('"RELEASE"', '"rel\\u0065ase"'));
+    const r = commit(root, ['-m', 'on release']);
+    assert.notEqual(r.code, 0);
+    assert.match(r.stderr, /release is protected/);
+  }, { branch: 'release' });
 });
 
 test('pre-commit allows a detached HEAD', { skip: noSh }, () => {
