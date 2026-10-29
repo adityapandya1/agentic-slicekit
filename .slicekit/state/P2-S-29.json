@@ -1,6 +1,6 @@
 {
   "slice": "P2/S-29",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 30,
@@ -16,7 +16,9 @@
     "test/state-backfill.test.js",
     "test/local-test-command.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/local-test-command.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -83,6 +85,17 @@
           "blockers": 3,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-29T21:34:50.040Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/local-test-command.test.js",
+        "amendCommit": "24f5e1c7f45c8bc1957c0acf6b28212dada0ea52",
+        "reason": "Done when 6 now says check --ci keeps the committed command; with CI set the build steps no longer read local.json, so the test runs them with CI removed. Assertions unchanged."
       }
     }
   ]
