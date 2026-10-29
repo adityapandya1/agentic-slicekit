@@ -19,7 +19,8 @@
   "unfrozen": [
     "test/local-test-command.test.js",
     "test/verdict-references.test.js",
-    "test/build-amend.test.js"
+    "test/build-amend.test.js",
+    "test/build-pr-head.test.js"
   ],
   "verdicts": [
     {
@@ -120,6 +121,17 @@
         "unfreeze": "test/build-amend.test.js",
         "amendCommit": "4e6e20450f1f8f89d9f4c1bc1f4db84bdb053863",
         "reason": "Done when 2 now says amend reads the committed state; the test's verdict fixture gains its Head line so build verdict takes it. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:54.346Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-pr-head.test.js",
+        "amendCommit": "4cf2db7d21f28fc4acddd53768cdcb3d83c12acd",
+        "reason": "Done when 3 now says the next verdict reviews the recorded head; the test's verdict is written with that head. Assertions unchanged."
       }
     }
   ]
