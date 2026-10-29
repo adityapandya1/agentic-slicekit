@@ -33,16 +33,18 @@ slicekit_op() {
 # Refuses when that branch is in protectedBranches of .slicekit/config.json, or is main when node or
 # the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides. Entries are names, never
 # globs: globbing is off while they are compared.
-# True when .slicekit/config.json might list branch $1, so only node can say: the file holds $1's text
-# anywhere (node's answer is split at whitespace, so a word inside a longer entry counts), a \u escape,
-# or, for a name with a slash, a \/ escape; or $1 holds a double quote. Of JSON's escapes only these
-# two can spell a character a branch name may hold. Shell built-ins only, so deciding costs no process.
+# False only when the config's text proves branch $1 cannot be protected, so node need not start; true
+# whenever only node can say (D-42). Proof is kept to the hot path: a slice branch spelled in ASCII
+# letters, digits and / . _ -, whose text appears nowhere in the file, in a file with no \u or \/
+# escape. node prints every protectedBranches value joined, numbers in JavaScript's form and nested
+# arrays joined with commas, so no other name can be ruled out from the text alone. Shell built-ins
+# only, and every character class spelled out, so no locale widens it.
 slicekit_named() {
   [ -f .slicekit/config.json ] || return 1
-  case $1 in *'"'*) return 0 ;; esac
+  case $1 in slice/P*-S-*) ;; *) return 0 ;; esac
+  case $1 in *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-]*) return 0 ;; esac
   while IFS= read -r slicekit_line || [ -n "$slicekit_line" ]; do
-    case $slicekit_line in *'\u'* | *"$1"*) return 0 ;; esac
-    case $1 in */*) case $slicekit_line in *'\/'*) return 0 ;; esac ;; esac
+    case $slicekit_line in *'\u'* | *'\/'* | *"$1"*) return 0 ;; esac
   done < .slicekit/config.json
   return 1
 }
