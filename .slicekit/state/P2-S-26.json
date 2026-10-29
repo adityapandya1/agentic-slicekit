@@ -1,11 +1,11 @@
 {
   "slice": "P2/S-26",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 23,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
-    "headSha": "d0e2d6a8f282c318178414a2f37df036f51a4ff7"
+    "headSha": "5bda28531e615bd3f2456bf598d6a62ccc584788"
   },
   "redCommit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
   "frozenTests": [
@@ -78,6 +78,22 @@
           "path": ".slicekit/reviews/P2-S-26-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-29T07:01:15.718Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 23,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
+          "headSha": "5bda28531e615bd3f2456bf598d6a62ccc584788",
+          "title": "[P2/S-26] Preview on npm: 0.1.1"
         }
       }
     }
