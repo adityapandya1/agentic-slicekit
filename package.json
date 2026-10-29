@@ -1,8 +1,16 @@
 {
   "name": "slicekit",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "description": "Spec-driven agentic workflow kit",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adityapandya1/agentic-slicekit.git"
+  },
+  "homepage": "https://github.com/adityapandya1/agentic-slicekit#readme",
+  "bugs": {
+    "url": "https://github.com/adityapandya1/agentic-slicekit/issues"
+  },
   "type": "module",
   "bin": {
     "slicekit": "bin/slicekit.js"

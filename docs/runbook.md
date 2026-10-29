@@ -26,8 +26,27 @@ Not yet known
 
 ## Going public as a preview
 
-The repository goes public as a preview once this slice has merged and CI is green on `main` on Linux, macOS and Windows (D-28). The author changes the visibility by hand: Settings, General, Danger Zone, "Change repository visibility", Public. No command in the kit does this.
+The repository goes public as a preview once P2/S-25 has merged and CI is green on `main` on Linux, macOS and Windows (D-28). The author changes the visibility by hand: Settings, General, Danger Zone, "Change repository visibility", Public. No command in the kit does this.
 
-Nothing is published to npm at this point. The `slicekit` package keeps its 0.0.1 placeholder until S-24 publishes 0.1, so the README tells readers to run the kit from a clone.
+Preview versions reach npm from 0.1.1 (D-41); see "Releasing a preview".
 
 After the switch, the README walkthrough is the first thing a visitor tries. A failure of `test/walkthrough.test.js` on `main` is a broken first impression: fix it before any other work.
+
+## Releasing a preview
+
+The author publishes, by hand, from their own npm account; no command in the kit and no CI job publishes. Until S-24 moves publishing into CI, a preview carries no provenance attestation (D-41).
+
+1. The version in `package.json` is set in a merged slice, and CI on that `main` commit is green on Linux, macOS and Windows.
+2. On an up-to-date `main` with a clean working tree, `npm test` passes, and `npm publish --dry-run` lists only `package.json`, `README.md`, `LICENSE` and files under `bin/`, `src/` and `templates/` (the package test checks the same list).
+3. `npm login` once per machine, then `npm publish`. npm asks for the one-time code of the account's two-factor login.
+4. Tag the commit and push the tag: `git tag v<version>` and `git push origin v<version>`.
+5. `npm view slicekit version` prints the new version.
+6. After the first preview only: `npm deprecate slicekit@0.0.1 "placeholder with no code; install slicekit@latest"`, so nobody installs the placeholder by pinning it.
+
+## Rolling back a bad version on npm
+
+A version number is never reused on npm, even after the version is removed, so a fix always ships as a new version.
+
+- Within 72 hours of publishing, and when no other package depends on it, `npm unpublish slicekit@<version>` removes the version. Its number stays used.
+- After that, `npm deprecate slicekit@<version> "<what is wrong>; use <fixed version>"` marks it: npm shows the message to anyone who installs it. Then publish the fix as the next patch version through "Releasing a preview".
+- If the bad version carries the `latest` tag, point the tag back at the last good version until the fix is out: `npm dist-tag add slicekit@<good version> latest`.

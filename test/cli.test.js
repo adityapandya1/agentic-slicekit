@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import os from 'node:os';
 import { main, COMMANDS } from '../src/cli/index.js';
 import { runCli } from './helpers/run-cli.js';
@@ -20,7 +21,8 @@ test('no arguments exits 2 with usage', () => {
 test('--version prints package version', () => {
   const r = runCli(['--version'], { cwd: os.tmpdir() });
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /^0\.0\.1/);
+  const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(r.stdout.trim(), version);
 });
 
 test('--help prints usage to stderr and exits 0', () => {

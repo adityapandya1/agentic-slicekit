@@ -13,9 +13,19 @@ traceability graph, its queries and views, and workspaces that span several repo
 will add release, ops and audit, and the other examples (`fullstack` and `data`). Phases 3 and 4
 are not built yet.
 
-npm holds only the 0.0.1 placeholder under the name `slicekit`, and it does nothing. The first real
-release on npm will be 0.1. Until then, run the kit from a clone. It needs Node 22 or later and git.
-It has no dependencies, so there is nothing to install:
+The kit is on npm as a preview from 0.1.1. It needs Node 22 or later and git, and it has no
+dependencies of its own. In your project:
+
+```sh
+npm i -D slicekit
+npx slicekit init --shape backend --name <your-project>
+```
+
+Each change to the kit ships as the next 0.x version, and a 0.x version may change how a command
+works. `npx slicekit update` re-renders the kit's files after an upgrade and shows what changed.
+
+The walkthrough below runs from a clone instead, because it copies files only the repository
+holds (`examples/backend` and `examples/walkthrough`):
 
 ```sh
 git clone https://github.com/adityapandya1/agentic-slicekit
@@ -23,8 +33,7 @@ cd agentic-slicekit
 node bin/slicekit.js --version
 ```
 
-The last line prints the version the clone carries. Until 0.1 that is also 0.0.1; it comes from
-your clone, not from npm.
+The last line prints the version the clone carries.
 
 `docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every choice
 made so far, and `BUILD.md` shows the order the kit is built in. The kit is built with itself.
@@ -234,8 +243,9 @@ Then one Claude Code session runs both: `/graphify .` for the code graph, then `
 repository has a local install, and `slicekit` otherwise, which needs slicekit on PATH. When neither
 is found, init still writes `slicekit` and warns that the hooks will fail until it is installed; it
 never fetches slicekit from the registry. `cli` in `.slicekit/config.json` (or `init --cli <command>`)
-overrides that choice, and init and update warn when the command does not answer `--version`. Until
-0.1 is on npm, run the kit from a clone and pass `--cli` to init, as the walkthrough does:
+overrides that choice, and init and update warn when the command does not answer `--version`. The
+usual setup is a local install, `npm i -D slicekit`, before init. To run the kit from a clone
+instead, pass `--cli` to init, as the walkthrough does:
 `--cli "node \"<path-to-kit>/bin/slicekit.js\""`. The
 hooks run from the session's working directory, so a worktree outside the repository tree needs an
 absolute path in `cli` or a global install.

@@ -349,7 +349,7 @@ test('cli: init with slicekit neither local nor on PATH warns once, never names 
     assert.equal(r.code, 0, r.stderr);
     assert.equal(
       r.stderr,
-      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is. From a clone of the kit, run init with --cli "node <path-to-kit>/bin/slicekit.js" (quote the path if it has spaces), or set cli in .slicekit/config.json; npm has no release of slicekit until 0.1\n' +
+      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)\n' +
         BARE('slicekit'),
     );
     assert.match(r.stdout, /^hooks run: slicekit$/m);
