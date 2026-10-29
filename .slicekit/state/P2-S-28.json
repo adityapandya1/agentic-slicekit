@@ -1,8 +1,12 @@
 {
   "slice": "P2/S-28",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 28,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/28",
+    "headSha": "15458f8ed3cc731590ed5d5a82cb45897fc27c1c"
+  },
   "redCommit": "e76bd4d6557487b6e2ab751519aea52b12922bc6",
   "frozenTests": [
     "test/init.test.js",
@@ -48,6 +52,22 @@
         "unfreeze": "test/init.test.js",
         "amendCommit": "2554d311803253679834ea0e6651a35235d4e805",
         "reason": "The CRLF test's second case expects the exact ignore rules init appends; S-28 adds node_modules/ as the last rule, so that expectation gains one CRLF line. No assertion is weakened."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-29T17:57:09.090Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 28,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/28",
+          "headSha": "15458f8ed3cc731590ed5d5a82cb45897fc27c1c",
+          "title": "[P2/S-28] 0.1.2: what a first npm install needs"
+        }
       }
     }
   ]
