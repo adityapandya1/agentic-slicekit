@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
 import { GitError, commitPaths, git, parseTrailers } from '../git.js';
-import { isFreshRender, renderPathsOnly, renderSubject } from './render.js';
+import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { TransitionError, readSlice, unfreeze } from '../state/index.js';
@@ -43,21 +43,6 @@ const blobAt = (wt, rev, file) => {
     throw e;
   }
 };
-
-// The commit origin's default branch names now, fetched so its history is here: ls-remote names it,
-// a fetch brings it into FETCH_HEAD, and the two must agree. Null when origin cannot be reached or
-// has no such branch: then no commit is taken for the default branch's.
-function originDefault(wt, branch) {
-  try {
-    const listed = git(wt, ['ls-remote', 'origin', `refs/heads/${branch}`]).split(/\s+/)[0];
-    if (!/^[0-9a-f]{40}$/.test(listed ?? '')) return null;
-    git(wt, ['fetch', '-q', '--no-tags', 'origin', `refs/heads/${branch}`]);
-    return git(wt, ['rev-parse', '--verify', 'FETCH_HEAD^{commit}']) === listed ? listed : null;
-  } catch (e) {
-    if (e instanceof GitError) return null;
-    throw e;
-  }
-}
 
 // The first frozen test (not unfrozen) that differs from the red commit, and how: hidden from git by
 // skip-worktree or assume-unchanged, different bytes or missing on disk (an edit through Bash never
@@ -111,33 +96,41 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
-  // A commit origin's default branch holds came in with a merge of it: it is that branch's, not the
-  // slice's. Only origin as it answers now counts; a local ref can be moved onto a forged commit.
-  const theirs = originDefault(wt, cfg.defaultBranch);
-  // build render's commits, newest first: the newest must be a fresh render; an earlier one, which
-  // the newest renders over, may hold only the files update writes (D-43).
+  // Kit files that are not this slice's business (D-43): another slice's state file or verdict, and
+  // BUILD.md, the view of every state. A merge of the default branch brings only these; a commit
+  // whose kit changes are all of them is skipped, whoever made it and wherever it came from.
+  const stateDir = posixRel(wt, paths.state);
+  const mine = verdictFilePattern(id);
+  const othersOnly = (f) =>
+    f === buildRel ||
+    (f.startsWith(`${stateDir}/`) && f.endsWith('.json') && !f.slice(stateDir.length + 1).includes('/') && f !== stateRel) ||
+    (f.startsWith(REVIEWS) && !f.slice(REVIEWS.length).includes('/') && !mine.test(f.slice(REVIEWS.length)));
   let rendered = false;
-  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`, ...(theirs ? [`^${theirs}`] : [])]))) {
+  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`]))) {
     const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
       const [status, ...rest] = l.split('\t');
       return { status, file: rest.join('\t') };
     });
-    const kit = changes.map((c) => c.file).find((f) => isKitFile(wt, cfg, slice, f));
-    if (!kit) continue;
+    const kitFiles = changes.map((c) => c.file).filter((f) => isKitFile(wt, cfg, slice, f));
+    if (kitFiles.length === 0 || kitFiles.every(othersOnly)) continue;
+    const kit = kitFiles.find((f) => !othersOnly(f));
     const subject = git(wt, ['log', '-1', '--format=%s', sha]);
     const trailers = parseTrailers(git(wt, ['log', '-1', '--format=%B', sha]));
+    // build render's commits hold only the files update writes; what they wrote is judged at HEAD.
     if (subject === renderSubject(id) && trailers.Slice === id) {
       if (!renderPathsOnly(wt, sha)) return `${kit} was changed in ${short(sha)} outside the kit; a render commit holds only the files slicekit update writes`;
-      if (rendered) continue;
-      if (!isFreshRender(wt, sha)) {
-        return `${kit} was changed in ${short(sha)} outside the kit: the latest render commit is not what this kit renders; run slicekit build render ${id} again`;
-      }
       rendered = true;
       continue;
     }
     if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
     }
+  }
+  // With a render in the range, the files update writes must, at HEAD, be what a fresh render from
+  // this kit writes: an `update --check` of HEAD (D-43).
+  if (rendered) {
+    const stale = freshAt(wt, 'HEAD');
+    if (stale) return `${stale} at HEAD is not what slicekit update renders: changed outside the kit or by another kit; run slicekit build render ${id} again`;
   }
   return null;
 }

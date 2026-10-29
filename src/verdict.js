@@ -7,7 +7,8 @@ import { lines, prose, headings } from './markdown.js';
 const VERDICT = /^Verdict: (BLOCK|CHANGES|APPROVE)\s*$/;
 const ANY_VERDICT = /^\s*Verdict:/;
 const HEAD = /^\s*Head:\s*(.*?)\s*$/;
-const SHA = /^[0-9a-f]{7,40}$/;
+// The full commit id: a shorter one can be shadowed by a ref of that name.
+const SHA = /^[0-9a-f]{40}$/;
 // The state layer's `--independent` flag decides independence (REQ-2.8), not this field alone.
 const INDEPENDENT = /^\s*Independent:\s*yes\s*$/i;
 const KINDS = { B: 'blocker', H: 'should-have' };
@@ -186,7 +187,7 @@ export function verdictProblems(v) {
   if (!v.verdict) out.push('no verdict line');
   if (v.verdictLines > 1) out.push('more than one verdict line');
   if (v.head === null) out.push('no "Head:" line naming the head reviewed');
-  else if (!SHA.test(v.head)) out.push(`Head "${v.head}" is not a commit SHA (7 to 40 lowercase hex)`);
+  else if (!SHA.test(v.head)) out.push(`Head "${v.head}" is not a full commit id (40 lowercase hex)`);
   if (v.headLines > 1) out.push('more than one "Head:" line');
   for (const c of v.columns) out.push(`findings table has no "${c}" column`);
   const seen = new Set();

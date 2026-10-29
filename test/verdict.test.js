@@ -10,7 +10,7 @@ const fixture = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/verdict
 const TAIL = '\n## Checklists run\n\n- correctness\n\n## Not checked\n\n- security\n';
 const TABLE = '| ID | File:line | What is wrong | Why it matters | How verified |\n|---|---|---|---|---|\n';
 // Every verdict names the head it reviewed (D-43).
-const HEAD = 'Head: abc1234';
+const HEAD = 'Head: abc1234abc1234abc1234abc1234abc1234abc12';
 const doc = (verdict, rows = [], tail = TAIL) => `${verdict}\n${HEAD}\n\n${rows.length ? TABLE + rows.join('\n') + '\n' : ''}${tail}`;
 const problems = (text) => verdictProblems(parseVerdict(text, 'r1.md'));
 
@@ -42,7 +42,7 @@ test('verdict » CRLF input parses the same (REQ-2.11)', () => {
 });
 
 test('verdict » rows without outer pipes and with extra spaces parse (REQ-2.11)', () => {
-  const text = 'Verdict: CHANGES\nHead: abc1234\n\nID|File:line|What is wrong|Why it matters|How verified\n--|--|--|--|--\n  H-3  |   lib/x.js:7   |  w  |  y  |  read only  \n' + TAIL;
+  const text = 'Verdict: CHANGES\nHead: abc1234abc1234abc1234abc1234abc1234abc12\n\nID|File:line|What is wrong|Why it matters|How verified\n--|--|--|--|--\n  H-3  |   lib/x.js:7   |  w  |  y  |  read only  \n' + TAIL;
   const v = parseVerdict(text, 'r1.md');
   assert.deepEqual(v.findings, [{ id: 'H-3', kind: 'should-have', file: 'lib/x.js', line: 7, lineEnd: null, wrong: 'w', why: 'y', verified: 'read only' }]);
   assert.deepEqual(verdictProblems(v), []);
@@ -109,7 +109,7 @@ test('verdict » independent only with an "Independent: yes" line (REQ-2.8)', ()
 });
 
 test('verdict » problems come in a stable order (REQ-2.11)', () => {
-  const text = 'Verdict: APPROVE\nHead: abc1234\n\n' + TABLE + '| B-1 | a.js | w | y | |\n| Z | a.js | w | y | read only |\n| B-1 | a.js | w | y | read only |\n';
+  const text = 'Verdict: APPROVE\nHead: abc1234abc1234abc1234abc1234abc1234abc12\n\n' + TABLE + '| B-1 | a.js | w | y | |\n| Z | a.js | w | y | read only |\n| B-1 | a.js | w | y | read only |\n';
   assert.deepEqual(problems(text), [
     'finding B-1 has no "how verified"',
     'finding Z has an unknown id form',
@@ -223,10 +223,12 @@ test('verdict » a deeper "Not checked" heading is the Not checked section (REQ-
 test('verdict » a missing, malformed or repeated Head line is a problem (REQ-2.11)', () => {
   const headless = doc('Verdict: APPROVE').replace(`${HEAD}\n`, '');
   assert.deepEqual(problems(headless), ['no "Head:" line naming the head reviewed']);
-  assert.equal(parseVerdict(doc('Verdict: APPROVE'), 'r').head, 'abc1234');
-  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: the tip\n')), ['Head "the tip" is not a commit SHA (7 to 40 lowercase hex)']);
-  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: ABC1234\n')), ['Head "ABC1234" is not a commit SHA (7 to 40 lowercase hex)']);
+  assert.equal(parseVerdict(doc('Verdict: APPROVE'), 'r').head, 'abc1234abc1234abc1234abc1234abc1234abc12');
+  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: the tip\n')), ['Head "the tip" is not a full commit id (40 lowercase hex)']);
+  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: ABC1234\n')), ['Head "ABC1234" is not a full commit id (40 lowercase hex)']);
+  // A short id is refused: a ref of that name could stand for another commit.
+  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: abc1234\n')), ['Head "abc1234" is not a full commit id (40 lowercase hex)']);
   assert.deepEqual(problems(doc('Verdict: APPROVE') + '\nHead: def5678\n'), ['more than one "Head:" line']);
   // A Head line inside a fence is an example, not the verdict's head.
-  assert.deepEqual(problems(headless + '\n```\nHead: abc1234\n```\n'), ['no "Head:" line naming the head reviewed']);
+  assert.deepEqual(problems(headless + '\n```\nHead: abc1234abc1234abc1234abc1234abc1234abc12\n```\n'), ['no "Head:" line naming the head reviewed']);
 });

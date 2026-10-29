@@ -8,7 +8,7 @@ One verdict file and nothing else. The command gives you the absolute path to wr
 
 ```
 Verdict: BLOCK
-Head: 3f2a9c1
+Head: 3f2a9c1e0b7d4a5c8e6f1029384756abcdef0123
 
 | ID | File:line | What is wrong | Why it matters | How verified |
 |---|---|---|---|---|
@@ -33,7 +33,7 @@ The first line is `Verdict: BLOCK|CHANGES|APPROVE`; the file holds no other `Ver
 
 The rest of the file:
 
-- `Head: <sha>` is the commit you reviewed (`git log -1 --format=%H` in the worktree); a verdict on another head is refused.
+- `Head: <sha>` is the full id of the commit you reviewed (`git log -1 --format=%H`); another head is refused.
 - A blocker's ID is `B-<n>` and a should-have's ID is `H-<n>`, each used once.
 - Every finding names its file and line, what is wrong, why it matters and how you verified it: the command you ran and its output, or `read only`. A finding with no "How verified" entry is refused.
 - `## Checklists run` lists each checklist you ran, one item per line; at least one.

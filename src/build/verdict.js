@@ -318,15 +318,14 @@ function referenceProblems(wt, rel, text, shown) {
 
 // The verdict reviewed the recorded head, or a head that adds only the kit's bookkeeping to it
 // (D-35): a verdict written before the head moved is refused, naming both (D-43).
+// The verdict's head is compared as a string, never looked up: it is the recorded head, or a full id
+// on the recorded head's descendants up to HEAD (from git log of that range) that adds only bookkeeping.
 function assertReviewedHead(wt, v, shown, current) {
   const recorded = current.pr?.headSha ?? '';
-  let reviewed = null;
-  try {
-    reviewed = git(wt, ['rev-parse', '--verify', '--quiet', `${v.head}^{commit}`]);
-  } catch {
-    reviewed = null;
-  }
-  if (reviewed && (reviewed === recorded || headCovers(wt, recorded, reviewed))) return;
+  const reviewed = String(v.head);
+  if (reviewed === recorded) return;
+  const later = recorded === '' ? [] : git(wt, ['log', '--format=%H', `${recorded}..HEAD`]).split('\n');
+  if (later.includes(reviewed) && headCovers(wt, recorded, reviewed)) return;
   throw new BuildError(`verdict ${shown} reviewed head ${String(v.head).slice(0, 7)}; the recorded head is ${recorded.slice(0, 7)}: review the recorded head`);
 }
 

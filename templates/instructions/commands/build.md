@@ -101,9 +101,11 @@ are success. A failing test run is refused: send the developer back with the pri
 When the slice changes the kit's own version, run `{{cli}} build render <id> --worktree <path>`
 next, with the kit the slice ships. It runs `update --yes` in the worktree and commits only the files
 update writes, as `chore(slicekit): <id> render`, and prints `<sha7> render (<n> files)`, or
-`nothing to render`. Never commit those files by hand: `build commit` accepts the latest render commit
-only when it equals a fresh render. A refusal that says `run slicekit build render <id> again` means
-the kit changed since that render (a template fix): run `build render` again, then `build commit`.
+`nothing to render`. Never commit those files by hand: `build commit` accepts a render commit only
+when it holds nothing but the files update writes, and only while those files, at the slice's head,
+are what a fresh render writes. A refusal that says `run slicekit build render <id> again` means
+they differ (the kit changed since the render, a template fix): run `build render` again, then
+`build commit`.
 
 A machine that cannot run the whole test command at once may set it in `.slicekit/local.json` in
 the main checkout, for example `{"testCommand": "node --test --test-concurrency=2 \"test/**/*.test.js\""}`.

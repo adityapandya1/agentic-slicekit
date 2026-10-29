@@ -1,7 +1,8 @@
-// P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A forged commit does not get
-// past `build commit` by moving a local ref; a hand-edited state file never authorises `build amend`;
-// a verdict is taken only on the head it reviewed; a backfilled merge with no recorded pull request
-// must be the slice's own; a stale render commit is answered by rendering again.
+// P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A merge of the default branch
+// passes `build commit` by what it changes, offline, and a hand change to this slice's state never
+// does; a hand-edited state file never authorises `build amend`; a verdict is taken only on the full
+// id of the head it reviewed; a backfilled merge with no recorded pull request must be the slice's
+// own; the files a render writes are judged at HEAD, and a stale render is answered by rendering again.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -34,19 +35,32 @@ function forgeUnfreeze(p) {
   return forged;
 }
 
-test('a forged commit does not pass build commit when the local default branch or tracking ref is moved onto it', async () => {
-  const p = await building({ remote: true });
+test('a merge of main that changes another slice\'s state and BUILD.md passes build commit offline', async () => {
+  // No origin at all: nothing is asked of the network.
+  const p = await building({ init: true });
+  try {
+    write(p.root, '.slicekit/state/P1-S-02.json', '{"slice":"P1/S-02","state":"merged","history":[]}\n');
+    // Main's BUILD.md: the slice's own view of it plus a line, so the merge is clean.
+    fs.writeFileSync(at(p.root, 'BUILD.md'), `${fs.readFileSync(at(p.wt, 'BUILD.md'), 'utf8')}\nAnother slice merged.\n`);
+    write(p.root, '.slicekit/reviews/P1-S-02-r1.md', 'Verdict: APPROVE\n');
+    commitAll(p.root, 'P1/S-02 merged');
+    git(p.wt, ['merge', '-q', '--no-ff', '-m', 'Merge main into the slice\n\nSlice: P1/S-01', 'main']);
+    write(p.wt, 'src/t1.js', GREEN);
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+    assert.equal(r.code, 0, r.stderr);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('a hand change to this slice\'s state file is refused even when main holds the commit', async () => {
+  const p = await building();
   try {
     const forged = forgeUnfreeze(p);
-    const outside = new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`);
-    for (const ref of ['refs/heads/main', 'refs/remotes/origin/main']) {
-      const was = git(p.root, ['rev-parse', ref]);
-      git(p.root, ['update-ref', ref, forged]);
-      const r = await commitWorkCli(p, '--message', 'weakened');
-      assert.equal(r.code, 1, `${ref}: ${r.stdout}`);
-      assert.match(r.stderr, outside, ref);
-      git(p.root, ['update-ref', ref, was]);
-    }
+    git(p.root, ['update-ref', 'refs/heads/main', forged]);
+    const r = await commitWorkCli(p, '--message', 'weakened');
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stderr, new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`));
   } finally {
     p.cleanup();
   }
@@ -99,6 +113,13 @@ test('a verdict written before build pr recorded a moved head is refused, naming
     assert.equal(again.code, 0, again.stderr);
     assert.match(again.stdout, new RegExp(`^head ${moved} recorded; the next verdict reviews it$`, 'm'));
     assert.match(again.stdout, /verdict .*P1-S-01-r1\.md\n$/);
+    // A short id is refused, even with a branch of that name pointing at the recorded head.
+    git(p.wt, ['branch', old.slice(0, 7), moved]);
+    write(p.root, rel, verdictText('APPROVE', old.slice(0, 7)));
+    const short = await cli(p.root, ['build', 'verdict', 'P1/S-01', rel], p.env);
+    assert.equal(short.code, 1, short.stdout);
+    assert.ok(short.stderr.includes(`Head "${old.slice(0, 7)}" is not a full commit id (40 lowercase hex)`), short.stderr);
+    write(p.root, rel, verdictText('APPROVE', old));
     const refused = await cli(p.root, ['build', 'verdict', 'P1/S-01', rel], p.env);
     assert.equal(refused.code, 1, refused.stdout);
     assert.ok(refused.stderr.includes(`reviewed head ${old.slice(0, 7)}; the recorded head is ${moved.slice(0, 7)}`), refused.stderr);
@@ -171,7 +192,7 @@ test('a stale render commit is answered by build render again, with other work l
     git(p.wt, ['commit', '-q', '--amend', '--no-edit']);
     const stale = await commitWorkCli(p, '--message', 'x');
     assert.equal(stale.code, 1, stale.stdout);
-    assert.match(stale.stderr, /the latest render commit is not what this kit renders; run slicekit build render P1\/S-01 again/);
+    assert.match(stale.stderr, /at HEAD is not what slicekit update renders: changed outside the kit or by another kit; run slicekit build render P1\/S-01 again/);
     // Rendering again commits over it; the developer's uncommitted work stays as it is.
     write(p.wt, 'src/t1.js', GREEN);
     const again = await render();
@@ -181,6 +202,34 @@ test('a stale render commit is answered by build render again, with other work l
     assert.equal(git(p.wt, ['status', '--porcelain', '-uall']), '?? src/t1.js');
     const done = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
     assert.equal(done.code, 0, done.stderr);
+  } finally {
+    proj.cleanup();
+  }
+});
+
+test('a render commit that empties the hooks is refused though a later render commit does not rewrite settings.json', async () => {
+  const proj = project({ slices: [{ n: 1, group: 'A', evalFile: 'a.test.js' }], commands: { test: 'node --test' }, init: true });
+  try {
+    olderInstall(proj.root);
+    const started = await cli(proj.root, ['build', 'start', 'P1/S-01']);
+    assert.equal(started.code, 0, started.stderr);
+    const p = { ...proj, wt: started.stdout.split('\n')[0] };
+    write(p.wt, 'test/a.test.js', IMPORTING);
+    assert.equal((await red1(p, 'test/a.test.js')).code, 0);
+    assert.equal((await cli(p.root, ['build', 'render', 'P1/S-01'])).code, 0);
+    // The render commit, amended to hold settings.json with no hooks: still only files update writes.
+    const file = at(p.wt, '.claude/settings.json');
+    fs.writeFileSync(file, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), hooks: {} }, null, 2)}\n`);
+    git(p.wt, ['add', '-A']);
+    git(p.wt, ['commit', '-q', '--amend', '--no-edit']);
+    // A later render commit that leaves settings.json alone.
+    write(p.wt, '.slicekit/rendered/9.9.9/note.md', 'x\n');
+    git(p.wt, ['add', '-A']);
+    git(p.wt, ['commit', '-q', '-m', 'chore(slicekit): P1/S-01 render\n\nSlice: P1/S-01']);
+    write(p.wt, 'src/t1.js', GREEN);
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stderr, /\.claude\/settings\.json at HEAD is not what slicekit update renders: changed outside the kit or by another kit; run slicekit build render P1\/S-01 again/);
   } finally {
     proj.cleanup();
   }

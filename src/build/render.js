@@ -109,43 +109,45 @@ function walk(dir, base = '') {
   return out;
 }
 
-// True when commit `sha` holds exactly what `update --yes` writes on its parent: no path update
-// does not write, and every path it owns as a fresh render made in a scratch copy leaves it.
-export function isFreshRender(wt, sha) {
-  const parent = `${sha}^`;
+// The first file `update` writes that, in commit `rev`, is not what a fresh render from the running
+// kit writes, or null when every one is: `update --check` of that commit, made in a scratch copy of the
+// files it reads. A file the team edited (drift), a missing one, a changed one, or a reference copy
+// that `update --yes` would rewrite is named; a file slicekit does not manage is not.
+export function freshAt(wt, rev) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-render-'));
   try {
-    const config = blob(wt, parent, CONFIG);
-    if (config === null) return false;
+    const config = blob(wt, rev, CONFIG);
+    if (config === null) return CONFIG;
     fs.mkdirSync(path.join(tmp, '.slicekit'), { recursive: true });
     fs.writeFileSync(path.join(tmp, ...CONFIG.split('/')), config);
     let cfg;
     try {
       cfg = loadConfig(tmp);
     } catch (e) {
-      if (e instanceof ConfigError) return false;
+      if (e instanceof ConfigError) return CONFIG;
       throw e;
     }
     const owns = owner(cfg);
-    const changed = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '-z', sha]));
-    if (changed.length === 0 || !changed.every(owns)) return false;
-    for (const f of tree(wt, parent).filter(owns)) {
+    const held = tree(wt, rev).filter(owns);
+    for (const f of held) {
       const abs = path.join(tmp, ...f.split('/'));
       fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, blob(wt, parent, f));
+      fs.writeFileSync(abs, blob(wt, rev, f));
     }
     const version = kitVersion();
-    applyUpdate(tmp, cfg, planUpdate(tmp, cfg, { version }), { version });
-    const expected = new Set(walk(tmp).filter(owns));
-    const paths = new Set([...expected, ...tree(wt, sha).filter(owns)]);
-    for (const f of paths) {
-      const want = expected.has(f) ? fs.readFileSync(path.join(tmp, ...f.split('/'))) : null;
-      const got = blob(wt, sha, f);
-      if (want === null || got === null ? want !== got : !want.equals(got)) return false;
+    const plan = planUpdate(tmp, cfg, { version });
+    const off = plan.find((p) => p.status !== 'same' && p.status !== 'unmanaged');
+    if (off) return off.dest;
+    applyUpdate(tmp, cfg, plan, { version });
+    const written = new Set(walk(tmp).filter(owns));
+    for (const f of [...new Set([...written, ...held])]) {
+      const want = written.has(f) ? fs.readFileSync(path.join(tmp, ...f.split('/'))) : null;
+      const got = blob(wt, rev, f);
+      if (want === null || got === null ? want !== got : !want.equals(got)) return f;
     }
-    return true;
+    return null;
   } catch (e) {
-    if (e instanceof GitError) return false;
+    if (e instanceof GitError) return CONFIG;
     throw e;
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
