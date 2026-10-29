@@ -24,6 +24,8 @@ const IGNORE_RULES = [
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
   // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
   { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
+  // The README's path is an npm install (S-28): what it installs is never part of the project.
+  { rule: 'node_modules/', forms: new Set(['node_modules/', '/node_modules/', 'node_modules', '/node_modules']) },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
 // Intake snapshots (S-10) are stored byte for byte, so git must not convert their line endings. The

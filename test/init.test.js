@@ -551,7 +551,7 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n');
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\nnode_modules/\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
 
