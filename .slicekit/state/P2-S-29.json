@@ -1,0 +1,47 @@
+{
+  "slice": "P2/S-29",
+  "state": "building",
+  "branch": null,
+  "pr": null,
+  "redCommit": "0ff160cc956d85864dda29b845e096b247af5f7f",
+  "frozenTests": [
+    "test/build-render.test.js",
+    "test/build-amend.test.js",
+    "test/build-pr-head.test.js",
+    "test/verdict-references.test.js",
+    "test/state-backfill.test.js",
+    "test/local-test-command.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T20:04:06.778Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "0ff160cc956d85864dda29b845e096b247af5f7f",
+        "testExit": 1,
+        "tests": [
+          "test/build-render.test.js",
+          "test/build-amend.test.js",
+          "test/build-pr-head.test.js",
+          "test/verdict-references.test.js",
+          "test/state-backfill.test.js",
+          "test/local-test-command.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-29T20:04:06.951Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}
