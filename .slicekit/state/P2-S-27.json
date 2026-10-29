@@ -1,0 +1,32 @@
+{
+  "slice": "P2/S-27",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "26c798155b05c62d6ade872f043b1bcc33fb170a",
+  "frozenTests": [
+    "test/githooks.test.js",
+    "test/githooks-time.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T08:07:51.158Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "26c798155b05c62d6ade872f043b1bcc33fb170a",
+        "testExit": 1,
+        "tests": [
+          "test/githooks.test.js",
+          "test/githooks-time.test.js"
+        ]
+      }
+    }
+  ]
+}
