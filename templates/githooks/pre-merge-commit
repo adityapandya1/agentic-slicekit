@@ -2,17 +2,19 @@
 # slicekit: refuses a commit on a protected branch (REQ-3.9). Installed as pre-commit and as
 # pre-merge-commit, byte for byte; prepare-commit-msg carries the same check between the markers.
 # >>> slicekit protected-branch check (identical in every slicekit hook)
-# The branch a commit lands on: HEAD's branch, or during a rebase the branch being rebased.
+# Sets slicekit_b to the branch a commit lands on: HEAD's branch, or during a rebase the branch being
+# rebased; empty on a detached HEAD. A variable, not output, so no extra shell starts to read it.
 slicekit_branch() {
+  slicekit_b=
   # The full ref, stripped here: --short says heads/main when a tag main exists.
   if slicekit_r=$(git symbolic-ref -q HEAD); then
-    case $slicekit_r in refs/heads/*) printf '%s\n' "${slicekit_r#refs/heads/}" ;; esac
+    case $slicekit_r in refs/heads/*) slicekit_b=${slicekit_r#refs/heads/} ;; esac
     return 0
   fi
   for slicekit_d in rebase-merge rebase-apply; do
     slicekit_f=$(git rev-parse --git-path "$slicekit_d/head-name")
     if [ -f "$slicekit_f" ]; then
-      sed -e 's#^refs/heads/##' "$slicekit_f"
+      slicekit_b=$(sed -e 's#^refs/heads/##' "$slicekit_f")
       return 0
     fi
   done
@@ -31,10 +33,23 @@ slicekit_op() {
 # Refuses when that branch is in protectedBranches of .slicekit/config.json, or is main when node or
 # the file is absent or unreadable. ALLOW_PROTECTED_COMMIT=1 overrides. Entries are names, never
 # globs: globbing is off while they are compared.
+# True when .slicekit/config.json might list branch $1: the file names "$1" in quotes or holds a \u
+# escape, or $1 holds a double quote. Shell built-ins only, so deciding costs no process.
+slicekit_named() {
+  [ -f .slicekit/config.json ] || return 1
+  case $1 in *'"'*) return 0 ;; esac
+  while IFS= read -r slicekit_line || [ -n "$slicekit_line" ]; do
+    case $slicekit_line in *'\u'*|*"\"$1\""*) return 0 ;; esac
+  done < .slicekit/config.json
+  return 1
+}
 slicekit_check_protected() {
   [ "$ALLOW_PROTECTED_COMMIT" = "1" ] && return 0
-  slicekit_b=$(slicekit_branch)
+  slicekit_branch
   [ -n "$slicekit_b" ] || return 0
+  # Without node or the file the list is main alone, so a branch other than main that the file never
+  # names cannot be protected: decided here without starting node (D-42).
+  [ "$slicekit_b" != main ] && ! slicekit_named "$slicekit_b" && return 0
   slicekit_p=main
   if [ -f .slicekit/config.json ] && command -v node >/dev/null 2>&1; then
     if slicekit_l=$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8").replace(/^\uFEFF/,""));const p=c.protectedBranches;if(!Array.isArray(p))process.exit(1);process.stdout.write(p.join("\n"))' .slicekit/config.json 2>/dev/null); then
