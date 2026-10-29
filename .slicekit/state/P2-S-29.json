@@ -1,11 +1,11 @@
 {
   "slice": "P2/S-29",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 30,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
-    "headSha": "5fe63771dc105409abb5dc7133879081c5f94039"
+    "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31"
   },
   "redCommit": "0ff160cc956d85864dda29b845e096b247af5f7f",
   "frozenTests": [
@@ -132,6 +132,22 @@
         "unfreeze": "test/build-pr-head.test.js",
         "amendCommit": "4cf2db7d21f28fc4acddd53768cdcb3d83c12acd",
         "reason": "Done when 3 now says the next verdict reviews the recorded head; the test's verdict is written with that head. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-29T22:59:09.227Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 30,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+          "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31",
+          "title": "[P2/S-29] The build loop's dead ends"
+        }
       }
     }
   ]
