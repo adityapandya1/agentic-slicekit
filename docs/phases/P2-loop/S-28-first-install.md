@@ -21,6 +21,7 @@ decisions: [D-41]
 |---|---|---|
 | `init.test.js » init ignores node_modules once, after the kit's rules` | happy | REQ-1.1 |
 | `init.test.js » a gitignore that already ignores node_modules in any spelling gets no second line` | negative | REQ-1.1 |
+| `init.test.js » init keeps a CRLF ignore or attributes file CRLF` | happy | REQ-1.1 |
 | `package.test.js » an npm argument with a space reaches npm whole` | happy | REQ-5.7 |
 | `package.test.js » package.json is 0.1.2, links the repository and has no dependencies` | happy | REQ-5.7 |
 | `runbook.test.js » the release deprecates both placeholders` | happy | REQ-5.8 |
