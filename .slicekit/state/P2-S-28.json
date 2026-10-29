@@ -1,0 +1,54 @@
+{
+  "slice": "P2/S-28",
+  "state": "building",
+  "branch": null,
+  "pr": null,
+  "redCommit": "e76bd4d6557487b6e2ab751519aea52b12922bc6",
+  "frozenTests": [
+    "test/init.test.js",
+    "test/package.test.js",
+    "test/runbook.test.js"
+  ],
+  "unfrozen": [
+    "test/init.test.js"
+  ],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T17:50:34.536Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "e76bd4d6557487b6e2ab751519aea52b12922bc6",
+        "testExit": 1,
+        "tests": [
+          "test/init.test.js",
+          "test/package.test.js",
+          "test/runbook.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-29T17:50:34.703Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T17:51:42.281Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "2554d311803253679834ea0e6651a35235d4e805",
+        "reason": "The CRLF test's second case expects the exact ignore rules init appends; S-28 adds node_modules/ as the last rule, so that expectation gains one CRLF line. No assertion is weakened."
+      }
+    }
+  ]
+}
