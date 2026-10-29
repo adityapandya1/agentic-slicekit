@@ -1,6 +1,6 @@
 {
   "slice": "P2/S-28",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 28,
@@ -16,7 +16,15 @@
   "unfrozen": [
     "test/init.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P2-S-28i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "15458f8ed3cc731590ed5d5a82cb45897fc27c1c"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -67,6 +75,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/28",
           "headSha": "15458f8ed3cc731590ed5d5a82cb45897fc27c1c",
           "title": "[P2/S-28] 0.1.2: what a first npm install needs"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T17:57:26.141Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P2-S-28i-r1.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
