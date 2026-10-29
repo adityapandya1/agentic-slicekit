@@ -17,7 +17,8 @@
     "test/local-test-command.test.js"
   ],
   "unfrozen": [
-    "test/local-test-command.test.js"
+    "test/local-test-command.test.js",
+    "test/verdict-references.test.js"
   ],
   "verdicts": [
     {
@@ -96,6 +97,17 @@
         "unfreeze": "test/local-test-command.test.js",
         "amendCommit": "24f5e1c7f45c8bc1957c0acf6b28212dada0ea52",
         "reason": "Done when 6 now says check --ci keeps the committed command; with CI set the build steps no longer read local.json, so the test runs them with CI removed. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:51.494Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/verdict-references.test.js",
+        "amendCommit": "eabd6a65ba27b6b3265cdf9e8d97d5a43cd1110c",
+        "reason": "Done when 4 now requires a Head line on every verdict; the test's verdict text gains the head it reviews. Assertions unchanged."
       }
     }
   ]
