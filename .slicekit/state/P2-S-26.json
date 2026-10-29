@@ -1,0 +1,36 @@
+{
+  "slice": "P2/S-26",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
+  "frozenTests": [
+    "test/package.test.js",
+    "test/readme.test.js",
+    "test/hook-cli.test.js",
+    "test/runbook.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T00:23:25.092Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
+        "testExit": 1,
+        "tests": [
+          "test/package.test.js",
+          "test/readme.test.js",
+          "test/hook-cli.test.js",
+          "test/runbook.test.js"
+        ]
+      }
+    }
+  ]
+}
