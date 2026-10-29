@@ -638,3 +638,15 @@ test('init warns when the workflow it writes names a bare cli', () => {
     });
   }
 });
+
+// P2/S-28 review H-1: a project's own node_modules rules, a negation among them, are left as they are.
+test('a gitignore with its own node_modules rules gets no node_modules line', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(read(root, '.gitignore').startsWith('node_modules/*\n!node_modules/local-pkg/\n'));
+    assert.ok(!read(root, '.gitignore').split('\n').includes('node_modules/'));
+    fs.mkdirSync(path.join(root, 'node_modules', 'local-pkg'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', 'local-pkg', 'index.js'), '');
+    assert.throws(() => git(root, ['check-ignore', '--quiet', 'node_modules/local-pkg/index.js']));
+  }, { files: { '.gitignore': 'node_modules/*\n!node_modules/local-pkg/\n' } });
+});

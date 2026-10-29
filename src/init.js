@@ -24,8 +24,10 @@ const IGNORE_RULES = [
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
   // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
   { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
-  // The README's path is an npm install (S-28): what it installs is never part of the project.
-  { rule: 'node_modules/', forms: new Set(['node_modules/', '/node_modules/', 'node_modules', '/node_modules']) },
+  // The README's path is an npm install (S-28): what it installs is never part of the project. A file
+  // that already has any node_modules rule keeps its own, since a line below a negation such as
+  // `!node_modules/local-pkg/` would cancel it (P2/S-28 review H-1).
+  { rule: 'node_modules/', forms: new Set(['node_modules/', '/node_modules/', 'node_modules', '/node_modules']), mentions: 'node_modules' },
 ];
 // Hooks checked out with CRLF break sh (REQ-3.9).
 // Intake snapshots (S-10) are stored byte for byte, so git must not convert their line endings. The
@@ -87,7 +89,8 @@ function ensureLines(file, rules) {
   const raw = fs.readFileSync(file, 'utf8');
   const squash = (line) => line.trim().replace(/\s+/g, ' ');
   const present = new Set(raw.split(/\r?\n/).map(squash));
-  const missing = rules.filter(({ forms }) => ![...forms].some((f) => present.has(squash(f))));
+  const mentioned = (word) => [...present].some((l) => l.includes(word));
+  const missing = rules.filter(({ forms, mentions }) => ![...forms].some((f) => present.has(squash(f))) && !(mentions && mentioned(mentions)));
   if (missing.length === 0) return 'skipped';
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
   const sep = raw === '' || raw.endsWith('\n') ? '' : eol;
