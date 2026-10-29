@@ -1,6 +1,6 @@
 {
   "slice": "P2/S-26",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
@@ -31,6 +31,13 @@
           "test/runbook.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-29T00:23:25.977Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
