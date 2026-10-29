@@ -41,7 +41,7 @@ The author publishes, by hand, from their own npm account; no command in the kit
 3. `npm login` once per machine, then `npm publish`. npm asks for the one-time code of the account's two-factor login.
 4. Tag the commit and push the tag: `git tag v<version>` and `git push origin v<version>`.
 5. `npm view slicekit version` prints the new version.
-6. After the first preview only: `npm deprecate slicekit@0.0.1 "placeholder with no code; install slicekit@latest"`, so nobody installs the placeholder by pinning it.
+6. After the first preview only: `npm deprecate slicekit@0.0.0-stage "placeholder with no code; install slicekit@latest"` and `npm deprecate slicekit@0.0.1 "placeholder with no code; install slicekit@latest"`, so nobody installs either placeholder by pinning it.
 
 ## Rolling back a bad version on npm
 

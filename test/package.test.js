@@ -12,10 +12,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const REPO = 'https://github.com/adityapandya1/agentic-slicekit';
 
-// npm and npx are .cmd scripts on Windows, which only a shell runs.
+// npm and npx are .cmd scripts on Windows, which only a shell runs; the shell splits an unquoted
+// argument at a space, so one holding a space or a quote is quoted (issue #24).
+const shellArg = (a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
 function npm(cmd, args, cwd) {
   const win = process.platform === 'win32';
-  const r = spawnSync(win ? `${cmd}.cmd` : cmd, args, { cwd, encoding: 'utf8', shell: win, env: { ...process.env, npm_config_update_notifier: 'false' } });
+  const r = spawnSync(win ? `${cmd}.cmd` : cmd, win ? args.map(shellArg) : args, { cwd, encoding: 'utf8', shell: win, env: { ...process.env, npm_config_update_notifier: 'false' } });
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
@@ -36,8 +38,8 @@ test('package metadata', () => {
   assert.deepEqual(pkg.files, ['bin', 'src', 'templates']);
 });
 
-test('package.json is 0.1.1, links the repository and has no dependencies', () => {
-  assert.equal(pkg.version, '0.1.1');
+test('package.json is 0.1.2, links the repository and has no dependencies', () => {
+  assert.equal(pkg.version, '0.1.2');
   assert.equal(pkg.dependencies, undefined);
   assert.equal(pkg.repository.url, `git+${REPO}.git`);
   assert.equal(pkg.homepage, `${REPO}#readme`);
@@ -84,5 +86,15 @@ test('the packed kit installs into an empty project and runs version, init and c
   } finally {
     repo.cleanup();
     fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test('an npm argument with a space reaches npm whole', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit pack '));
+  try {
+    const r = npm('npm', ['pack', '--dry-run', '--ignore-scripts', '--pack-destination', dir], root);
+    assert.equal(r.code, 0, r.stderr);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

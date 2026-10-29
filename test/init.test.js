@@ -207,10 +207,10 @@ test('writes gitignore rule once', () => {
     const opts = { name: 'demo', shape: 'backend' };
     const first = init(root, opts);
     assert.ok(first.created.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), rules);
+    assert.equal(read(root, '.gitignore'), `${rules}node_modules/\n`);
     const second = init(root, opts);
     assert.ok(second.skipped.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), rules);
+    assert.equal(read(root, '.gitignore'), `${rules}node_modules/\n`);
   });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend' });
@@ -221,16 +221,42 @@ test('writes gitignore rule once', () => {
   for (const form of ['/.slicekit/graph/', '.slicekit/graph']) {
     withRepo((root) => {
       const result = init(root, { name: 'demo', shape: 'backend' });
-      assert.ok(result.skipped.includes('.gitignore'), form);
-      assert.equal(read(root, '.gitignore'), `${form}\n/.slicekit/.subagent-*\n${ROOTED}`);
+      assert.ok(result.updated.includes('.gitignore'), form);
+      assert.equal(read(root, '.gitignore'), `${form}\n/.slicekit/.subagent-*\n${ROOTED}node_modules/\n`);
     }, { files: { '.gitignore': `${form}\n/.slicekit/.subagent-*\n${ROOTED}` } });
   }
   // Each rule is added once when absent: with the graph rule present, only the others are appended.
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend' });
     assert.ok(result.updated.includes('.gitignore'));
-    assert.equal(read(root, '.gitignore'), `/.slicekit/graph\n.slicekit/.subagent-*\n${JOURNAL}`);
+    assert.equal(read(root, '.gitignore'), `/.slicekit/graph\n.slicekit/.subagent-*\n${JOURNAL}node_modules/\n`);
   }, { files: { '.gitignore': '/.slicekit/graph\n' } });
+});
+
+// S-28 (P2/S-26 review H-5): the README's path is an npm install, so init ignores what it installs.
+test("init ignores node_modules once, after the kit's rules", () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend' });
+    const lines = read(root, '.gitignore').split('\n').filter(Boolean);
+    assert.equal(lines.at(-1), 'node_modules/');
+    assert.equal(lines.filter((l) => l === 'node_modules/').length, 1);
+    fs.mkdirSync(path.join(root, 'node_modules', 'slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', 'slicekit', 'package.json'), '{}');
+    assert.equal(git(root, ['check-ignore', 'node_modules/slicekit/package.json']).trim(), 'node_modules/slicekit/package.json');
+    init(root, { name: 'demo', shape: 'backend' });
+    assert.equal(read(root, '.gitignore').split('\n').filter((l) => l === 'node_modules/').length, 1);
+  });
+});
+
+test('a gitignore that already ignores node_modules in any spelling gets no second line', () => {
+  for (const form of ['node_modules', 'node_modules/', '/node_modules', '/node_modules/']) {
+    withRepo((root) => {
+      init(root, { name: 'demo', shape: 'backend' });
+      const lines = read(root, '.gitignore').split('\n');
+      assert.equal(lines.filter((l) => /^\/?node_modules\/?$/.test(l)).length, 1, form);
+      assert.equal(lines[0], form);
+    }, { files: { '.gitignore': `${form}\n` } });
+  }
 });
 
 // Whole-branch I2: a project that ignores *.log still commits its journal files; their locks stay ignored.
@@ -525,7 +551,7 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n');
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\nnode_modules/\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
 
@@ -611,4 +637,16 @@ test('init warns when the workflow it writes names a bare cli', () => {
       assert.deepEqual(init(root, { name: 'demo', shape: 'backend', cli }).warnings.filter(bare), [], cli);
     });
   }
+});
+
+// P2/S-28 review H-1: a project's own node_modules rules, a negation among them, are left as they are.
+test('a gitignore with its own node_modules rules gets no node_modules line', () => {
+  withRepo((root) => {
+    init(root, { name: 'demo', shape: 'backend' });
+    assert.ok(read(root, '.gitignore').startsWith('node_modules/*\n!node_modules/local-pkg/\n'));
+    assert.ok(!read(root, '.gitignore').split('\n').includes('node_modules/'));
+    fs.mkdirSync(path.join(root, 'node_modules', 'local-pkg'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules', 'local-pkg', 'index.js'), '');
+    assert.throws(() => git(root, ['check-ignore', '--quiet', 'node_modules/local-pkg/index.js']));
+  }, { files: { '.gitignore': 'node_modules/*\n!node_modules/local-pkg/\n' } });
 });
