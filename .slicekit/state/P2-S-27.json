@@ -1,11 +1,11 @@
 {
   "slice": "P2/S-27",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 26,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/26",
-    "headSha": "75bb121f347e7a846e529d34dd9c93d353d900eb"
+    "headSha": "1f023096fcd7158010e32333eb19de5a9a6b58c9"
   },
   "redCommit": "26c798155b05c62d6ade872f043b1bcc33fb170a",
   "frozenTests": [
@@ -74,6 +74,22 @@
           "path": ".slicekit/reviews/P2-S-27-r1.md",
           "blockers": 2,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-29T17:12:00.783Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 26,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/26",
+          "headSha": "1f023096fcd7158010e32333eb19de5a9a6b58c9",
+          "title": "[P2/S-27] Faster git hooks, and the Windows test time"
         }
       }
     }
