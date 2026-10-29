@@ -21,7 +21,7 @@ decisions: [D-42]
 |---|---|---|
 | `githooks.test.js » a commit on a slice branch the config does not name starts no node and is stamped` | happy | REQ-3.9 |
 | `githooks.test.js » a branch listed in protectedBranches is still refused` | negative | REQ-3.9 |
-| `githooks.test.js » a branch named only through a \u escape in the config is still refused` | negative | REQ-3.9 |
+| `githooks.test.js » a branch named only through a JSON escape in the config is still refused` | negative | REQ-3.9 |
 | `githooks.test.js » every hook carries the same protected-branch check` | happy | REQ-3.9 |
 | `githooks-time.test.js » a hooked commit and a plain commit are timed and printed` | happy | REQ-3.9 |
 
