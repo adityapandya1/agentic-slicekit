@@ -101,13 +101,14 @@ Enforced by: the kit's own `.claude/` and workflow, rendered from its own templa
 ## REQ-5.5 The kit's own CI holds itself to its rules
 
 In addition to REQ-5.2: rendered adapter files in `examples/*` SHALL match the templates; actions
-SHALL be pinned by SHA; a release SHALL carry provenance attestations; `slicekit check` SHALL run on
+SHALL be pinned by SHA; a release published from CI SHALL carry provenance attestations (the preview versions
+published by hand before S-24 carry none, D-41); `slicekit check` SHALL run on
 the kit's own repository; and the filler ratchet applies to the kit's own docs and README.
 
 Scenario: GIVEN a rendered adapter file in an example that differs from its template WHEN the kit's
 CI runs THEN it fails naming the file.
 
-Cites: D-16, D-25.
+Cites: D-16, D-25, D-41.
 
 Enforced by: the kit's own workflow.
 
@@ -131,13 +132,15 @@ The package SHALL be published to npm as `slicekit` (D-02, D-26), runnable as `n
 with Node 22 or later (D-29). The repository is `github.com/adityapandya1/agentic-slicekit` under MIT
 (D-03). The README SHALL open with what the kit is in two sentences, then its status (preview or released),
 then a ten-minute walkthrough on `examples/backend`, then the scope line from 04 REQ-4.8. The repository
-stays private until the end of Phase 2, then goes public as a preview once the README walkthrough runs from a clone; the npm
-release waits for 0.1 (D-28).
+stays private until the end of Phase 2, then goes public as a preview once the README walkthrough runs from a clone (D-28).
+Preview versions are published to npm from the end of Phase 2, starting at 0.1.1 since npm already holds a 0.1.0 from the
+name's previous owner (D-40, D-41); the packed package SHALL hold only `bin`, `src`, `templates` and the files npm always adds,
+and SHALL install and run `init` in an empty project with no other file of the kit.
 
 Scenario: GIVEN the README WHEN the CI step runs the ten-minute walkthrough's commands verbatim on
 `examples/backend` THEN every command exits 0.
 
-Cites: D-02, D-03, D-26, D-28, D-29.
+Cites: D-02, D-03, D-26, D-28, D-29, D-40, D-41.
 
 Enforced by: the release workflow; a CI step that runs the walkthrough's commands verbatim.
 

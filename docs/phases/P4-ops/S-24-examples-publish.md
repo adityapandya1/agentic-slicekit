@@ -1,16 +1,16 @@
 ---
 slice: P4/S-24
-name: Examples, walkthrough, publish 0.1
+name: Examples, walkthrough, publish from CI
 repo: .
 group: C
 runbook: no
 requirements: [REQ-4.8, REQ-5.5, REQ-5.6, REQ-5.7, REQ-5.8]
-decisions: [D-28]
+decisions: [D-28, D-41]
 ---
 
 ## Done when
 
-1. `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; the repository went public as a preview at the end of Phase 2 (P2/S-25, D-28), and this slice publishes 0.1 to npm.
+1. `examples/fullstack` and `examples/data`; the ten-minute walkthrough runs verbatim in CI on three operating systems; REQ-5.5 to REQ-5.8; the repository went public as a preview at the end of Phase 2 (P2/S-25, D-28) and preview versions reached npm from 0.1.1 (P2/S-26, D-41); this slice moves publishing into CI, with provenance attestations (REQ-5.5).
 2. An older `configVersion` is migrated forward on first run, printing what changed.
 
 ## Evaluation set
