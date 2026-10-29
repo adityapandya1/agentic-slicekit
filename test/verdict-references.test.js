@@ -13,9 +13,11 @@ const at = (root, rel) => path.join(root, ...rel.split('/'));
 
 // A well-formed verdict file whose findings rows say `wrong`, with `notChecked` under "Not checked".
 function verdictText(verdict, findings = [], notChecked = ['performance']) {
+  const head = git(p.wt, ['rev-parse', 'HEAD']);
   const rows = findings.map(([id, wrong]) => `| ${id} | src/t1.js:1 | ${wrong} | it matters | read only |`);
   return [
     `Verdict: ${verdict}`,
+    `Head: ${head}`,
     '',
     '| ID | File:line | What is wrong | Why it matters | How verified |',
     '|---|---|---|---|---|',

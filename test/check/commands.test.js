@@ -8,6 +8,7 @@ import { init } from '../../src/init.js';
 import { loadConfig } from '../../src/config.js';
 import { buildContext } from '../../src/check/context.js';
 import commands from '../../src/check/rules/commands.js';
+import { execFileSync } from 'node:child_process';
 import { makeRepo } from '../helpers/tmp-repo.js';
 
 const kitRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -197,5 +198,22 @@ test('every segment of a compound command is judged', () => {
 test('separators inside quotes do not split the command', () => {
   withCommands({ test: 'node -e "a && b; c | d"', lint: 'node -v | nope-pipe' }, ({ run }) => {
     assert.deepEqual(run(nodeDir()).map((f) => f.message), ['commands.lint: "nope-pipe" not found on PATH or under node_modules/.bin']);
+  });
+});
+
+// P2/S-29 review H-2, H-3 (D-43): outside CI the test command judged is .slicekit/local.json's; under
+// --ci, or with CI set, it is the committed one. A tracked local file is a finding.
+test('commands » the local test command is judged outside CI, the committed one in CI, and a tracked local file is a finding', () => {
+  withCommands({ test: 'nosuchtool-committed' }, ({ root, empty }) => {
+    fs.writeFileSync(path.join(root, '.slicekit', 'local.json'), JSON.stringify({ testCommand: 'nosuchtool-local' }));
+    const at = (opts, env = { PATH: empty, PATHEXT: '.COM;.EXE;.BAT;.CMD' }) => commands.run(buildContext(root, loadConfig(root), { env, ...opts })).map((x) => x.message);
+    assert.deepEqual(at({}), ['.slicekit/local.json testCommand: "nosuchtool-local" not found on PATH or under node_modules/.bin']);
+    assert.deepEqual(at({ ci: true }), ['commands.test: "nosuchtool-committed" not found on PATH or under node_modules/.bin']);
+    assert.deepEqual(at({}, { PATH: empty, PATHEXT: '.COM;.EXE;.BAT;.CMD', CI: 'true' }), ['commands.test: "nosuchtool-committed" not found on PATH or under node_modules/.bin']);
+    execFileSync('git', ['add', '-f', '--', '.slicekit/local.json'], { cwd: root, stdio: 'pipe' });
+    assert.deepEqual(at({ ci: true }), [
+      ".slicekit/local.json is tracked by git; it holds one machine's settings: remove it from the index",
+      'commands.test: "nosuchtool-committed" not found on PATH or under node_modules/.bin',
+    ]);
   });
 });

@@ -9,17 +9,26 @@ import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
 import { FINISH_WAIT, finish, proofWithCi } from '../../src/build/finish.js';
 import { git } from '../../src/git.js';
 import { getSection, prBodyProblems } from '../../src/prbody.js';
-import { cli, commitIn, commitWorkCli, green, leaveReview, prCalls, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitIn, commitWorkCli, green as greenFlow, leaveReview, prCalls, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES } from '../../src/instructions.js';
 
 const REVIEWS = '.slicekit/reviews';
 
-// A well-formed verdict file: `findings` are [id, what is wrong] pairs.
+// The worktree whose head the next verdict names (D-43): each slice this file builds sets it.
+let reviewed = null;
+const green = async () => {
+  const p = await greenFlow();
+  reviewed = p.wt;
+  return p;
+};
+
+// A well-formed verdict file on the head `reviewed` holds: `findings` are [id, what is wrong] pairs.
 function verdictText(verdict, findings = []) {
   const rows = findings.map(([id, wrong]) => `| ${id} | src/t1.js:1 | ${wrong} | it matters | \`node --test\` printed "fail 1" |`);
   return [
     `Verdict: ${verdict}`,
+    `Head: ${git(reviewed, ['rev-parse', 'HEAD'])}`,
     '',
     '| ID | File:line | What is wrong | Why it matters | How verified |',
     '|---|---|---|---|---|',

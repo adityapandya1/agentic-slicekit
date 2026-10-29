@@ -15,6 +15,8 @@ const COMMITTED = 'no-such-test-runner-s29';
 const LOCAL = 'node --test --test-concurrency=2';
 const LOCAL_FILE = '.slicekit/local.json';
 
+// The build steps never read the local file under CI (D-43): this run is a machine's, not CI's.
+const ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'CI'));
 const says = (r) => `${r.stdout}${r.stderr}`.includes(LOCAL_FILE);
 
 test('build steps run the local test command and say so; check keeps the committed one', async () => {
@@ -29,17 +31,17 @@ test('build steps run the local test command and say so; check keeps the committ
     write(p.root, LOCAL_FILE, `${JSON.stringify({ testCommand: LOCAL })}\n`);
     assert.equal(git(p.root, ['status', '--porcelain', '--', LOCAL_FILE]), '');
 
-    const red = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', 'test/a.test.js']);
+    const red = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', 'test/a.test.js'], ENV);
     assert.equal(red.code, 0, red.stderr);
     assert.ok(says(red), `build red does not say it ran ${LOCAL_FILE}'s command:\n${red.stdout}${red.stderr}`);
     assert.match(git(p.wt, ['log', '-1', '--format=%B', stateIn(p.wt).redCommit]), new RegExp(`ran: ${LOCAL} → exit [1-9]`));
 
     write(p.wt, 'src/t1.js', GREEN);
-    const done = await cli(p.root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): x', '--require-green']);
+    const done = await cli(p.root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): x', '--require-green'], ENV);
     assert.equal(done.code, 0, done.stderr);
     assert.ok(says(done), `build commit does not say it ran ${LOCAL_FILE}'s command:\n${done.stdout}${done.stderr}`);
 
-    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', h.notes], h.env);
+    const pr = await cli(p.root, ['build', 'pr', 'P1/S-01', '--notes', h.notes], { ...ENV, SLICEKIT_GITHOST_FIXTURE: h.host });
     assert.equal(pr.code, 0, pr.stderr);
     assert.ok(says(pr), `build pr does not say it ran ${LOCAL_FILE}'s command:\n${pr.stdout}${pr.stderr}`);
     assert.equal(stateIn(p.wt).state, 'draft-pr');
@@ -50,7 +52,7 @@ test('build steps run the local test command and say so; check keeps the committ
     const ci = fs.readdirSync(workflows).map((f) => fs.readFileSync(path.join(workflows, f), 'utf8')).join('\n');
     assert.ok(ci.includes(COMMITTED), 'the CI workflow does not run the committed command');
     assert.ok(!ci.includes(LOCAL), 'the CI workflow runs the local command');
-    const check = await cli(p.wt, ['check']);
+    const check = await cli(p.wt, ['check'], ENV);
     assert.equal(check.code, 0, check.stdout + check.stderr);
   } finally {
     h.cleanup();

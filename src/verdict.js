@@ -1,10 +1,13 @@
 // The reviewer's verdict file (REQ-2.11): parsed into a record, and checked for the shape problems
-// that make a hook refuse the reviewer. The head SHA is not read from the file: the state layer
-// stamps a verdict with the pull request head it holds when the verdict is recorded (REQ-1.8).
+// that make a hook refuse the reviewer. The file names the head it reviewed on a `Head: <sha>` line
+// (D-43); `build verdict` takes it only for the recorded head, and the state layer still stamps the
+// verdict with the pull request head it holds when the verdict is recorded (REQ-1.8).
 import { lines, prose, headings } from './markdown.js';
 
 const VERDICT = /^Verdict: (BLOCK|CHANGES|APPROVE)\s*$/;
 const ANY_VERDICT = /^\s*Verdict:/;
+const HEAD = /^\s*Head:\s*(.*?)\s*$/;
+const SHA = /^[0-9a-f]{7,40}$/;
 // The state layer's `--independent` flag decides independence (REQ-2.8), not this field alone.
 const INDEPENDENT = /^\s*Independent:\s*yes\s*$/i;
 const KINDS = { B: 'blocker', H: 'should-have' };
@@ -136,6 +139,8 @@ const unreadable = (path) => ({
   notChecked: [],
   hasNotChecked: false,
   independent: false,
+  head: null,
+  headLines: 0,
   unreadable: true,
 });
 
@@ -166,6 +171,9 @@ export function parseVerdict(input, path) {
     notChecked: notChecked ?? [],
     hasNotChecked: notChecked !== null,
     independent: proseLines.some((l) => INDEPENDENT.test(l)),
+    // The reviewed head as written on its `Head:` line (null when there is none), and how many such lines.
+    head: proseLines.map((l) => HEAD.exec(l)?.[1]).find((h) => h !== undefined) ?? null,
+    headLines: proseLines.filter((l) => HEAD.test(l)).length,
   };
 }
 
@@ -177,6 +185,9 @@ export function verdictProblems(v) {
   const out = [];
   if (!v.verdict) out.push('no verdict line');
   if (v.verdictLines > 1) out.push('more than one verdict line');
+  if (v.head === null) out.push('no "Head:" line naming the head reviewed');
+  else if (!SHA.test(v.head)) out.push(`Head "${v.head}" is not a commit SHA (7 to 40 lowercase hex)`);
+  if (v.headLines > 1) out.push('more than one "Head:" line');
   for (const c of v.columns) out.push(`findings table has no "${c}" column`);
   const seen = new Set();
   v.findings.forEach((f, i) => {

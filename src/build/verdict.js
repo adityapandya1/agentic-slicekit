@@ -316,6 +316,20 @@ function referenceProblems(wt, rel, text, shown) {
   return references.run({ ...ctx, docs: [doc] }).map((f) => `verdict ${shown} line ${f.line}: ${f.message}`);
 }
 
+// The verdict reviewed the recorded head, or a head that adds only the kit's bookkeeping to it
+// (D-35): a verdict written before the head moved is refused, naming both (D-43).
+function assertReviewedHead(wt, v, shown, current) {
+  const recorded = current.pr?.headSha ?? '';
+  let reviewed = null;
+  try {
+    reviewed = git(wt, ['rev-parse', '--verify', '--quiet', `${v.head}^{commit}`]);
+  } catch {
+    reviewed = null;
+  }
+  if (reviewed && (reviewed === recorded || headCovers(wt, recorded, reviewed))) return;
+  throw new BuildError(`verdict ${shown} reviewed head ${String(v.head).slice(0, 7)}; the recorded head is ${recorded.slice(0, 7)}: review the recorded head`);
+}
+
 function assertBuilt(wt, id, current) {
   if (!headCovers(wt, current.pr?.headSha ?? '', headSha(wt))) {
     throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
@@ -399,6 +413,7 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
 
   const { text, here, moved } = verdictSource(wt, id, k, src, dest, rel, shown);
   const v = checked(text, shown, name, independent);
+  assertReviewedHead(wt, v, shown, current);
   const reused = reusedNumbers(shown, v.findings.map((f) => f.id), earlierIds(wt, verdicts));
   if (reused.length > 0) throw new BuildError(reused.join('\n'));
   const banned = bannedProblems(cfg, v, text, shown);

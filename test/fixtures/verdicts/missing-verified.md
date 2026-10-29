@@ -1,4 +1,5 @@
 Verdict: BLOCK
+Head: abc1234
 
 | ID | File:line | What is wrong | Why it matters | How verified |
 |---|---|---|---|---|

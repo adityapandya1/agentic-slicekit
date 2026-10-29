@@ -224,7 +224,9 @@ export function mainCheckout(dir) {
 
 // -> the local test command, or null when the file is absent or sets none; a file that does not
 // parse, or a testCommand that is not a non-empty string, is a ConfigError.
-export function localTestCommand(root) {
+export function localTestCommand(root, env = process.env) {
+  // Under CI the file is never read: CI runs the committed command.
+  if (typeof env.CI === 'string' && env.CI !== '') return null;
   const file = path.join(root, ...LOCAL_PATH.split('/'));
   let text;
   try {
@@ -249,8 +251,8 @@ export function localTestCommand(root) {
 
 // The test command the build steps run here: the local one when set, else commands.test.
 // -> { command, local } where `local` is true for the local file's command.
-export function buildTestCommand(root, cfg) {
-  const local = localTestCommand(mainCheckout(root));
+export function buildTestCommand(root, cfg, env = process.env) {
+  const local = localTestCommand(mainCheckout(root), env);
   if (local !== null) return { command: local, local: true };
   return { command: cfg.commands?.test ?? '', local: false };
 }

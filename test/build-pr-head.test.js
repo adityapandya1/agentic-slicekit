@@ -7,8 +7,9 @@ import { cli, commitAll, green, stateIn, write } from './helpers/build-flow.js';
 
 const SLICE_BRANCH = 'refs/heads/slice/P1-S-01-thing-1';
 
-const VERDICT = [
+const verdict = (head) => [
   'Verdict: APPROVE',
+  `Head: ${head}`,
   '',
   '| ID | File:line | What is wrong | Why it matters | How verified |',
   '|---|---|---|---|---|',
@@ -55,7 +56,7 @@ test('build pr at draft-pr records a head moved by a merge of the default branch
 
     // The next verdict is taken on that head.
     const rel = '.slicekit/reviews/P1-S-01-r1.md';
-    write(p.root, rel, VERDICT);
+    write(p.root, rel, verdict(git(p.wt, ['rev-parse', 'HEAD'])));
     const v = await cli(p.root, ['build', 'verdict', 'P1/S-01', rel], p.env);
     assert.equal(v.code, 0, v.stderr);
     assert.equal(stateIn(p.wt).state, 'in-review');

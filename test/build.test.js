@@ -43,7 +43,7 @@ const PR = { number: 14, url: 'http://x/14', headSha: 'abc1234', title: '[P1/S-0
 test('renderBuild lists phases and slices from files and state', () => {
   withKit((root, cfg, ids) => {
     setState(root, cfg, ids[1], 'draft-pr', { backfill: true, testExit: 0, checkExit: 0, pr: PR });
-    setState(root, cfg, ids[2], 'merged', { backfill: true, pr: { ...PR, number: 15 }, mergedAt: '2026-10-24T00:00:00Z' });
+    setState(root, cfg, ids[2], 'merged', { backfill: true, source: 'host', pr: { ...PR, number: 15 }, mergedAt: '2026-10-24T00:00:00Z' });
     const out = renderBuild(root, cfg, '');
     assert.match(out, /^# BUILD — the queue\n/);
     assert.ok(out.includes('Spec: `docs/spec/`.'), out);

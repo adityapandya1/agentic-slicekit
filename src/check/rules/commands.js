@@ -11,6 +11,7 @@
 // A token with a path separator must be a regular file, relative to the root or absolute. On win32
 // it is tried with the PATHEXT suffixes and bare, as `which()` does; on POSIX bare only. So a
 // Windows-only `.cmd` passes on Windows and fails on POSIX.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ConfigError, LOCAL_PATH, localTestCommand, mainCheckout } from '../../config.js';
@@ -132,15 +133,26 @@ function keyLine(root, name) {
 function localTest(ctx) {
   if (ctx.ci) return null;
   try {
-    return localTestCommand(mainCheckout(ctx.root));
+    return localTestCommand(mainCheckout(ctx.root), ctx.env ?? process.env);
   } catch (e) {
     if (e instanceof ConfigError) return { error: e.message };
     throw e;
   }
 }
 
+// The local file is one machine's: tracked by git, it would change every clone's test command.
+function trackedLocal(ctx) {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', LOCAL_PATH], { cwd: ctx.root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function run(ctx) {
   const out = [];
+  if (trackedLocal(ctx)) out.push({ file: LOCAL_PATH, line: 1, message: `${LOCAL_PATH} is tracked by git; it holds one machine's settings: remove it from the index` });
   const local = localTest(ctx);
   if (local?.error) out.push({ file: LOCAL_PATH, line: 1, message: local.error });
   for (const name of NAMES) {

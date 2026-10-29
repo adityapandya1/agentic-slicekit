@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
 import { GitError, commitPaths, git, parseTrailers } from '../git.js';
-import { isFreshRender, renderSubject } from './render.js';
+import { isFreshRender, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { TransitionError, readSlice, unfreeze } from '../state/index.js';
@@ -44,15 +44,20 @@ const blobAt = (wt, rev, file) => {
   }
 };
 
-const refExists = (wt, ref) => {
+// The commit origin's default branch names now, fetched so its history is here: ls-remote names it,
+// a fetch brings it into FETCH_HEAD, and the two must agree. Null when origin cannot be reached or
+// has no such branch: then no commit is taken for the default branch's.
+function originDefault(wt, branch) {
   try {
-    git(wt, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    return true;
+    const listed = git(wt, ['ls-remote', 'origin', `refs/heads/${branch}`]).split(/\s+/)[0];
+    if (!/^[0-9a-f]{40}$/.test(listed ?? '')) return null;
+    git(wt, ['fetch', '-q', '--no-tags', 'origin', `refs/heads/${branch}`]);
+    return git(wt, ['rev-parse', '--verify', 'FETCH_HEAD^{commit}']) === listed ? listed : null;
   } catch (e) {
-    if (e instanceof GitError) return false;
+    if (e instanceof GitError) return null;
     throw e;
   }
-};
+}
 
 // The first frozen test (not unfrozen) that differs from the red commit, and how: hidden from git by
 // skip-worktree or assume-unchanged, different bytes or missing on disk (an edit through Bash never
@@ -106,9 +111,13 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
-  // A commit the default branch holds came in with a merge of it: it is that branch's, not the slice's.
-  const theirs = [`refs/remotes/origin/${cfg.defaultBranch}`, `refs/heads/${cfg.defaultBranch}`].filter((r) => refExists(wt, r));
-  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`, ...theirs.map((r) => `^${r}`)]))) {
+  // A commit origin's default branch holds came in with a merge of it: it is that branch's, not the
+  // slice's. Only origin as it answers now counts; a local ref can be moved onto a forged commit.
+  const theirs = originDefault(wt, cfg.defaultBranch);
+  // build render's commits, newest first: the newest must be a fresh render; an earlier one, which
+  // the newest renders over, may hold only the files update writes (D-43).
+  let rendered = false;
+  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`, ...(theirs ? [`^${theirs}`] : [])]))) {
     const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
       const [status, ...rest] = l.split('\t');
       return { status, file: rest.join('\t') };
@@ -117,10 +126,14 @@ function forgedKitChange(wt, cfg, id, current, slice) {
     if (!kit) continue;
     const subject = git(wt, ['log', '-1', '--format=%s', sha]);
     const trailers = parseTrailers(git(wt, ['log', '-1', '--format=%B', sha]));
-    // build render's commit: accepted only when it is exactly a fresh render of its parent (D-43).
     if (subject === renderSubject(id) && trailers.Slice === id) {
-      if (isFreshRender(wt, sha)) continue;
-      return `${kit} was changed in ${short(sha)} outside the kit; a render commit holds only a fresh render of slicekit update`;
+      if (!renderPathsOnly(wt, sha)) return `${kit} was changed in ${short(sha)} outside the kit; a render commit holds only the files slicekit update writes`;
+      if (rendered) continue;
+      if (!isFreshRender(wt, sha)) {
+        return `${kit} was changed in ${short(sha)} outside the kit: the latest render commit is not what this kit renders; run slicekit build render ${id} again`;
+      }
+      rendered = true;
+      continue;
     }
     if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
@@ -129,7 +142,7 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   return null;
 }
 
-export function commitWork(root, cfg, id, { message, requireGreen = false, worktree } = {}) {
+export function commitWork(root, cfg, id, { message, requireGreen = false, worktree, env = process.env } = {}) {
   if (typeof message !== 'string' || message.trim() === '') throw new BuildError('--message is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
   const current = building(wt, cfg, id, 'commit', COMMIT_FROM);
@@ -141,7 +154,7 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   const paths = changedPaths(wt);
   const kit = paths.find((p) => isKitFile(wt, cfg, slice, p));
   if (kit) throw new BuildError(`${kit} is a kit file; build commit does not commit it`);
-  const { command, local } = buildTestCommand(root, cfg);
+  const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const ranLocal = local ? command : null;
 
@@ -167,15 +180,36 @@ function headIsAmendment(wt, id, sliceRel) {
 // test is fixed during review. From review the amendment takes the slice back to building.
 const AMEND_FROM = ['building', 'draft-pr', 'in-review', 'changes-requested'];
 
-// The state file on disk differs from HEAD's copy only by this unfreeze (and its move to building):
-// its bookkeeping commit did not land.
-function pendingUnfreeze(wt, stateRel, file) {
-  let committed;
+// The state file as HEAD holds it, or null: a hand edit of the file on disk never decides a step.
+function committedState(wt, stateRel) {
   try {
-    committed = JSON.parse(git(wt, ['show', `HEAD:${stateRel}`]));
+    return JSON.parse(git(wt, ['show', `HEAD:${stateRel}`]));
   } catch {
-    return false;
+    return null;
   }
+}
+
+// `sha` is this slice's amendment commit, on HEAD's history: the subject, the trailer, the slice file alone.
+function isAmendment(wt, id, sliceRel, sha) {
+  if (typeof sha !== 'string' || !/^[0-9a-f]{7,40}$/.test(sha)) return false;
+  try {
+    git(wt, ['merge-base', '--is-ancestor', sha, 'HEAD']);
+  } catch (e) {
+    if (e instanceof GitError) return false;
+    throw e;
+  }
+  const subject = git(wt, ['log', '-1', '--format=%s', sha]);
+  const trailers = parseTrailers(git(wt, ['log', '-1', '--format=%B', sha]));
+  const files = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-only', '-r', sha]));
+  return subject === `docs(${id}): amend evaluation set` && trailers.Slice === id && files.length === 1 && files[0] === sliceRel;
+}
+
+// The state file on disk differs from HEAD's copy only by this unfreeze (and its move to building),
+// its amendment commit is on HEAD's history, and HEAD's state is one amend runs from: its bookkeeping
+// commit did not land.
+function pendingUnfreeze(wt, id, stateRel, sliceRel, file) {
+  const committed = committedState(wt, stateRel);
+  if (!committed || !AMEND_FROM.includes(committed.state)) return false;
   const now = JSON.parse(fs.readFileSync(path.join(wt, ...stateRel.split('/')), 'utf8'));
   const added = now.history.at(-1);
   const strip = (s) => JSON.stringify({ ...s, unfrozen: null, history: null, state: null, handoff: null });
@@ -185,7 +219,8 @@ function pendingUnfreeze(wt, stateRel, file) {
     JSON.stringify(now.unfrozen) === JSON.stringify([...committed.unfrozen, file]) &&
     now.history.length === committed.history.length + 1 &&
     JSON.stringify(now.history.slice(0, -1)) === JSON.stringify(committed.history) &&
-    added?.evidence?.unfreeze === file
+    added?.evidence?.unfreeze === file &&
+    isAmendment(wt, id, sliceRel, added?.evidence?.amendCommit)
   );
 }
 
@@ -195,15 +230,18 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
   if (typeof reason !== 'string' || reason.trim() === '') throw new BuildError('--reason is required', 2);
   if (typeof test !== 'string' || test.trim() === '') throw new BuildError('--test is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
-  const current = building(wt, cfg, id, 'amend', AMEND_FROM);
+  const current = readSlice(wt, cfg, id);
+  const stateRel = posixRel(wt, path.join(kitPaths(wt, cfg).state, stateFileName(id)));
+  // Where amend runs from is read from HEAD's state file, never the copy on disk.
+  const committed = committedState(wt, stateRel) ?? current;
+  if (!AMEND_FROM.includes(committed.state)) throw new BuildError(`${id} is ${committed.state}; amend runs from ${AMEND_FROM.join(', ')}`);
   const file = toWorktreePath(wt, test);
   // Checked before the slice file is committed; the words are unfreeze's own TransitionError reason.
   if (!current.frozenTests.includes(file)) throw new BuildError(`${file} is not a frozen test of ${id}`);
-  const stateRel = posixRel(wt, path.join(kitPaths(wt, cfg).state, stateFileName(id)));
   const sliceRel = posixRel(wt, sliceIn(wt, cfg, id).path);
   const lastAmendment = () => git(wt, ['log', '-1', '--format=%H', `--grep=^docs(${id}): amend evaluation set$`, '--', sliceRel]);
   if (current.unfrozen.includes(file)) {
-    if (!pendingUnfreeze(wt, stateRel, file)) throw new BuildError(`${file} is already unfrozen`);
+    if (!pendingUnfreeze(wt, id, stateRel, sliceRel, file)) throw new BuildError(`${file} is already unfrozen`);
     commitState(wt, cfg, id, `unfreeze ${file}`);
     return { sha: lastAmendment(), test: file };
   }

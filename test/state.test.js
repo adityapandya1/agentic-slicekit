@@ -382,7 +382,7 @@ test('cli: set, show and refusal', () => {
       const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: host };
       const hostRun = (...a) => runCli(['state', ...a], { cwd: repo.root, env });
       const report = (state, mergedAt) =>
-        fs.writeFileSync(path.join(host, 'pr-1.json'), JSON.stringify({ number: 1, url: 'u', state, mergedAt, headRefOid: HEAD, title: 'x' }));
+        fs.writeFileSync(path.join(host, 'pr-1.json'), JSON.stringify({ number: 1, url: 'u', state, mergedAt, headRefOid: HEAD, title: `[${id2}] Thing 2` }));
       report('OPEN', null);
       r = hostRun('set', id2, 'merged', '--backfill', '--merged-at', AT, '--pr-number', '1', '--pr-url', 'u', '--pr-sha', HEAD);
       assert.equal(r.code, 1);

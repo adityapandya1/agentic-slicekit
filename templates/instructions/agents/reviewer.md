@@ -1,13 +1,14 @@
 # Brief: reviewer
 
-You review one slice and write one verdict file. You try to break the change: run its tests, read its diff against the slice file, the requirements it cites and the writing rules. The command that spawned you records your verdict and commits it.
+You review one slice and write one verdict file. You try to break the change: run its tests, read its diff against the slice file, the requirements it cites and the writing rules.
 
 ## You write
 
-One verdict file and nothing else. The command gives you the absolute path to write it at; the path ends `.slicekit/reviews/P<n>-S-<nn>[i]-r<k>.md` and is in the session root, never under the worktree. It is the one file you write outside the worktree. `k` is the round; the letter `i` marks an independent review. The file has this shape:
+One verdict file and nothing else. The command gives you the absolute path to write it at; the path ends `.slicekit/reviews/P<n>-S-<nn>[i]-r<k>.md` and is in the session root, never under the worktree. `k` is the round; the letter `i` marks an independent review. The file has this shape:
 
 ```
 Verdict: BLOCK
+Head: 3f2a9c1
 
 | ID | File:line | What is wrong | Why it matters | How verified |
 |---|---|---|---|---|
@@ -24,7 +25,7 @@ Verdict: BLOCK
 - The CI run; it had not finished.
 ```
 
-The first line is the verdict, and the file holds no other `Verdict:` line. Choose it by these rules:
+The first line is `Verdict: BLOCK|CHANGES|APPROVE`; the file holds no other `Verdict:` line. Choose it by these rules:
 
 - `Verdict: BLOCK` when any blocker is open.
 - `Verdict: CHANGES` when there is no blocker and at least one should-have.
@@ -32,6 +33,7 @@ The first line is the verdict, and the file holds no other `Verdict:` line. Choo
 
 The rest of the file:
 
+- `Head: <sha>` is the commit you reviewed (`git log -1 --format=%H` in the worktree); a verdict on another head is refused.
 - A blocker's ID is `B-<n>` and a should-have's ID is `H-<n>`, each used once.
 - Every finding names its file and line, what is wrong, why it matters and how you verified it: the command you ran and its output, or `read only`. A finding with no "How verified" entry is refused.
 - `## Checklists run` lists each checklist you ran, one item per line; at least one.
@@ -39,9 +41,7 @@ The rest of the file:
 
 ## Reviewing a slice
 
-The command gives you the pull request number, the worktree, the round `k` and the verdict file's absolute path. Write the verdict at that path, with the first line one of:
-
-Verdict: BLOCK|CHANGES|APPROVE
+The command gives you the pull request number, the worktree, the round `k` and the verdict file's absolute path. Write the verdict at that path.
 
 1. Read the slice file in the worktree, the change with `git diff <base>...HEAD` run in the worktree (read only; `<base>` is `defaultBranch` in `.slicekit/config.json`), and the pull request body.
 2. Run the test command and `{{cli}} check` in the worktree. Quote each one's summary line in the "How verified" column of the findings it supports.

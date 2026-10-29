@@ -98,7 +98,7 @@ function parallel(root, io, positionals) {
 function redStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.tests === undefined) return usage(io);
   const cfg = loadConfig(root);
-  const { commit, local } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree });
+  const { commit, local } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree, env: io.env ?? process.env });
   if (local) io.stderr(`${localNote(local)}\n`);
   io.stdout(`${commit}\ntests-red → building\n`);
   return 0;
@@ -111,6 +111,7 @@ function commitStep(root, io, positionals, values) {
     message: values.message,
     requireGreen: Boolean(values['require-green']),
     worktree: values.worktree,
+    env: io.env ?? process.env,
   });
   if (local) io.stderr(`${localNote(local)}\n`);
   io.stdout(sha === null ? 'nothing to commit\n' : `${sha.slice(0, 7)} exit ${exit}\n`);
@@ -138,10 +139,12 @@ function prStep(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
-  const { number, url, verdictPath, local } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  const { number, url, verdictPath, local, movedHead } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree, env: io.env ?? process.env });
   if (local) io.stderr(`${localNote(local)}\n`);
   // Last, the path the next reviewer writes; none once the loop's rounds are used.
-  io.stdout(`#${number} ${url}\n${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
+  // A head recorded at draft-pr: the verdict path again, for a review of that head.
+  const moved = movedHead ? `head ${movedHead} recorded; the next verdict reviews it\n` : '';
+  io.stdout(`#${number} ${url}\n${moved}${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
   return 0;
 }
 

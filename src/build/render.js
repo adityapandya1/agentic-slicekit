@@ -42,10 +42,14 @@ export function renderSlice(root, rootCfg, id, { worktree } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const current = readSlice(wt, rootCfg, id);
   if (!RENDER_FROM.includes(current.state)) throw new BuildError(`${id} is ${current.state}; render runs from ${RENDER_FROM.join(', ')}`);
-  const dirty = changedPaths(wt);
-  if (dirty.length > 0) throw new BuildError(`the worktree has uncommitted changes (${dirty.slice(0, 5).join(', ')}); build commit them first`);
   // The worktree's own config: the one the slice commits and CI renders against.
   const cfg = loadConfig(wt);
+  const owns = owner(cfg);
+  // Uncommitted work elsewhere (a template fix the render picks up) stays as it is; a change to a
+  // file update writes, or to the config, would be committed as the kit's.
+  const before = changedPaths(wt);
+  const blocked = before.filter((f) => owns(f) || f === CONFIG);
+  if (blocked.length > 0) throw new BuildError(`the worktree has uncommitted changes to ${blocked.slice(0, 5).join(', ')}; build render writes those files`);
   const version = kitVersion();
   const plan = planUpdate(wt, cfg, { version });
   // A drifted file is the team's edit: update leaves it, so the render would be partial.
@@ -54,13 +58,31 @@ export function renderSlice(root, rootCfg, id, { worktree } = {}) {
     throw new BuildError(`${edited.map((p) => p.dest).join(', ')} ${edited.length === 1 ? 'was' : 'were'} edited since slicekit wrote ${edited.length === 1 ? 'it' : 'them'}; build render does not overwrite an edit`);
   }
   applyUpdate(wt, cfg, plan, { version });
-  const files = changedPaths(wt);
+  const files = changedPaths(wt).filter((f) => !before.includes(f));
   if (files.length === 0) return { sha: null, files: [] };
-  const owns = owner(cfg);
   const stray = files.find((f) => !owns(f));
   if (stray) throw new BuildError(`update wrote ${stray}, which is not a file it renders`);
   const sha = commitPaths(wt, files, `${renderSubject(id)}\n\nran: slicekit update --yes (${version})\n\nSlice: ${id}`);
   return { sha, files };
+}
+
+// Commit `sha` changes only files `update` writes, for the config of the commit before it.
+export function renderPathsOnly(wt, sha) {
+  const config = blob(wt, `${sha}^`, CONFIG);
+  if (config === null) return false;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-render-'));
+  try {
+    fs.mkdirSync(path.join(tmp, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ...CONFIG.split('/')), config);
+    const owns = owner(loadConfig(tmp));
+    const changed = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '-z', sha]));
+    return changed.length > 0 && changed.every(owns);
+  } catch (e) {
+    if (e instanceof GitError || e instanceof ConfigError) return false;
+    throw e;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 // The bytes of `rev:file`, or null when the file is not in that commit.

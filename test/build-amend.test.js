@@ -12,10 +12,11 @@ import { cli, green, stateIn, write } from './helpers/build-flow.js';
 const SLICE_FILE = 'docs/phases/P1-x/S-01-thing-1.md';
 const REVIEWS = '.slicekit/reviews';
 
-function verdictText(verdict, findings = []) {
+function verdictText(verdict, findings = [], head) {
   const rows = findings.map(([id, wrong]) => `| ${id} | test/a.test.js:4 | ${wrong} | it matters | read only |`);
   return [
     `Verdict: ${verdict}`,
+    `Head: ${head}`,
     '',
     '| ID | File:line | What is wrong | Why it matters | How verified |',
     '|---|---|---|---|---|',
@@ -38,7 +39,7 @@ async function reviewed(verdict, findings) {
   const r = await p.pr();
   assert.equal(r.code, 0, r.stderr);
   const rel = `${REVIEWS}/P1-S-01-r1.md`;
-  write(p.root, rel, verdictText(verdict, findings));
+  write(p.root, rel, verdictText(verdict, findings, git(p.wt, ['rev-parse', 'HEAD'])));
   const v = await cli(p.root, ['build', 'verdict', 'P1/S-01', rel], p.env);
   assert.equal(v.code, 0, v.stderr);
   assert.equal(stateIn(p.wt).state, 'in-review');

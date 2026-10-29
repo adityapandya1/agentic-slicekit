@@ -2,6 +2,8 @@ import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
+import { parseSliceAddr } from '../ids.js';
+import { branchPrefix } from '../worktrees.js';
 import { STATES } from '../state/transitions.js';
 import { LockError, TransitionError, readSlice, setState, unfreeze } from '../state/index.js';
 
@@ -70,6 +72,18 @@ function hostMerge(root, cfg, id, ev, env) {
   const number = recorded ?? given;
   if (!Number.isInteger(number)) throw new TransitionError(`backfill to merged needs the pull request number (--pr-number); ${id} records none`);
   const pr = getHost(cfg, env, root).getPullRequest(number);
+  // A number given with no recorded pull request names the slice's own only when the host's title
+  // begins [<id>] or its branch is the slice's branch: a mistyped number records no merge.
+  if (recorded === undefined || recorded === null) {
+    const title = String(pr.title ?? '');
+    const branch = String(pr.headRef ?? '');
+    const prefix = branchPrefix(parseSliceAddr(id));
+    const titled = title === `[${id}]` || title.startsWith(`[${id}] `);
+    const onBranch = branch === prefix || branch.startsWith(`${prefix}-`);
+    if (!titled && !onBranch) {
+      throw new TransitionError(`the git host reports pull request #${number} titled "${title}" on branch ${branch || '(none)'}; it is not ${id}'s pull request`);
+    }
+  }
   if (!pr.mergedAt) throw new TransitionError(`the git host reports pull request #${number} ${String(pr.state ?? 'open').toLowerCase()}, not merged; backfill to merged needs a merged pull request`);
   if (typeof pr.headSha !== 'string' || pr.headSha === '') throw new TransitionError(`the git host reports no head for pull request #${number}`);
   const { mergedAt: _m, pr: _p, ...rest } = ev;

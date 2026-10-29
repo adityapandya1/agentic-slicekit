@@ -180,12 +180,12 @@ function finishRed(wt, cfg, id, current, tests) {
   return { commit: current.redCommit, tests: current.frozenTests };
 }
 
-export function red(root, cfg, id, { tests, worktree } = {}) {
+export function red(root, cfg, id, { tests, worktree, env = process.env } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const current = readSlice(wt, cfg, id);
   if (current.state === 'tests-red') return finishRed(wt, cfg, id, current, tests);
   if (current.state !== 'todo') throw new BuildError(`${id} is ${current.state}; red runs from todo`);
-  const { command, local } = buildTestCommand(root, cfg);
+  const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const files = resolveTests(wt, tests);
   const slice = sliceIn(wt, cfg, id);

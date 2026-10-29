@@ -9,7 +9,9 @@ const fixture = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/verdict
 
 const TAIL = '\n## Checklists run\n\n- correctness\n\n## Not checked\n\n- security\n';
 const TABLE = '| ID | File:line | What is wrong | Why it matters | How verified |\n|---|---|---|---|---|\n';
-const doc = (verdict, rows = [], tail = TAIL) => `${verdict}\n\n${rows.length ? TABLE + rows.join('\n') + '\n' : ''}${tail}`;
+// Every verdict names the head it reviewed (D-43).
+const HEAD = 'Head: abc1234';
+const doc = (verdict, rows = [], tail = TAIL) => `${verdict}\n${HEAD}\n\n${rows.length ? TABLE + rows.join('\n') + '\n' : ''}${tail}`;
 const problems = (text) => verdictProblems(parseVerdict(text, 'r1.md'));
 
 test('verdict » parses good (REQ-2.11)', () => {
@@ -40,7 +42,7 @@ test('verdict » CRLF input parses the same (REQ-2.11)', () => {
 });
 
 test('verdict » rows without outer pipes and with extra spaces parse (REQ-2.11)', () => {
-  const text = 'Verdict: CHANGES\n\nID|File:line|What is wrong|Why it matters|How verified\n--|--|--|--|--\n  H-3  |   lib/x.js:7   |  w  |  y  |  read only  \n' + TAIL;
+  const text = 'Verdict: CHANGES\nHead: abc1234\n\nID|File:line|What is wrong|Why it matters|How verified\n--|--|--|--|--\n  H-3  |   lib/x.js:7   |  w  |  y  |  read only  \n' + TAIL;
   const v = parseVerdict(text, 'r1.md');
   assert.deepEqual(v.findings, [{ id: 'H-3', kind: 'should-have', file: 'lib/x.js', line: 7, lineEnd: null, wrong: 'w', why: 'y', verified: 'read only' }]);
   assert.deepEqual(verdictProblems(v), []);
@@ -51,7 +53,7 @@ test('verdict » no verdict line (REQ-2.11)', () => {
   assert.deepEqual(problems(doc('Verdict: approve')), ['no verdict line']);
   assert.deepEqual(problems(doc('Verdict: MAYBE')), ['no verdict line']);
   assert.deepEqual(problems(`# Review\n\n${doc('Verdict: APPROVE')}`), ['no verdict line']);
-  assert.deepEqual(problems(''), ['no verdict line', 'no checklists listed', 'no "Not checked" section']);
+  assert.deepEqual(problems(''), ['no verdict line', 'no "Head:" line naming the head reviewed', 'no checklists listed', 'no "Not checked" section']);
 });
 
 test('verdict » the verdict line may follow blank lines (REQ-2.11)', () => {
@@ -107,7 +109,7 @@ test('verdict » independent only with an "Independent: yes" line (REQ-2.8)', ()
 });
 
 test('verdict » problems come in a stable order (REQ-2.11)', () => {
-  const text = 'Verdict: APPROVE\n\n' + TABLE + '| B-1 | a.js | w | y | |\n| Z | a.js | w | y | read only |\n| B-1 | a.js | w | y | read only |\n';
+  const text = 'Verdict: APPROVE\nHead: abc1234\n\n' + TABLE + '| B-1 | a.js | w | y | |\n| Z | a.js | w | y | read only |\n| B-1 | a.js | w | y | read only |\n';
   assert.deepEqual(problems(text), [
     'finding B-1 has no "how verified"',
     'finding Z has an unknown id form',
@@ -148,7 +150,7 @@ test('verdict » a row with more cells than the header is a problem (REQ-2.11)',
 });
 
 test('verdict » every findings table is read, in document order (REQ-2.11)', () => {
-  const two = `Verdict: APPROVE\n\n${TABLE}${ROW('H-1')}\n\n${TABLE}| B-1 | a | x | y | |\n${TAIL}`;
+  const two = `Verdict: APPROVE\n${HEAD}\n\n${TABLE}${ROW('H-1')}\n\n${TABLE}| B-1 | a | x | y | |\n${TAIL}`;
   const v = parseVerdict(two, 'r');
   assert.deepEqual(v.findings.map((f) => f.id), ['H-1', 'B-1']);
   assert.deepEqual(verdictProblems(v), ['finding B-1 has no "how verified"', 'verdict APPROVE with open blocker B-1']);
@@ -174,14 +176,14 @@ test('verdict » an id with a leading zero or zero is an unknown id form (REQ-2.
 });
 
 test('verdict » a missing or empty "What is wrong" or "Why it matters" is a problem (REQ-2.11)', () => {
-  const noCols = `Verdict: BLOCK\n\n| ID | File:line | How verified |\n|---|---|---|\n| B-1 | a | ran |\n${TAIL}`;
+  const noCols = `Verdict: BLOCK\n${HEAD}\n\n| ID | File:line | How verified |\n|---|---|---|\n| B-1 | a | ran |\n${TAIL}`;
   assert.deepEqual(problems(noCols), ['findings table has no "What is wrong" column', 'findings table has no "Why it matters" column']);
   assert.deepEqual(problems(doc('Verdict: BLOCK', ['| B-1 |  |  |  | ran |'])), ['finding B-1 has no "What is wrong"', 'finding B-1 has no "Why it matters"']);
   assert.deepEqual(problems(doc('Verdict: BLOCK', ['| B-1 | a | x |'])), ['finding B-1 has no "Why it matters"', 'finding B-1 has no "how verified"']);
 });
 
 test('verdict » a fence line ends the findings table (REQ-2.11)', () => {
-  const v = parseVerdict(`Verdict: APPROVE\n\n${TABLE}${ROW('H-1')}\n\`\`\`\nfoo\n\`\`\`\n| B-1 | a | x | y | |\n${TAIL}`, 'r');
+  const v = parseVerdict(`Verdict: APPROVE\n${HEAD}\n\n${TABLE}${ROW('H-1')}\n\`\`\`\nfoo\n\`\`\`\n| B-1 | a | x | y | |\n${TAIL}`, 'r');
   assert.deepEqual(v.findings.map((f) => f.id), ['H-1']);
   assert.deepEqual(verdictProblems(v), []);
   const fencedFirst = `Verdict: BLOCK\n\n\`\`\`\n${TABLE}| H-9 | a | x | y | |\n\`\`\`\n\n${TABLE}${ROW('B-1')}\n${TAIL}`;
@@ -215,4 +217,16 @@ test('verdict » a deeper "Not checked" heading is the Not checked section (REQ-
   assert.deepEqual(verdictProblems(colon), []);
   const sub = parseVerdict(doc('Verdict: BLOCK', [ROW('B-1')], '\n## Checklists run\n\n### sub\n- c\n\n## Not checked\n'), 'r');
   assert.deepEqual([sub.checklists, verdictProblems(sub)], [['c'], []]);
+});
+
+// D-43: the verdict names the head it reviewed, on one `Head:` line holding a commit SHA.
+test('verdict » a missing, malformed or repeated Head line is a problem (REQ-2.11)', () => {
+  const headless = doc('Verdict: APPROVE').replace(`${HEAD}\n`, '');
+  assert.deepEqual(problems(headless), ['no "Head:" line naming the head reviewed']);
+  assert.equal(parseVerdict(doc('Verdict: APPROVE'), 'r').head, 'abc1234');
+  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: the tip\n')), ['Head "the tip" is not a commit SHA (7 to 40 lowercase hex)']);
+  assert.deepEqual(problems(headless.replace('Verdict: APPROVE\n', 'Verdict: APPROVE\nHead: ABC1234\n')), ['Head "ABC1234" is not a commit SHA (7 to 40 lowercase hex)']);
+  assert.deepEqual(problems(doc('Verdict: APPROVE') + '\nHead: def5678\n'), ['more than one "Head:" line']);
+  // A Head line inside a fence is an example, not the verdict's head.
+  assert.deepEqual(problems(headless + '\n```\nHead: abc1234\n```\n'), ['no "Head:" line naming the head reviewed']);
 });

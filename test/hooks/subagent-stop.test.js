@@ -23,7 +23,7 @@ const AGENT = 'agent-1';
 const TAIL = '\nSkipped: none\nNot checked: performance\n';
 const DEV_OK = `Built the parser.\nran: npm test → exit 0${TAIL}`;
 const VERDICT_TAIL = '\n## Checklists run\n\n- correctness\n\n## Not checked\n\n- security\n';
-const GOOD_VERDICT = `Verdict: APPROVE\n${VERDICT_TAIL}`;
+const GOOD_VERDICT = `Verdict: APPROVE\nHead: abc1234\n${VERDICT_TAIL}`;
 const TABLE = '| ID | File:line | What is wrong | Why it matters | How verified |\n|---|---|---|---|---|\n';
 
 const stop = (root, input = {}) => handle(
@@ -85,7 +85,7 @@ test('hooks/subagent-stop.test.js » reviewer without verdict file blocks naming
 test('hooks/subagent-stop.test.js » verdict finding without how-verified blocks', async () => {
   const { root, cleanup } = await started({ type: 'reviewer' });
   try {
-    writeReview(root, 'P1-S-07-r1.md', `Verdict: BLOCK\n\n${TABLE}| B-1 | src/a.js:1 | wrong | matters |  |\n${VERDICT_TAIL}`);
+    writeReview(root, 'P1-S-07-r1.md', `Verdict: BLOCK\nHead: abc1234\n\n${TABLE}| B-1 | src/a.js:1 | wrong | matters |  |\n${VERDICT_TAIL}`);
     const r = await stop(root, { agent_type: 'reviewer', last_assistant_message: `Reviewed.${TAIL}` });
     assert.ok(isBlock(r), JSON.stringify(r));
     assert.match(r.reason, /finding B-1 has no "how verified"/);

@@ -123,8 +123,8 @@ function proofSummary(run) {
 // Each declared command in the worktree, the test command from .slicekit/local.json when the session
 // root has one (D-43); -> { summary, command, local }: the test run's pass and fail totals, the test
 // command run, and whether it was the local one.
-function runCommands(root, wt, cfg) {
-  const tests = buildTestCommand(root, cfg);
+function runCommands(root, wt, cfg, env) {
+  const tests = buildTestCommand(root, cfg, env);
   const commands = { ...(cfg.commands ?? {}), test: tests.command };
   if (!text(commands.test)) throw new BuildError('commands.test is not declared in .slicekit/config.json');
   let summary = '';
@@ -145,8 +145,8 @@ function assertNoOverlap(wt, cfg, id) {
   if (defects.length > 0) throw new BuildError(defects.map((d) => planDefectLine(id, d)).join('\n'));
 }
 
-function checkClean(wt) {
-  const result = check(wt);
+function checkClean(wt, env) {
+  const result = check(wt, { env });
   if (result.exitCode === 0) return;
   const found = result.lines.slice(0, -1).filter((l) => !l.startsWith('(baseline) '));
   throw new BuildError(['slicekit check failed:', ...found.slice(0, 10), result.lines.at(-1)].join('\n'));
@@ -154,7 +154,7 @@ function checkClean(wt) {
 
 // `notes` may be left out for a slice that already has a pull request (the reviewing session does not
 // have the building session's notes): each section the notes do not give keeps the live body's text.
-export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
+export function openSlicePr(root, cfg, host, id, { notes, worktree, env = process.env } = {}) {
   const given = notes === undefined ? null : readNotes(root, notes);
   const held = findWorktree(root, id, { worktree });
   const wt = held.path;
@@ -210,8 +210,8 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (slice.runbook && !changed && !(runbookNote ?? '').trim().startsWith('no operational change')) {
     throw new BuildError(RUNBOOK_REFUSAL);
   }
-  const { summary, command: testCommand, local } = runCommands(root, wt, cfg);
-  checkClean(wt);
+  const { summary, command: testCommand, local } = runCommands(root, wt, cfg, env);
+  checkClean(wt, env);
 
   // The pull request already open for the branch: the recorded one once there is a recording.
   const { open, livePr } = openPr();
@@ -252,7 +252,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   const verdictPath = nextVerdictPath(root, id, current.verdicts ?? []);
   // The reviewer writes there at once: its directory is made here, as the path is printed.
   if (verdictPath) fs.mkdirSync(path.dirname(verdictPath), { recursive: true });
-  const result = { number: made.number, url: made.url, created: made.created, verdictPath, local: local ? testCommand : null };
+  const result = { number: made.number, url: made.url, created: made.created, verdictPath, local: local ? testCommand : null, movedHead: null };
   // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
   if (livePr?.draft === false) host.markDraft(made.number);
   // At draft-pr a head that moved since the recorded one (a merge of the default branch, any commit)
@@ -264,6 +264,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
       recordHead(wt, cfg, id, { number: made.number, url: made.url, headSha: head });
       commitState(wt, cfg, id, 'head');
       pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
+      result.movedHead = head;
     }
     return result;
   }

@@ -174,8 +174,8 @@ Transitions and their mechanical preconditions:
 | draft-pr → draft-pr | the worktree's head moved since the recorded head (a merge of the default branch, or any commit); `build pr` records the new head in a bookkeeping commit (D-43) |
 | draft-pr, in-review or changes-requested → building | `build amend` unfroze a frozen test after the human amended the slice file, so a finding inside a frozen test is fixed during review (D-43) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
-| draft-pr, in-review, changes-requested or ci-green → merged | the git host reports the recorded pull request merged; only `slicekit status --sync` makes this move, and the history records the real previous state and `by: sync`. A slice in `todo`, `tests-red` or `building` whose recorded pull request is merged is reported, not moved |
-| any state before merged → merged, by `state set <id> merged --backfill` | the git host reports the slice's pull request (the recorded one, else `--pr-number`) merged; the merge time and head SHA recorded are the host's, and the history records `by: backfill`. An open pull request is refused (D-43) |
+| draft-pr, in-review, changes-requested or ci-green → merged, by `slicekit status --sync` | the git host reports the recorded pull request merged; the history records the real previous state and `by: sync`. The sync reports a slice in `todo`, `tests-red` or `building` whose recorded pull request is merged, and does not move it: the backfill below records that merge |
+| any state before merged → merged, by `state set <id> merged --backfill` | the git host reports the slice's pull request merged: the recorded one, else the `--pr-number` one whose title begins `[P<n>/S-<nn>]` or whose branch is the slice's. The merge time and head SHA recorded are the host's, and the history records `by: backfill`. An open pull request is refused (D-43) |
 | merged → released | the phase's release record names the pull request |
 
 Scenario: GIVEN a slice at `building` WHEN the command tries to open a pull request while the test

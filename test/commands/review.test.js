@@ -11,17 +11,27 @@ import { GitHostError } from '../../src/adapters/githost/errors.js';
 import { recordVerdict, reviewerBlocked } from '../../src/build/verdict.js';
 import { getSection } from '../../src/prbody.js';
 import { git } from '../../src/git.js';
-import { cli, commitAll, commitIn, commitWorkCli, green, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
+import { cli, commitAll, commitIn, commitWorkCli, green as greenFlow, prCalls, project, reviewWorktree, stateIn, vpath, write } from '../helpers/build-flow.js';
 import { briefProblems } from '../helpers/brief-lint.js';
 import { TEMPLATES, renderProcedure } from '../../src/instructions.js';
 
 const REVIEWS = '.slicekit/reviews';
 const RUN_URL = 'https://example.test/runs/1';
 
+// The worktree whose head the next verdict names (D-43): each slice this file builds sets it.
+let reviewed = null;
+const green = async () => {
+  const p = await greenFlow();
+  reviewed = p.wt;
+  return p;
+};
+
+// A well-formed verdict file on the head `reviewed` holds: `findings` are [id, what is wrong] pairs.
 function verdictText(verdict, findings = []) {
   const rows = findings.map(([id, wrong]) => `| ${id} | src/t1.js:1 | ${wrong} | it matters | \`node --test\` printed "fail 1" |`);
   return [
     `Verdict: ${verdict}`,
+    `Head: ${git(reviewed, ['rev-parse', 'HEAD'])}`,
     '',
     '| ID | File:line | What is wrong | Why it matters | How verified |',
     '|---|---|---|---|---|',
