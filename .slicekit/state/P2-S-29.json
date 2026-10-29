@@ -18,7 +18,8 @@
   ],
   "unfrozen": [
     "test/local-test-command.test.js",
-    "test/verdict-references.test.js"
+    "test/verdict-references.test.js",
+    "test/build-amend.test.js"
   ],
   "verdicts": [
     {
@@ -108,6 +109,17 @@
         "unfreeze": "test/verdict-references.test.js",
         "amendCommit": "eabd6a65ba27b6b3265cdf9e8d97d5a43cd1110c",
         "reason": "Done when 4 now requires a Head line on every verdict; the test's verdict text gains the head it reviews. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:52.926Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-amend.test.js",
+        "amendCommit": "4e6e20450f1f8f89d9f4c1bc1f4db84bdb053863",
+        "reason": "Done when 2 now says amend reads the committed state; the test's verdict fixture gains its Head line so build verdict takes it. Assertions unchanged."
       }
     }
   ]
