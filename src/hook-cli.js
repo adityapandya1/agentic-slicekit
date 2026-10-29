@@ -11,12 +11,13 @@ export function onPath(name, env) {
   return which(name, env) !== null;
 }
 
-// Until 0.1 the npm name holds only a placeholder, so the advice is the clone form, not an install.
+// The install advice of D-30: the kit is on npm from 0.1.1 (D-41).
 export const NOT_INSTALLED =
-  'slicekit is not installed locally or on PATH; hooks will fail until it is. From a clone of the kit, run init with --cli "node <path-to-kit>/bin/slicekit.js" (quote the path if it has spaces), or set cli in .slicekit/config.json; npm has no release of slicekit until 0.1';
+  'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)';
 
 // The command the hooks call, D-30: a local install, else slicekit on PATH, else the PATH form with
-// NOT_INSTALLED. Never a registry fetch: the npm name is unclaimed (D-26), so a hook must not install it.
+// NOT_INSTALLED. Never a registry fetch: a hook that installs would run whatever the registry serves
+// under the name on every call, so a missing kit is reported, never fetched (D-30).
 export function probeCli(root, { env = process.env } = {}) {
   if (fs.existsSync(path.join(root, LOCAL))) return { cli: `node ${LOCAL}`, warning: null };
   if (onPath('slicekit', env)) return { cli: 'slicekit', warning: null };

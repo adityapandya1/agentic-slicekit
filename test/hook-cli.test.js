@@ -40,7 +40,7 @@ test('probe order: a local install, then slicekit on PATH, else the PATH form wi
   assert.deepEqual(probeCli(bare, { env: {} }), { cli: 'slicekit', warning: NOT_INSTALLED });
   assert.equal(
     NOT_INSTALLED,
-    'slicekit is not installed locally or on PATH; hooks will fail until it is. From a clone of the kit, run init with --cli "node <path-to-kit>/bin/slicekit.js" (quote the path if it has spaces), or set cli in .slicekit/config.json; npm has no release of slicekit until 0.1',
+    'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)',
   );
 });
 

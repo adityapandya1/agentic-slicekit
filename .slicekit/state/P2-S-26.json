@@ -1,0 +1,101 @@
+{
+  "slice": "P2/S-26",
+  "state": "draft-pr",
+  "branch": null,
+  "pr": {
+    "number": 23,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
+    "headSha": "5bda28531e615bd3f2456bf598d6a62ccc584788"
+  },
+  "redCommit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
+  "frozenTests": [
+    "test/package.test.js",
+    "test/readme.test.js",
+    "test/hook-cli.test.js",
+    "test/runbook.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P2-S-26-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "d0e2d6a8f282c318178414a2f37df036f51a4ff7"
+    }
+  ],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T00:23:25.092Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "e5bb678fdfd3874fe4951654cc8da8c6fc73f51d",
+        "testExit": 1,
+        "tests": [
+          "test/package.test.js",
+          "test/readme.test.js",
+          "test/hook-cli.test.js",
+          "test/runbook.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-29T00:23:25.977Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-29T06:24:37.275Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 23,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
+          "headSha": "d0e2d6a8f282c318178414a2f37df036f51a4ff7",
+          "title": "[P2/S-26] Preview on npm: 0.1.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T06:42:03.717Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P2-S-26-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-29T07:01:15.718Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 23,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
+          "headSha": "5bda28531e615bd3f2456bf598d6a62ccc584788",
+          "title": "[P2/S-26] Preview on npm: 0.1.1"
+        }
+      }
+    }
+  ]
+}

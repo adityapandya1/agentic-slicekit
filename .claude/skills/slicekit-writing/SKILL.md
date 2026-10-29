@@ -1,7 +1,7 @@
 ---
 name: slicekit-writing
 description: Writing rules for every document, verdict, report and pull request body the kit produces.
-slicekit-managed: v0.0.1
+slicekit-managed: v0.1.1
 ---
 # Writing rules
 
