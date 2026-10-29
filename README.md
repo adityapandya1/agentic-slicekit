@@ -22,7 +22,8 @@ npx slicekit init --shape backend --name <your-project>
 ```
 
 Each change to the kit ships as the next 0.x version, and a 0.x version may change how a command
-works. `npx slicekit update` re-renders the kit's files after an upgrade and shows what changed.
+works. After an upgrade, `npx slicekit update` shows what would change in each of the kit's files,
+and `npx slicekit update --yes` writes the changes.
 
 The walkthrough below runs from a clone instead, because it copies files only the repository
 holds (`examples/backend` and `examples/walkthrough`):
