@@ -1,11 +1,11 @@
 {
   "slice": "P2/S-29",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 30,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
-    "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31"
+    "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d"
   },
   "redCommit": "0ff160cc956d85864dda29b845e096b247af5f7f",
   "frozenTests": [
@@ -168,6 +168,22 @@
           "path": ".slicekit/reviews/P2-S-29i-r2.md",
           "blockers": 2,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-29T23:40:46.392Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 30,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+          "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d",
+          "title": "[P2/S-29] The build loop's dead ends"
         }
       }
     }
