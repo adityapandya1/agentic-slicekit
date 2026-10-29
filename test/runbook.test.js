@@ -26,3 +26,9 @@ test('the runbook says how to release a preview and how to roll back a bad versi
   assert.match(rollback, /npm deprecate/);
   assert.doesNotMatch(section('Going public as a preview'), /until S-24/);
 });
+
+test('the release deprecates both placeholders', () => {
+  const release = section('Releasing a preview');
+  assert.match(release, /npm deprecate slicekit@0\.0\.0-stage/);
+  assert.match(release, /npm deprecate slicekit@0\.0\.1/);
+});
