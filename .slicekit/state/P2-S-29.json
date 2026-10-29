@@ -1,6 +1,6 @@
 {
   "slice": "P2/S-29",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 30,
@@ -36,6 +36,13 @@
       "blockers": 2,
       "independent": true,
       "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P2-S-29i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d"
     }
   ],
   "ci": null,
@@ -184,6 +191,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
           "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d",
           "title": "[P2/S-29] The build loop's dead ends"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T23:51:28.824Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P2-S-29i-r3.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
