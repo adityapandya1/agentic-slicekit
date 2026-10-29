@@ -1,6 +1,6 @@
 {
   "slice": "P2/S-26",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 23,
@@ -15,7 +15,15 @@
     "test/runbook.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P2-S-26-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "d0e2d6a8f282c318178414a2f37df036f51a4ff7"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -56,6 +64,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/23",
           "headSha": "d0e2d6a8f282c318178414a2f37df036f51a4ff7",
           "title": "[P2/S-26] Preview on npm: 0.1.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T06:42:03.717Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P2-S-26-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
