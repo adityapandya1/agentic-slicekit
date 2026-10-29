@@ -86,12 +86,28 @@ change. On no, tell the developer the test stands. On yes:
 3. Run `{{cli}} build amend <id> --test <test path> --reason "<why>" --worktree <path>`, and tell
    the developer it may change that one test.
 
+`build amend` also runs at `draft-pr`, `in-review` and `changes-requested`, for a finding that sits
+inside a frozen test: the same three steps, then the slice is back at `building`. The fixer (or the
+developer) changes that test, and step 7's `build commit` and `build pr` take the slice back to
+`draft-pr` on the same pull request.
+
 ## 5. Green, then the draft pull request
 
 When the developer reports every test passing, run
 `{{cli}} build commit <id> --message "<subject>" --require-green --worktree <path>`. It prints
 `<sha7> exit 0`, or `nothing to commit` with exit 0 when step 4 already committed everything; both
 are success. A failing test run is refused: send the developer back with the printed summary.
+
+When the slice changes the kit's own version, run `{{cli}} build render <id> --worktree <path>`
+next, with the kit the slice ships. It runs `update --yes` in the worktree and commits only the files
+update writes, as `chore(slicekit): <id> render`, and prints `<sha7> render (<n> files)`, or
+`nothing to render`. Never commit those files by hand: `build commit` accepts a render commit only
+when it equals a fresh render.
+
+A machine that cannot run the whole test command at once may set it in `.slicekit/local.json` in
+the main checkout, for example `{"testCommand": "node --test --test-concurrency=2 \"test/**/*.test.js\""}`.
+`build red`, `build commit` and `build pr` then run that command and print
+`ran the test command from .slicekit/local.json: <command>`; CI keeps the committed one.
 
 Write the notes file from the developer's report to a file outside the repository:
 `slicekit-notes-<id>.json` in your scratchpad or temp directory, with the `/` in `<id>` written as
@@ -133,7 +149,8 @@ says `a new verdict needs a fresh fetch` means origin could not be reached: prin
 tell the human to run the step again once origin answers. A refusal that
 says `run slicekit build pr <id> first` means code was committed that `build pr` has not seen: run
 step 5's `build pr`, then step 6 again from the start with the path it prints, since that code needs
-a review of its own. A refusal that says a file `differs from` another goes to the human: print it
+a review of its own. At `draft-pr` that `build pr` records the moved head (a merge of the default
+branch, or any commit) in a bookkeeping commit, so the verdict is then taken on it. A refusal that says a file `differs from` another goes to the human: print it
 and stop. Then act on `next:`:
 
 - `next: fix`: step 7.

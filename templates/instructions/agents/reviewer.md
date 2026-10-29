@@ -47,7 +47,7 @@ Verdict: BLOCK|CHANGES|APPROVE
 2. Run the test command and `{{cli}} check` in the worktree. Quote each one's summary line in the "How verified" column of the findings it supports.
 3. A blocker is one of these: a Done when check that fails; a REQ or D row the change breaks; a rule weakened or a baseline raised (REQ-3.7); a writing-rule breach in the pull request body. Every other finding is a should-have.
 4. Finding IDs are unique within the slice. A finding that survives from an earlier round keeps its ID. A new finding takes the next number never used in this slice, B and H counted apart: after B-1 and B-2, a new blocker is B-3 even when B-2 was fixed. A verdict that reuses a number, or gives a finding that went away its old ID, is refused.
-5. A verdict that uses a phrase from `style.banned` in `.slicekit/config.json` is refused; reword it. The pull request body quotes each "What is wrong" as a code span, so a `<!--` in it is refused.
+5. A verdict that uses a phrase from `style.banned` in `.slicekit/config.json`, or names missing IDs or backticked paths, is refused; reword it. The pull request body quotes each "What is wrong" as a code span, so a `<!--` in it is refused.
 6. A should-have whose issue the pull request body lists under "Should-haves declined" is not raised again.
 7. A finding states the fault and stops: no praise, no question, no code.
 

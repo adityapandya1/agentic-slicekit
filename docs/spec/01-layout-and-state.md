@@ -171,14 +171,21 @@ Transitions and their mechanical preconditions:
 | in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA or a later head D-35 covers |
 | ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35) |
 | in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
+| draft-pr → draft-pr | the worktree's head moved since the recorded head (a merge of the default branch, or any commit); `build pr` records the new head in a bookkeeping commit (D-43) |
+| draft-pr, in-review or changes-requested → building | `build amend` unfroze a frozen test after the human amended the slice file, so a finding inside a frozen test is fixed during review (D-43) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
 | draft-pr, in-review, changes-requested or ci-green → merged | the git host reports the recorded pull request merged; only `slicekit status --sync` makes this move, and the history records the real previous state and `by: sync`. A slice in `todo`, `tests-red` or `building` whose recorded pull request is merged is reported, not moved |
+| any state before merged → merged, by `state set <id> merged --backfill` | the git host reports the slice's pull request (the recorded one, else `--pr-number`) merged; the merge time and head SHA recorded are the host's, and the history records `by: backfill`. An open pull request is refused (D-43) |
 | merged → released | the phase's release record names the pull request |
 
 Scenario: GIVEN a slice at `building` WHEN the command tries to open a pull request while the test
 command exits 1 THEN the transition is refused and the failing test summary is printed.
 
-Cites: D-10, D-18, D-22, D-35, D-39.
+Scenario: GIVEN a slice at `draft-pr` whose pull request was merged on the git host WHEN
+`state set <id> merged --backfill` runs THEN the slice is `merged` with the host's merge time and
+head; while the host reports the pull request open, the same command is refused.
+
+Cites: D-10, D-18, D-22, D-35, D-39, D-43.
 
 Enforced by: `slicekit state set` (the only writer), which checks the precondition and refuses
 otherwise.

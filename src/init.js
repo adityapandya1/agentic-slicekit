@@ -19,6 +19,8 @@ const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta
 const IGNORE_RULES = [
   { rule: '.slicekit/graph/', forms: new Set(['.slicekit/graph/', '/.slicekit/graph/', '.slicekit/graph', '/.slicekit/graph']) },
   { rule: '.slicekit/.subagent-*', forms: new Set(['.slicekit/.subagent-*', '/.slicekit/.subagent-*']) },
+  // The machine's own settings (D-43), such as a local test command: never part of the project.
+  { rule: '.slicekit/local.json', forms: new Set(['.slicekit/local.json', '/.slicekit/local.json']) },
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },

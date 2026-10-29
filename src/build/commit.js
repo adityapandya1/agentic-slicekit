@@ -3,12 +3,14 @@
 // human has amended the slice file, and then only that one test.
 import fs from 'node:fs';
 import path from 'node:path';
+import { buildTestCommand } from '../config.js';
 import { GitError, commitPaths, git, parseTrailers } from '../git.js';
+import { isFreshRender, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { TransitionError, readSlice, unfreeze } from '../state/index.js';
 import { isKitFile, posixRel, runCommand, sliceIn, toWorktreePath, unusableRun } from './red.js';
-import { commitBookkeeping } from './record.js';
+import { commitState } from './record.js';
 import { BuildError, findWorktree } from './worktree.js';
 
 const short = (sha) => sha.slice(0, 7);
@@ -38,6 +40,16 @@ const blobAt = (wt, rev, file) => {
     return git(wt, ['rev-parse', '--verify', '--quiet', `${rev}:${file}`]);
   } catch (e) {
     if (e instanceof GitError) return null;
+    throw e;
+  }
+};
+
+const refExists = (wt, ref) => {
+  try {
+    git(wt, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return true;
+  } catch (e) {
+    if (e instanceof GitError) return false;
     throw e;
   }
 };
@@ -94,7 +106,9 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
-  for (const sha of lines(git(wt, ['rev-list', '--no-merges', `${current.redCommit}..HEAD`]))) {
+  // A commit the default branch holds came in with a merge of it: it is that branch's, not the slice's.
+  const theirs = [`refs/remotes/origin/${cfg.defaultBranch}`, `refs/heads/${cfg.defaultBranch}`].filter((r) => refExists(wt, r));
+  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`, ...theirs.map((r) => `^${r}`)]))) {
     const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
       const [status, ...rest] = l.split('\t');
       return { status, file: rest.join('\t') };
@@ -103,6 +117,11 @@ function forgedKitChange(wt, cfg, id, current, slice) {
     if (!kit) continue;
     const subject = git(wt, ['log', '-1', '--format=%s', sha]);
     const trailers = parseTrailers(git(wt, ['log', '-1', '--format=%B', sha]));
+    // build render's commit: accepted only when it is exactly a fresh render of its parent (D-43).
+    if (subject === renderSubject(id) && trailers.Slice === id) {
+      if (isFreshRender(wt, sha)) continue;
+      return `${kit} was changed in ${short(sha)} outside the kit; a render commit holds only a fresh render of slicekit update`;
+    }
     if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
     }
@@ -122,17 +141,18 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   const paths = changedPaths(wt);
   const kit = paths.find((p) => isKitFile(wt, cfg, slice, p));
   if (kit) throw new BuildError(`${kit} is a kit file; build commit does not commit it`);
-  const command = cfg.commands?.test ?? '';
+  const { command, local } = buildTestCommand(root, cfg);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
+  const ranLocal = local ? command : null;
 
   const run = runCommand(wt, command);
   const unusable = unusableRun(command, run);
   if (unusable) throw unusable;
   if (requireGreen && run.exit !== 0) throw new BuildError(`tests fail (exit ${run.exit}): ${run.summary}`);
-  if (paths.length === 0) return { sha: null, exit: run.exit };
+  if (paths.length === 0) return { sha: null, exit: run.exit, local: ranLocal };
   // Only the paths the status named: the developer's work, never the kit's files.
   const sha = commitPaths(wt, paths, `${message.trim()}\n\nran: ${command} → exit ${run.exit}\n\nSlice: ${id}`);
-  return { sha, exit: run.exit };
+  return { sha, exit: run.exit, local: ranLocal };
 }
 
 // HEAD is this slice's amendment commit: the subject, the trailer, and the slice file alone.
@@ -143,8 +163,12 @@ function headIsAmendment(wt, id, sliceRel) {
   return subject === `docs(${id}): amend evaluation set` && trailers.Slice === id && files.length === 1 && files[0] === sliceRel;
 }
 
-// The state file on disk differs from HEAD's copy only by this unfreeze: its bookkeeping commit did
-// not land.
+// A frozen test is amended while the slice is built or in review (D-43): a finding inside a frozen
+// test is fixed during review. From review the amendment takes the slice back to building.
+const AMEND_FROM = ['building', 'draft-pr', 'in-review', 'changes-requested'];
+
+// The state file on disk differs from HEAD's copy only by this unfreeze (and its move to building):
+// its bookkeeping commit did not land.
 function pendingUnfreeze(wt, stateRel, file) {
   let committed;
   try {
@@ -154,9 +178,10 @@ function pendingUnfreeze(wt, stateRel, file) {
   }
   const now = JSON.parse(fs.readFileSync(path.join(wt, ...stateRel.split('/')), 'utf8'));
   const added = now.history.at(-1);
-  const strip = (s) => JSON.stringify({ ...s, unfrozen: null, history: null });
+  const strip = (s) => JSON.stringify({ ...s, unfrozen: null, history: null, state: null, handoff: null });
   return (
     strip(now) === strip(committed) &&
+    (now.state === committed.state || now.state === 'building') &&
     JSON.stringify(now.unfrozen) === JSON.stringify([...committed.unfrozen, file]) &&
     now.history.length === committed.history.length + 1 &&
     JSON.stringify(now.history.slice(0, -1)) === JSON.stringify(committed.history) &&
@@ -170,7 +195,7 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
   if (typeof reason !== 'string' || reason.trim() === '') throw new BuildError('--reason is required', 2);
   if (typeof test !== 'string' || test.trim() === '') throw new BuildError('--test is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
-  const current = building(wt, cfg, id, 'amend');
+  const current = building(wt, cfg, id, 'amend', AMEND_FROM);
   const file = toWorktreePath(wt, test);
   // Checked before the slice file is committed; the words are unfreeze's own TransitionError reason.
   if (!current.frozenTests.includes(file)) throw new BuildError(`${file} is not a frozen test of ${id}`);
@@ -179,7 +204,7 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
   const lastAmendment = () => git(wt, ['log', '-1', '--format=%H', `--grep=^docs(${id}): amend evaluation set$`, '--', sliceRel]);
   if (current.unfrozen.includes(file)) {
     if (!pendingUnfreeze(wt, stateRel, file)) throw new BuildError(`${file} is already unfrozen`);
-    commitBookkeeping(wt, id, `unfreeze ${file}`, [stateRel]);
+    commitState(wt, cfg, id, `unfreeze ${file}`);
     return { sha: lastAmendment(), test: file };
   }
   let sha;
@@ -191,11 +216,11 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
     throw new BuildError('amend the slice file first; it has no change');
   }
   try {
-    unfreeze(wt, cfg, id, file, { amendCommit: sha, reason: reason.trim() });
+    unfreeze(wt, cfg, id, file, { amendCommit: sha, reason: reason.trim() }, { to: 'building' });
   } catch (e) {
     if (e instanceof TransitionError) throw new BuildError(e.reason);
     throw e;
   }
-  commitBookkeeping(wt, id, `unfreeze ${file}`, [stateRel]);
+  commitState(wt, cfg, id, `unfreeze ${file}`);
   return { sha, test: file };
 }

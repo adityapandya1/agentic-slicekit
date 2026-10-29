@@ -1,5 +1,7 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
+import { getHost } from '../adapters/githost/index.js';
+import { GitHostError } from '../adapters/githost/errors.js';
 import { STATES } from '../state/transitions.js';
 import { LockError, TransitionError, readSlice, setState, unfreeze } from '../state/index.js';
 
@@ -56,6 +58,24 @@ function evidenceFrom(v) {
   return ev;
 }
 
+// A merge done outside `build finish` is recorded only as the git host reports it (D-43): the slice's
+// pull request (the recorded one, else --pr-number) must be merged, and its merge time and head come
+// from the host. --merged-at and --pr-sha cannot stand in for the host's report.
+function hostMerge(root, cfg, id, ev, env) {
+  const recorded = readSlice(root, cfg, id).pr?.number;
+  const given = ev.pr?.number;
+  if (recorded !== undefined && recorded !== null && given !== undefined && given !== recorded) {
+    throw new TransitionError(`${id} records pull request #${recorded}; --pr-number ${given} names another`);
+  }
+  const number = recorded ?? given;
+  if (!Number.isInteger(number)) throw new TransitionError(`backfill to merged needs the pull request number (--pr-number); ${id} records none`);
+  const pr = getHost(cfg, env, root).getPullRequest(number);
+  if (!pr.mergedAt) throw new TransitionError(`the git host reports pull request #${number} ${String(pr.state ?? 'open').toLowerCase()}, not merged; backfill to merged needs a merged pull request`);
+  if (typeof pr.headSha !== 'string' || pr.headSha === '') throw new TransitionError(`the git host reports no head for pull request #${number}`);
+  const { mergedAt: _m, pr: _p, ...rest } = ev;
+  return { ...rest, source: 'host', mergedAt: pr.mergedAt, pr: { number, headSha: pr.headSha, ...(pr.url ? { url: pr.url } : {}) } };
+}
+
 async function run(args, io) {
   let parsed;
   try {
@@ -79,7 +99,9 @@ async function run(args, io) {
   try {
     const cfg = loadConfig(root);
     if (sub === 'set') {
-      const s = setState(root, cfg, id, arg, evidenceFrom(values));
+      let ev = evidenceFrom(values);
+      if (values.backfill && arg === 'merged') ev = hostMerge(root, cfg, id, ev, io.env ?? process.env);
+      const s = setState(root, cfg, id, arg, ev);
       io.stdout(`${id}  ${s.state}\n`);
     } else if (sub === 'unfreeze') {
       unfreeze(root, cfg, id, arg);
@@ -93,6 +115,10 @@ async function run(args, io) {
   } catch (e) {
     if (e instanceof TransitionError) {
       io.stderr(`refused: ${e.reason}\n`);
+      return 1;
+    }
+    if (e instanceof GitHostError) {
+      io.stderr(`slicekit: ${e.message}\n`);
       return 1;
     }
     if (e instanceof ConfigError || e instanceof LockError || /^unknown slice /.test(e.message)) {

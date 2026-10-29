@@ -1,0 +1,131 @@
+// `build render` (REQ-2.6, D-43): a slice that changes the kit's version lands the re-render that
+// `slicekit update --yes` makes, in the slice worktree, as one commit of only the files update writes:
+// `chore(slicekit): <id> render`. `build commit` accepts that commit when its files equal a fresh
+// render of the commit before it, made by the kit that runs the check; any other file in it, or a
+// rendered file that differs, is a kit file changed by hand.
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { ConfigError, loadConfig } from '../config.js';
+import { GitError, commitPaths, git } from '../git.js';
+import { RENDERED, SETTINGS, kitVersion } from '../render/index.js';
+import { entriesForShape } from '../render/manifest.js';
+import { applyUpdate, planUpdate } from '../render/update.js';
+import { readSlice } from '../state/index.js';
+import { BuildError, findWorktree } from './worktree.js';
+
+// The states a render is committed from: the states `build commit` commits from, and draft-pr
+// (build pr then records the moved head).
+const RENDER_FROM = ['building', 'draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready'];
+const CONFIG = '.slicekit/config.json';
+const lines = (out) => out.split('\0').filter((l) => l !== '');
+
+export const renderSubject = (id) => `chore(slicekit): ${id} render`;
+
+// The paths `update` may write for this config: each manifest entry, the settings file, and the
+// reference copies under .slicekit/rendered/.
+function owner(cfg) {
+  const dests = new Set([...entriesForShape(cfg.shape).map((e) => e.dest), SETTINGS]);
+  return (f) => dests.has(f) || f.startsWith(`${RENDERED}/`);
+}
+
+// Every changed path in the worktree (tracked against HEAD, and untracked), POSIX.
+function changedPaths(wt) {
+  const tracked = lines(git(wt, ['diff', '--name-only', '--no-renames', '-z', 'HEAD']));
+  const untracked = lines(git(wt, ['ls-files', '--others', '--exclude-standard', '-z']));
+  return [...new Set([...tracked, ...untracked])];
+}
+
+// -> { sha, files }: the render commit, or sha null when the worktree already holds this kit's render.
+export function renderSlice(root, rootCfg, id, { worktree } = {}) {
+  const wt = findWorktree(root, id, { worktree }).path;
+  const current = readSlice(wt, rootCfg, id);
+  if (!RENDER_FROM.includes(current.state)) throw new BuildError(`${id} is ${current.state}; render runs from ${RENDER_FROM.join(', ')}`);
+  const dirty = changedPaths(wt);
+  if (dirty.length > 0) throw new BuildError(`the worktree has uncommitted changes (${dirty.slice(0, 5).join(', ')}); build commit them first`);
+  // The worktree's own config: the one the slice commits and CI renders against.
+  const cfg = loadConfig(wt);
+  const version = kitVersion();
+  const plan = planUpdate(wt, cfg, { version });
+  // A drifted file is the team's edit: update leaves it, so the render would be partial.
+  const edited = plan.filter((p) => p.status === 'drifted');
+  if (edited.length > 0) {
+    throw new BuildError(`${edited.map((p) => p.dest).join(', ')} ${edited.length === 1 ? 'was' : 'were'} edited since slicekit wrote ${edited.length === 1 ? 'it' : 'them'}; build render does not overwrite an edit`);
+  }
+  applyUpdate(wt, cfg, plan, { version });
+  const files = changedPaths(wt);
+  if (files.length === 0) return { sha: null, files: [] };
+  const owns = owner(cfg);
+  const stray = files.find((f) => !owns(f));
+  if (stray) throw new BuildError(`update wrote ${stray}, which is not a file it renders`);
+  const sha = commitPaths(wt, files, `${renderSubject(id)}\n\nran: slicekit update --yes (${version})\n\nSlice: ${id}`);
+  return { sha, files };
+}
+
+// The bytes of `rev:file`, or null when the file is not in that commit.
+function blob(wt, rev, file) {
+  try {
+    return execFileSync('git', ['cat-file', 'blob', `${rev}:${file}`], { cwd: wt, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return null;
+  }
+}
+
+function tree(wt, rev) {
+  return lines(git(wt, ['ls-tree', '-r', '-z', '--name-only', rev]));
+}
+
+function walk(dir, base = '') {
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = base === '' ? e.name : `${base}/${e.name}`;
+    if (e.isDirectory()) out.push(...walk(path.join(dir, e.name), rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+// True when commit `sha` holds exactly what `update --yes` writes on its parent: no path update
+// does not write, and every path it owns as a fresh render made in a scratch copy leaves it.
+export function isFreshRender(wt, sha) {
+  const parent = `${sha}^`;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-render-'));
+  try {
+    const config = blob(wt, parent, CONFIG);
+    if (config === null) return false;
+    fs.mkdirSync(path.join(tmp, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ...CONFIG.split('/')), config);
+    let cfg;
+    try {
+      cfg = loadConfig(tmp);
+    } catch (e) {
+      if (e instanceof ConfigError) return false;
+      throw e;
+    }
+    const owns = owner(cfg);
+    const changed = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '-z', sha]));
+    if (changed.length === 0 || !changed.every(owns)) return false;
+    for (const f of tree(wt, parent).filter(owns)) {
+      const abs = path.join(tmp, ...f.split('/'));
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, blob(wt, parent, f));
+    }
+    const version = kitVersion();
+    applyUpdate(tmp, cfg, planUpdate(tmp, cfg, { version }), { version });
+    const expected = new Set(walk(tmp).filter(owns));
+    const paths = new Set([...expected, ...tree(wt, sha).filter(owns)]);
+    for (const f of paths) {
+      const want = expected.has(f) ? fs.readFileSync(path.join(tmp, ...f.split('/'))) : null;
+      const got = blob(wt, sha, f);
+      if (want === null || got === null ? want !== got : !want.equals(got)) return false;
+    }
+    return true;
+  } catch (e) {
+    if (e instanceof GitError) return false;
+    throw e;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}

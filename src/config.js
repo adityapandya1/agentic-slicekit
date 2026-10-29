@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -201,3 +202,57 @@ export function loadConfig(root) {
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
 }
+
+// The machine's own settings (D-43): `.slicekit/local.json`, untracked, in the session root (the
+// main checkout). Only `testCommand` is read, by the build steps that run the test command on this
+// machine (`build red`, `build commit --require-green`, `build pr`), and by the `commands` rule
+// outside CI, which looks up the command this machine runs. The committed commands.test is left as
+// it is: CI's workflow and `check --ci` judge and run it.
+export const LOCAL_PATH = '.slicekit/local.json';
+
+// The main checkout of the repository `dir` is in (a slice worktree's session root), or `dir` when
+// it is no repository or the repository has no main checkout.
+export function mainCheckout(dir) {
+  let common;
+  try {
+    common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return dir;
+  }
+  return path.basename(common) === '.git' ? path.dirname(common) : dir;
+}
+
+// -> the local test command, or null when the file is absent or sets none; a file that does not
+// parse, or a testCommand that is not a non-empty string, is a ConfigError.
+export function localTestCommand(root) {
+  const file = path.join(root, ...LOCAL_PATH.split('/'));
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw new ConfigError([`config: cannot read ${LOCAL_PATH}: ${e.code ?? e.message}`]);
+  }
+  let local;
+  try {
+    local = JSON.parse(text);
+  } catch {
+    throw new ConfigError([`config: ${LOCAL_PATH} is not valid JSON`]);
+  }
+  if (local === null || typeof local !== 'object' || Array.isArray(local)) throw new ConfigError([`config: ${LOCAL_PATH} must be a JSON object`]);
+  if (local.testCommand === undefined) return null;
+  if (typeof local.testCommand !== 'string' || local.testCommand.trim() === '') {
+    throw new ConfigError([`config: ${LOCAL_PATH} testCommand must be a non-empty string`]);
+  }
+  return local.testCommand;
+}
+
+// The test command the build steps run here: the local one when set, else commands.test.
+// -> { command, local } where `local` is true for the local file's command.
+export function buildTestCommand(root, cfg) {
+  const local = localTestCommand(mainCheckout(root));
+  if (local !== null) return { command: local, local: true };
+  return { command: cfg.commands?.test ?? '', local: false };
+}
+
+export const localNote = (command) => `ran the test command from ${LOCAL_PATH}: ${command}`;

@@ -6,15 +6,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { check } from '../check/index.js';
+import { buildTestCommand } from '../config.js';
 import { git, headSha, pushBranch, pushTarget } from '../git.js';
 import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { openOrUpdate } from '../pr.js';
 import { PrBodyError, getSection, renderPrBody } from '../prbody.js';
-import { readSlice } from '../state/index.js';
+import { readSlice, recordHead } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { posixRel, runCommand, sliceIn, unusableRun } from './red.js';
-import { commitBookkeeping, recordState } from './record.js';
+import { commitBookkeeping, commitState, recordState } from './record.js';
 import { overlapWith, planDefectLine } from './overlap.js';
 import { assertNotBehind } from './sync.js';
 import { nextVerdictPath } from './verdict.js';
@@ -119,9 +120,12 @@ function proofSummary(run) {
   return pass && fail && pass !== fail ? `${pass} · ${fail}` : run.summary;
 }
 
-// Each declared command in the worktree; -> the test run's pass and fail totals.
-function runCommands(wt, cfg) {
-  const commands = cfg.commands ?? {};
+// Each declared command in the worktree, the test command from .slicekit/local.json when the session
+// root has one (D-43); -> { summary, command, local }: the test run's pass and fail totals, the test
+// command run, and whether it was the local one.
+function runCommands(root, wt, cfg) {
+  const tests = buildTestCommand(root, cfg);
+  const commands = { ...(cfg.commands ?? {}), test: tests.command };
   if (!text(commands.test)) throw new BuildError('commands.test is not declared in .slicekit/config.json');
   let summary = '';
   for (const name of COMMANDS) {
@@ -133,7 +137,7 @@ function runCommands(wt, cfg) {
     if (run.exit !== 0) throw new BuildError(`${name} failed (exit ${run.exit}): ${run.summary}`);
     if (name === 'test') summary = proofSummary(run);
   }
-  return summary;
+  return { summary, command: tests.command, local: tests.local };
 }
 
 function assertNoOverlap(wt, cfg, id) {
@@ -206,7 +210,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   if (slice.runbook && !changed && !(runbookNote ?? '').trim().startsWith('no operational change')) {
     throw new BuildError(RUNBOOK_REFUSAL);
   }
-  const summary = runCommands(wt, cfg);
+  const { summary, command: testCommand, local } = runCommands(root, wt, cfg);
   checkClean(wt);
 
   // The pull request already open for the branch: the recorded one once there is a recording.
@@ -223,7 +227,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
       name: slice.name,
       sections: {
         'Done when': slice.doneWhen.map((c, i) => `${i + 1}. ${c}`).join(' '),
-        Proof: `\`${cfg.commands.test}\` → ${summary} · CI: pending`,
+        Proof: `\`${testCommand}\` → ${summary} · CI: pending`,
         Decisions: given?.decisions === undefined ? kept('Decisions', 'none') : given.decisions.join('; ') || 'none',
         Runbook: changed ? `changed: ${runbookRel}` : (runbookNote ?? NO_CHANGE),
         'Infra / migration': noted('infra', 'Infra / migration', 'none'),
@@ -248,11 +252,21 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree } = {}) {
   const verdictPath = nextVerdictPath(root, id, current.verdicts ?? []);
   // The reviewer writes there at once: its directory is made here, as the path is printed.
   if (verdictPath) fs.mkdirSync(path.dirname(verdictPath), { recursive: true });
-  const result = { number: made.number, url: made.url, created: made.created, verdictPath };
+  const result = { number: made.number, url: made.url, created: made.created, verdictPath, local: local ? testCommand : null };
   // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
   if (livePr?.draft === false) host.markDraft(made.number);
-  // At draft-pr there is no draft-pr → draft-pr move: the reviewer reads the live head.
-  if (current.state === 'draft-pr') return result;
+  // At draft-pr a head that moved since the recorded one (a merge of the default branch, any commit)
+  // is recorded in a bookkeeping commit and pushed, so the next verdict is taken on it (D-43). A head
+  // that adds only bookkeeping to the recorded one is the same work: nothing is recorded.
+  if (current.state === 'draft-pr') {
+    const head = headSha(wt);
+    if (current.pr?.headSha && !headCovers(wt, current.pr.headSha, head)) {
+      recordHead(wt, cfg, id, { number: made.number, url: made.url, headSha: head });
+      commitState(wt, cfg, id, 'head');
+      pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
+    }
+    return result;
+  }
   recordState(wt, cfg, id, 'draft-pr', {
     testExit: 0,
     checkExit: 0,

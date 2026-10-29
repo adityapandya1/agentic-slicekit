@@ -13,6 +13,7 @@
 // Windows-only `.cmd` passes on Windows and fails on POSIX.
 import fs from 'node:fs';
 import path from 'node:path';
+import { ConfigError, LOCAL_PATH, localTestCommand, mainCheckout } from '../../config.js';
 import { which, extensions } from '../../which.js';
 
 export const id = 'commands';
@@ -126,17 +127,32 @@ function keyLine(root, name) {
   return lineAt(open.index);
 }
 
+// Outside CI the test command judged is the one this machine runs: .slicekit/local.json's testCommand
+// in the main checkout when it sets one (D-43). CI (`check --ci`) judges the committed command it runs.
+function localTest(ctx) {
+  if (ctx.ci) return null;
+  try {
+    return localTestCommand(mainCheckout(ctx.root));
+  } catch (e) {
+    if (e instanceof ConfigError) return { error: e.message };
+    throw e;
+  }
+}
+
 export function run(ctx) {
   const out = [];
+  const local = localTest(ctx);
+  if (local?.error) out.push({ file: LOCAL_PATH, line: 1, message: local.error });
   for (const name of NAMES) {
-    const value = ctx.cfg?.commands?.[name];
+    const own = name === 'test' && typeof local === 'string';
+    const value = own ? local : ctx.cfg?.commands?.[name];
     if (typeof value !== 'string' || value.trim() === '') continue;
     for (const token of commandWords(value)) {
       if (resolves(token, ctx)) continue;
       out.push({
-        file: CONFIG,
-        line: keyLine(ctx.root, name),
-        message: `commands.${name}: "${token}" not found on PATH or under node_modules/.bin`,
+        file: own ? LOCAL_PATH : CONFIG,
+        line: own ? 1 : keyLine(ctx.root, name),
+        message: `${own ? `${LOCAL_PATH} testCommand` : `commands.${name}`}: "${token}" not found on PATH or under node_modules/.bin`,
       });
     }
   }

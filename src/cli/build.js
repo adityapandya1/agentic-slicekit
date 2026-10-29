@@ -2,7 +2,7 @@
 // lands with its task; S-15 and S-16 add theirs.
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { ConfigError, loadConfig } from '../config.js';
+import { ConfigError, loadConfig, localNote } from '../config.js';
 import { GitError } from '../git.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
@@ -18,15 +18,16 @@ import { finish } from '../build/finish.js';
 import { startParallel } from '../build/parallel.js';
 import { openSlicePr } from '../build/pr.js';
 import { red } from '../build/red.js';
+import { renderSlice } from '../build/render.js';
 import { syncWorktree } from '../build/sync.js';
 import { LOOP_ROUNDS, latestVerdictPath, recordVerdict } from '../build/verdict.js';
 import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
 import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'render', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build render <id> [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -97,7 +98,8 @@ function parallel(root, io, positionals) {
 function redStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.tests === undefined) return usage(io);
   const cfg = loadConfig(root);
-  const { commit } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree });
+  const { commit, local } = red(root, cfg, positionals[0], { tests: values.tests, worktree: values.worktree });
+  if (local) io.stderr(`${localNote(local)}\n`);
   io.stdout(`${commit}\ntests-red → building\n`);
   return 0;
 }
@@ -105,12 +107,22 @@ function redStep(root, io, positionals, values) {
 function commitStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.message === undefined) return usage(io);
   const cfg = loadConfig(root);
-  const { sha, exit } = commitWork(root, cfg, positionals[0], {
+  const { sha, exit, local } = commitWork(root, cfg, positionals[0], {
     message: values.message,
     requireGreen: Boolean(values['require-green']),
     worktree: values.worktree,
   });
+  if (local) io.stderr(`${localNote(local)}\n`);
   io.stdout(sha === null ? 'nothing to commit\n' : `${sha.slice(0, 7)} exit ${exit}\n`);
+  return 0;
+}
+
+// Prints the render commit's short SHA, or that the worktree already holds this kit's render.
+function renderStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  const cfg = loadConfig(root);
+  const { sha, files } = renderSlice(root, cfg, positionals[0], { worktree: values.worktree });
+  io.stdout(sha === null ? 'nothing to render\n' : `${sha.slice(0, 7)} render (${files.length} files)\n`);
   return 0;
 }
 
@@ -126,7 +138,8 @@ function prStep(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
-  const { number, url, verdictPath } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  const { number, url, verdictPath, local } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree });
+  if (local) io.stderr(`${localNote(local)}\n`);
   // Last, the path the next reviewer writes; none once the loop's rounds are used.
   io.stdout(`#${number} ${url}\n${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
   return 0;
@@ -194,7 +207,7 @@ function syncStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
+const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, render: renderStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);
