@@ -37,14 +37,6 @@ test('the README opens with two sentences, then Status: preview, the walkthrough
   assert.equal(sentences.length, 2, first);
   assert.deepEqual(headings(), ['Status: preview', 'Walkthrough', 'Scope', 'How the hooks find slicekit']);
   const status = section('Status: preview');
-  assert.match(status, /npm/);
-  assert.match(status, /0\.0\.1/);
-  assert.match(status, /placeholder/);
-  // 0.1 as the first real release, not the 0.1 inside 0.0.1: no dot between the phrase and the
-  // number, and no `.<digit>` after it.
-  const firstRelease = /first\s+real\s+release[^.]*\b0\.1\b(?!\.\d)/;
-  assert.match(status, firstRelease);
-  assert.doesNotMatch('the first real release will be 0.0.1', firstRelease);
   assert.match(status, /Phases? 1 and 2/);
   assert.match(status, /Phases? 3 and 4/);
   assert.match(status, /git clone https:\/\/github\.com\/adityapandya1\/agentic-slicekit/);
@@ -78,5 +70,21 @@ test('the walkthrough cleans up after itself, and the hooks section points a clo
   const hooks = section('How the hooks find slicekit');
   assert.match(hooks, /--cli/);
   assert.match(hooks, /clone/);
-  assert.doesNotMatch(readme, /npm i -D/);
+  // The local install comes first, the clone second.
+  assert.ok(hooks.indexOf('npm i -D slicekit') >= 0 && hooks.indexOf('npm i -D slicekit') < hooks.indexOf('clone'), hooks);
+});
+
+test('the status section gives the npm install and says the walkthrough runs from a clone', () => {
+  const status = section('Status: preview');
+  assert.match(status, /0\.1\.1/);
+  assert.match(status, /```sh\nnpm i -D slicekit\nnpx slicekit init --shape backend --name <your-project>\n```/);
+  assert.match(status, /walkthrough[^.]*clone/i);
+  assert.match(status, /examples\/walkthrough/);
+});
+
+test('the status section names no placeholder and no release still to come', () => {
+  const status = section('Status: preview');
+  assert.doesNotMatch(status, /placeholder/);
+  assert.doesNotMatch(status, /first\s+real\s+release/);
+  assert.doesNotMatch(status, /0\.0\.1/);
 });
