@@ -5,6 +5,7 @@ import { buildCommand } from './build.js';
 import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { gapsCommand } from './gaps.js';
+import { graphCommand } from './graph.js';
 import { initCommand } from './init.js';
 import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
@@ -29,6 +30,7 @@ export const COMMANDS = {
   check: checkCommand,
   decide: decideCommand,
   gaps: gapsCommand,
+  graph: graphCommand,
   init: initCommand,
   intake: intakeCommand,
   instructions: instructionsCommand,

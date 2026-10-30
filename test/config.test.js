@@ -174,3 +174,15 @@ test('the local test command is read outside CI only, and a malformed file is re
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// D-46, REQ-4.3: testFiles is optional and each entry must compile as a regular expression.
+test('testFiles is optional, and an entry that is not a regular expression is refused by index', () => {
+  const cfg = base();
+  assert.ok(!('testFiles' in cfg), 'defaultConfig does not add testFiles');
+  assert.deepEqual(validateConfig({ ...cfg, testFiles: ['\.spec\.ts$'] }), []);
+  const errors = validateConfig({ ...cfg, testFiles: ['ok$', '('] });
+  assert.equal(errors.length, 1, errors.join('\n'));
+  assert.ok(errors[0].startsWith('testFiles[1]: '), errors[0]);
+  assert.ok(validateConfig({ ...cfg, testFiles: ['('] })[0].startsWith('testFiles[0]: '));
+  assert.deepEqual(validateConfig({ ...cfg, testFiles: 'x' }), ['testFiles: must be an array of strings']);
+});
