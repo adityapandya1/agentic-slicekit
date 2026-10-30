@@ -1,0 +1,34 @@
+{
+  "slice": "P3/S-20",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "dcc7504110c0c0426356d110431d1469c00dda01",
+  "frozenTests": [
+    "test/graph/workspace.test.js",
+    "test/graph/impact-perf.test.js",
+    "test/check/workspace.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T20:40:28.955Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "dcc7504110c0c0426356d110431d1469c00dda01",
+        "testExit": 1,
+        "tests": [
+          "test/graph/workspace.test.js",
+          "test/graph/impact-perf.test.js",
+          "test/check/workspace.test.js"
+        ]
+      }
+    }
+  ]
+}
