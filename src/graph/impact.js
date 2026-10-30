@@ -5,9 +5,28 @@
 // The start set: for a requirement, the slices that implement it; for a contract, the contract; for a
 // slice, the slice; for a path, its file nodes (a directory matches every file under it) and the
 // slices whose commits touched them. The start files are the start set's files; the start contracts
-// the contracts its slices produce or consume, or the contract itself.
+// the contracts its slices produce or consume, or the contract itself. The kit's own bookkeeping
+// (the queue file and the state, reviews, journal and graph directories) is never a start file: every
+// slice touches it, so it would relate every slice to every other (S-20 review B-2).
+import path from 'node:path';
+import { kitPaths } from '../paths.js';
 import { normalisePath } from './load.js';
 import { GraphError, cmp, keyOf, kindOf } from './schema.js';
+
+const TARGETS = new Set(['requirement', 'contract', 'slice', 'file', 'test']);
+
+// bookkeeping(root, cfg) -> (file id) -> true for a file of the program repository that is the
+// kit's bookkeeping, from kitPaths.
+export function bookkeeping(root, cfg) {
+  const kp = kitPaths(root, cfg);
+  const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
+  const files = new Set([rel(kp.build)]);
+  const dirs = [kp.state, path.join(kp.kit, 'reviews'), kp.journalDir, kp.graph].map((d) => `${rel(d)}/`);
+  return (id) => {
+    const p = keyOf(id);
+    return files.has(p) || dirs.some((d) => p.startsWith(d));
+  };
+}
 
 const repoOf = (slice) => (typeof slice.repo === 'string' && slice.repo !== '' ? slice.repo : '.');
 
@@ -40,11 +59,14 @@ function filesAt(index, text) {
 }
 
 // The start set of a target -> {target, slices: Set, files: Set, contracts: Set}, or null when the
-// target is none of a requirement, a contract, a slice or a path in the graph. `target` is the node
-// id, or the path itself for a directory.
-function start(index, text) {
+// target is nothing in the graph. `target` is the node id, or the path itself for a directory. A node
+// of another kind is refused with its kind (S-20 review H-3).
+function start(index, text, skip) {
   const id = index.find(text);
   const kind = id ? kindOf(id) : null;
+  if (kind !== null && !TARGETS.has(kind)) {
+    throw new GraphError(2, `impact takes a requirement, contract, slice or path; ${text} is a ${kind}`);
+  }
   const s = { target: id, slices: new Set(), files: new Set(), contracts: new Set() };
   if (kind === 'requirement') {
     for (const e of index.in(id, 'implements')) if (index.node(e.from)) s.slices.add(e.from);
@@ -56,15 +78,13 @@ function start(index, text) {
     const named = filesAt(index, text);
     if (named.length === 0) return null;
     if (kind !== 'file') s.target = normalisePath(text);
-    for (const f of named) {
+    for (const f of named.filter((x) => !skip(x))) {
       s.files.add(f);
       for (const slice of slicesTouching(index, f)) s.slices.add(slice);
     }
-  } else {
-    return null;
   }
   for (const slice of s.slices) {
-    if (kind === 'requirement' || kind === 'slice') for (const f of filesOf(index, slice)) s.files.add(f);
+    if (kind === 'requirement' || kind === 'slice') for (const f of filesOf(index, slice)) if (!skip(f)) s.files.add(f);
     for (const k of ['produces', 'consumes']) for (const e of index.out(slice, k)) s.contracts.add(e.to);
   }
   return s;
@@ -72,8 +92,9 @@ function start(index, text) {
 
 // impact(index, target) -> {target, contracts: [{id, label}], slices: [{id, name, repo, relations}],
 // files: [path], repos: [name]}. Nothing found -> GraphError(2, `<target> is not in the graph`).
-export function impact(index, target) {
-  const s = start(index, target);
+// `skip(file id)` is true for a file never counted as shared, e.g. bookkeeping(root, cfg).
+export function impact(index, target, { skip = () => false } = {}) {
+  const s = start(index, target, skip);
   if (!s) throw new GraphError(2, `${target} is not in the graph`);
   const implementing = new Set(kindOf(s.target) === 'requirement' ? index.in(s.target, 'implements').map((e) => e.from) : []);
 
