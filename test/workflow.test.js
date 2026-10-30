@@ -206,12 +206,8 @@ test('ready-label still runs when a needed job failed, and is told so', () => {
   // cancelled (a newer push superseded it), and passes the failure to the CLI.
   const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
   assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
-  assert.ok(
-    ready.includes(
-      "          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}\n",
-    ),
-    ready,
-  );
+  // What the expression counts as passed is held by the P3/S-32 test below, which evaluates it.
+  assert.match(ready, /^ {10}SLICEKIT_CHECKS_OK: \$\{\{ .*'failure'.*'cancelled'.* \}\}$/m, ready);
   assert.ok(!ready.includes('SLICEKIT_CHECKS_FAILED'));
   // D-35: telling a bookkeeping-only commit from a code change needs the reviewed head in the clone.
   assert.ok(ready.includes('          fetch-depth: 0\n'), 'ready-label checks out full history');
@@ -460,4 +456,285 @@ test('the gate builds the graph before uploading it', () => {
   assert.ok(step.includes(`        run: ${cfg.cli} graph\n`), step);
   assert.ok(step.includes('GH_TOKEN: ${{ github.token }}'), step);
   assert.match(gate, /\n {4}permissions:\n(?: {6}\S.*\n)*? {6}pull-requests: read\n/);
+});
+
+// P3/S-32, REQ-3.11, D-49: bookkeeping pushes skip the team command jobs, and ci.shards splits the
+// test job. The job conditions are judged by evaluating the rendered GitHub expressions, so the tests
+// hold the behaviour, not one spelling of it.
+
+// A GitHub Actions expression evaluator for the subset the workflow uses: literals, property paths
+// (with `*` over an object), ! && || == != and parentheses, contains/startsWith/endsWith and the
+// status functions. Strings compare case-insensitively, as GitHub does.
+function evalExpression(source, ctx) {
+  let text = source.trim();
+  if (/^'.*'$/s.test(text)) text = text.slice(1, -1).replace(/''/g, "'");
+  const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(text.trim());
+  if (wrapped) text = wrapped[1];
+  const tokens = [];
+  const re = /\s*(?:(\|\||&&|==|!=|[!(),])|'((?:[^']|'')*)'|([A-Za-z_*][A-Za-z0-9_.*-]*)|(-?\d+(?:\.\d+)?))/y;
+  let at = 0;
+  while (at < text.length) {
+    if (/^\s*$/.test(text.slice(at))) break;
+    re.lastIndex = at;
+    const m = re.exec(text);
+    assert.ok(m, `expression: cannot read at ${at}: ${text}`);
+    at = re.lastIndex;
+    if (m[1]) tokens.push({ op: m[1] });
+    else if (m[2] !== undefined) tokens.push({ value: m[2].replace(/''/g, "'") });
+    else if (m[3]) tokens.push({ name: m[3] });
+    else tokens.push({ value: Number(m[4]) });
+  }
+  let i = 0;
+  const peek = () => tokens[i];
+  const take = (op) => {
+    assert.equal(tokens[i]?.op, op, `expression: expected ${op} in ${text}`);
+    i++;
+  };
+  const truthy = (v) => !(v === false || v === null || v === undefined || v === '' || v === 0);
+  const eq = (a, b) => (typeof a === 'string' && typeof b === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b);
+  const resolve = (name) => {
+    if (name === 'true') return true;
+    if (name === 'false') return false;
+    if (name === 'null') return null;
+    let values = [ctx];
+    let spread = false;
+    for (const part of name.split('.')) {
+      if (part === '*') {
+        values = values.flatMap((v) => (v && typeof v === 'object' ? Object.values(v) : []));
+        spread = true;
+      } else {
+        values = values.map((v) => (v && typeof v === 'object' ? v[part] : undefined));
+      }
+    }
+    return spread ? values : values[0];
+  };
+  const call = (fn, args) => {
+    const status = ctx.__status ?? {};
+    switch (fn.toLowerCase()) {
+      case 'contains':
+        return Array.isArray(args[0])
+          ? args[0].some((v) => eq(v, args[1]))
+          : String(args[0] ?? '').toLowerCase().includes(String(args[1]).toLowerCase());
+      case 'startswith':
+        return String(args[0] ?? '').toLowerCase().startsWith(String(args[1]).toLowerCase());
+      case 'endswith':
+        return String(args[0] ?? '').toLowerCase().endsWith(String(args[1]).toLowerCase());
+      case 'success':
+        return status.success ?? true;
+      case 'failure':
+        return status.failure ?? false;
+      case 'cancelled':
+        return false;
+      case 'always':
+        return true;
+      default:
+        assert.fail(`expression: unsupported function ${fn}`);
+    }
+  };
+  // Forward references: or() is defined below primary().
+  let or;
+  const primary = () => {
+    const t = tokens[i++];
+    assert.ok(t, `expression: unexpected end of ${text}`);
+    if (t.op === '(') {
+      const v = or();
+      take(')');
+      return v;
+    }
+    if (t.op === '!') return !truthy(primary());
+    if ('value' in t) return t.value;
+    assert.ok(t.name, `expression: unexpected ${t.op} in ${text}`);
+    if (peek()?.op === '(') {
+      i++;
+      const args = [];
+      while (peek()?.op !== ')') {
+        args.push(or());
+        if (peek()?.op === ',') i++;
+      }
+      take(')');
+      return call(t.name, args);
+    }
+    return resolve(t.name);
+  };
+  const comparison = () => {
+    let v = primary();
+    while (peek()?.op === '==' || peek()?.op === '!=') {
+      const op = tokens[i++].op;
+      const r = primary();
+      v = op === '==' ? eq(v, r) : !eq(v, r);
+    }
+    return v;
+  };
+  const and = () => {
+    let v = comparison();
+    while (peek()?.op === '&&') {
+      i++;
+      const r = comparison();
+      v = truthy(v) ? r : v;
+    }
+    return v;
+  };
+  or = () => {
+    let v = and();
+    while (peek()?.op === '||') {
+      i++;
+      const r = and();
+      v = truthy(v) ? v : r;
+    }
+    return v;
+  };
+  const v = or();
+  assert.equal(i, tokens.length, `expression: trailing tokens in ${text}`);
+  return truthy(v);
+}
+
+// A job-level `if:`: GitHub adds success() when the condition names no status function.
+function jobRuns(block, ctx) {
+  const m = /^ {4}if: (.*)$/m.exec(block);
+  const results = Object.values(ctx.needs ?? {}).map((n) => n.result);
+  const status = { success: results.every((r) => r === 'success'), failure: results.includes('failure') };
+  if (!m) return status.success;
+  const cond = m[1];
+  const named = /\b(success|failure|cancelled|always)\s*\(/.test(cond);
+  const ok = evalExpression(cond, { ...ctx, __status: status });
+  return named ? ok : status.success && ok;
+}
+
+const listOf = (block, key) => {
+  const m = new RegExp(`^ {4}${key}: \\[(.*)\\]$`, 'm').exec(block);
+  return m ? m[1].split(',').map((s) => s.trim()) : [];
+};
+
+// The gate's job output that carries the bookkeeping decision: the output fed by the step that runs
+// `<cli> ci bookkeeping`.
+function bookkeepingOutput(yml, cli) {
+  const gate = jobBlock(yml, 'gate');
+  const steps = gate.split(/\n(?= {6}- )/);
+  const step = steps.find((s) => s.includes(`${cli} ci bookkeeping`));
+  assert.ok(step, `the gate runs ${cli} ci bookkeeping:\n${gate}`);
+  const id = /^ {8}id: (\S+)$/m.exec(step)?.[1];
+  assert.ok(id, `the ci bookkeeping step has an id:\n${step}`);
+  const outputs = /^ {4}outputs:\n((?: {6}.+\n)+)/m.exec(gate);
+  assert.ok(outputs, `the gate has outputs:\n${gate}`);
+  const line = outputs[1].split('\n').find((l) => l.includes(`steps.${id}.outputs.`));
+  assert.ok(line, `a gate output reads steps.${id}:\n${outputs[1]}`);
+  return { key: /^ {6}([A-Za-z0-9_-]+):/.exec(line)[1], step };
+}
+
+test('team command jobs are skipped for bookkeeping and ready-label counts them as passed', () => {
+  const cfg = exampleConfig();
+  const yml = renderWorkflow(cfg, loadPins());
+  const { key, step } = bookkeepingOutput(yml, cfg.cli);
+  // The range comes in through env, never as an expression inside run (M6).
+  const runLines = step.slice(step.indexOf('        run:'));
+  assert.ok(!runLines.includes('${{'), runLines);
+  assert.ok(runLines.includes('--base') && runLines.includes('--head'), runLines);
+  assert.ok(/^ {10}[A-Z_]+: \$\{\{ github\.event\.pull_request\.head\.sha \}\}$/m.test(step), step);
+
+  const gateWith = (result, kind) => ({ result, outputs: { [key]: kind } });
+  const commands = ['cmd-test', 'cmd-lint'];
+  for (const id of commands) {
+    const block = jobBlock(yml, id);
+    assert.ok(listOf(block, 'needs').includes('gate'), `${id} needs the gate's decision`);
+    assert.equal(jobRuns(block, { needs: { gate: gateWith('success', 'bookkeeping') } }), false, `${id} skips for bookkeeping`);
+    assert.equal(jobRuns(block, { needs: { gate: gateWith('success', 'code') } }), true, `${id} runs for code`);
+    assert.equal(jobRuns(block, { needs: { gate: gateWith('success', '') } }), true, `${id} runs when there is no decision`);
+  }
+
+  const ready = jobBlock(yml, 'ready-label');
+  const okLine = /^ {10}SLICEKIT_CHECKS_OK: (.*)$/m.exec(ready);
+  assert.ok(okLine, ready);
+  assert.deepEqual(listOf(ready, 'needs'), ['gate', 'cmd-test', 'cmd-lint', 'obs-1']);
+  const checksOk = (gate, results) => {
+    const needs = { gate, 'obs-1': { result: 'success' } };
+    for (const c of commands) needs[c] = { result: results[c] ?? 'success' };
+    return evalExpression(okLine[1], { needs, github: { event_name: 'pull_request' } });
+  };
+  const book = gateWith('success', 'bookkeeping');
+  const code = gateWith('success', 'code');
+  const bothSkipped = { 'cmd-test': 'skipped', 'cmd-lint': 'skipped' };
+  assert.equal(checksOk(code, {}), true, 'every job passed');
+  assert.equal(checksOk(book, bothSkipped), true, 'skipped for bookkeeping counts as passed');
+  assert.equal(checksOk(book, { 'cmd-test': 'failure', 'cmd-lint': 'skipped' }), false, 'a failed job is not passed');
+  assert.equal(checksOk(book, { 'cmd-test': 'skipped', 'cmd-lint': 'cancelled' }), false, 'a cancelled job is not passed');
+  assert.equal(checksOk(code, { 'cmd-test': 'skipped' }), false, 'skipped for another reason is not passed');
+  assert.equal(checksOk(gateWith('success', ''), bothSkipped), false, 'skipped without a bookkeeping decision is not passed');
+  assert.equal(checksOk(gateWith('failure', 'bookkeeping'), bothSkipped), false, 'a failed gate is not passed');
+  assert.equal(checksOk(gateWith('skipped', ''), bothSkipped), false, 'a skipped gate is not passed');
+});
+
+// The entries of a job's matrix `include:` list, as plain objects (quotes taken off).
+function matrixInclude(block) {
+  const lines = block.split('\n');
+  const at = lines.findIndex((l) => /^ +include:$/.test(l));
+  assert.notEqual(at, -1, `a matrix include list:\n${block}`);
+  const indent = lines[at].search(/\S/);
+  const unquote = (v) => (/^'.*'$/.test(v) ? v.slice(1, -1).replace(/''/g, "'") : v);
+  const items = [];
+  for (const l of lines.slice(at + 1)) {
+    if (l.trim() === '' || l.search(/\S/) <= indent) break;
+    const item = /^\s*- ([A-Za-z_-]+): (.*)$/.exec(l);
+    const more = /^\s*([A-Za-z_-]+): (.*)$/.exec(l);
+    if (item) items.push({ [item[1]]: unquote(item[2]) });
+    else if (more && items.length > 0) items.at(-1)[more[1]] = unquote(more[2]);
+  }
+  return items;
+}
+
+// `<os> <k>/<n>` for each job the test job's matrix starts, sorted.
+function shardJobs(block) {
+  const shardVar = /^ {10}SLICEKIT_SHARD: \$\{\{ matrix\.([A-Za-z_-]+) \}\}$/m.exec(block);
+  assert.ok(shardVar, `the test step sets SLICEKIT_SHARD from the matrix:\n${block}`);
+  assert.ok(block.includes('    runs-on: ${{ matrix.os }}\n'), block);
+  assert.ok(block.includes('      fail-fast: false\n'), block);
+  return matrixInclude(block)
+    .map((e) => `${e.os} ${e[shardVar[1]]}`)
+    .sort();
+}
+
+test('ci.shards renders one job per shard with SLICEKIT_SHARD', () => {
+  const cfg = exampleConfig();
+  cfg.ci.matrix = true;
+  cfg.ci.shards = { 'windows-latest': 3 };
+  assert.deepEqual(validateConfig(cfg), []);
+  const yml = renderWorkflow(cfg, loadPins());
+  assert.deepEqual(shardJobs(jobBlock(yml, 'cmd-test')), [
+    'macos-latest 1/1',
+    'ubuntu-latest 1/1',
+    'windows-latest 1/3',
+    'windows-latest 2/3',
+    'windows-latest 3/3',
+  ]);
+  assert.ok(jobBlock(yml, 'cmd-test').includes(`run: 'node --test "test/**/*.test.js"'\n`), 'each shard runs the same test command');
+  assert.ok(!jobBlock(yml, 'cmd-lint').includes('SLICEKIT_SHARD'), 'only the test command is sharded');
+  assert.ok(jobBlock(yml, 'cmd-lint').includes('    runs-on: ubuntu-latest\n'));
+
+  // Without the matrix the test job runs on Linux, so a Linux shard count splits it there.
+  const linux = exampleConfig();
+  linux.ci.shards = { 'ubuntu-latest': 2 };
+  assert.deepEqual(validateConfig(linux), []);
+  assert.deepEqual(shardJobs(jobBlock(renderWorkflow(linux, loadPins()), 'cmd-test')), ['ubuntu-latest 1/2', 'ubuntu-latest 2/2']);
+
+  // Default none: no shard anywhere.
+  assert.ok(!renderWorkflow(exampleConfig(), loadPins()).includes('SLICEKIT_SHARD'));
+
+  // The kit's own config splits Windows in three (D-49).
+  const kitRoot = fileURLToPath(new URL('..', import.meta.url));
+  assert.deepEqual(loadConfig(kitRoot).ci.shards, { 'windows-latest': 3 });
+});
+
+test('a shard count that is not a positive integer is refused, naming the field', () => {
+  const cfg = exampleConfig();
+  cfg.ci.matrix = true;
+  const withShards = (shards) => ({ ...cfg, ci: { ...cfg.ci, shards } });
+  for (const ok of [1, 3]) assert.deepEqual(validateConfig(withShards({ 'windows-latest': ok })), [], String(ok));
+  for (const bad of [0, -1, 1.5, '3', null, true, [3]]) {
+    const errors = validateConfig(withShards({ 'windows-latest': bad }));
+    assert.ok(errors.includes('ci.shards.windows-latest: must be a positive integer'), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
+    assert.throws(() => renderWorkflow(withShards({ 'windows-latest': bad }), loadPins()), /ci\.shards\.windows-latest/, JSON.stringify(bad));
+  }
+  for (const bad of [3, 'windows-latest', ['windows-latest']]) {
+    const errors = validateConfig(withShards(bad));
+    assert.ok(errors.some((e) => e.startsWith('ci.shards: ')), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
+  }
 });
