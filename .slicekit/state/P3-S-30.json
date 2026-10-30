@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-30",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "dac05575aedda662a18c484cad4e39f21407cdd8",
@@ -25,6 +25,13 @@
           "test/ci-runs.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T17:28:33.744Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
