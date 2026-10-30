@@ -30,6 +30,8 @@ export function startServer({ html, graphJson, port = 0 }) {
     server.listen(port, HOST, () => {
       const bound = server.address().port;
       allowed = new Set([`${HOST}:${bound}`, `localhost:${bound}`]);
+      // A client leaves the default port out of Host (S-19 review H-3).
+      if (bound === 80) allowed = new Set([...allowed, HOST, 'localhost']);
       let closing = null;
       const close = () => {
         closing ??= new Promise((done) => {
