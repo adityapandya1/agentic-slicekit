@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-20",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "dcc7504110c0c0426356d110431d1469c00dda01",
@@ -29,6 +29,13 @@
           "test/check/workspace.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T20:40:29.436Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
