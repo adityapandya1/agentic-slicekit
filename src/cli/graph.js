@@ -4,7 +4,7 @@ import { GitHostError } from '../adapters/githost/errors.js';
 import { ConfigError, loadConfig } from '../config.js';
 import { buildGraph, writeGraph } from '../graph/build.js';
 import { GraphError } from '../graph/schema.js';
-import { reachRepos, readWorkspace } from '../graph/workspace.js';
+import { historyCollision, reachRepos, readWorkspace } from '../graph/workspace.js';
 
 const USAGE = 'graph [--full]';
 
@@ -48,6 +48,13 @@ async function run(args, io) {
   }
   try {
     const built = buildGraph(root, cfg, { host, full: Boolean(values.full), skipped, repos: reached });
+    try {
+      historyCollision(root, cfg, built.graph, reached);
+    } catch (e) {
+      if (!(e instanceof GraphError)) throw e;
+      io.stderr(`${e.message}\n`);
+      return e.code;
+    }
     const rel = writeGraph(root, cfg, built);
     const { graph, report } = built;
     const lines = [

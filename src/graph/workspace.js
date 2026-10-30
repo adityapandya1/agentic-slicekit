@@ -16,11 +16,13 @@ const BRANCH = /^(?!-)(?!.*\.\.)(?!.*\/\/)[^\s~^:?*[\\\0]+(?<![/.])$/;
 const isText = (v) => typeof v === 'string' && v.trim() !== '';
 const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
 
-// The first segment of every path of the program repository (tracked and untracked, not ignored),
-// lower-cased: a workspace name that is one of them would share its file nodes (S-20 review H-1).
+// The first segment of every tracked path of the program repository, lower-cased: a workspace name
+// that is one of them would share its file nodes (S-20 review H-1). Untracked paths make no file node,
+// so a workspace repository cloned inside the program and not ignored is not one (H-7); a folder
+// only in the program's history is caught after the walk, by historyCollision (H-5).
 function topLevel(root) {
   try {
-    const out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '-co', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 1024 });
+    const out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 1024 });
     return new Set(out.split('\0').filter((p) => p !== '').map((p) => p.split('/')[0].toLowerCase()));
   } catch {
     return new Set();
@@ -63,12 +65,21 @@ export function readWorkspace(root, cfg) {
     }
     if (seen.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is listed twice`);
     seen.add(r.name.toLowerCase());
-    if (top.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is also a top-level path of the program repository`);
+    // An entry whose own folder is <program>/<name> is never a collision with itself (H-7).
+    const own = isText(r.path) && fold(path.resolve(root, r.path)) === fold(path.join(root, r.name));
+    if (!own && top.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is also a top-level path of the program repository`);
     if (!isText(r.path) && !isText(r.url)) fail(`${at} gives neither path nor url`);
     if (typeof r.defaultBranch !== 'string' || !BRANCH.test(r.defaultBranch)) fail(`${at}.defaultBranch must be a branch name`);
     return { name: r.name, path: isText(r.path) ? r.path : null, url: isText(r.url) ? r.url : null, defaultBranch: r.defaultBranch };
   });
   return { repos };
+}
+
+// The real path of a repository's common git directory: one for a repository and all its worktrees
+// (S-20 review H-6).
+function commonDir(dir) {
+  const out = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return fold(fs.realpathSync.native(path.resolve(dir, out)));
 }
 
 // True when dir is the top of a git work tree (not a folder inside one).
@@ -107,18 +118,17 @@ function hostFor(cfg, env, name, repoRoot) {
   }
 }
 
-// reachRepos(root, cfg, workspace, env) -> {reached: [{name, root, defaultBranch, host, skipped}],
+// reachRepos(root, cfg, workspace, env) -> {reached: [{name, index, root, defaultBranch, host, skipped}],
 // unreached: [{name, reason}]}, both in the workspace file's order. `path` resolves against the
 // program root; an entry with only a url is never cloned.
 //
-// Two entries on one repository, or an entry on the program repository, throw GraphError(1,
-// `<rel>: <problem>`): they would walk the same commits twice (S-20 review H-1).
+// Two entries on one repository, or an entry on the program repository (a worktree of it included),
+// throw GraphError(1, `<rel>: <problem>`): they would walk the same commits twice (S-20 review H-1, H-6).
 export function reachRepos(root, cfg, workspace, env = process.env) {
   const reached = [];
   const unreached = [];
   const rel = workspaceRel(root, cfg);
-  const real = (p) => fold(fs.realpathSync.native(p));
-  const tops = new Map([[real(root), null]]);
+  const tops = new Map([[commonDir(root), null]]);
   for (const [i, r] of (workspace?.repos ?? []).entries()) {
     if (r.path === null) {
       unreached.push({ name: r.name, reason: `no path; ${r.url} is not on disk` });
@@ -133,7 +143,7 @@ export function reachRepos(root, cfg, workspace, env = process.env) {
       unreached.push({ name: r.name, reason: `${r.path} is not a git repository` });
       continue;
     }
-    const top = real(abs);
+    const top = commonDir(abs);
     if (tops.has(top)) {
       const j = tops.get(top);
       throw new GraphError(1, `${rel}: repos[${i}].path ${r.path} is ${j === null ? 'the program repository' : `the repository of repos[${j}]`}`);
@@ -146,7 +156,25 @@ export function reachRepos(root, cfg, workspace, env = process.env) {
       unreached.push({ name: r.name, reason: `the default branch ${r.defaultBranch} is not present` });
       continue;
     }
-    reached.push({ name: r.name, root: abs, defaultBranch: r.defaultBranch, ...hostFor(cfg, env, r.name, abs) });
+    reached.push({ name: r.name, index: i, root: abs, defaultBranch: r.defaultBranch, ...hostFor(cfg, env, r.name, abs) });
   }
   return { reached, unreached };
+}
+
+// After the walk: a reached workspace name that is the first segment of a program file or test node
+// (one only in the program's history included) throws GraphError(1, `<rel>: <problem>`), since the two
+// repositories' nodes would be merged (S-20 review H-5).
+export function historyCollision(root, cfg, graph, reached) {
+  if (reached.length === 0) return;
+  const segments = new Set();
+  for (const e of graph.edges) {
+    if (e.kind !== 'in' || e.to !== 'repo:.') continue;
+    const m = /^(?:file|test):([^/]+)\//.exec(e.from);
+    if (m) segments.add(m[1].toLowerCase());
+  }
+  for (const r of reached) {
+    if (segments.has(r.name.toLowerCase())) {
+      throw new GraphError(1, `${workspaceRel(root, cfg)}: repos[${r.index}].name ${r.name} is also a top-level path of the program repository`);
+    }
+  }
 }
