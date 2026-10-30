@@ -8,7 +8,9 @@
     "test/ci-bookkeeping.test.js",
     "test/workflow.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/workflow.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -34,6 +36,17 @@
       "at": "2026-10-30T18:39:44.756Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-30T18:47:24.048Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "3c9ea7bacfd523931c0f75091f0648589fe10361",
+        "reason": "The bookkeeping-step assertion asked for --base and passed only because --base-branch contains it; by ruling the gate never passes its own --base, so the assertion now requires --head and --base-branch and forbids a bare --base."
+      }
     }
   ]
 }
