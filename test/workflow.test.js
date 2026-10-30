@@ -442,3 +442,22 @@ test('the no-dependencies step fails on any dependency field, naming it (M6)', (
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// P3/S-17, REQ-4.4: CI builds the graph in the gate job, then uploads it.
+test('the gate builds the graph before uploading it', () => {
+  const cfg = exampleConfig();
+  const gate = jobBlock(renderWorkflow(cfg, loadPins()), 'gate');
+  const at = (name) => gate.indexOf(`      - name: ${name}\n`);
+  const hooks = at("Use the repository's git hooks");
+  const build = at('Build the graph');
+  const check = at('slicekit check');
+  const upload = at('Upload the graph');
+  assert.ok(build >= 0, 'no Build the graph step');
+  assert.ok(hooks >= 0 && hooks < build, 'Build the graph comes after the git hooks step');
+  assert.ok(build < check, 'Build the graph comes before slicekit check');
+  assert.ok(build < upload, 'Build the graph comes before Upload the graph');
+  const step = gate.slice(build, gate.indexOf('      - ', build + 1));
+  assert.ok(step.includes(`        run: ${cfg.cli} graph\n`), step);
+  assert.ok(step.includes('GH_TOKEN: ${{ github.token }}'), step);
+  assert.match(gate, /\n {4}permissions:\n(?: {6}\S.*\n)*? {6}pull-requests: read\n/);
+});
