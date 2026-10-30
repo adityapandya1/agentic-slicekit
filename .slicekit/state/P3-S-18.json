@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-18",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "8f0ee1f8b563d25645c990380ed259da1573c1a0",
@@ -29,6 +29,13 @@
           "test/check/citations.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T18:23:34.809Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
