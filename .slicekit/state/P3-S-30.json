@@ -1,8 +1,12 @@
 {
   "slice": "P3/S-30",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 40,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40",
+    "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c"
+  },
   "redCommit": "dac05575aedda662a18c484cad4e39f21407cdd8",
   "frozenTests": [
     "test/ci-runs.test.js"
@@ -32,6 +36,22 @@
       "at": "2026-10-30T17:28:33.744Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T17:30:09.817Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 40,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40",
+          "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c",
+          "title": "[P3/S-30] CI judged by the newest run of each workflow"
+        }
+      }
     }
   ]
 }
