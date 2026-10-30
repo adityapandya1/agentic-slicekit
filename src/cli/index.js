@@ -8,6 +8,7 @@ import { decideCommand } from './decide.js';
 import { gapsCommand } from './gaps.js';
 import { graphCommand } from './graph.js';
 import { historyCommand } from './history.js';
+import { impactCommand } from './impact.js';
 import { initCommand } from './init.js';
 import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
@@ -38,6 +39,7 @@ export const COMMANDS = {
   gaps: gapsCommand,
   graph: graphCommand,
   history: historyCommand,
+  impact: impactCommand,
   init: initCommand,
   intake: intakeCommand,
   instructions: instructionsCommand,
