@@ -65,9 +65,8 @@ export function readWorkspace(root, cfg) {
     }
     if (seen.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is listed twice`);
     seen.add(r.name.toLowerCase());
-    // An entry whose own folder is <program>/<name> is never a collision with itself (H-7).
-    const own = isText(r.path) && fold(path.resolve(root, r.path)) === fold(path.join(root, r.name));
-    if (!own && top.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is also a top-level path of the program repository`);
+    // Tracked paths only: a nested clone the program tracks nothing under is no collision (H-7, H-9).
+    if (top.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is also a top-level path of the program repository`);
     if (!isText(r.path) && !isText(r.url)) fail(`${at} gives neither path nor url`);
     if (typeof r.defaultBranch !== 'string' || !BRANCH.test(r.defaultBranch)) fail(`${at}.defaultBranch must be a branch name`);
     return { name: r.name, path: isText(r.path) ? r.path : null, url: isText(r.url) ? r.url : null, defaultBranch: r.defaultBranch };
@@ -127,8 +126,15 @@ function hostFor(cfg, env, name, repoRoot) {
 export function reachRepos(root, cfg, workspace, env = process.env) {
   const reached = [];
   const unreached = [];
+  if (!workspace || workspace.repos.length === 0) return { reached, unreached };
   const rel = workspaceRel(root, cfg);
-  const tops = new Map([[commonDir(root), null]]);
+  let program;
+  try {
+    program = commonDir(root);
+  } catch {
+    throw new GraphError(2, 'graph: not a git repository');
+  }
+  const tops = new Map([[program, null]]);
   for (const [i, r] of (workspace?.repos ?? []).entries()) {
     if (r.path === null) {
       unreached.push({ name: r.name, reason: `no path; ${r.url} is not on disk` });
