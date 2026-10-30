@@ -89,8 +89,23 @@ export function filterMergedSince(list, since) {
 
 // gh lists runs newest first. Any run still going → pending; any completed run that did not
 // succeed (skipped and neutral count as success) → failure; all succeeded → success; none → unknown.
-export function reduceRuns(runs) {
-  if (!Array.isArray(runs) || runs.length === 0) return { status: 'unknown', url: null };
+// The newest run of each workflow and event (REQ-2.6 step 9, issue #33): a run that a newer run of the
+// same workflow and event replaced, often cancelled by the workflow's concurrency, is not the
+// commit's answer. Runs with no workflow name or event are judged together, as before.
+function newestPerWorkflow(runs) {
+  if (!runs.every((r) => r.workflowName && r.event)) return runs;
+  const newest = new Map();
+  for (const r of runs) {
+    const key = JSON.stringify([r.workflowName, r.event]);
+    const held = newest.get(key);
+    if (!held || String(r.createdAt ?? '') > String(held.createdAt ?? '')) newest.set(key, r);
+  }
+  return [...newest.values()];
+}
+
+export function reduceRuns(all) {
+  if (!Array.isArray(all) || all.length === 0) return { status: 'unknown', url: null };
+  const runs = newestPerWorkflow(all);
   const going = runs.find((r) => r.status !== 'completed');
   if (going) return { status: 'pending', url: going.url ?? null };
   const failed = runs.find((r) => !OK_CONCLUSIONS.has(r.conclusion));
