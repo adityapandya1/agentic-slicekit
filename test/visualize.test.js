@@ -9,6 +9,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -260,11 +261,22 @@ test('the server listens on 127.0.0.1 and serves the page and graph.json, and no
     assert.match(data.headers.get('content-type') ?? '', /^application\/json/);
     assert.equal(await data.text(), graphJson);
 
-    for (const p of ['x', 'graph.json/x', 'index.html', '../graph.json']) {
+    for (const p of ['x', 'graph.json/x', 'index.html']) {
       const res = await fetch(`${s.url}${p}`);
       await res.arrayBuffer();
       assert.equal(res.status, 404, p);
     }
+    // A raw path that climbs with `..`: fetch would normalise it to /graph.json before sending, so
+    // it is sent as it is with node:http, and the server must not resolve it.
+    const raw = await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: s.port, path: '/../graph.json', method: 'GET' }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(raw, 404, '/../graph.json sent raw');
 
     // Bound to 127.0.0.1 alone: not reachable on the IPv6 loopback or any other local address.
     assert.equal(await connects('::1', s.port), false, 'reachable on ::1');
