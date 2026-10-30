@@ -34,13 +34,13 @@ decisions: [D-43]
 
 ## Expected changes
 
-`src/build/`, `src/cli/build.js`, `src/cli/state.js`, `src/state.js`, `src/config.js`, `src/init.js`, `templates/instructions/agents/reviewer.md`, `templates/instructions/commands/build.md`, `test/`, tests.
+`src/build/`, `src/cli/build.js`, `src/cli/state.js`, `src/state/index.js`, `src/config.js`, `src/init.js`, `templates/instructions/agents/reviewer.md`, `templates/instructions/commands/build.md`, `test/`, tests.
 
 ## Tasks
 
 ### Task 1: Render and amend (Done when 1 and 2)
 
-**Files:** `src/build/commit.js`, `src/build/render.js` (new), `src/build/amend.js`, `src/cli/build.js`, `templates/instructions/commands/build.md`, `test/build-render.test.js`, `test/build-amend.test.js`.
+**Files:** `src/build/commit.js`, `src/build/render.js` (new), `src/build/commit.js`, `src/cli/build.js`, `templates/instructions/commands/build.md`, `test/build-render.test.js`, `test/build-amend.test.js`.
 
 - [ ] **Step 1: Failing tests** for Done when 1 and 2.
 - [ ] **Step 2: Implement** `build render` and the wider `build amend`; the build procedure says when to run `build render`.
@@ -56,7 +56,7 @@ decisions: [D-43]
 
 ### Task 3: Backfill from the host, and the local test command (Done when 5 and 6)
 
-**Files:** `src/cli/state.js`, `src/state.js`, `src/config.js`, `src/init.js`, `src/build/`, `test/state-backfill.test.js`, `test/local-test-command.test.js`.
+**Files:** `src/cli/state.js`, `src/state/index.js`, `src/config.js`, `src/init.js`, `src/build/`, `test/state-backfill.test.js`, `test/local-test-command.test.js`.
 
 - [ ] **Step 1: Failing tests** for Done when 5 and 6.
 - [ ] **Step 2: Implement**.
