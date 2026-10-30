@@ -22,7 +22,7 @@ export const GH_NOT_FOUND = 'gh not found; install GitHub CLI or set SLICEKIT_GI
 
 const PR_FIELDS = 'number,url,state,mergedAt,headRefOid,headRefName,isDraft,title,body,labels';
 const LIST_FIELDS = 'number,mergedAt,headRefOid,title';
-const RUN_FIELDS = 'status,conclusion,url,createdAt';
+const RUN_FIELDS = 'status,conclusion,url,createdAt,workflowName,event';
 
 // A non-zero gh exit, typed: "no such pull request" is a GitHostNotFound, anything else a GitHostError
 // whose message carries the first line of gh's stderr, with any token shape masked.
