@@ -68,6 +68,8 @@ export function indexGraph(graph) {
     if (/^P\d+$/.test(t)) return byId.has(`phase:${t}`) ? `phase:${t}` : byId.has(`release:${t}`) ? `release:${t}` : null;
     const pr = /^#(\d+)$/.exec(t);
     if (pr) return byId.has(`pull-request:${pr[1]}`) ? `pull-request:${pr[1]}` : null;
+    // A workspace repository's pull request, <name>#<n> (S-20).
+    if (/^[A-Za-z0-9._-]+#\d+$/.test(t)) return byId.has(`pull-request:${t}`) ? `pull-request:${t}` : null;
     if (/^[0-9a-f]{7,40}$/i.test(t)) {
       const lower = t.toLowerCase();
       const hits = commits.filter((c) => c.id.slice('commit:'.length).startsWith(lower));

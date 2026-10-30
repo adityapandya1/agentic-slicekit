@@ -38,20 +38,21 @@ export function prNumbers(fragments, commits) {
   return new Map([...refs].sort(([a], [b]) => a - b));
 }
 
-const cacheFile = (dir, n) => path.join(dir, `pr-${n}.json`);
+// A workspace repository's pull requests are cached apart from the program repository's (S-20).
+const cacheFile = (dir, n, repo) => path.join(dir, repo ? `pr-${repo}-${n}.json` : `pr-${n}.json`);
 
-function readCache(dir, n) {
+function readCache(dir, n, repo) {
   try {
-    const c = JSON.parse(fs.readFileSync(cacheFile(dir, n), 'utf8'));
+    const c = JSON.parse(fs.readFileSync(cacheFile(dir, n, repo), 'utf8'));
     return c && typeof c === 'object' && c.pr ? c : null;
   } catch {
     return null;
   }
 }
 
-function writeCache(dir, n, entry) {
+function writeCache(dir, n, repo, entry) {
   fs.mkdirSync(dir, { recursive: true });
-  const file = cacheFile(dir, n);
+  const file = cacheFile(dir, n, repo);
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(entry, null, 2)}\n`);
   fs.renameSync(tmp, file);
@@ -59,14 +60,18 @@ function writeCache(dir, n, entry) {
 
 const TITLE_SLICE = /\[(P\d+\/S-\d{2})\]/;
 
-function prNode(n, ref, pr, stale, verdicts) {
-  const id = nodeId('pull-request', n);
-  const node = { id, kind: 'pull-request', label: pr.title ?? '', from: `#${n}`, number: n, url: pr.url ?? null, state: pr.state ?? null, mergedAt: pr.mergedAt ?? null, headSha: pr.headSha ?? null };
+// A pull request of the program repository is pull-request:<n>; one of workspace repository <repo> is
+// pull-request:<repo>#<n> and carries `repo` (S-20).
+function prNode(n, ref, pr, stale, verdicts, repo) {
+  const key = repo ? `${repo}#${n}` : `#${n}`;
+  const id = nodeId('pull-request', repo ? key : n);
+  const node = { id, kind: 'pull-request', label: pr.title ?? '', from: key, number: n, url: pr.url ?? null, state: pr.state ?? null, mergedAt: pr.mergedAt ?? null, headSha: pr.headSha ?? null };
+  if (repo) node.repo = repo;
   if (stale) node.stale = true;
   const edges = [];
   const fromTitle = TITLE_SLICE.exec(pr.title ?? '')?.[1];
   const slice = fromTitle ? nodeId('slice', fromTitle) : ref.slice;
-  const at = ref.at ?? `#${n}`;
+  const at = ref.at ?? key;
   if (slice) {
     edges.push({ kind: 'in', from: id, to: slice, at: ref.slice === slice && ref.sliceAt ? ref.sliceAt : at });
     for (const v of verdicts.get(slice) ?? []) edges.push({ kind: 'reviewed-by', from: id, to: v.id, at: v.from });
@@ -76,8 +81,9 @@ function prNode(n, ref, pr, stale, verdicts) {
 }
 
 // refs from prNumbers -> {nodes, edges, notes, fetched, cached}. `host` null means no host could be
-// made; `verdicts` maps a slice node id to its verdict nodes, for the reviewed-by edges.
-export function pullRequestNodes(refs, { host, cacheDir, verdicts = new Map(), skipped = null } = {}) {
+// made; `verdicts` maps a slice node id to its verdict nodes, for the reviewed-by edges; `repo` names
+// the workspace repository the numbers belong to, null for the program repository.
+export function pullRequestNodes(refs, { host, cacheDir, verdicts = new Map(), skipped = null, repo = null } = {}) {
   const nodes = [];
   const edges = [];
   const notes = [];
@@ -86,12 +92,12 @@ export function pullRequestNodes(refs, { host, cacheDir, verdicts = new Map(), s
   let stopped = host == null;
   if (skipped) notes.push(skipped);
   const add = (n, ref, pr, stale) => {
-    const r = prNode(n, ref, pr, stale, verdicts);
+    const r = prNode(n, ref, pr, stale, verdicts, repo);
     nodes.push(r.node);
     edges.push(...r.edges);
   };
   for (const [n, ref] of refs) {
-    const hit = readCache(cacheDir, n);
+    const hit = readCache(cacheDir, n, repo);
     // A merged or closed answer is final. An open one is asked again whenever the host can be reached:
     // a merge does not move the recorded head, so no key would say it changed (S-17 review H-1).
     if (hit && FINAL.has(hit.pr.state)) {
@@ -102,18 +108,19 @@ export function pullRequestNodes(refs, { host, cacheDir, verdicts = new Map(), s
     if (!stopped) {
       try {
         const { body: _body, ...pr } = host.getPullRequest(n);
-        writeCache(cacheDir, n, { key: ref.key, pr });
+        writeCache(cacheDir, n, repo, { key: ref.key, pr });
         fetched++;
         add(n, ref, pr, false);
         continue;
       } catch (e) {
         if (e instanceof GitHostNotFound) {
-          notes.push(`pull request #${n} is not on the host`);
+          notes.push(`pull request ${repo ?? ''}#${n} is not on the host`);
           continue;
         }
         if (!(e instanceof GitHostError)) throw e;
         stopped = true;
-        notes.push(e.message === GH_NOT_FOUND ? 'pull requests skipped: gh not found' : `pull requests from the cache: ${e.message}`);
+        const whose = repo ? ` of ${repo}` : '';
+        notes.push(e.message === GH_NOT_FOUND ? `pull requests${whose} skipped: gh not found` : `pull requests${whose} from the cache: ${e.message}`);
       }
     }
     if (hit) {
