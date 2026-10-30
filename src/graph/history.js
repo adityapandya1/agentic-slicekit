@@ -37,12 +37,14 @@ export function history(index, paths) {
   for (const [sid, c] of newest) {
     const ins = index.in(sid, 'in');
     const from = (kind) => ins.filter((e) => kindOf(e.from) === kind).map((e) => index.node(e.from)).filter(Boolean);
-    const pr = from('pull-request').sort((a, b) => (b.number ?? 0) - (a.number ?? 0))[0] ?? null;
+    const pr = from('pull-request').sort((a, b) => (b.number ?? 0) - (a.number ?? 0) || cmp(a.id, b.id))[0] ?? null;
     const verdict = from('verdict').sort((a, b) => (b.round ?? 0) - (a.round ?? 0) || cmp(a.id, b.id))[0] ?? null;
     const rel = pr ? index.out(pr.id, 'released-in').find((e) => kindOf(e.to) === 'release') : null;
     out.push({
       slice: keyOf(sid),
       pr: pr ? (pr.number ?? Number(keyOf(pr.id))) : null,
+      // A workspace repository's pull request carries its repository (S-20 review H-4).
+      ...(pr?.repo ? { prRepo: pr.repo } : {}),
       verdict: verdict?.verdict ?? null,
       release: rel ? keyOf(rel.to) : null,
       sha: keyOf(c.id),
@@ -53,4 +55,4 @@ export function history(index, paths) {
 }
 
 export const historyLine = (e) =>
-  [e.slice, e.pr === null ? 'no pull request' : `PR #${e.pr}`, e.verdict ?? 'no verdict', e.release ? `released ${e.release}` : 'unreleased'].join('  ');
+  [e.slice, e.pr === null ? 'no pull request' : `PR ${e.prRepo ?? ''}#${e.pr}`, e.verdict ?? 'no verdict', e.release ? `released ${e.release}` : 'unreleased'].join('  ');
