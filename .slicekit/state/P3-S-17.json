@@ -1,8 +1,12 @@
 {
   "slice": "P3/S-17",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 36,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
+    "headSha": "d19f7d303ee8254802570a0dd6d97cf560614e04"
+  },
   "redCommit": "b1215cc228f5a3bcabf20ed206662a2b2f889297",
   "frozenTests": [
     "test/graph/build.test.js",
@@ -38,6 +42,22 @@
       "at": "2026-10-30T01:05:57.788Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T01:18:29.111Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 36,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
+          "headSha": "d19f7d303ee8254802570a0dd6d97cf560614e04",
+          "title": "[P3/S-17] Graph builder"
+        }
+      }
     }
   ]
 }
