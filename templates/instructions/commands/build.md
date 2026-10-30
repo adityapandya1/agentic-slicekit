@@ -86,12 +86,32 @@ change. On no, tell the developer the test stands. On yes:
 3. Run `{{cli}} build amend <id> --test <test path> --reason "<why>" --worktree <path>`, and tell
    the developer it may change that one test.
 
+`build amend` also runs at `draft-pr`, `in-review` and `changes-requested`, for a finding that sits
+inside a frozen test: the same three steps, then the slice is back at `building`. The fixer (or the
+developer) changes that test, and step 7's `build commit` and `build pr` take the slice back to
+`draft-pr` on the same pull request.
+
 ## 5. Green, then the draft pull request
 
 When the developer reports every test passing, run
 `{{cli}} build commit <id> --message "<subject>" --require-green --worktree <path>`. It prints
 `<sha7> exit 0`, or `nothing to commit` with exit 0 when step 4 already committed everything; both
 are success. A failing test run is refused: send the developer back with the printed summary.
+
+When the slice changes the kit's own version, run `{{cli}} build render <id> --worktree <path>`
+next, with the kit the slice ships. It runs `update --yes` in the worktree and commits only the files
+update writes, as `chore(slicekit): <id> render`, and prints `<sha7> render (<n> files)`, or
+`nothing to render`. Never commit those files by hand: `build commit` accepts a render commit only
+when it holds nothing but the files update writes, and only while those files, at the slice's head,
+are what a fresh render writes. A refusal that says `run slicekit build render <id> again` means
+they differ (the kit changed since the render, a template fix): run `build render` again, then
+`build commit`.
+
+A machine that cannot run the whole test command at once may set it in `.slicekit/local.json` in
+the main checkout, for example `{"testCommand": "node --test --test-concurrency=2 \"test/**/*.test.js\""}`.
+`build red`, `build commit` and `build pr` then run that command and print
+`ran the test command from .slicekit/local.json: <command>`. Under CI the file is never read, and
+`{{cli}} check --ci` judges the committed command; never commit the file.
 
 Write the notes file from the developer's report to a file outside the repository:
 `slicekit-notes-<id>.json` in your scratchpad or temp directory, with the `/` in `<id>` written as
@@ -127,14 +147,18 @@ When the reviewer stops, run `{{cli}} build verdict <id> <file> --worktree <path
 path. It commits the verdict into the worktree, pushes, and prints `next: <step>`,
 `blockers: <IDs or none>`, `should-haves: <IDs or none>` and `rounds: <used> of 2`, and last a new
 `verdict <file>` line when another round is allowed. A refusal that names the verdict's content (a
-finding with no "How verified", a reused finding number, a banned phrase, a `<!--`) goes back to the
-reviewer with the printed message; run this command again with the file it writes. A refusal that
+finding with no "How verified", a reused finding number, a banned phrase, a `<!--`, an unknown ID or
+path) goes back to the reviewer with the printed message; run this command again with the file it writes. A refusal that
 says `a new verdict needs a fresh fetch` means origin could not be reached: print it and stop, and
 tell the human to run the step again once origin answers. A refusal that
 says `run slicekit build pr <id> first` means code was committed that `build pr` has not seen: run
 step 5's `build pr`, then step 6 again from the start with the path it prints, since that code needs
-a review of its own. A refusal that says a file `differs from` another goes to the human: print it
-and stop. Then act on `next:`:
+a review of its own. At `draft-pr` that `build pr` records the moved head (a merge of the default
+branch, or any commit) in a bookkeeping commit and prints `head <sha> recorded; the next verdict
+reviews it` before the verdict path. A refusal that says a verdict `reviewed head <a>; the recorded
+head is <b>` means the verdict is on an older head: spawn the reviewer again on the recorded head,
+with the same verdict path. A refusal that says a file `differs from` another goes to the human:
+print it and stop. Then act on `next:`:
 
 - `next: fix`: step 7.
 - `next: ask`: step 8.

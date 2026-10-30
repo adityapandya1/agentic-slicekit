@@ -11,8 +11,10 @@
 // A token with a path separator must be a regular file, relative to the root or absolute. On win32
 // it is tried with the PATHEXT suffixes and bare, as `which()` does; on POSIX bare only. So a
 // Windows-only `.cmd` passes on Windows and fails on POSIX.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ConfigError, LOCAL_PATH, localTestCommand, mainCheckout } from '../../config.js';
 import { which, extensions } from '../../which.js';
 
 export const id = 'commands';
@@ -126,17 +128,43 @@ function keyLine(root, name) {
   return lineAt(open.index);
 }
 
+// Outside CI the test command judged is the one this machine runs: .slicekit/local.json's testCommand
+// in the main checkout when it sets one (D-43). CI (`check --ci`) judges the committed command it runs.
+function localTest(ctx) {
+  if (ctx.ci) return null;
+  try {
+    return localTestCommand(mainCheckout(ctx.root), ctx.env ?? process.env);
+  } catch (e) {
+    if (e instanceof ConfigError) return { error: e.message };
+    throw e;
+  }
+}
+
+// The local file is one machine's: tracked by git, it would change every clone's test command.
+function trackedLocal(ctx) {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', LOCAL_PATH], { cwd: ctx.root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function run(ctx) {
   const out = [];
+  if (trackedLocal(ctx)) out.push({ file: LOCAL_PATH, line: 1, message: `${LOCAL_PATH} is tracked by git; it holds one machine's settings: remove it from the index` });
+  const local = localTest(ctx);
+  if (local?.error) out.push({ file: LOCAL_PATH, line: 1, message: local.error });
   for (const name of NAMES) {
-    const value = ctx.cfg?.commands?.[name];
+    const own = name === 'test' && typeof local === 'string';
+    const value = own ? local : ctx.cfg?.commands?.[name];
     if (typeof value !== 'string' || value.trim() === '') continue;
     for (const token of commandWords(value)) {
       if (resolves(token, ctx)) continue;
       out.push({
-        file: CONFIG,
-        line: keyLine(ctx.root, name),
-        message: `commands.${name}: "${token}" not found on PATH or under node_modules/.bin`,
+        file: own ? LOCAL_PATH : CONFIG,
+        line: own ? 1 : keyLine(ctx.root, name),
+        message: `${own ? `${LOCAL_PATH} testCommand` : `commands.${name}`}: "${token}" not found on PATH or under node_modules/.bin`,
       });
     }
   }

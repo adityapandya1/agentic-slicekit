@@ -11,6 +11,7 @@ import {
   defaultConfig,
   validateConfig,
   loadConfig,
+  localTestCommand,
 } from '../src/config.js';
 
 const base = () => defaultConfig({ name: 'demo', shape: 'backend' });
@@ -148,5 +149,28 @@ test('ci.botActors defaults to dependabot and renovate and is validated', () => 
 test('a docsRoot with whitespace is refused', () => {
   for (const docsRoot of ['my docs', 'docs\tx']) {
     assert.ok(validateConfig({ ...base(), docsRoot }).includes('docsRoot must not contain spaces (git attribute patterns cannot hold them)'), docsRoot);
+  }
+});
+
+// P2/S-29 review H-2 (D-43): .slicekit/local.json is never read when CI is set.
+test('the local test command is read outside CI only, and a malformed file is refused', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-local-'));
+  try {
+    assert.equal(localTestCommand(root, {}), null);
+    fs.mkdirSync(path.join(root, '.slicekit'));
+    const file = path.join(root, '.slicekit', 'local.json');
+    fs.writeFileSync(file, JSON.stringify({ testCommand: 'node --test --test-concurrency=2' }));
+    assert.equal(localTestCommand(root, {}), 'node --test --test-concurrency=2');
+    assert.equal(localTestCommand(root, { CI: 'true' }), null);
+    assert.equal(localTestCommand(root, { CI: '1' }), null);
+    fs.writeFileSync(file, JSON.stringify({}));
+    assert.equal(localTestCommand(root, {}), null);
+    for (const [text, why] of [['{', 'is not valid JSON'], ['[]', 'must be a JSON object'], ['{"testCommand": " "}', 'testCommand must be a non-empty string']]) {
+      fs.writeFileSync(file, text);
+      assert.throws(() => localTestCommand(root, {}), (e) => e instanceof ConfigError && e.message.includes(why), text);
+      assert.equal(localTestCommand(root, { CI: 'true' }), null, text);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

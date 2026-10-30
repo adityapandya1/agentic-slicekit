@@ -1,0 +1,212 @@
+{
+  "slice": "P2/S-29",
+  "state": "in-review",
+  "branch": null,
+  "pr": {
+    "number": 30,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+    "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d"
+  },
+  "redCommit": "0ff160cc956d85864dda29b845e096b247af5f7f",
+  "frozenTests": [
+    "test/build-render.test.js",
+    "test/build-amend.test.js",
+    "test/build-pr-head.test.js",
+    "test/verdict-references.test.js",
+    "test/state-backfill.test.js",
+    "test/local-test-command.test.js"
+  ],
+  "unfrozen": [
+    "test/local-test-command.test.js",
+    "test/verdict-references.test.js",
+    "test/build-amend.test.js",
+    "test/build-pr-head.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P2-S-29i-r1.md",
+      "blockers": 3,
+      "independent": true,
+      "headSha": "5fe63771dc105409abb5dc7133879081c5f94039"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P2-S-29i-r2.md",
+      "blockers": 2,
+      "independent": true,
+      "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P2-S-29i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d"
+    }
+  ],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-29T20:04:06.778Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "0ff160cc956d85864dda29b845e096b247af5f7f",
+        "testExit": 1,
+        "tests": [
+          "test/build-render.test.js",
+          "test/build-amend.test.js",
+          "test/build-pr-head.test.js",
+          "test/verdict-references.test.js",
+          "test/state-backfill.test.js",
+          "test/local-test-command.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-29T20:04:06.951Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-29T20:42:36.314Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 30,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+          "headSha": "5fe63771dc105409abb5dc7133879081c5f94039",
+          "title": "[P2/S-29] The build loop's dead ends"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T20:52:21.746Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P2-S-29i-r1.md",
+          "blockers": 3,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-29T21:34:50.040Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/local-test-command.test.js",
+        "amendCommit": "24f5e1c7f45c8bc1957c0acf6b28212dada0ea52",
+        "reason": "Done when 6 now says check --ci keeps the committed command; with CI set the build steps no longer read local.json, so the test runs them with CI removed. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:51.494Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/verdict-references.test.js",
+        "amendCommit": "eabd6a65ba27b6b3265cdf9e8d97d5a43cd1110c",
+        "reason": "Done when 4 now requires a Head line on every verdict; the test's verdict text gains the head it reviews. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:52.926Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-amend.test.js",
+        "amendCommit": "4e6e20450f1f8f89d9f4c1bc1f4db84bdb053863",
+        "reason": "Done when 2 now says amend reads the committed state; the test's verdict fixture gains its Head line so build verdict takes it. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-29T21:34:54.346Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-pr-head.test.js",
+        "amendCommit": "4cf2db7d21f28fc4acddd53768cdcb3d83c12acd",
+        "reason": "Done when 3 now says the next verdict reviews the recorded head; the test's verdict is written with that head. Assertions unchanged."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-29T22:59:09.227Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 30,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+          "headSha": "9ae8b13cc81c409757e3f89bef880ed91b081c31",
+          "title": "[P2/S-29] The build loop's dead ends"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T23:11:55.473Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P2-S-29i-r2.md",
+          "blockers": 2,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-29T23:40:46.392Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 30,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/30",
+          "headSha": "153d68f265669d6784b0e94eac4e97ef6ea2fa9d",
+          "title": "[P2/S-29] The build loop's dead ends"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-29T23:51:28.824Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P2-S-29i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    }
+  ]
+}

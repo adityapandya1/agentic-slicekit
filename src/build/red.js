@@ -4,6 +4,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { buildTestCommand } from '../config.js';
 import { readText } from '../fs.js';
 import { commitPaths, git, headSha } from '../git.js';
 import { stateFileName } from '../ids.js';
@@ -179,12 +180,12 @@ function finishRed(wt, cfg, id, current, tests) {
   return { commit: current.redCommit, tests: current.frozenTests };
 }
 
-export function red(root, cfg, id, { tests, worktree } = {}) {
+export function red(root, cfg, id, { tests, worktree, env = process.env } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const current = readSlice(wt, cfg, id);
   if (current.state === 'tests-red') return finishRed(wt, cfg, id, current, tests);
   if (current.state !== 'todo') throw new BuildError(`${id} is ${current.state}; red runs from todo`);
-  const command = cfg.commands?.test ?? '';
+  const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const files = resolveTests(wt, tests);
   const slice = sliceIn(wt, cfg, id);
@@ -203,5 +204,5 @@ export function red(root, cfg, id, { tests, worktree } = {}) {
   const commit = made ?? headSha(wt);
   recordState(wt, cfg, id, 'tests-red', { commit, testExit: run.exit, tests: files });
   recordState(wt, cfg, id, 'building', {});
-  return { commit, tests: files };
+  return { commit, tests: files, local: local ? command : null };
 }

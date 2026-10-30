@@ -147,10 +147,11 @@ VERDICT="$(sed -n 's/^verdict //p' "$WORK/pr.txt")"
 ```
 
 In `/slicekit build` the reviewer agent writes the verdict now. The copy here is an `APPROVE` with
-no findings. `build verdict` checks it, commits it to the branch and prints the next step, `ci`.
+no findings. Its `Head:` line names the commit it reviewed, here the worktree's head. `build verdict`
+checks it, commits it to the branch and prints the next step, `ci`.
 
 ```sh
-cp "$KIT/examples/walkthrough/P1-S-01-r1.md" "$VERDICT"
+sed "s/^Head: .*/Head: $(git -C "$WT" log -1 --format=%H)/" "$KIT/examples/walkthrough/P1-S-01-r1.md" > "$VERDICT"
 node "$KIT/bin/slicekit.js" build verdict P1/S-01 "$VERDICT" --worktree "$WT"
 ```
 
@@ -184,7 +185,7 @@ commits it in the review worktree and pushes it. CI reports on that new head. It
 review rounds inside `/slicekit build`, and the independent review uses neither of them.
 
 ```sh
-cp "$KIT/examples/walkthrough/P1-S-01i-r2.md" "$VERDICT"
+sed "s/^Head: .*/Head: $(git -C .worktrees/review-P1-S-01 log -1 --format=%H)/" "$KIT/examples/walkthrough/P1-S-01i-r2.md" > "$VERDICT"
 node "$KIT/bin/slicekit.js" build verdict P1/S-01 "$VERDICT" --independent --worktree .worktrees/review-P1-S-01
 node "$KIT/examples/walkthrough/host.js" ci 1 success
 ```

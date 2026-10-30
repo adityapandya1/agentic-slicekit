@@ -279,11 +279,9 @@ test('backfill skips the from check and records by backfill', () => {
     assert.match(refusal(() => setState(root, cfg, id, 'merged', { ...noPr, pr: { number: 1.5, headSha: HEAD } })), /pr.number/);
     assert.match(refusal(() => setState(root, cfg, id, 'draft-pr', { backfill: true, pr: { number: 1 } })), /pr.headSha/);
     assert.equal(refusal(() => setState(root, cfg, id, 'ci-green', { backfill: true, ci: { sha: HEAD, status: 'success' } })), 'backfill records only draft-pr or merged; later states come from the build commands');
-    const s = setState(root, cfg, id, 'merged', {
-      backfill: true,
-      mergedAt: AT,
-      pr: { number: 1, url: 'http://x/1', headSha: HEAD },
-    });
+    const merge = { backfill: true, mergedAt: AT, pr: { number: 1, url: 'http://x/1', headSha: HEAD } };
+    assert.equal(refusal(() => setState(root, cfg, id, 'merged', merge)), 'backfill to merged needs the git host to report the pull request merged');
+    const s = setState(root, cfg, id, 'merged', { ...merge, source: 'host' });
     assert.equal(s.state, 'merged');
     assert.equal(s.pr.number, 1);
     assert.equal(s.mergedAt, AT);
@@ -379,9 +377,24 @@ test('cli: set, show and refusal', () => {
     assert.match(r.stdout, /^P1\/S-01 {2}tests-red {2}PR -/);
     assert.deepEqual(JSON.parse(run('show', id, '--json').stdout).frozenTests, ['a.test.js', 'b.test.js']);
     const id2 = writeSliceFixture(repo.root, { n: 2 });
-    r = run('set', id2, 'merged', '--backfill', '--merged-at', AT, '--pr-number', '1', '--pr-url', 'u', '--pr-sha', HEAD);
-    assert.equal(r.code, 0, r.stderr);
-    assert.match(run('show', id2).stdout, /merged {2}PR #1\n$/);
+    const host = fs.mkdtempSync(path.join(repo.root, '..', 'slicekit-host-'));
+    try {
+      const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: host };
+      const hostRun = (...a) => runCli(['state', ...a], { cwd: repo.root, env });
+      const report = (state, mergedAt) =>
+        fs.writeFileSync(path.join(host, 'pr-1.json'), JSON.stringify({ number: 1, url: 'u', state, mergedAt, headRefOid: HEAD, title: `[${id2}] Thing 2` }));
+      report('OPEN', null);
+      r = hostRun('set', id2, 'merged', '--backfill', '--merged-at', AT, '--pr-number', '1', '--pr-url', 'u', '--pr-sha', HEAD);
+      assert.equal(r.code, 1);
+      assert.equal(r.stderr.trim(), 'refused: the git host reports pull request #1 open, not merged; backfill to merged needs a merged pull request');
+      report('MERGED', AT);
+      r = hostRun('set', id2, 'merged', '--backfill', '--pr-number', '1');
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(run('show', id2).stdout, /merged {2}PR #1\n$/);
+      assert.equal(JSON.parse(run('show', id2, '--json').stdout).mergedAt, AT);
+    } finally {
+      fs.rmSync(host, { recursive: true, force: true });
+    }
     r = run('show', 'P9/S-99');
     assert.equal(r.code, 2);
     assert.match(r.stderr, /unknown slice P9\/S-99/);
@@ -495,7 +508,7 @@ test('in-review needs a verdict path, an existing file and round 1 first', () =>
 
 test('released accepts a record that names the pull request url', () => {
   withKit((root, cfg, [id]) => {
-    setState(root, cfg, id, 'merged', { backfill: true, mergedAt: AT, pr: { number: 7, url: 'http://x/7', headSha: HEAD } });
+    setState(root, cfg, id, 'merged', { backfill: true, source: 'host', mergedAt: AT, pr: { number: 7, url: 'http://x/7', headSha: HEAD } });
     fs.writeFileSync(path.join(root, 'r.md'), 'see http://x/7');
     assert.equal(setState(root, cfg, id, 'released', { release: 'r.md' }).state, 'released');
   });
@@ -503,7 +516,7 @@ test('released accepts a record that names the pull request url', () => {
 
 test('released does not take #70 or the url of pull request 70 for pull request 7', () => {
   withKit((root, cfg, [id]) => {
-    setState(root, cfg, id, 'merged', { backfill: true, mergedAt: AT, pr: { number: 7, url: 'http://x/7', headSha: HEAD } });
+    setState(root, cfg, id, 'merged', { backfill: true, source: 'host', mergedAt: AT, pr: { number: 7, url: 'http://x/7', headSha: HEAD } });
     fs.writeFileSync(path.join(root, 'r.md'), 'shipped #70 and #17, see http://x/70');
     assert.match(refusal(() => setState(root, cfg, id, 'released', { release: 'r.md' })), /#7\b/);
     fs.writeFileSync(path.join(root, 'r.md'), 'shipped (#7).');
@@ -511,14 +524,24 @@ test('released does not take #70 or the url of pull request 70 for pull request 
   });
 });
 
-test('backfill from a non-todo state is refused', () => {
+// D-43: a merge the host reports is backfilled from any state before merged; an open pull request
+// is adopted only from todo.
+test('backfill to draft-pr from a non-todo state is refused; a merge needs the host from any state', () => {
   withKit((root, cfg, [id]) => {
     fs.writeFileSync(path.join(root, 'a.test.js'), '');
     setState(root, cfg, id, 'tests-red', { commit: RED, testExit: 1, tests: ['a.test.js'] });
     assert.equal(
-      refusal(() => setState(root, cfg, id, 'merged', { backfill: true, mergedAt: AT })),
-      'backfill is only allowed from todo',
+      refusal(() => setState(root, cfg, id, 'draft-pr', { backfill: true, pr: PR })),
+      'backfill to draft-pr is only allowed from todo',
     );
+    const merge = { backfill: true, mergedAt: AT, pr: { number: 7, headSha: HEAD } };
+    assert.equal(refusal(() => setState(root, cfg, id, 'merged', merge)), 'backfill to merged needs the git host to report the pull request merged');
+    assert.equal(readSlice(root, cfg, id).state, 'tests-red');
+    const s = setState(root, cfg, id, 'merged', { ...merge, source: 'host' });
+    assert.equal(s.state, 'merged');
+    assert.equal(s.history.at(-1).from, 'tests-red');
+    assert.equal(s.history.at(-1).by, 'backfill');
+    assert.equal(refusal(() => setState(root, cfg, id, 'merged', { ...merge, source: 'host' })), `${id} is already merged`);
   });
 });
 

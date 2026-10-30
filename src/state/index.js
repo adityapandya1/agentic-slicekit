@@ -133,12 +133,19 @@ export function setState(root, cfg, id, to, evidence = {}) {
       // Backfill adopts a slice built outside the loop: an open pull request or a merge. A review,
       // CI or ready state is recorded only by the build commands, whose checks backfill would skip.
       if (!BACKFILL_TO.includes(to)) throw new TransitionError('backfill records only draft-pr or merged; later states come from the build commands');
-      if (current.state !== 'todo') throw new TransitionError('backfill is only allowed from todo');
+      // A merge is a fact the git host reports (D-43): recorded from any state before merged, and only
+      // on the host's report (the state CLI asks the host and supplies it). An open pull request is
+      // adopted only into a slice the loop has not started.
+      if (to === 'draft-pr' && current.state !== 'todo') throw new TransitionError('backfill to draft-pr is only allowed from todo');
       const missing = rule.required.filter((k) => ev[k] === undefined);
       if (missing.length > 0) throw new TransitionError(`backfill to ${to} needs ${missing.join(', ')}`);
       const pr = ev.pr;
       if (!pr || !Number.isInteger(pr.number) || typeof pr.headSha !== 'string' || pr.headSha === '') {
         throw new TransitionError(`backfill to ${to} needs pr.number and pr.headSha`);
+      }
+      if (to === 'merged') {
+        if (['merged', 'released'].includes(current.state)) throw new TransitionError(`${id} is already ${current.state}`);
+        if (ev.source !== 'host') throw new TransitionError('backfill to merged needs the git host to report the pull request merged');
       }
     } else {
       if (!allowedMove(current.state, to, ev)) {
@@ -160,18 +167,42 @@ export function setState(root, cfg, id, to, evidence = {}) {
   });
 }
 
+// A slice at draft-pr whose head moved since build pr recorded it (a merge of the default branch,
+// any commit): the new head is recorded as a draft-pr entry, not a move, so the next verdict is taken
+// on it (D-43). `pr` is { number, url, headSha }; only build pr calls this.
+export function recordHead(root, cfg, id, pr) {
+  return withLock(root, cfg, id, () => {
+    const current = readSlice(root, cfg, id);
+    if (current.state !== 'draft-pr') throw new TransitionError(`${id} is ${current.state}; a moved head is recorded only at draft-pr`);
+    const typeError = validateEvidence({ pr });
+    if (typeError) throw new TransitionError(typeError);
+    const ev = resolveShas(root, { pr });
+    const next = {
+      ...current,
+      pr: { ...(current.pr ?? {}), ...ev.pr },
+      history: [...current.history, entry('draft-pr', 'draft-pr', 'cli', { head: ev.pr.headSha })],
+    };
+    writeSlice(root, cfg, next);
+    return next;
+  });
+}
+
 // Only a test frozen at tests-red can be unfrozen; any other path has nothing to release. `extra`
-// joins the history entry's evidence (build amend gives the amendment commit and the reason).
-export function unfreeze(root, cfg, id, file, extra = {}) {
+// joins the history entry's evidence (build amend gives the amendment commit and the reason). `to`
+// moves the slice in the same write: build amend during review takes it back to building (D-43).
+export function unfreeze(root, cfg, id, file, extra = {}, { to } = {}) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
     if (!current.frozenTests.includes(file)) {
       throw new TransitionError(`${file} is not a frozen test of ${id}`);
     }
+    const state = to ?? current.state;
     const next = {
       ...current,
+      state,
+      ...(state === current.state ? {} : { handoff: null }),
       unfrozen: [...current.unfrozen, file],
-      history: [...current.history, entry(current.state, current.state, 'cli', { unfreeze: file, ...extra })],
+      history: [...current.history, entry(current.state, state, 'cli', { unfreeze: file, ...extra })],
     };
     writeSlice(root, cfg, next);
     return next;

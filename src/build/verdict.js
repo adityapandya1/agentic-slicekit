@@ -20,6 +20,10 @@ import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { INDEPENDENT_ONLY } from '../state/transitions.js';
 import { bannedPhrasesIn } from '../check/rules/style.js';
+import { buildContext } from '../check/context.js';
+import references from '../check/rules/references.js';
+import { loadConfig } from '../config.js';
+import { lines as splitLines } from '../markdown.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
 import { posixRel } from './red.js';
@@ -303,6 +307,28 @@ function reviewWorktreeOf(root, id) {
 }
 
 // The verdict is given on the recorded head; code committed since has not been through build pr.
+// One line per finding the `references` rule would make on the verdict once it sits at `rel` in the
+// worktree: an unknown slice, requirement or decision ID, or a backticked path the worktree does not
+// hold. Judged before the file moves, so `slicekit check` never fails on a recorded verdict (D-43).
+function referenceProblems(wt, rel, text, shown) {
+  const ctx = buildContext(wt, loadConfig(wt));
+  const doc = { path: path.join(wt, ...rel.split('/')), rel, text, lines: splitLines(text) };
+  return references.run({ ...ctx, docs: [doc] }).map((f) => `verdict ${shown} line ${f.line}: ${f.message}`);
+}
+
+// The verdict reviewed the recorded head, or a head that adds only the kit's bookkeeping to it
+// (D-35): a verdict written before the head moved is refused, naming both (D-43).
+// The verdict's head is compared as a string, never looked up: it is the recorded head, or a full id
+// on the recorded head's descendants up to HEAD (from git log of that range) that adds only bookkeeping.
+function assertReviewedHead(wt, v, shown, current) {
+  const recorded = current.pr?.headSha ?? '';
+  const reviewed = String(v.head);
+  if (reviewed === recorded) return;
+  const later = recorded === '' ? [] : git(wt, ['log', '--format=%H', `${recorded}..HEAD`]).split('\n');
+  if (later.includes(reviewed) && headCovers(wt, recorded, reviewed)) return;
+  throw new BuildError(`verdict ${shown} reviewed head ${String(v.head).slice(0, 7)}; the recorded head is ${recorded.slice(0, 7)}: review the recorded head`);
+}
+
 function assertBuilt(wt, id, current) {
   if (!headCovers(wt, current.pr?.headSha ?? '', headSha(wt))) {
     throw new BuildError(`${id} has commits since build pr; run slicekit build pr ${id} first`);
@@ -386,10 +412,13 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
 
   const { text, here, moved } = verdictSource(wt, id, k, src, dest, rel, shown);
   const v = checked(text, shown, name, independent);
+  assertReviewedHead(wt, v, shown, current);
   const reused = reusedNumbers(shown, v.findings.map((f) => f.id), earlierIds(wt, verdicts));
   if (reused.length > 0) throw new BuildError(reused.join('\n'));
   const banned = bannedProblems(cfg, v, text, shown);
   if (banned.length > 0) throw new BuildError(banned.join('\n'));
+  const unknown = referenceProblems(wt, rel, text, shown);
+  if (unknown.length > 0) throw new BuildError(unknown.join('\n'));
   // The line this round would write, judged against the live body before anything moves.
   const stuck = outcome(k, v, [...verdicts, { independent }], independent).next === 'stuck';
   const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings, headSha: current.pr.headSha, independent }], {
