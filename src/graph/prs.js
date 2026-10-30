@@ -92,7 +92,9 @@ export function pullRequestNodes(refs, { host, cacheDir, verdicts = new Map(), s
   };
   for (const [n, ref] of refs) {
     const hit = readCache(cacheDir, n);
-    if (hit && (FINAL.has(hit.pr.state) || (hit.pr.state === 'OPEN' && hit.key === ref.key))) {
+    // A merged or closed answer is final. An open one is asked again whenever the host can be reached:
+    // a merge does not move the recorded head, so no key would say it changed (S-17 review H-1).
+    if (hit && FINAL.has(hit.pr.state)) {
       cached++;
       add(n, ref, hit.pr, false);
       continue;
