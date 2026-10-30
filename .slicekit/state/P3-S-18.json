@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-18",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 47,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
-    "headSha": "6153e83a6e7c191f7716456c84a96d908aa3314f"
+    "headSha": "848837628b48363c9c3b085a4d543a4de44218b2"
   },
   "redCommit": "8f0ee1f8b563d25645c990380ed259da1573c1a0",
   "frozenTests": [
@@ -76,6 +76,22 @@
           "path": ".slicekit/reviews/P3-S-18i-r1.md",
           "blockers": 1,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T18:42:48.735Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 47,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+          "headSha": "848837628b48363c9c3b085a4d543a4de44218b2",
+          "title": "[P3/S-18] Queries"
         }
       }
     }
