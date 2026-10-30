@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-20",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 60,
@@ -28,6 +28,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "2af6318d68878bf582690a1c928e9e89c83f7ead"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-20i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "0025885a37de0cc77949be8ed5fc0bcda340af3c"
     }
   ],
   "ci": null,
@@ -129,6 +136,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
           "headSha": "0025885a37de0cc77949be8ed5fc0bcda340af3c",
           "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T21:23:37.889Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-20i-r3.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
