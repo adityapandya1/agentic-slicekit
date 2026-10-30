@@ -1,0 +1,32 @@
+{
+  "slice": "P3/S-32",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "27fb693049209f238709222e689a21565db2afdc",
+  "frozenTests": [
+    "test/ci-bookkeeping.test.js",
+    "test/workflow.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T18:39:44.189Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "27fb693049209f238709222e689a21565db2afdc",
+        "testExit": 1,
+        "tests": [
+          "test/ci-bookkeeping.test.js",
+          "test/workflow.test.js"
+        ]
+      }
+    }
+  ]
+}
