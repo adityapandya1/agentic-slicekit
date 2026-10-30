@@ -3,6 +3,7 @@
 // exist, and every test in its evaluation set covers a requirement; no D or REQ id is defined twice
 // (REQ-1.4). On a slice branch, each test file (testFiles, D-46) the branch adds or modifies names a
 // REQ ID at the branch tip (REQ-4.3); deleted files and the default branch are not judged.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { re, sliceFromBranch } from '../../ids.js';
@@ -224,6 +225,16 @@ const tryGit = (root, args) => {
   }
 };
 
+// A test file's text at a revision. Not through git(), whose output is capped at Node's 1 MiB
+// default: a larger test file must still be judged (S-18 review H-1).
+function blobText(root, spec) {
+  try {
+    return execFileSync('git', ['show', spec], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
+}
+
 export const TEST_FILE_MESSAGE = 'test file names no requirement (REQ-4.3)';
 
 // REQ-4.3: the test files a slice branch adds or modifies against its merge base with the default
@@ -243,7 +254,7 @@ export function testFileFindings(ctx) {
     const status = parts[i].trim();
     const rel = parts[i + 1];
     if ((status !== 'A' && status !== 'M') || !isTestFile(rel, cfg)) continue;
-    const text = tryGit(root, ['show', `${at.tip}:${rel}`]);
+    const text = blobText(root, `${at.tip}:${rel}`);
     if (text === null || reqMentions(text).length > 0) continue;
     out.push({ file: rel, line: 1, message: TEST_FILE_MESSAGE });
   }

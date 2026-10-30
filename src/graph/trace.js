@@ -5,7 +5,10 @@ import { nodeLine } from './render.js';
 import { GraphError, cmp, keyOf, kindOf } from './schema.js';
 
 const byId = (a, b) => cmp(a.id, b.id);
-export const newestFirst = (a, b) => cmp(b.date ?? '', a.date ?? '') || cmp(a.id, b.id);
+// Commit dates keep each committer's time-zone offset, so they are compared as instants, not text.
+export const timeOf = (d) => (d ? Date.parse(d) : Number.NEGATIVE_INFINITY);
+const byTime = (a, b) => (a === b ? 0 : a < b ? -1 : 1);
+export const newestFirst = (a, b) => byTime(timeOf(b.date), timeOf(a.date)) || cmp(a.id, b.id);
 
 // The distinct nodes of `kind` at the `side` end of `edges`, in id order.
 function ends(index, edges, side, kind) {

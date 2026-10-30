@@ -3,6 +3,7 @@
 // are not listed. Reads the index only.
 import { normalisePath } from './load.js';
 import { GraphError, cmp, keyOf, kindOf } from './schema.js';
+import { timeOf } from './trace.js';
 
 // The file nodes a path names: the file itself and every file under it as a directory.
 function matching(index, p) {
@@ -15,7 +16,7 @@ function matching(index, p) {
   });
 }
 
-const newer = (c, cur) => !cur || cmp(c.date ?? '', cur.date ?? '') > 0 || (c.date === cur.date && cmp(c.id, cur.id) < 0);
+const newer = (c, cur) => !cur || timeOf(c.date) > timeOf(cur.date) || (timeOf(c.date) === timeOf(cur.date) && cmp(c.id, cur.id) < 0);
 
 export function history(index, paths) {
   const commits = new Set();
@@ -48,7 +49,7 @@ export function history(index, paths) {
       date: c.date ?? null,
     });
   }
-  return out.sort((a, b) => cmp(b.date ?? '', a.date ?? '') || cmp(a.sha, b.sha));
+  return out.sort((a, b) => timeOf(b.date) - timeOf(a.date) || cmp(a.sha, b.sha));
 }
 
 export const historyLine = (e) =>
