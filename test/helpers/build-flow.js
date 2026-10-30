@@ -157,7 +157,8 @@ export const commitIn = (wt, message) => {
 
 // A started slice past red: test/a.test.js imports src/t1.js, which does not exist yet, so it fails
 // until the developer writes it.
-export const IMPORTING = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { x } from '../src/t1.js';\ntest('works', () => assert.equal(x(), 2));\n";
+// It names REQ-1.1, the slice's requirement, as every test file on a slice branch must (REQ-4.3).
+export const IMPORTING = "// REQ-1.1\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { x } from '../src/t1.js';\ntest('works', () => assert.equal(x(), 2));\n";
 export async function building(opts) {
   const p = await startedWithTest(IMPORTING, opts);
   const r = await red1(p, 'test/a.test.js');
