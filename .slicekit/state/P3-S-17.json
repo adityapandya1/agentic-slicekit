@@ -1,0 +1,43 @@
+{
+  "slice": "P3/S-17",
+  "state": "building",
+  "branch": null,
+  "pr": null,
+  "redCommit": "b1215cc228f5a3bcabf20ed206662a2b2f889297",
+  "frozenTests": [
+    "test/graph/build.test.js",
+    "test/graph/perf.test.js",
+    "test/workflow.test.js",
+    "test/readme.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T01:05:57.615Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "b1215cc228f5a3bcabf20ed206662a2b2f889297",
+        "testExit": 1,
+        "tests": [
+          "test/graph/build.test.js",
+          "test/graph/perf.test.js",
+          "test/workflow.test.js",
+          "test/readme.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T01:05:57.788Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}
