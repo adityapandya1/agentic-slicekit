@@ -10,8 +10,8 @@
 // Under --ci on a pull request, actions/checkout leaves a detached merge commit whose first parent is
 // the base: the branch is GITHUB_HEAD_REF and the tip judged is the pull request's head, from the
 // event's head sha (or the merge commit's second parent when the event has none).
-import { assertRef, git, GitError, resolveCommit } from '../../git.js';
-import { readCiEvent } from '../ci-event.js';
+import { assertRef, git, GitError } from '../../git.js';
+import { branchTip } from '../ci-event.js';
 import { sliceFromBranch } from '../../ids.js';
 
 export const id = 'trailer';
@@ -30,22 +30,11 @@ const refExists = (root, ref) => {
   }
 };
 
-// The pull request's branch and head under --ci, or null outside a pull_request run.
-function pullRequestTip(ctx) {
-  const ref = ctx.env?.GITHUB_HEAD_REF;
-  if (!ctx.ci || typeof ref !== 'string' || ref === '') return null;
-  const headSha = readCiEvent(ctx.env)?.headSha;
-  const tip = (headSha && /^[0-9a-f]{7,40}$/.test(headSha) && resolveCommit(ctx.root, headSha)) || resolveCommit(ctx.root, 'HEAD^2') || 'HEAD';
-  return { branch: ref, tip };
-}
-
 export function run(ctx) {
   const { root, cfg } = ctx;
-  if (!ctx.git?.isRepo || !ctx.git.hasCommits) return [];
-  const pr = pullRequestTip(ctx);
-  const branch = pr?.branch ?? ctx.git.branch;
-  const tip = pr?.tip ?? 'HEAD';
-  if (!branch) return [];
+  const at = branchTip(ctx);
+  if (!at) return [];
+  const { branch, tip } = at;
   const slice = sliceFromBranch(branch);
   if (!slice) return [];
 

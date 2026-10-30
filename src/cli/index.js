@@ -6,6 +6,7 @@ import { checkCommand } from './check.js';
 import { decideCommand } from './decide.js';
 import { gapsCommand } from './gaps.js';
 import { graphCommand } from './graph.js';
+import { historyCommand } from './history.js';
 import { initCommand } from './init.js';
 import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
@@ -17,8 +18,11 @@ import { readyLabelCommand } from './ready-label.js';
 import { reviewCommand } from './review.js';
 import { specCommand } from './spec.js';
 import { stageCommand } from './stage.js';
+import { shippedCommand } from './shipped.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
+import { traceCommand } from './trace.js';
+import { uncoveredCommand } from './uncovered.js';
 import { updateCommand } from './update.js';
 import { workflowCommand } from './workflow.js';
 
@@ -31,6 +35,7 @@ export const COMMANDS = {
   decide: decideCommand,
   gaps: gapsCommand,
   graph: graphCommand,
+  history: historyCommand,
   init: initCommand,
   intake: intakeCommand,
   instructions: instructionsCommand,
@@ -41,9 +46,12 @@ export const COMMANDS = {
   'ready-label': readyLabelCommand,
   review: reviewCommand,
   spec: specCommand,
+  shipped: shippedCommand,
   stage: stageCommand,
   state: stateCommand,
   status: statusCommand,
+  trace: traceCommand,
+  uncovered: uncoveredCommand,
   update: updateCommand,
   workflow: workflowCommand,
 };
