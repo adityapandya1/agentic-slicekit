@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-17",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 36,
@@ -22,6 +22,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "d19f7d303ee8254802570a0dd6d97cf560614e04"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-17i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "95cf9711e6652925b5bde8431727e35394a210fa"
     }
   ],
   "ci": null,
@@ -94,6 +101,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
           "headSha": "95cf9711e6652925b5bde8431727e35394a210fa",
           "title": "[P3/S-17] Graph builder"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T16:43:38.822Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-17i-r2.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
