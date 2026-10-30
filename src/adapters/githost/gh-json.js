@@ -112,3 +112,36 @@ export function reduceRuns(all) {
   if (failed) return { status: 'failure', url: failed.url ?? null };
   return { status: 'success', url: runs[0].url ?? null };
 }
+
+// D-49: the generated workflow, as `gh run list --workflow` names its file and as its runs name it.
+export const SLICEKIT_WORKFLOW = Object.freeze({ file: 'slicekit.yml', name: 'slicekit' });
+export const SLICEKIT_RUN_FIELDS = 'databaseId,status,conclusion,createdAt,workflowName,event,url';
+
+// The newest pull_request run of the slicekit workflow among gh's runs of a commit, or null. Runs of
+// any other workflow or event are never its answer, whatever gh was asked for.
+export function newestSlicekitRun(runs) {
+  const mine = (Array.isArray(runs) ? runs : []).filter((r) => r && r.workflowName === SLICEKIT_WORKFLOW.name && r.event === 'pull_request');
+  let newest = null;
+  for (const r of mine) if (!newest || String(r.createdAt ?? '') > String(newest.createdAt ?? '')) newest = r;
+  return newest;
+}
+
+// The jobs of `gh run view <id> --json jobs`, as { name, status, conclusion }.
+export function mapJobs(view) {
+  const jobs = view?.jobs;
+  if (!Array.isArray(jobs)) return [];
+  return jobs.map((j) => ({ name: String(j?.name ?? ''), status: j?.status ?? null, conclusion: j?.conclusion ?? null }));
+}
+
+// What a slicekit run says about the team command jobs (`cmd-*`) on its commit: `passed` when it
+// completed and at least one ran and every one concluded success (a skipped one, as on a bookkeeping
+// push, is not a pass); `failed` when one concluded anything other than success, skipped or
+// cancelled; `pending` while it runs; `other` otherwise (skipped, cancelled, no command jobs).
+export function commandJobsVerdict(run, jobs) {
+  if (!run) return 'other';
+  if (run.status !== 'completed') return 'pending';
+  const commands = (jobs ?? []).filter((j) => j.name.startsWith('cmd-'));
+  if (commands.some((j) => !['success', 'skipped', 'cancelled'].includes(j.conclusion))) return 'failed';
+  if (commands.length > 0 && commands.every((j) => j.status === 'completed' && j.conclusion === 'success')) return 'passed';
+  return 'other';
+}
