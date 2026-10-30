@@ -7,7 +7,9 @@
   "frozenTests": [
     "test/visualize.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/visualize.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -32,6 +34,17 @@
       "at": "2026-10-30T20:11:51.446Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-30T20:18:37.862Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/visualize.test.js",
+        "amendCommit": "09cd982a11ff32dcdbe5c21db756c34d2adc4ab5",
+        "reason": "fetch normalises /../graph.json to /graph.json before sending, so no server can answer it 404; the check now sends that raw path with node:http, which does not normalise, and still expects 404."
+      }
     }
   ]
 }
