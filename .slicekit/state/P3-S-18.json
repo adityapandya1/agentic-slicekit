@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-18",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 47,
@@ -14,7 +14,15 @@
     "test/check/citations.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-18i-r1.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "6153e83a6e7c191f7716456c84a96d908aa3314f"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -54,6 +62,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
           "headSha": "6153e83a6e7c191f7716456c84a96d908aa3314f",
           "title": "[P3/S-18] Queries"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T18:39:58.054Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-18i-r1.md",
+          "blockers": 1,
+          "independent": true
         }
       }
     }
