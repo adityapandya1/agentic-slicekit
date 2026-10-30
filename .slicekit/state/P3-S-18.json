@@ -5,7 +5,7 @@
   "pr": {
     "number": 47,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
-    "headSha": "08d8f5b112dedd95d1b118c3eba5b61472ce912a"
+    "headSha": "5631c45071ddb0eb672d95df2666c8c7ea92ed3e"
   },
   "redCommit": "8f0ee1f8b563d25645c990380ed259da1573c1a0",
   "frozenTests": [
@@ -130,6 +130,15 @@
           "headSha": "08d8f5b112dedd95d1b118c3eba5b61472ce912a",
           "title": "[P3/S-18] Queries"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "draft-pr",
+      "at": "2026-10-30T19:13:46.842Z",
+      "by": "cli",
+      "evidence": {
+        "head": "5631c45071ddb0eb672d95df2666c8c7ea92ed3e"
       }
     }
   ]
