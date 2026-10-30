@@ -14,6 +14,10 @@ import {
   parsePullRequestUrl,
   pickBranchPullRequest,
   reduceRuns,
+  mapJobs,
+  newestSlicekitRun,
+  SLICEKIT_RUN_FIELDS,
+  SLICEKIT_WORKFLOW,
 } from './gh-json.js';
 
 // C-1 for GitHub through the `gh` CLI. This file owns only the spawn; the JSON mapping is gh-json.js.
@@ -75,6 +79,16 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
     ciStatus(sha) {
       assertSha(sha);
       return reduceRuns(ghJson(['run', 'list', '--commit', sha, '--limit', '20', '--json', RUN_FIELDS]));
+    },
+    // D-49: the newest pull_request run of the slicekit workflow on a commit and its jobs, or null
+    // when that workflow has no such run. Two gh calls when there is a run, one when there is none.
+    slicekitRun(sha) {
+      assertSha(sha);
+      const args = ['run', 'list', '--commit', sha, '--workflow', SLICEKIT_WORKFLOW.file, '--event', 'pull_request', '--limit', '20', '--json', SLICEKIT_RUN_FIELDS];
+      const run = newestSlicekitRun(ghJson(args));
+      if (!run) return null;
+      if (!Number.isInteger(run.databaseId)) throw new GitHostError('gh run list printed a run with no databaseId');
+      return { run, jobs: mapJobs(ghJson(['run', 'view', String(run.databaseId), '--json', 'jobs'])) };
     },
     // Adds the label when present is true, removes it otherwise. A label the repository does not
     // have is gh's error, reported as a GitHostError.

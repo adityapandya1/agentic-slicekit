@@ -4,20 +4,25 @@
 // the gate turns the first word into a job output and the team command jobs run unless it is
 // `bookkeeping`. Any doubt is `code`, so the tests run.
 //
-// Without --base the base is found: the newest commit of the pull request (from the head back, only
-// commits not on the base branch) whose CI the git host reports as success, by its newest run of each
-// workflow (S-30). github.event.before is never trusted: its run may have failed or been cancelled.
+// Without --base the base is found (findGreenBase): the newest commit of the pull request, from the
+// head back over commits not on the base branch, whose newest run of THIS workflow ran every team
+// command job to success. Another workflow's green run, or a slicekit run whose command jobs were
+// skipped (a bookkeeping run) or cancelled, never makes a base; a run whose command jobs failed ends
+// the walk. The base must also contain the base branch's current tip: the green run tested the head
+// merged with the base branch as it was then, and a base branch that moved since makes a merge no run
+// has tested. github.event.before is never trusted: its run may have failed or been cancelled.
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
+import { commandJobsVerdict } from '../adapters/githost/gh-json.js';
 import { loadConfig } from '../config.js';
 import { isSha } from '../evidence.js';
 import { GitError, git, resolveCommit } from '../git.js';
 import { headCovers } from '../state/covers.js';
 
 const USAGE = 'ci bookkeeping [--base <sha>] [--head <sha>] [--base-branch <branch>] [--output <file>]';
-// How far back the walk for a green commit goes; each commit is one git host call.
+// How far back the walk for a green commit goes; each commit is one or two git host calls.
 export const BASE_WALK_LIMIT = 20;
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
@@ -64,17 +69,30 @@ export function findGreenBase(root, head, { baseBranch, env = process.env } = {}
     if (e instanceof GitError) return { why: 'cannot list the pull request commits' };
     throw e;
   }
-  let host;
+  let base = null;
   try {
-    host = getHost(cfg, env, root);
+    const host = getHost(cfg, env, root);
     for (const sha of commits) {
-      if (host.ciStatus(sha).status === 'success') return { base: sha };
+      const found = host.slicekitRun(sha);
+      const verdict = found ? commandJobsVerdict(found.run, found.jobs) : 'other';
+      if (verdict === 'failed') return { why: `the team command jobs failed on ${short(sha)}` };
+      if (verdict === 'passed') {
+        base = sha;
+        break;
+      }
     }
   } catch (e) {
     if (e instanceof GitHostError || e instanceof GitError) return { why: `git host: ${e.message}` };
     throw e;
   }
-  return { why: `no commit of the last ${commits.length} with green CI` };
+  if (!base) return { why: `no commit of the last ${commits.length} whose team command jobs passed` };
+  try {
+    git(root, ['merge-base', '--is-ancestor', tip, base]);
+  } catch (e) {
+    if (e instanceof GitError) return { why: `${branch} moved since ${short(base)} was tested` };
+    throw e;
+  }
+  return { base };
 }
 
 // The decision as { kind, line }.

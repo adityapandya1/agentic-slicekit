@@ -224,8 +224,8 @@ export function workflowState(root, cfg, pins = loadPins()) {
 }
 
 // D-49: a team whose test command never reads SLICEKIT_SHARD runs the whole command in every shard.
-// The command reads it when its text names it, or when it is `npm test` or `npm run <script>` and
-// that package.json script names it.
+// The command reads it when its text names it; `npm test` and `npm run <script>` are read through to
+// that package.json script, and a command or script `node <file>.js` through to that file.
 export function shardWarnings(root, cfg) {
   const shards = cfg.ci?.shards;
   const command = cfg.commands?.test;
@@ -238,6 +238,16 @@ export function shardWarnings(root, cfg) {
       text += ` ${pkg.scripts?.[npm[1] ?? 'test'] ?? ''}`;
     } catch {
       // No readable package.json: only the command's own text counts.
+    }
+  }
+  // The command itself, or the npm script it named when there was one.
+  const runs = text === command ? command : text.slice(command.length).trim();
+  const script = /^\s*node\s+([\w./-]+\.[cm]?js)\b/.exec(runs);
+  if (script && !script[1].split('/').includes('..')) {
+    try {
+      text += ` ${fs.readFileSync(path.join(root, ...script[1].split('/')), 'utf8')}`;
+    } catch {
+      // No such file: only the text so far counts.
     }
   }
   if (text.includes('SLICEKIT_SHARD')) return [];

@@ -21,6 +21,6 @@
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
-    "test:shard": "node -e \"const s=process.env.SLICEKIT_SHARD;const a=['--test',...(s?['--test-shard='+s]:[]),'test/**/*.test.js'];const r=require('node:child_process').spawnSync(process.execPath,a,{stdio:'inherit'});process.exit(r.status===null?1:r.status)\""
+    "test:shard": "node scripts/test-shard.js"
   }
 }
