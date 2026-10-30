@@ -11,9 +11,13 @@ export function startServer({ html, graphJson, port = 0 }) {
     ['/', { type: 'text/html; charset=utf-8', body: Buffer.from(html, 'utf8') }],
     ['/graph.json', { type: 'application/json; charset=utf-8', body: Buffer.from(graphJson, 'utf8') }],
   ]);
+  let allowed = new Set();
   const server = http.createServer((req, res) => {
     const pathOnly = String(req.url ?? '').split('?')[0];
-    const hit = req.method === 'GET' || req.method === 'HEAD' ? routes.get(pathOnly) : undefined;
+    // A page on another site can point its own name at 127.0.0.1 (DNS rebinding); only a request
+    // that names this server by its loopback address or localhost is answered (S-19 review H-1).
+    const named = allowed.has(String(req.headers.host ?? '').toLowerCase());
+    const hit = named && (req.method === 'GET' || req.method === 'HEAD') ? routes.get(pathOnly) : undefined;
     const { type, body, status } = hit ? { ...hit, status: 200 } : { type: 'text/plain; charset=utf-8', body: Buffer.from('not found\n'), status: 404 };
     res.writeHead(status, { 'content-type': type, 'content-length': body.length, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
     res.end(req.method === 'HEAD' ? undefined : body);
@@ -25,6 +29,7 @@ export function startServer({ html, graphJson, port = 0 }) {
     });
     server.listen(port, HOST, () => {
       const bound = server.address().port;
+      allowed = new Set([`${HOST}:${bound}`, `localhost:${bound}`]);
       let closing = null;
       const close = () => {
         closing ??= new Promise((done) => {

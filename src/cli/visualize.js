@@ -59,7 +59,13 @@ async function run(args, io) {
       io.stderr(`slicekit: ${path.dirname(values.write)} does not exist\n`);
       return 1;
     }
-    fs.writeFileSync(file, html);
+    try {
+      fs.writeFileSync(file, html);
+    } catch (e) {
+      // A directory, a read-only file or a locked path: one line, not a stack (S-19 review H-2).
+      io.stderr(`slicekit: cannot write ${values.write}: ${e.code ?? e.message}\n`);
+      return 1;
+    }
     io.stdout(`${values.write}\n`);
     return 0;
   }
