@@ -1,0 +1,30 @@
+{
+  "slice": "P3/S-30",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "dac05575aedda662a18c484cad4e39f21407cdd8",
+  "frozenTests": [
+    "test/ci-runs.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T17:28:33.256Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "dac05575aedda662a18c484cad4e39f21407cdd8",
+        "testExit": 1,
+        "tests": [
+          "test/ci-runs.test.js"
+        ]
+      }
+    }
+  ]
+}
