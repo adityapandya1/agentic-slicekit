@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-30",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 40,
@@ -12,7 +12,15 @@
     "test/ci-runs.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-30i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -50,6 +58,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40",
           "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c",
           "title": "[P3/S-30] CI judged by the newest run of each workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T17:34:41.016Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-30i-r1.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
