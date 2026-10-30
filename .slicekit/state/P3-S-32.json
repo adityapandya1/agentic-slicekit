@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-32",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 50,
@@ -22,6 +22,13 @@
       "blockers": 2,
       "independent": true,
       "headSha": "abfc2a83941800c9184771f9495f88f4da8a38ca"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-32i-r2.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "93342bca0dfa66c569373b077c2c164c9405012e"
     }
   ],
   "ci": null,
@@ -113,6 +120,20 @@
       "by": "cli",
       "evidence": {
         "head": "93342bca0dfa66c569373b077c2c164c9405012e"
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T19:47:35.679Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-32i-r2.md",
+          "blockers": 1,
+          "independent": true
+        }
       }
     }
   ]
