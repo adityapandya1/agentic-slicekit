@@ -3,6 +3,7 @@ import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
 import { buildCommand } from './build.js';
 import { checkCommand } from './check.js';
+import { ciCommand } from './ci.js';
 import { decideCommand } from './decide.js';
 import { gapsCommand } from './gaps.js';
 import { graphCommand } from './graph.js';
@@ -28,6 +29,7 @@ export const COMMANDS = {
   branch: branchCommand,
   build: buildCommand,
   check: checkCommand,
+  ci: ciCommand,
   decide: decideCommand,
   gaps: gapsCommand,
   graph: graphCommand,

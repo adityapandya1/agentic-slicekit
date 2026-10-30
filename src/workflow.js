@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR } from './config.js';
+import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, shardErrors } from './config.js';
 import { readText } from './fs.js';
 import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
@@ -24,7 +24,7 @@ const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
 // Filled as written: values the kit computes or validates to a safe shape.
 const VALUE_KEYS = [
-  'defaultBranchItem', 'readyNeeds', 'syncPaths', 'timeoutMinutes',
+  'checksOk', 'defaultBranchItem', 'readyNeeds', 'syncPaths', 'timeoutMinutes',
   ...Object.keys(ACTIONS).flatMap((k) => [`${k}Sha`, `${k}Tag`]),
 ];
 // The team's own text: a mapping value holding one is filled, then quoted as a whole.
@@ -107,11 +107,46 @@ function runStep(name, run, env) {
   return lines;
 }
 
-function commandJob(name, command, v, matrix, timeout) {
-  const head = matrix
-    ? ['    strategy:', '      fail-fast: false', '      matrix:', `        os: [${MATRIX_OS.join(', ')}]`, '    runs-on: ${{ matrix.os }}']
-    : ['    runs-on: ubuntu-latest'];
-  return ['', `  cmd-${name}:`, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...runStep(name, command)];
+// The gate's decision (D-49): a push of only bookkeeping skips the team command jobs. A gate that
+// failed before deciding leaves the output empty, which reads as code, so the tests still run.
+const BOOKKEEPING = "needs.gate.outputs.kind == 'bookkeeping'";
+const COMMAND_IF = '    if: ${{ !cancelled() && !(' + BOOKKEEPING + ') }}';
+
+// One job per declared team command, run on `systems`. `shards` (the test command only, D-49) maps a
+// system to its shard count; each shard sets SLICEKIT_SHARD to <k>/<n>, 1/1 on a system not split.
+function commandJob(name, command, v, systems, timeout, shards) {
+  const strategy = ['    strategy:', '      fail-fast: false', '      matrix:'];
+  let head;
+  let env = [];
+  if (shards) {
+    const include = systems.flatMap((os) => {
+      const n = shards[os] ?? 1;
+      return Array.from({ length: n }, (_x, i) => [`          - os: ${os}`, `            shard: ${yamlScalar(`${i + 1}/${n}`)}`]).flat();
+    });
+    head = [...strategy, '        include:', ...include, '    runs-on: ${{ matrix.os }}'];
+    env = ['        env:', '          SLICEKIT_SHARD: ${{ matrix.shard }}'];
+  } else if (systems.length > 1) {
+    head = [...strategy, `        os: [${systems.join(', ')}]`, '    runs-on: ${{ matrix.os }}'];
+  } else {
+    head = [`    runs-on: ${systems[0]}`];
+  }
+  const [stepName, ...rest] = runStep(name, command);
+  return ['', `  cmd-${name}:`, '    needs: [gate]', COMMAND_IF, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), stepName, ...env, ...rest];
+}
+
+// SLICEKIT_CHECKS_OK for ready-label: the gate and every observability job succeeded, and each team
+// command job succeeded or was skipped because the gate said bookkeeping. A job that failed, was
+// cancelled or was skipped for any other reason is not passed.
+function checksOk(commands, steps) {
+  const passed = (id) => `needs.${id}.result == 'success'`;
+  const parts = [
+    "!contains(needs.*.result, 'failure')",
+    "!contains(needs.*.result, 'cancelled')",
+    passed('gate'),
+    ...commands.map((c) => `(${passed(`cmd-${c}`)} || (needs.cmd-${c}.result == 'skipped' && ${BOOKKEEPING}))`),
+    ...steps.map((_s, i) => passed(`obs-${i + 1}`)),
+  ];
+  return '${{ ' + parts.join(' && ') + ' }}';
 }
 
 function observabilityJob(n, step, v, timeout) {
@@ -139,17 +174,29 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   const matrix = cfg.ci?.matrix === true;
   const timeout = cfg.ci?.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 360) throw new Error('ci.timeoutMinutes: must be an integer from 1 to 360');
+  const shardProblems = shardErrors(cfg.ci?.shards);
+  if (shardProblems.length > 0) throw new Error(shardProblems.join('; '));
+  const testSystems = matrix ? MATRIX_OS : ['ubuntu-latest'];
+  const shards = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
+  for (const os of Object.keys(shards ?? {})) {
+    if (!testSystems.includes(os)) throw new Error(`ci.shards.${os}: the test job runs only on ${testSystems.join(', ')}`);
+  }
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
   const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
   if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
   const blocks = {
     gateExtraSteps: matrix ? NO_DEPENDENCIES : [],
-    commandJobs: commands.flatMap((name) => commandJob(name, cfg.commands[name], v, matrix && name === 'test', timeout)),
+    commandJobs: commands.flatMap((name) =>
+      name === 'test'
+        ? commandJob(name, cfg.commands[name], v, testSystems, timeout, shards)
+        : commandJob(name, cfg.commands[name], v, ['ubuntu-latest'], timeout, null),
+    ),
     observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v, timeout)),
   };
   const vars = {
     ...v,
+    checksOk: checksOk(commands, steps),
     defaultBranchItem: yamlScalar(cfg.defaultBranch),
     readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`), ...steps.map((_s, i) => `obs-${i + 1}`)].join(', '),
     syncPaths: syncPaths(cfg),
@@ -174,4 +221,25 @@ export function workflowState(root, cfg, pins = loadPins()) {
   const file = path.join(root, WORKFLOW_PATH);
   const current = fs.existsSync(file) ? readText(file) : null;
   return { file, expected, current };
+}
+
+// D-49: a team whose test command never reads SLICEKIT_SHARD runs the whole command in every shard.
+// The command reads it when its text names it, or when it is `npm test` or `npm run <script>` and
+// that package.json script names it.
+export function shardWarnings(root, cfg) {
+  const shards = cfg.ci?.shards;
+  const command = cfg.commands?.test;
+  if (!shards || Object.keys(shards).length === 0 || typeof command !== 'string' || command.trim() === '') return [];
+  let text = command;
+  const npm = /^\s*npm\s+(?:run(?:-script)?\s+(\S+)|test\b|t\b)/.exec(command);
+  if (npm) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+      text += ` ${pkg.scripts?.[npm[1] ?? 'test'] ?? ''}`;
+    } catch {
+      // No readable package.json: only the command's own text counts.
+    }
+  }
+  if (text.includes('SLICEKIT_SHARD')) return [];
+  return ['ci.shards is set but commands.test does not read SLICEKIT_SHARD; every shard runs the whole test command'];
 }

@@ -628,7 +628,10 @@ test('team command jobs are skipped for bookkeeping and ready-label counts them 
   // The range comes in through env, never as an expression inside run (M6).
   const runLines = step.slice(step.indexOf('        run:'));
   assert.ok(!runLines.includes('${{'), runLines);
-  assert.ok(runLines.includes('--base') && runLines.includes('--head'), runLines);
+  // The gate names the head and the base branch, never a base of its own: the command finds the
+  // newest commit of the pull request whose CI passed (D-49).
+  assert.ok(runLines.includes('--head') && runLines.includes('--base-branch'), runLines);
+  assert.ok(!/--base(?!-branch)/.test(runLines), runLines);
   assert.ok(/^ {10}[A-Z_]+: \$\{\{ github\.event\.pull_request\.head\.sha \}\}$/m.test(step), step);
 
   const gateWith = (result, kind) => ({ result, outputs: { [key]: kind } });

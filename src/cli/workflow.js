@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { writeText } from '../fs.js';
-import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from '../workflow.js';
+import { WORKFLOW_DRIFT, WORKFLOW_PATH, shardWarnings, workflowState } from '../workflow.js';
 
 const USAGE = 'workflow [--write | --check]';
 
@@ -20,8 +20,10 @@ async function run(args, io) {
     return 2;
   }
   let state;
+  let cfg;
   try {
-    state = workflowState(io.cwd, loadConfig(io.cwd));
+    cfg = loadConfig(io.cwd);
+    state = workflowState(io.cwd, cfg);
   } catch (e) {
     if (!(e instanceof ConfigError)) throw e;
     io.stderr(`slicekit: ${e.message}\n`);
@@ -33,6 +35,8 @@ async function run(args, io) {
     return 1;
   }
   if (values.write) {
+    // D-49: a test command that never reads SLICEKIT_SHARD runs whole in every shard.
+    for (const w of shardWarnings(io.cwd, cfg)) io.stderr(`slicekit: warning: ${w}\n`);
     if (state.current === state.expected) {
       io.stdout(`unchanged ${WORKFLOW_PATH}\n`);
     } else {

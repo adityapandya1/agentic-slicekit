@@ -92,6 +92,16 @@ function workflowTextErrors(at, value, { expression = true } = {}) {
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
+// ci.shards (D-49, optional, absent is none): operating system to the number of parallel jobs the
+// test command's job is split into on it. Exported so the workflow generator refuses the same values.
+export function shardErrors(shards) {
+  if (shards === undefined) return [];
+  if (!isObject(shards)) return ['ci.shards: must map operating systems to shard counts'];
+  return Object.entries(shards)
+    .filter(([, n]) => !(Number.isInteger(n) && n >= 1))
+    .map(([os]) => `ci.shards.${os}: must be a positive integer`);
+}
+
 // ci.matrix is optional (absent reads as false), ci.botActors and ci.timeoutMinutes too (absent
 // reads as the default); each observability step renders as one CI job (REQ-3.11).
 function ciErrors(ci) {
@@ -103,6 +113,7 @@ function ciErrors(ci) {
   }
   const t = ci.timeoutMinutes;
   if (t !== undefined && !(Number.isInteger(t) && t >= 1 && t <= 360)) errors.push('ci.timeoutMinutes: must be an integer from 1 to 360');
+  errors.push(...shardErrors(ci.shards));
   if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
   ci.observabilitySteps.forEach((step, i) => {
     const at = `ci.observabilitySteps[${i}]`;
