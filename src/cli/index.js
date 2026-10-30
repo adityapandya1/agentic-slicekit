@@ -25,6 +25,7 @@ import { statusCommand } from './status.js';
 import { traceCommand } from './trace.js';
 import { uncoveredCommand } from './uncovered.js';
 import { updateCommand } from './update.js';
+import { visualizeCommand } from './visualize.js';
 import { workflowCommand } from './workflow.js';
 
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string, subcommands?: string[] } }
@@ -55,6 +56,7 @@ export const COMMANDS = {
   trace: traceCommand,
   uncovered: uncoveredCommand,
   update: updateCommand,
+  visualize: visualizeCommand,
   workflow: workflowCommand,
 };
 
