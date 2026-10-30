@@ -29,16 +29,15 @@ async function run(args, io) {
     return 2;
   }
   const env = io.env ?? process.env;
-  let workspace;
+  let reached;
+  let unreached;
   try {
-    workspace = readWorkspace(root, cfg);
+    ({ reached, unreached } = reachRepos(root, cfg, readWorkspace(root, cfg), env));
   } catch (e) {
     if (!(e instanceof GraphError)) throw e;
-    io.stderr(`${e.message}
-`);
+    io.stderr(`${e.message}\n`);
     return e.code;
   }
-  const { reached, unreached } = reachRepos(root, cfg, workspace, env);
   let host = null;
   let skipped = null;
   try {

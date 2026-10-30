@@ -14,6 +14,18 @@ const posix = (p) => p.split(path.sep).join('/');
 const NAME = /^[A-Za-z0-9._-]+$/;
 const BRANCH = /^(?!-)(?!.*\.\.)(?!.*\/\/)[^\s~^:?*[\\\0]+(?<![/.])$/;
 const isText = (v) => typeof v === 'string' && v.trim() !== '';
+const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
+
+// The first segment of every path of the program repository (tracked and untracked, not ignored),
+// lower-cased: a workspace name that is one of them would share its file nodes (S-20 review H-1).
+function topLevel(root) {
+  try {
+    const out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '-co', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 1024 });
+    return new Set(out.split('\0').filter((p) => p !== '').map((p) => p.split('/')[0].toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
 
 export const workspaceRel = (root, cfg) => posix(path.relative(root, kitPaths(root, cfg).workspace));
 
@@ -30,7 +42,7 @@ export function readWorkspace(root, cfg) {
     text = fs.readFileSync(file, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') return null;
-    throw e;
+    fail(`cannot be read: ${e.code ?? e.message}`);
   }
   let data;
   try {
@@ -39,15 +51,19 @@ export function readWorkspace(root, cfg) {
     fail(`not valid JSON: ${e.message}`);
   }
   if (!data || typeof data !== 'object' || !Array.isArray(data.repos)) fail('repos must be an array');
+  // Names are compared ignoring case: the cache files of Orders and orders would be one file on
+  // Windows and macOS.
   const seen = new Set();
+  const top = topLevel(root);
   const repos = data.repos.map((r, i) => {
     const at = `repos[${i}]`;
     if (!r || typeof r !== 'object' || Array.isArray(r)) fail(`${at} must be an object`);
     if (typeof r.name !== 'string' || !NAME.test(r.name) || r.name === '.' || r.name === '..') {
       fail(`${at}.name must be a name of letters, digits, . _ or -, and not .`);
     }
-    if (seen.has(r.name)) fail(`${at}.name ${r.name} is listed twice`);
-    seen.add(r.name);
+    if (seen.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is listed twice`);
+    seen.add(r.name.toLowerCase());
+    if (top.has(r.name.toLowerCase())) fail(`${at}.name ${r.name} is also a top-level path of the program repository`);
     if (!isText(r.path) && !isText(r.url)) fail(`${at} gives neither path nor url`);
     if (typeof r.defaultBranch !== 'string' || !BRANCH.test(r.defaultBranch)) fail(`${at}.defaultBranch must be a branch name`);
     return { name: r.name, path: isText(r.path) ? r.path : null, url: isText(r.url) ? r.url : null, defaultBranch: r.defaultBranch };
@@ -94,10 +110,16 @@ function hostFor(cfg, env, name, repoRoot) {
 // reachRepos(root, cfg, workspace, env) -> {reached: [{name, root, defaultBranch, host, skipped}],
 // unreached: [{name, reason}]}, both in the workspace file's order. `path` resolves against the
 // program root; an entry with only a url is never cloned.
+//
+// Two entries on one repository, or an entry on the program repository, throw GraphError(1,
+// `<rel>: <problem>`): they would walk the same commits twice (S-20 review H-1).
 export function reachRepos(root, cfg, workspace, env = process.env) {
   const reached = [];
   const unreached = [];
-  for (const r of workspace?.repos ?? []) {
+  const rel = workspaceRel(root, cfg);
+  const real = (p) => fold(fs.realpathSync.native(p));
+  const tops = new Map([[real(root), null]]);
+  for (const [i, r] of (workspace?.repos ?? []).entries()) {
     if (r.path === null) {
       unreached.push({ name: r.name, reason: `no path; ${r.url} is not on disk` });
       continue;
@@ -111,6 +133,12 @@ export function reachRepos(root, cfg, workspace, env = process.env) {
       unreached.push({ name: r.name, reason: `${r.path} is not a git repository` });
       continue;
     }
+    const top = real(abs);
+    if (tops.has(top)) {
+      const j = tops.get(top);
+      throw new GraphError(1, `${rel}: repos[${i}].path ${r.path} is ${j === null ? 'the program repository' : `the repository of repos[${j}]`}`);
+    }
+    tops.set(top, i);
     try {
       defaultRef(abs, r.defaultBranch);
     } catch (e) {
