@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-32",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 50,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/50",
-    "headSha": "abfc2a83941800c9184771f9495f88f4da8a38ca"
+    "headSha": "39966bc1810be71bccb03d0ffaba7c9d14bb0f5c"
   },
   "redCommit": "27fb693049209f238709222e689a21565db2afdc",
   "frozenTests": [
@@ -87,6 +87,22 @@
           "path": ".slicekit/reviews/P3-S-32i-r1.md",
           "blockers": 2,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T19:24:37.851Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 50,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/50",
+          "headSha": "39966bc1810be71bccb03d0ffaba7c9d14bb0f5c",
+          "title": "[P3/S-32] Faster CI: bookkeeping pushes skip the tests, and team commands run in shards"
         }
       }
     }
