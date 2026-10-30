@@ -113,31 +113,39 @@ function gaps(rel, text) {
 const KEY = /\*\*([A-Z][A-Za-z ]*):\*\*/g;
 const PARTY = { Producer: 'produces', Producers: 'produces', Consumer: 'consumes', Consumers: 'consumes' };
 
-function contract(rel, text, contractId) {
-  const id = nodeId('contract', contractId);
-  const first = headings(text)[0];
-  const label = first ? first.text.replace(new RegExp(`^${contractId}\\b[\\s:—-]*`), '').trim() : contractId;
-  const out = { nodes: [{ id, kind: 'contract', label, from: `${rel}:${first?.line ?? 1}` }], edges: [] };
-  // The **Key:** text open at each point of the prose; a blank line or the next key closes it.
+// The text under each **Key:** of a contract's prose, as [{key, text, line}] in file order: a key's
+// text runs to the next key or a blank line, over as many lines as it takes (S-17, S-20).
+export function keyedText(text) {
+  const out = [];
   let open = null;
   for (const [line, n] of prose(text)) {
     if (line.trim() === '') {
       open = null;
       continue;
     }
-    const segments = [];
     let cursor = 0;
     for (const m of line.matchAll(KEY)) {
-      segments.push([open, line.slice(cursor, m.index)]);
+      if (open !== null) out.push({ key: open, text: line.slice(cursor, m.index), line: n });
       open = m[1].trim();
       cursor = m.index + m[0].length;
     }
-    segments.push([open, line.slice(cursor)]);
-    for (const [key, seg] of segments) {
-      const kind = PARTY[key];
-      if (!kind) continue;
-      for (const s of uniq(all('sliceAddr', seg))) out.edges.push({ kind, from: nodeId('slice', s), to: id, at: `${rel}:${n}` });
-    }
+    if (open !== null) out.push({ key: open, text: line.slice(cursor), line: n });
+  }
+  return out;
+}
+
+// 'produces' for a Producer or Producers key, 'consumes' for a Consumer or Consumers key, else null.
+export const partyOf = (key) => PARTY[key] ?? null;
+
+function contract(rel, text, contractId) {
+  const id = nodeId('contract', contractId);
+  const first = headings(text)[0];
+  const label = first ? first.text.replace(new RegExp(`^${contractId}\\b[\\s:—-]*`), '').trim() : contractId;
+  const out = { nodes: [{ id, kind: 'contract', label, from: `${rel}:${first?.line ?? 1}` }], edges: [] };
+  for (const seg of keyedText(text)) {
+    const kind = partyOf(seg.key);
+    if (!kind) continue;
+    for (const s of uniq(all('sliceAddr', seg.text))) out.edges.push({ kind, from: nodeId('slice', s), to: id, at: `${rel}:${seg.line}` });
   }
   return out;
 }
