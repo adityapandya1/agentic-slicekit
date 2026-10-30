@@ -22,6 +22,9 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: {{timeoutMinutes}}
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
@@ -37,6 +40,10 @@ jobs:
         run: npm ci
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
+      - name: Build the graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: {{cli}} graph
 {{gateExtraSteps}}
       - name: slicekit check
         run: {{cli}} check --ci

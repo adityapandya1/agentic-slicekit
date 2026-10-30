@@ -88,3 +88,13 @@ test('the status section names no placeholder and no release still to come', () 
   assert.doesNotMatch(status, /first\s+real\s+release/);
   assert.doesNotMatch(status, /0\.0\.1/);
 });
+
+// P3/S-17, REQ-4.8: the graph exists now; the scope line says what it is built from and what it is not.
+test('the scope line says the graph is built from IDs and git and is not a code graph', () => {
+  const scope = section('Scope').replace(/\s+/g, ' ');
+  assert.match(scope, /graph is built from (its|the kit's) own IDs and (from )?git/);
+  assert.match(scope, /not a code graph/);
+  assert.doesNotMatch(scope, /coming in Phase 3|will be built|will infer/);
+  assert.match(scope, /https:\/\/github\.com\/Graphify-Labs\/graphify/);
+  assert.match(section('Scope'), /```sh\npip install graphifyy && graphify install\n```/);
+});

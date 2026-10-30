@@ -1,0 +1,122 @@
+{
+  "slice": "P3/S-17",
+  "state": "in-review",
+  "branch": null,
+  "pr": {
+    "number": 36,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
+    "headSha": "95cf9711e6652925b5bde8431727e35394a210fa"
+  },
+  "redCommit": "b1215cc228f5a3bcabf20ed206662a2b2f889297",
+  "frozenTests": [
+    "test/graph/build.test.js",
+    "test/graph/perf.test.js",
+    "test/workflow.test.js",
+    "test/readme.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-17i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "d19f7d303ee8254802570a0dd6d97cf560614e04"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-17i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "95cf9711e6652925b5bde8431727e35394a210fa"
+    }
+  ],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T01:05:57.615Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "b1215cc228f5a3bcabf20ed206662a2b2f889297",
+        "testExit": 1,
+        "tests": [
+          "test/graph/build.test.js",
+          "test/graph/perf.test.js",
+          "test/workflow.test.js",
+          "test/readme.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T01:05:57.788Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T01:18:29.111Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 36,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
+          "headSha": "d19f7d303ee8254802570a0dd6d97cf560614e04",
+          "title": "[P3/S-17] Graph builder"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T09:51:00.239Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-17i-r1.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T16:18:25.156Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 36,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/36",
+          "headSha": "95cf9711e6652925b5bde8431727e35394a210fa",
+          "title": "[P3/S-17] Graph builder"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T16:43:38.822Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-17i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    }
+  ]
+}

@@ -177,6 +177,23 @@ export function validateConfig(cfg) {
     });
   }
   errors.push(...ciErrors(cfg.ci));
+  errors.push(...testFilesErrors(cfg.testFiles));
+  return errors;
+}
+
+// D-46: testFiles is optional; when present, regular expressions over the repository-relative POSIX
+// path that name the test files (absent reads as the graph's DEFAULT_TEST_FILES).
+function testFilesErrors(list) {
+  if (list === undefined) return [];
+  if (!isStringArray(list)) return ['testFiles: must be an array of strings'];
+  const errors = [];
+  list.forEach((src, i) => {
+    try {
+      new RegExp(src);
+    } catch (e) {
+      errors.push(`testFiles[${i}]: ${e.message}`);
+    }
+  });
   return errors;
 }
 

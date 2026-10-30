@@ -227,9 +227,9 @@ rm -rf "$WORK"
 
 ## Scope
 
-The kit does not parse source code. Its graph, coming in Phase 3, will be built from its own IDs and
-from git: requirements, decisions, slices, tests, commits, pull requests and releases. It will infer
-no calls or imports. For a code graph,
+The kit does not parse source code. Its graph is built from its own IDs and from git by
+`slicekit graph`: requirements, decisions, slices, tests, commits, pull requests and releases. It is
+not a code graph: it infers no calls or imports. For a code graph,
 [graphify](https://github.com/Graphify-Labs/graphify) or a similar tool sits alongside. This line
 installs graphify and its Claude Code skill:
 
