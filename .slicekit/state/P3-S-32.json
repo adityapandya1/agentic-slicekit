@@ -1,8 +1,12 @@
 {
   "slice": "P3/S-32",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 50,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/50",
+    "headSha": "abfc2a83941800c9184771f9495f88f4da8a38ca"
+  },
   "redCommit": "27fb693049209f238709222e689a21565db2afdc",
   "frozenTests": [
     "test/ci-bookkeeping.test.js",
@@ -46,6 +50,22 @@
         "unfreeze": "test/workflow.test.js",
         "amendCommit": "3c9ea7bacfd523931c0f75091f0648589fe10361",
         "reason": "The bookkeeping-step assertion asked for --base and passed only because --base-branch contains it; by ruling the gate never passes its own --base, so the assertion now requires --head and --base-branch and forbids a bare --base."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T18:48:54.501Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 50,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/50",
+          "headSha": "abfc2a83941800c9184771f9495f88f4da8a38ca",
+          "title": "[P3/S-32] Faster CI: bookkeeping pushes skip the tests, and team commands run in shards"
+        }
       }
     }
   ]
