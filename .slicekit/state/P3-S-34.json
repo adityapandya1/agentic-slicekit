@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-34",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 66,
@@ -15,7 +15,9 @@
     "test/workflow-pr-cache.test.js",
     "test/graph/pr-cache.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/graph/pr-cache.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -81,6 +83,17 @@
           "blockers": 0,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-31T12:23:51.052Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/graph/pr-cache.test.js",
+        "amendCommit": "3583dac99b3dcac99aaa742eb61670e98691600b",
+        "reason": "Review H-1: a closed pull request can be reopened and merged, so only a merged answer is final (D-52 replaces D-51). The old-entry case now uses a MERGED entry with a key; Done when 5 and 6 say a closed answer is fetched again."
       }
     }
   ]
