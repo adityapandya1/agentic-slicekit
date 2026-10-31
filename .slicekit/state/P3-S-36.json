@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-36",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 86,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
-    "headSha": "c1a64a759c5c7b044d413d0d8a626f94b2b26957"
+    "headSha": "6d73574d4add47c40f8f499325517c651d408831"
   },
   "redCommit": "6bcea2932423391f2c2b6da7913a12cd99e18490",
   "frozenTests": [
@@ -195,6 +195,22 @@
         "unfreeze": "test/package.test.js",
         "amendCommit": "a18f64d6a8cf65b82f6d385e0d02e82dac432768",
         "reason": "review r3 B-3 and r1 H-4: Done when 1 and the init.test.js note state the order the code now uses, and Expected changes lists the files the branch changes; test/package.test.js is named only because build amend needs a locked test, and it is not changed"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T20:20:43.493Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "6d73574d4add47c40f8f499325517c651d408831",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
       }
     }
   ]
