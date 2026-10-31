@@ -68,13 +68,9 @@ test("every usage line begins with its command's name", () => {
 test("every command's --help prints its usage on standard output and exits 0", () => {
   for (const name of Object.keys(COMMANDS).sort()) {
     const r = runCli([name, '--help'], { cwd: os.tmpdir() });
-    const lines = COMMANDS[name].usage.split('
-').map((l) => `  slicekit ${l.trim()}`);
+    const lines = COMMANDS[name].usage.split('\n').map((l) => `  slicekit ${l.trim()}`);
     assert.equal(r.code, 0, `${name}: ${r.stderr}`);
-    assert.equal(r.stdout, `usage:
-${lines.join('
-')}
-`, name);
+    assert.equal(r.stdout, `usage:\n${lines.join('\n')}\n`, name);
     assert.equal(r.stderr, '', name);
   }
 });
@@ -90,9 +86,7 @@ test('a --help after -- reaches the command as an argument', async () => {
     assert.deepEqual(out, []);
     assert.equal(await main(['tmp', '--help'], io), 0);
     assert.deepEqual(calls, [['--', '--help']], 'the command does not run for its own --help');
-    assert.deepEqual(out, ['usage:
-  slicekit tmp [--x]
-']);
+    assert.deepEqual(out, ['usage:\n  slicekit tmp [--x]\n']);
   } finally {
     delete COMMANDS.tmp;
   }

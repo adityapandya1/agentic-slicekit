@@ -35,15 +35,15 @@ export function seedBanned() {
 }
 
 // init always passes cli (from --cli or the D-30 probe); the default serves callers that do not.
-export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'slicekit' }) {
+export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'slicekit', defaultBranch = 'main' }) {
   return {
     configVersion: CONFIG_VERSION,
     name,
     shape,
     docsRoot,
-    defaultBranch: 'main',
+    defaultBranch,
     cli,
-    protectedBranches: ['main'],
+    protectedBranches: [defaultBranch],
     commands: { test: '', lint: '', build: '', e2e: '', ...commands },
     repos: [],
     gitHost: { kind: 'github' },

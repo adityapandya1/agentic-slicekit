@@ -620,7 +620,9 @@ test('init on an unborn protected branch says how to make the first commit', () 
     const r = runCli(['init', '--shape', 'backend', '--name', 'demo', '--cli', 'slicekit'], { cwd: root });
     assert.equal(r.stdout.split('\n').filter((l) => l === UNBORN_NEXT).length, 1);
   }, { commits: 0 });
+  // P3/S-36: an unborn branch is the default only when nothing names another, so origin says main here.
   withRepo((root) => {
+    git(root, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main']);
     assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' }).next, null);
   }, { commits: 0, branch: 'slice/P1-S-01-x' });
   withRepo((root) => {
@@ -692,6 +694,17 @@ test("init takes the default branch from origin's HEAD before the current branch
       assert.deepEqual(cfg.protectedBranches, ['trunk']);
     },
     { commits: 1, branch: 'feature' },
+  );
+});
+
+test('init on a feature branch takes the local main as the default', () => {
+  withRepo(
+    (root) => {
+      git(root, ['switch', '-q', '-c', 'feature/x']);
+      init(root, { name: 'demo', shape: 'backend' });
+      assert.equal(loadConfig(root).defaultBranch, 'main');
+    },
+    { commits: 1, branch: 'main' },
   );
 });
 

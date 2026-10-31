@@ -2,6 +2,18 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.2.1
+
+Fixes for a new user's first minutes.
+
+- `slicekit init` writes the repository's own default branch as `defaultBranch` and as the protected
+  branch: the branch `origin`'s HEAD points at, else the current branch, else git's `init.defaultBranch`.
+  It wrote `main` every time, so in a repository on `master` every graph command failed (#78).
+- `slicekit <command> --help` prints that command's usage on standard output and exits 0. It was refused
+  as an unknown option (#77).
+- `test/check/references.test.js` names the requirement it checks, so the graph no longer counts it as
+  covering REQ-1.1 through its fixture text (#83).
+
 ## 0.2.0
 
 Phase 3: the traceability graph, its queries and views, and workspaces that span several

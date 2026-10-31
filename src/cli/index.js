@@ -104,5 +104,16 @@ export async function main(argv, io) {
     if (first !== undefined) io.stderr(`slicekit: unknown command '${first}'\n`);
     return 2;
   }
+  // `<command> --help` (P3/S-36, issue #77) answers like `--help`; one after `--` is the command's.
+  const end = rest.indexOf('--');
+  if ((end === -1 ? rest : rest.slice(0, end)).includes('--help')) {
+    io.stdout(commandUsage(command));
+    return 0;
+  }
   return command.run(rest, io);
+}
+
+function commandUsage(command) {
+  const lines = command.usage.split('\n').map((line) => `  slicekit ${line.trim()}`);
+  return `usage:\n${lines.join('\n')}\n`;
 }
