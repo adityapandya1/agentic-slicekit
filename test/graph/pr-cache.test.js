@@ -31,12 +31,13 @@ test('a cache entry holds the answer alone, and an entry with a key still reads'
     const entry = JSON.parse(fs.readFileSync(path.join(cacheDir, 'pr-1.json'), 'utf8'));
     assert.deepEqual(entry, { pr: pr(1, 'MERGED') });
 
-    // An entry written before, with a key, is still a final cached answer: the host is not asked.
-    fs.writeFileSync(path.join(cacheDir, 'pr-2.json'), `${JSON.stringify({ key: 'c'.repeat(40), pr: pr(2, 'CLOSED') }, null, 2)}\n`);
+    // An entry written before, with a key, still reads: merged, it is final and the host is not asked
+    // (only a merged answer is final, D-52).
+    fs.writeFileSync(path.join(cacheDir, 'pr-2.json'), `${JSON.stringify({ key: 'c'.repeat(40), pr: pr(2, 'MERGED') }, null, 2)}\n`);
     const again = pullRequestNodes(new Map([[2, refs.get(2)]]), { host, cacheDir });
     assert.equal(host.calls, 1);
     assert.deepEqual([again.fetched, again.cached], [0, 1]);
-    assert.equal(again.nodes[0].state, 'CLOSED');
+    assert.equal(again.nodes[0].state, 'MERGED');
   } finally {
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
