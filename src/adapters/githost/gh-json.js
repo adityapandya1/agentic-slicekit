@@ -91,14 +91,23 @@ export function filterMergedSince(list, since) {
 // succeed (skipped and neutral count as success) → failure; all succeeded → success; none → unknown.
 // The newest run of each workflow and event (REQ-2.6 step 9, issue #33): a run that a newer run of the
 // same workflow and event replaced, often cancelled by the workflow's concurrency, is not the
-// commit's answer. Runs with no workflow name or event are judged together, as before.
+// commit's answer. A workflow is known by its workflowDatabaseId when every run carries one, so two
+// workflow files that declare one name are judged apart (issue #41), else by its name. Runs with
+// neither, or with no event, are judged together, as before.
+const hasId = (r) => r.workflowDatabaseId !== undefined && r.workflowDatabaseId !== null && r.workflowDatabaseId !== '';
+
+// When a run last started: a re-run moves startedAt and leaves createdAt alone, so an older run
+// re-run after a newer one is the newer answer (issue #42). createdAt for a run with no startedAt.
+const startOf = (r) => String(r.startedAt || r.createdAt || '');
+
 function newestPerWorkflow(runs) {
-  if (!runs.every((r) => r.workflowName && r.event)) return runs;
+  const byId = runs.every(hasId);
+  if (!byId && !runs.every((r) => r.workflowName && r.event)) return runs;
   const newest = new Map();
   for (const r of runs) {
-    const key = JSON.stringify([r.workflowName, r.event]);
+    const key = JSON.stringify(byId ? ['id', r.workflowDatabaseId, r.event ?? null] : ['name', r.workflowName, r.event]);
     const held = newest.get(key);
-    if (!held || String(r.createdAt ?? '') > String(held.createdAt ?? '')) newest.set(key, r);
+    if (!held || startOf(r) > startOf(held)) newest.set(key, r);
   }
   return [...newest.values()];
 }
@@ -115,15 +124,25 @@ export function reduceRuns(all) {
 
 // D-49: the generated workflow, as `gh run list --workflow` names its file and as its runs name it.
 export const SLICEKIT_WORKFLOW = Object.freeze({ file: 'slicekit.yml', name: 'slicekit' });
-export const SLICEKIT_RUN_FIELDS = 'databaseId,status,conclusion,createdAt,workflowName,event,url';
+export const SLICEKIT_RUN_FIELDS = 'databaseId,status,conclusion,createdAt,startedAt,workflowName,workflowDatabaseId,event,url';
 
-// The newest pull_request run of the slicekit workflow among gh's runs of a commit, or null. Runs of
-// any other workflow or event are never its answer, whatever gh was asked for.
-export function newestSlicekitRun(runs) {
+// The slicekit run of a commit, shared by the GitHub host and the fixture host (issue #52): of gh's
+// runs, the pull_request runs of the slicekit workflow newest first by start, the first whose team
+// command jobs were decided, `passed` or `failed` by commandJobsVerdict, as { run, jobs }; null when
+// none was. A run still in progress (on an `edited` event, the current one) is passed over without
+// asking for its jobs, and so is one whose command jobs were all skipped or cancelled. `jobsOf(run)`
+// is the host's `gh run view <id> --json jobs`, mapped; it refuses a run with no databaseId. Runs of
+// any other workflow or event are never the answer, whatever gh was asked for.
+export function decidedSlicekitRun(runs, jobsOf) {
   const mine = (Array.isArray(runs) ? runs : []).filter((r) => r && r.workflowName === SLICEKIT_WORKFLOW.name && r.event === 'pull_request');
-  let newest = null;
-  for (const r of mine) if (!newest || String(r.createdAt ?? '') > String(newest.createdAt ?? '')) newest = r;
-  return newest;
+  const newestFirst = mine.map((r, i) => ({ r, i })).sort((a, b) => (startOf(b.r) > startOf(a.r) ? 1 : startOf(b.r) < startOf(a.r) ? -1 : a.i - b.i));
+  for (const { r: run } of newestFirst) {
+    if (run.status !== 'completed') continue;
+    const jobs = jobsOf(run);
+    const verdict = commandJobsVerdict(run, jobs);
+    if (verdict === 'passed' || verdict === 'failed') return { run, jobs };
+  }
+  return null;
 }
 
 // The jobs of `gh run view <id> --json jobs`, as { name, status, conclusion }.

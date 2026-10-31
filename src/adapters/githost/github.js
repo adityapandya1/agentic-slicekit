@@ -15,7 +15,7 @@ import {
   pickBranchPullRequest,
   reduceRuns,
   mapJobs,
-  newestSlicekitRun,
+  decidedSlicekitRun,
   SLICEKIT_RUN_FIELDS,
   SLICEKIT_WORKFLOW,
 } from './gh-json.js';
@@ -26,7 +26,7 @@ export const GH_NOT_FOUND = 'gh not found; install GitHub CLI or set SLICEKIT_GI
 
 const PR_FIELDS = 'number,url,state,mergedAt,headRefOid,headRefName,isDraft,title,body,labels';
 const LIST_FIELDS = 'number,mergedAt,headRefOid,title';
-const RUN_FIELDS = 'status,conclusion,url,createdAt,workflowName,event';
+const RUN_FIELDS = 'status,conclusion,url,createdAt,startedAt,workflowName,workflowDatabaseId,event';
 
 // A non-zero gh exit, typed: "no such pull request" is a GitHostNotFound, anything else a GitHostError
 // whose message carries the first line of gh's stderr, with any token shape masked.
@@ -80,15 +80,16 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertSha(sha);
       return reduceRuns(ghJson(['run', 'list', '--commit', sha, '--limit', '20', '--json', RUN_FIELDS]));
     },
-    // D-49: the newest pull_request run of the slicekit workflow on a commit and its jobs, or null
-    // when that workflow has no such run. Two gh calls when there is a run, one when there is none.
+    // D-49: the newest pull_request run of the slicekit workflow on a commit whose team command jobs
+    // were decided, and its jobs, or null (decidedSlicekitRun). One `gh run list`, then one `gh run
+    // view` per completed run, newest first, until one is decided.
     slicekitRun(sha) {
       assertSha(sha);
       const args = ['run', 'list', '--commit', sha, '--workflow', SLICEKIT_WORKFLOW.file, '--event', 'pull_request', '--limit', '20', '--json', SLICEKIT_RUN_FIELDS];
-      const run = newestSlicekitRun(ghJson(args));
-      if (!run) return null;
-      if (!Number.isInteger(run.databaseId)) throw new GitHostError('gh run list printed a run with no databaseId');
-      return { run, jobs: mapJobs(ghJson(['run', 'view', String(run.databaseId), '--json', 'jobs'])) };
+      return decidedSlicekitRun(ghJson(args), (run) => {
+        if (!Number.isInteger(run.databaseId)) throw new GitHostError('gh run list printed a run with no databaseId');
+        return mapJobs(ghJson(['run', 'view', String(run.databaseId), '--json', 'jobs']));
+      });
     },
     // Adds the label when present is true, removes it otherwise. A label the repository does not
     // have is gh's error, reported as a GitHostError.

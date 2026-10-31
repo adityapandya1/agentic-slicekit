@@ -5,10 +5,12 @@
 // `bookkeeping`. Any doubt is `code`, so the tests run.
 //
 // Without --base the base is found (findGreenBase): the newest commit of the pull request, from the
-// head back over commits not on the base branch, whose newest run of THIS workflow ran every team
-// command job to success. Another workflow's green run, or a slicekit run whose command jobs were
-// skipped (a bookkeeping run) or cancelled, never makes a base; a run whose command jobs failed ends
-// the walk. The base must also contain the base branch's current tip: the green run tested the head
+// head back over commits not on the base branch, whose newest decided run of THIS workflow ran every
+// team command job to success. A commit's decided run is its newest slicekit pull_request run whose
+// command jobs passed or failed (the hosts' slicekitRun, issue #52): a run still in progress, such as
+// the current run on an `edited` event, and a run whose command jobs were all skipped (a bookkeeping
+// run) or cancelled are passed over, so a head that passed before is its own base. Another
+// workflow's green run never makes a base; a decided run whose command jobs failed ends the walk. The base must also contain the base branch's current tip: the green run tested the head
 // merged with the base branch as it was then, and a base branch that moved since makes a merge no run
 // has tested. github.event.before is never trusted: its run may have failed or been cancelled.
 import fs from 'node:fs';
