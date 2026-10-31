@@ -20,7 +20,7 @@ decisions: [D-43, D-49, D-50]
 8. `slicekitRun(sha)` returns the newest slicekit pull_request run of the commit whose team command jobs were decided, `passed` or `failed` by `commandJobsVerdict`. Runs still in progress, and runs whose command jobs were all skipped or cancelled, are passed over. So on an `edited` event, or on a re-run of all jobs, a head that passed before is its own base and the push is `bookkeeping`, and the current run, which is still in progress, is never the answer. The GitHub host and the fixture host share this choice through one function in `gh-json.js` (issue #52).
 9. A test drives `build finish` and `status --sync` through the fixture host with CI records that carry `workflowName` and `event`, a cancelled older run and a successful newer run of the same workflow, and both commands read success (issue #43).
 10. `slicekitRun` on the GitHub host is tested with an injected `exec`, the way `ciStatus` and the label calls are. The test pins the `gh run list` arguments (`--commit`, `--workflow slicekit.yml`, `--event pull_request`, `--limit 20`, the field list), the `gh run view <id> --json jobs` call, and the refusal `gh run list printed a run with no databaseId` (issue #53).
-11. `test/commands/review.test.js` and `test/commands/review-loop.test.js` are each split into three files, and the module hook goes: `scripts/test-parts-hook.js`, `test-parts-loader.js` and `test-parts-wrapper.js` are deleted, `SPLIT` leaves `scripts/test-shard.js`, and the weight table names the six files. Each new file holds a run of the old file's tests in order, with every test name kept word for word and appearing once across the three files. Each file starts with a comment naming the requirements its tests check. Splitting the files was chosen over guarding the hook's counting convention, because it leaves nothing to keep in step (issue #55).
+11. `test/commands/review.test.js` and `test/commands/review-loop.test.js` are each split into three files, and the module hook goes: `scripts/test-parts-hook.js`, `test-parts-loader.js` and `test-parts-wrapper.js` are deleted, `SPLIT` leaves `scripts/test-shard.js`, and the weight table names the six files. Each new file holds a run of the old file's tests in order, with every test name kept word for word and appearing once across the three files. Each file starts with a comment naming the requirements its tests check. Splitting the files was chosen over guarding the hook's counting convention, because it leaves nothing to keep in step (issue #55). <!-- slicekit:example -->
 
 ## Evaluation set
 
@@ -43,7 +43,7 @@ decisions: [D-43, D-49, D-50]
 
 ## Expected changes
 
-`src/build/config.js`, `src/build/commit.js`, `src/build/worktree.js`, `src/cli/build.js`, `src/instructions.js`, `src/adapters/githost/gh-json.js`, `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/cli/ci.js` (its header comment), `templates/instructions/commands/build.md`, `scripts/test-shard.js`, `scripts/test-parts-hook.js`, `scripts/test-parts-loader.js`, `scripts/test-parts-wrapper.js`, `test/commands/review.test.js`, `test/commands/review-loop.test.js`, tests.
+`src/build/config.js`, `src/build/commit.js`, `src/build/worktree.js`, `src/cli/build.js`, `src/instructions.js`, `src/adapters/githost/gh-json.js`, `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/cli/ci.js` (its header comment), `templates/instructions/commands/build.md`, `scripts/test-shard.js`, `scripts/test-parts-hook.js`, `scripts/test-parts-loader.js`, `scripts/test-parts-wrapper.js`, `test/commands/review.test.js`, `test/commands/review-loop.test.js`, tests. <!-- slicekit:example -->
 
 ## Tasks
 
@@ -73,7 +73,7 @@ decisions: [D-43, D-49, D-50]
 
 ### Task 4: The test split without a hook
 
-**Files:** Split `test/commands/review.test.js` and `test/commands/review-loop.test.js` into three files each, with their shared setup in `test/helpers/review-fixture.js`. Delete `scripts/test-parts-hook.js`, `scripts/test-parts-loader.js` and `scripts/test-parts-wrapper.js`. Modify `scripts/test-shard.js` (no `SPLIT`, no `--import` of the hook; weights for the six files, about a third of each old weight) and `test/test-shard.test.js`.
+**Files:** Split `test/commands/review.test.js` and `test/commands/review-loop.test.js` into three files each, with their shared setup in `test/helpers/review-fixture.js`. Delete `scripts/test-parts-hook.js`, `scripts/test-parts-loader.js` and `scripts/test-parts-wrapper.js`. Modify `scripts/test-shard.js` (no `SPLIT`, no `--import` of the hook; weights for the six files, about a third of each old weight) and `test/test-shard.test.js`. <!-- slicekit:example -->
 
 - [ ] **Step 1: Failing test**: `every test file runs whole in exactly one shard`. Across shards 1/3 to 3/3 every file appears once and no shard is given a file part. It fails while `SPLIT` exists.
 - [ ] **Step 2: Implement**. Compare the sorted list of test names over the six new files with the two old files' list: it must be the same.
