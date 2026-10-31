@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-34",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "756610aefa386854326aee5531fbca7a57b8b7a2",
@@ -33,6 +33,13 @@
           "test/graph/pr-cache.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T12:08:27.811Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
