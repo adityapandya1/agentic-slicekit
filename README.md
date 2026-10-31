@@ -11,7 +11,7 @@ Phases 1 to 3 work. Phases 1 and 2 are intake, specify, the gap scan, plan, the 
 tests to green, the review loop, the independent review and `/slicekit build --parallel`. Phase 3
 is the traceability graph (`graph`), its queries (`trace`, `impact`, `history`, `uncovered` and
 `shipped`), its views (`visualize`), and workspaces that span several repositories. Phase 4
-(release, ops, audit and the other examples) is not built yet. `CHANGELOG.md` lists what each
+(release, ops, audit and the other examples) is not built yet. [CHANGELOG.md](https://github.com/adityapandya1/agentic-slicekit/blob/main/CHANGELOG.md) lists what each
 version changed.
 
 The kit is on npm as a preview from 0.1.1. It needs Node 22 or later and git, and it has no

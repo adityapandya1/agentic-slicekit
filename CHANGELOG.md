@@ -53,6 +53,16 @@ repositories.
   (#43); the `gh run list` call behind the bookkeeping walk is pinned (#53); `history` is run on
   commits whose dates carry different time zones (#49).
 
+### Changed
+
+- `slicekit --help` prints the usage on standard output, so `slicekit --help | less` shows it; an
+  unknown command still prints it on standard error and exits 2.
+- Every line of the help begins with its command's name, with no `slicekit ` prefix and no description
+  after the syntax. The rule for a value that starts with `-` (write it as `--option=<text>`) is stated
+  once, under options.
+- The install advice is `npm install --save-dev slicekit`, in the README and in init's warning when
+  slicekit is not installed.
+
 ### Fixed
 
 - `build finish` no longer reads a run cancelled by a newer run of the same workflow as a failure; each
