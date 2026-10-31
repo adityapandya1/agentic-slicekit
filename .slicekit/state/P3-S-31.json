@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-31",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 82,
@@ -12,7 +12,15 @@
     "test/req-tags.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-31-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -50,6 +58,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
           "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352",
           "title": "[P3/S-31] Every test names its requirement"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T17:15:40.857Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-31-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
