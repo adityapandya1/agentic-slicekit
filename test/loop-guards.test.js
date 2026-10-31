@@ -53,10 +53,8 @@ test('a merge of main that changes another slice\'s state and BUILD.md passes bu
   }
 });
 
-// D-50: the guard leaves out the default branch's commits, read from origin when there is one, so a
-// local main moved onto a hand commit hides nothing.
-test('a hand change to this slice\'s state file is refused even when the local main holds the commit', async () => {
-  const p = await building({ remote: true });
+test('a hand change to this slice\'s state file is refused even when main holds the commit', async () => {
+  const p = await building();
   try {
     const forged = forgeUnfreeze(p);
     git(p.root, ['update-ref', 'refs/heads/main', forged]);
@@ -65,6 +63,29 @@ test('a hand change to this slice\'s state file is refused even when the local m
     assert.match(r.stderr, new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`));
   } finally {
     p.cleanup();
+  }
+});
+
+// D-53: the commits the default branch holds are left out, but never for this slice's own state file
+// or verdicts, which the default branch never carries while the slice is open. origin's main is a ref
+// a clone can move, and a fork's author can push to it.
+test('a hand change to this slice\'s state file is refused even when origin\'s main holds the commit', async () => {
+  for (const how of ['moved', 'pushed']) {
+    const p = await building({ remote: true });
+    try {
+      const forged = forgeUnfreeze(p);
+      if (how === 'moved') {
+        git(p.root, ['update-ref', 'refs/remotes/origin/main', forged]);
+      } else {
+        git(p.wt, ['push', '-q', 'origin', `${forged}:refs/heads/main`]);
+        git(p.wt, ['fetch', '-q', 'origin']);
+      }
+      const r = await commitWorkCli(p, '--message', 'weakened');
+      assert.equal(r.code, 1, `${how}: ${r.stdout}`);
+      assert.match(r.stderr, new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`), how);
+    } finally {
+      p.cleanup();
+    }
   }
 });
 

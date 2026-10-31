@@ -83,3 +83,39 @@ test("a merge whose resolution edits this slice's state file is refused at build
     p.cleanup();
   }
 });
+
+// D-53: a merge's kit files are judged against its first parent, so a resolution that takes this
+// slice's state file whole from the other parent is caught, and so is a parentless commit's own file.
+test("a merge that takes this slice's state file from an orphan branch is refused at build commit", async () => {
+  const p = await building({ remote: true, init: true });
+  try {
+    const branch = plain(p.wt, 'branch', '--show-current');
+    plain(p.wt, 'checkout', '-q', '--orphan', 'forge');
+    const file = path.join(p.wt, ...STATE.split('/'));
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, `${JSON.stringify({ ...state, unfrozen: ['test/a.test.js'] }, null, 2)}\n`);
+    plain(p.wt, 'add', '-A');
+    plain(p.wt, 'commit', '-q', '--no-verify', '-m', 'unrelated');
+    const orphan = git(p.wt, ['rev-parse', 'HEAD']);
+    plain(p.wt, 'checkout', '-q', branch);
+    plain(p.wt, 'merge', '-q', '--no-verify', '--allow-unrelated-histories', '-X', 'theirs', '--no-edit', 'forge');
+    const merge = git(p.wt, ['rev-parse', 'HEAD']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).unfrozen, ['test/a.test.js']);
+
+    write(p.wt, 'test/a.test.js', "// REQ-1.1\nimport { test } from 'node:test';\ntest('works', () => {});\n");
+    write(p.wt, 'src/t1.js', GREEN);
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
+    assert.equal(r.code, 1, r.stdout);
+    assert.equal(r.stderr, `slicekit: ${STATE} was changed in ${merge.slice(0, 7)}, a merge, outside the kit; only build commands write it\n`);
+
+    // The orphan commit alone on the branch: a commit with no parent has its files judged too.
+    plain(p.wt, 'reset', '-q', '--hard', orphan);
+    write(p.wt, 'test/a.test.js', "// REQ-1.1\nimport { test } from 'node:test';\ntest('works', () => {});\n");
+    write(p.wt, 'src/t1.js', GREEN);
+    const root = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
+    assert.equal(root.code, 1, root.stdout);
+    assert.match(root.stderr, new RegExp(`was changed in ${orphan.slice(0, 7)} outside the kit`));
+  } finally {
+    p.cleanup();
+  }
+});
