@@ -9,7 +9,9 @@
     "test/cli.test.js",
     "test/package.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/cli.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -36,6 +38,17 @@
       "at": "2026-10-31T19:22:55.399Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T19:25:19.734Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/cli.test.js",
+        "amendCommit": "b06a5036325ba3a7887d458835d6f6429ea94568",
+        "reason": "the red commit wrote two escaped newlines as real line breaks, so the file did not parse; restored the escapes, the assertions are unchanged"
+      }
     }
   ]
 }
