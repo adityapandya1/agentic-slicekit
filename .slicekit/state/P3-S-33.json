@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-33",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 70,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
-    "headSha": "3f10dedd978f6f2dc499f69f756aeb89109b58ff"
+    "headSha": "60b2baf3f0dd482c80b119348888351bf0ee1629"
   },
   "redCommit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
   "frozenTests": [
@@ -160,6 +160,22 @@
           "path": ".slicekit/reviews/P3-S-33i-r2.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T14:34:24.000Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 70,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+          "headSha": "60b2baf3f0dd482c80b119348888351bf0ee1629",
+          "title": "[P3/S-33] Build and review loop fixes"
         }
       }
     }
