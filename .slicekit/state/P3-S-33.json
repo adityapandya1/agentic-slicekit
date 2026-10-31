@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-33",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 70,
@@ -22,7 +22,15 @@
     "test/review-worktree.test.js",
     "test/test-shard.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-33i-r1.md",
+      "blockers": 2,
+      "independent": true,
+      "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -89,6 +97,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
           "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14",
           "title": "[P3/S-33] Build and review loop fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T13:35:20.330Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-33i-r1.md",
+          "blockers": 2,
+          "independent": true
         }
       }
     }
