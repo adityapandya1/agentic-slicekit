@@ -91,7 +91,7 @@
   },
   "_slicekit": {
     "managed": true,
-    "version": "0.1.2",
+    "version": "0.2.0",
     "cli": "node bin/slicekit.js"
   }
 }
