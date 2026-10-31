@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-36",
-  "state": "changes-requested",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 86,
@@ -15,7 +15,8 @@
   ],
   "unfrozen": [
     "test/cli.test.js",
-    "test/init.test.js"
+    "test/init.test.js",
+    "test/package.test.js"
   ],
   "verdicts": [
     {
@@ -184,6 +185,17 @@
       "at": "2026-10-31T20:17:49.047Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "building",
+      "at": "2026-10-31T20:18:23.322Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/package.test.js",
+        "amendCommit": "a18f64d6a8cf65b82f6d385e0d02e82dac432768",
+        "reason": "review r3 B-3 and r1 H-4: Done when 1 and the init.test.js note state the order the code now uses, and Expected changes lists the files the branch changes; test/package.test.js is named only because build amend needs a locked test, and it is not changed"
+      }
     }
   ]
 }
