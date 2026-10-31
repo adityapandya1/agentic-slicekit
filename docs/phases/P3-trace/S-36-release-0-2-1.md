@@ -27,6 +27,8 @@ decisions: [D-41]
 | `cli.test.js » a --help after -- reaches the command as an argument` | negative | REQ-1.1 |
 | `package.test.js » package.json is 0.2.1, links the repository and has no dependencies` | happy | REQ-5.7 |
 
+`cli.test.js` was amended after red: the red commit wrote its escaped newlines as real line breaks, so the file did not parse and its two tests failed for that reason. The amendment restores the escapes; the tests and their assertions are the ones above.
+
 ## Expected changes
 
 `package.json`, `CHANGELOG.md`, `src/init.js`, `src/git.js`, `src/cli/index.js`, `.claude/`, `.slicekit/rendered/`, `test/init.test.js`, `test/cli.test.js`, `test/package.test.js`, `test/hook-cli.test.js`, `test/check/references.test.js`, tests.
