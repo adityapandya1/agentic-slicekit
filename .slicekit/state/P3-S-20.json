@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-20",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 60,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
-    "headSha": "d12c006ea6366731552570b58c53d45c05f5054f"
+    "headSha": "e09a23374462316a17bc71c720a83d9581b85f72"
   },
   "redCommit": "dcc7504110c0c0426356d110431d1469c00dda01",
   "frozenTests": [
@@ -187,6 +187,22 @@
           "path": ".slicekit/reviews/P3-S-20i-r4.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T10:14:39.745Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "e09a23374462316a17bc71c720a83d9581b85f72",
+          "title": "[P3/S-20] Workspace and contracts"
         }
       }
     }
