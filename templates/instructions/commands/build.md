@@ -107,6 +107,12 @@ are what a fresh render writes. A refusal that says `run slicekit build render <
 they differ (the kit changed since the render, a template fix): run `build render` again, then
 `build commit`.
 
+When the slice changes the kit's own config and its Expected changes name `.slicekit/config.json`,
+run `{{cli}} build config <id> --worktree <path>` once the config holds the change. It commits the
+config alone, as `chore(slicekit): <id> config`, and prints `<sha7> config`, or `nothing to commit`.
+`build commit` refuses a changed config with `; run slicekit build config <id>`, and accepts the
+config commit only while the slice file names the config. Never commit the config by hand.
+
 A machine that cannot run the whole test command at once may set it in `.slicekit/local.json` in
 the main checkout, for example `{"testCommand": "node --test --test-concurrency=2 \"test/**/*.test.js\""}`.
 `build red`, `build commit` and `build pr` then run that command and print

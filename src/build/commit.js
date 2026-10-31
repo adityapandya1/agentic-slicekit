@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
-import { GitError, commitPaths, git, parseTrailers } from '../git.js';
+import { GitError, assertRef, commitPaths, git, hasRemote, parseTrailers } from '../git.js';
+import { configSubject, namesConfigAt } from './config.js';
 import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
@@ -89,16 +90,40 @@ function kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)
   return false;
 }
 
+// The default branch's tip the guard leaves out (D-50): origin's when there is an origin, else the
+// local branch; null when neither resolves.
+function defaultBranchTip(wt, cfg) {
+  let name;
+  try {
+    name = assertRef(cfg.defaultBranch);
+  } catch {
+    return null;
+  }
+  const ref = hasRemote(wt, 'origin') ? `refs/remotes/origin/${name}` : `refs/heads/${name}`;
+  try {
+    return git(wt, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
+// The files a merge's resolution changed: those that differ from every parent (git diff-tree --cc).
+const mergeFiles = (wt, sha) => git(wt, ['diff-tree', '-r', '--cc', '--name-only', '--no-commit-id', '-z', sha]).split('\0').filter((f) => f !== '');
+
 // A kit path changed since the red commit in a commit the kit did not make: a hand commit could
-// otherwise unfreeze a test or rewrite the evaluation set.
+// otherwise unfreeze a test or rewrite the evaluation set. The commits of the default branch were
+// reviewed and merged there, so they are left out; a merge is judged by what its resolution changed,
+// so a hand edit made while merging is caught (D-50).
 function forgedKitChange(wt, cfg, id, current, slice) {
   const paths = kitPaths(wt, cfg);
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
+  const configRel = posixRel(wt, paths.config);
   // Kit files that are not this slice's business (D-43): another slice's state file or verdict, and
-  // BUILD.md, the view of every state. A merge of the default branch brings only these; a commit
-  // whose kit changes are all of them is skipped, whoever made it and wherever it came from.
+  // BUILD.md, the view of every state. A commit whose kit changes are all of them is skipped, whoever
+  // made it and wherever it came from.
   const stateDir = posixRel(wt, paths.state);
   const mine = verdictFilePattern(id);
   const othersOnly = (f) =>
@@ -106,7 +131,15 @@ function forgedKitChange(wt, cfg, id, current, slice) {
     (f.startsWith(`${stateDir}/`) && f.endsWith('.json') && !f.slice(stateDir.length + 1).includes('/') && f !== stateRel) ||
     (f.startsWith(REVIEWS) && !f.slice(REVIEWS.length).includes('/') && !mine.test(f.slice(REVIEWS.length)));
   let rendered = false;
-  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`]))) {
+  const tip = defaultBranchTip(wt, cfg);
+  const range = ['rev-list', '--parents', 'HEAD', `^${current.redCommit}`, ...(tip ? [`^${tip}`] : [])];
+  for (const line of lines(git(wt, range))) {
+    const [sha, ...parents] = line.split(' ');
+    if (parents.length > 1) {
+      const merged = mergeFiles(wt, sha).filter((f) => isKitFile(wt, cfg, slice, f) && !othersOnly(f));
+      if (merged.length > 0) return `${merged[0]} was changed in ${short(sha)}, a merge, outside the kit; only build commands write it`;
+      continue;
+    }
     const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
       const [status, ...rest] = l.split('\t');
       return { status, file: rest.join('\t') };
@@ -122,6 +155,9 @@ function forgedKitChange(wt, cfg, id, current, slice) {
       rendered = true;
       continue;
     }
+    // build config's commit: the config alone, under its subject, for a slice whose file at that
+    // commit names the config in its Expected changes.
+    if (subject === configSubject(id) && trailers.Slice === id && changes.length === 1 && changes[0].file === configRel && namesConfigAt(wt, sha, sliceRel)) continue;
     if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
     }
@@ -146,7 +182,10 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   if (frozen) throw new BuildError(frozen);
   const paths = changedPaths(wt);
   const kit = paths.find((p) => isKitFile(wt, cfg, slice, p));
-  if (kit) throw new BuildError(`${kit} is a kit file; build commit does not commit it`);
+  if (kit) {
+    const config = kit === posixRel(wt, kitPaths(wt, cfg).config) ? `; run slicekit build config ${id}` : '';
+    throw new BuildError(`${kit} is a kit file; build commit does not commit it${config}`);
+  }
   const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const ranLocal = local ? command : null;

@@ -13,6 +13,7 @@ import { SliceFileError } from '../slicefile.js';
 import { LockError, TransitionError } from '../state/index.js';
 import { runnable, waiting } from '../build/order.js';
 import { amend, commitWork } from '../build/commit.js';
+import { configSlice } from '../build/config.js';
 import { declineFinding } from '../build/decline.js';
 import { finish } from '../build/finish.js';
 import { startParallel } from '../build/parallel.js';
@@ -25,9 +26,9 @@ import { BuildError, startSlice } from '../build/worktree.js';
 import { readSlice } from '../state/index.js';
 import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
-const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'render', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
+const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'render', 'config', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build render <id> [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build render <id> [--worktree <p>] | build config <id> [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -127,6 +128,15 @@ function renderStep(root, io, positionals, values) {
   return 0;
 }
 
+// Prints the config commit's short SHA, or that the worktree's config has no change.
+function configStep(root, io, positionals, values) {
+  if (positionals.length !== 1) return usage(io);
+  const cfg = loadConfig(root);
+  const { sha } = configSlice(root, cfg, positionals[0], { worktree: values.worktree });
+  io.stdout(sha === null ? 'nothing to commit\n' : `${sha.slice(0, 7)} config\n`);
+  return 0;
+}
+
 function amendStep(root, io, positionals, values) {
   if (positionals.length !== 1 || values.test === undefined || values.reason === undefined) return usage(io);
   const cfg = loadConfig(root);
@@ -210,7 +220,7 @@ function syncStep(root, io, positionals, values) {
   return 0;
 }
 
-const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, render: renderStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
+const HANDLERS = { next, start, parallel, red: redStep, commit: commitStep, render: renderStep, config: configStep, amend: amendStep, pr: prStep, verdict: verdictStep, decline: declineStep, finish: finishStep, sync: syncStep };
 
 function usage(io) {
   io.stderr(`usage: slicekit ${USAGE}\n`);

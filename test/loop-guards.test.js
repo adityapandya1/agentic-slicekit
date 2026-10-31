@@ -1,6 +1,6 @@
-// P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A merge of the default branch
-// passes `build commit` by what it changes, offline, and a hand change to this slice's state never
-// does; a hand-edited state file never authorises `build amend`; a verdict is taken only on the full
+// REQ-2.6, P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A merge of the
+// default branch passes `build commit` by what it changes, offline, and a hand change to this slice's
+// state never does; a hand-edited state file never authorises `build amend`; a verdict is taken only on the full
 // id of the head it reviewed; a backfilled merge with no recorded pull request must be the slice's
 // own; the files a render writes are judged at HEAD, and a stale render is answered by rendering again.
 import { test } from 'node:test';
@@ -53,8 +53,10 @@ test('a merge of main that changes another slice\'s state and BUILD.md passes bu
   }
 });
 
-test('a hand change to this slice\'s state file is refused even when main holds the commit', async () => {
-  const p = await building();
+// D-50: the guard leaves out the default branch's commits, read from origin when there is one, so a
+// local main moved onto a hand commit hides nothing.
+test('a hand change to this slice\'s state file is refused even when the local main holds the commit', async () => {
+  const p = await building({ remote: true });
   try {
     const forged = forgeUnfreeze(p);
     git(p.root, ['update-ref', 'refs/heads/main', forged]);
