@@ -10,7 +10,8 @@
     "test/package.test.js"
   ],
   "unfrozen": [
-    "test/cli.test.js"
+    "test/cli.test.js",
+    "test/init.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -48,6 +49,17 @@
         "unfreeze": "test/cli.test.js",
         "amendCommit": "b06a5036325ba3a7887d458835d6f6429ea94568",
         "reason": "the red commit wrote two escaped newlines as real line breaks, so the file did not parse; restored the escapes, the assertions are unchanged"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T19:28:19.217Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "c4e967e47ff2b799b9aa99316bb3940397c673e3",
+        "reason": "a feature branch checked out at init would become the default; the order now reads a local init.defaultBranch, main or master before HEAD's branch, with a test, and the unborn slice-branch case names origin's main"
       }
     }
   ]
