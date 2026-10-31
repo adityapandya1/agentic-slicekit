@@ -1,8 +1,12 @@
 {
   "slice": "P3/S-33",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 70,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+    "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14"
+  },
   "redCommit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
   "frozenTests": [
     "test/build-config.test.js",
@@ -70,6 +74,22 @@
         "unfreeze": "test/test-shard.test.js",
         "amendCommit": "2513027d09bad555038cda4053745eb72c8f73ed",
         "reason": "Marks the slice file's lines that name the files Done when 11 deletes with slicekit:example, so the references rule passes once the slice is merged; the test itself is not changed"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T12:56:36.729Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 70,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+          "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14",
+          "title": "[P3/S-33] Build and review loop fixes"
+        }
       }
     }
   ]
