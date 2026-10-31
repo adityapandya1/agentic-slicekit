@@ -15,7 +15,8 @@
     "test/test-shard.test.js"
   ],
   "unfrozen": [
-    "test/review-worktree.test.js"
+    "test/review-worktree.test.js",
+    "test/test-shard.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -58,6 +59,17 @@
         "unfreeze": "test/review-worktree.test.js",
         "amendCommit": "7a27ec8272a85f7a67c63b3b2a12f6c49543ff99",
         "reason": "The brief test's fixture slice cited no decision, so the decision read from the worktree could not appear; the worktree's slice file now cites D-01"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T12:30:45.974Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/test-shard.test.js",
+        "amendCommit": "2513027d09bad555038cda4053745eb72c8f73ed",
+        "reason": "Marks the slice file's lines that name the files Done when 11 deletes with slicekit:example, so the references rule passes once the slice is merged; the test itself is not changed"
       }
     }
   ]
