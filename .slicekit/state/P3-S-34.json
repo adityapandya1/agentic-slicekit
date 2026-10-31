@@ -1,0 +1,38 @@
+{
+  "slice": "P3/S-34",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "756610aefa386854326aee5531fbca7a57b8b7a2",
+  "frozenTests": [
+    "test/graph/workspace-collision.test.js",
+    "test/graph/history-order.test.js",
+    "test/visualize-workspace.test.js",
+    "test/workflow-pr-cache.test.js",
+    "test/graph/pr-cache.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T12:08:26.831Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "756610aefa386854326aee5531fbca7a57b8b7a2",
+        "testExit": 1,
+        "tests": [
+          "test/graph/workspace-collision.test.js",
+          "test/graph/history-order.test.js",
+          "test/visualize-workspace.test.js",
+          "test/workflow-pr-cache.test.js",
+          "test/graph/pr-cache.test.js"
+        ]
+      }
+    }
+  ]
+}
