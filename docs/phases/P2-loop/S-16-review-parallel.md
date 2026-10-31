@@ -39,7 +39,7 @@ decisions: [D-06, D-18, D-22, D-35, D-38, D-39]
 
 ### Task 1: Independent verdicts
 
-**Files:** Modify `src/state/transitions.js`, `src/build/verdict.js`, `src/cli/build.js`, `docs/spec/01-layout-and-state.md`, `test/state.test.js`. Create `test/commands/review.test.js`.
+**Files:** Modify `src/state/transitions.js`, `src/build/verdict.js`, `src/cli/build.js`, `docs/spec/01-layout-and-state.md`, `test/state.test.js`. Create `test/commands/review.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes: `recordVerdict` (S-15); D-39, already in `decisions.md`.
@@ -56,7 +56,7 @@ decisions: [D-06, D-18, D-22, D-35, D-38, D-39]
 
 ### Task 2: `review start`
 
-**Files:** Create `src/build/review.js`, `src/build/sync.js`, `src/cli/review.js`. Modify `src/build/pr.js`, `src/build/verdict.js`, `src/build/finish.js`, `src/cli/build.js`, `src/cli/index.js`, `test/commands/review.test.js`.
+**Files:** Create `src/build/review.js`, `src/build/sync.js`, `src/cli/review.js`. Modify `src/build/pr.js`, `src/build/verdict.js`, `src/build/finish.js`, `src/cli/build.js`, `src/cli/index.js`, `test/commands/review.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes: C-1 `getPullRequest` (its `headRef`, S-09); `titleSlice` from `src/check/rules/ci-title.js`; `findWorktree` (S-14).
@@ -73,7 +73,7 @@ decisions: [D-06, D-18, D-22, D-35, D-38, D-39]
 
 ### Task 3: `ready` after the independent verdict
 
-**Files:** Modify `src/build/finish.js`, `test/commands/review.test.js`.
+**Files:** Modify `src/build/finish.js`, `test/commands/review.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes: `independentProblem`, `verdictsOnHead` (`src/state/transitions.js`); `decideReady` (`src/ready-label.js`) through `slicekit ready-label`.
@@ -105,7 +105,7 @@ decisions: [D-06, D-18, D-22, D-35, D-38, D-39]
 
 ### Task 5: The `/slicekit review` procedure and `--parallel`
 
-**Files:** Create `templates/instructions/commands/review.md`. Modify `templates/instructions/commands/build.md`, `test/commands/review.test.js`.
+**Files:** Create `templates/instructions/commands/review.md`. Modify `templates/instructions/commands/build.md`, `test/commands/review.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes (S-09): `briefProblems`.

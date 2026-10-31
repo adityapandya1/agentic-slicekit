@@ -1,6 +1,6 @@
-// P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A merge of the default branch
-// passes `build commit` by what it changes, offline, and a hand change to this slice's state never
-// does; a hand-edited state file never authorises `build amend`; a verdict is taken only on the full
+// REQ-2.6, P2/S-29 review fixes (D-43): the guards the new loop steps must keep. A merge of the
+// default branch passes `build commit` by what it changes, offline, and a hand change to this slice's
+// state never does; a hand-edited state file never authorises `build amend`; a verdict is taken only on the full
 // id of the head it reviewed; a backfilled merge with no recorded pull request must be the slice's
 // own; the files a render writes are judged at HEAD, and a stale render is answered by rendering again.
 import { test } from 'node:test';
@@ -63,6 +63,29 @@ test('a hand change to this slice\'s state file is refused even when main holds 
     assert.match(r.stderr, new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`));
   } finally {
     p.cleanup();
+  }
+});
+
+// D-53: the commits the default branch holds are left out, but never for this slice's own state file
+// or verdicts, which the default branch never carries while the slice is open. origin's main is a ref
+// a clone can move, and a fork's author can push to it.
+test('a hand change to this slice\'s state file is refused even when origin\'s main holds the commit', async () => {
+  for (const how of ['moved', 'pushed']) {
+    const p = await building({ remote: true });
+    try {
+      const forged = forgeUnfreeze(p);
+      if (how === 'moved') {
+        git(p.root, ['update-ref', 'refs/remotes/origin/main', forged]);
+      } else {
+        git(p.wt, ['push', '-q', 'origin', `${forged}:refs/heads/main`]);
+        git(p.wt, ['fetch', '-q', 'origin']);
+      }
+      const r = await commitWorkCli(p, '--message', 'weakened');
+      assert.equal(r.code, 1, `${how}: ${r.stdout}`);
+      assert.match(r.stderr, new RegExp(`\\.slicekit/state/P1-S-01\\.json was changed in ${forged.slice(0, 7)} outside the kit`), how);
+    } finally {
+      p.cleanup();
+    }
   }
 });
 

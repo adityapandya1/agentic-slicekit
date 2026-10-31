@@ -4,6 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadConfig } from '../config.js';
 import { GitError, assertRef, git, hasRemote, pushBranch } from '../git.js';
 import { parseSliceAddr, sliceFromBranch } from '../ids.js';
 import { findSliceFiles } from '../slicefile.js';
@@ -25,17 +26,37 @@ export { REVIEW_DESCR, branchPrefix, listWorktrees, reviewBranch, reviewWorktree
 // The review worktree `review start` makes for the slice at `addr`, known by its branch or its path.
 export const isReviewWorktree = (root, addr, w) => w.branch === reviewBranch(addr) || samePath(w.path, reviewWorktreeDir(root, addr));
 
+// The pull request number the state file in `dir` records for `id`, read through `dir`'s own config,
+// or `<PR>` when none is recorded or the file cannot be read.
+function recordedPr(dir, id) {
+  try {
+    const n = readSlice(dir, loadConfig(dir), id).pr?.number;
+    return Number.isInteger(n) ? String(n) : '<PR>';
+  } catch {
+    return '<PR>';
+  }
+}
+
 // The worktree holding `id`: the one `--worktree` names, else the build worktree. Without
 // `--worktree` the review worktree is never picked, so the building session needs no flag while a
 // review session runs; the review session always names its worktree.
 export function findWorktree(root, id, { worktree } = {}) {
-  const all = listWorktrees(root).filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
-  if (worktree !== undefined) {
-    const match = all.find((w) => samePath(w.path, path.resolve(root, worktree)));
-    if (!match) throw new BuildError(`${worktree} is not a worktree holding ${id}`);
-    return match;
-  }
+  const every = listWorktrees(root);
+  const all = every.filter((w) => w.branch !== null && sliceFromBranch(w.branch) === id);
   const addr = parseSliceAddr(id);
+  if (worktree !== undefined) {
+    const given = path.resolve(root, worktree);
+    const match = all.find((w) => samePath(w.path, given));
+    if (match) return match;
+    // The review worktree moved to a detached HEAD (issue #61) is never accepted, since build verdict
+    // pushes the review branch; review start moves it to the pull request's head.
+    const main = every[0]?.path;
+    const detached = every.find((w) => w.branch === null && samePath(w.path, given));
+    if (addr && main && detached && samePath(given, reviewWorktreeDir(main, addr))) {
+      throw new BuildError(`${worktree} is the review worktree of ${id} on a detached HEAD; run slicekit review start ${recordedPr(detached.path, id)} to move it to the pull request's head`);
+    }
+    throw new BuildError(`${worktree} is not a worktree holding ${id}`);
+  }
   const held = addr ? all.filter((w) => !isReviewWorktree(root, addr, w)) : all;
   if (held.length === 0) throw new BuildError(`no worktree holds ${id}; run slicekit build start ${id}`);
   if (held.length > 1) {

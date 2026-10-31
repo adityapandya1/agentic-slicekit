@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
-import { GitError, commitPaths, git, parseTrailers } from '../git.js';
+import { GitError, assertRef, commitPaths, git, hasRemote, parseTrailers } from '../git.js';
+import { configSubject, namesConfigAt } from './config.js';
 import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
@@ -89,29 +90,92 @@ function kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)
   return false;
 }
 
+// The default branch's tip the guard reads (D-53): origin's when there is an origin, else the
+// local branch; null when neither resolves.
+function defaultBranchTip(wt, cfg) {
+  let name;
+  try {
+    name = assertRef(cfg.defaultBranch);
+  } catch {
+    return null;
+  }
+  const ref = hasRemote(wt, 'origin') ? `refs/remotes/origin/${name}` : `refs/heads/${name}`;
+  try {
+    return git(wt, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
+// The files merge `sha` changed against its first parent, the branch it was made on.
+const mergeFiles = (wt, sha, first) =>
+  git(wt, ['diff-tree', '-r', '--name-only', '--no-commit-id', '--no-renames', '-z', first, sha]).split('\0').filter((f) => f !== '');
+
+function isAncestor(wt, a, b) {
+  try {
+    git(wt, ['merge-base', '--is-ancestor', a, b]);
+    return true;
+  } catch (e) {
+    if (e instanceof GitError) return false;
+    throw e;
+  }
+}
+
+// `file` in merge `sha` is what one of its other parents holds, a parent the default branch's tip
+// reaches: the merge took it from the default branch unchanged.
+const fromDefault = (wt, sha, file, others, tip) =>
+  tip !== null && others.some((p) => isAncestor(wt, p, tip) && blobAt(wt, sha, file) === blobAt(wt, p, file));
+
 // A kit path changed since the red commit in a commit the kit did not make: a hand commit could
-// otherwise unfreeze a test or rewrite the evaluation set.
+// otherwise unfreeze a test or rewrite the evaluation set (D-53, replacing D-50).
+// - A commit the default branch's tip reaches was reviewed and merged there, so only this slice's
+//   own state file and verdicts are judged in it: the default branch never carries them while the
+//   slice is open, and its tip is a ref a clone can move or a fork's author can push to.
+// - A merge is judged by its kit files against its first parent: each must equal what a parent on
+//   the default branch holds. This slice's own state file and verdicts must equal what another parent
+//   in the range holds, off the default branch: a line of the slice branch itself, as when the review
+//   worktree and the build worktree both pushed (review r2 H-1), whose commits are judged one by one
+//   here. So a hand edit made while merging, or a file taken whole from another branch, is caught.
+// - A commit with no parent has every file it adds judged (--root).
 function forgedKitChange(wt, cfg, id, current, slice) {
   const paths = kitPaths(wt, cfg);
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
   const buildRel = posixRel(wt, paths.build);
   const sliceRel = posixRel(wt, slice.path);
+  const configRel = posixRel(wt, paths.config);
   // Kit files that are not this slice's business (D-43): another slice's state file or verdict, and
-  // BUILD.md, the view of every state. A merge of the default branch brings only these; a commit
-  // whose kit changes are all of them is skipped, whoever made it and wherever it came from.
+  // BUILD.md, the view of every state. A commit whose kit changes are all of them is skipped, whoever
+  // made it and wherever it came from.
   const stateDir = posixRel(wt, paths.state);
   const mine = verdictFilePattern(id);
   const othersOnly = (f) =>
     f === buildRel ||
     (f.startsWith(`${stateDir}/`) && f.endsWith('.json') && !f.slice(stateDir.length + 1).includes('/') && f !== stateRel) ||
     (f.startsWith(REVIEWS) && !f.slice(REVIEWS.length).includes('/') && !mine.test(f.slice(REVIEWS.length)));
+  const own = (f) => f === stateRel || (f.startsWith(REVIEWS) && !f.slice(REVIEWS.length).includes('/') && mine.test(f.slice(REVIEWS.length)));
   let rendered = false;
-  for (const sha of lines(git(wt, ['rev-list', '--no-merges', 'HEAD', `^${current.redCommit}`]))) {
-    const changes = lines(git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
+  const tip = defaultBranchTip(wt, cfg);
+  const offDefault = tip === null ? null : new Set(lines(git(wt, ['rev-list', 'HEAD', `^${current.redCommit}`, `^${tip}`])));
+  const range = lines(git(wt, ['rev-list', '--parents', 'HEAD', `^${current.redCommit}`]));
+  // Commits whose own changes this loop judges: in the range, and off the default branch.
+  const judged = offDefault ?? new Set(range.map((l) => l.split(' ')[0]));
+  // `file` in merge `sha` is what another parent holds, a parent whose commits are judged here.
+  const fromSlice = (sha, file, others) => others.some((p) => judged.has(p) && blobAt(wt, sha, file) === blobAt(wt, p, file));
+  for (const line of range) {
+    const [sha, ...parents] = line.split(' ');
+    const onDefault = offDefault !== null && !offDefault.has(sha);
+    if (parents.length > 1) {
+      const kit = mergeFiles(wt, sha, parents[0]).filter((f) => isKitFile(wt, cfg, slice, f) && !othersOnly(f) && (!onDefault || own(f)));
+      const bad = kit.find((f) => (own(f) ? !fromSlice(sha, f, parents.slice(1)) : !fromDefault(wt, sha, f, parents.slice(1), tip)));
+      if (bad) return `${bad} was changed in ${short(sha)}, a merge, outside the kit; only build commands write it`;
+      continue;
+    }
+    const changes = lines(git(wt, ['diff-tree', '--root', '--no-commit-id', '--name-status', '--no-renames', '-r', sha])).map((l) => {
       const [status, ...rest] = l.split('\t');
       return { status, file: rest.join('\t') };
     });
-    const kitFiles = changes.map((c) => c.file).filter((f) => isKitFile(wt, cfg, slice, f));
+    const kitFiles = changes.map((c) => c.file).filter((f) => isKitFile(wt, cfg, slice, f) && (!onDefault || own(f)));
     if (kitFiles.length === 0 || kitFiles.every(othersOnly)) continue;
     const kit = kitFiles.find((f) => !othersOnly(f));
     const subject = git(wt, ['log', '-1', '--format=%s', sha]);
@@ -122,6 +186,9 @@ function forgedKitChange(wt, cfg, id, current, slice) {
       rendered = true;
       continue;
     }
+    // build config's commit: the config alone, under its subject, for a slice whose file at that
+    // commit names the config in its Expected changes.
+    if (subject === configSubject(id) && trailers.Slice === id && changes.length === 1 && changes[0].file === configRel && namesConfigAt(wt, sha, sliceRel)) continue;
     if (!kitCommit(id, subject, trailers, changes, stateRel, buildRel, sliceRel)) {
       return `${kit} was changed in ${short(sha)} outside the kit; only build commands write it`;
     }
@@ -146,7 +213,10 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   if (frozen) throw new BuildError(frozen);
   const paths = changedPaths(wt);
   const kit = paths.find((p) => isKitFile(wt, cfg, slice, p));
-  if (kit) throw new BuildError(`${kit} is a kit file; build commit does not commit it`);
+  if (kit) {
+    const config = kit === posixRel(wt, kitPaths(wt, cfg).config) ? `; run slicekit build config ${id}` : '';
+    throw new BuildError(`${kit} is a kit file; build commit does not commit it${config}`);
+  }
   const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const ranLocal = local ? command : null;

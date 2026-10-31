@@ -1,0 +1,228 @@
+{
+  "slice": "P3/S-33",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 70,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+    "headSha": "60b2baf3f0dd482c80b119348888351bf0ee1629"
+  },
+  "redCommit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
+  "frozenTests": [
+    "test/build-config.test.js",
+    "test/build-commit-merge.test.js",
+    "test/review-worktree.test.js",
+    "test/ci-runs.test.js",
+    "test/ci-runs-host.test.js",
+    "test/ci-bookkeeping-walk.test.js",
+    "test/github-slicekit-run.test.js",
+    "test/test-shard.test.js"
+  ],
+  "unfrozen": [
+    "test/review-worktree.test.js",
+    "test/test-shard.test.js",
+    "test/build-commit-merge.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-33i-r1.md",
+      "blockers": 2,
+      "independent": true,
+      "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-33i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "3f10dedd978f6f2dc499f69f756aeb89109b58ff"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-33i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "60b2baf3f0dd482c80b119348888351bf0ee1629"
+    }
+  ],
+  "ci": {
+    "sha": "0e165d3893465d8a4b83afa64b0d04dcf6273a64",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41211408576"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T12:10:50.740Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
+        "testExit": 1,
+        "tests": [
+          "test/build-config.test.js",
+          "test/build-commit-merge.test.js",
+          "test/review-worktree.test.js",
+          "test/ci-runs.test.js",
+          "test/ci-runs-host.test.js",
+          "test/ci-bookkeeping-walk.test.js",
+          "test/github-slicekit-run.test.js",
+          "test/test-shard.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T12:10:51.274Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T12:24:10.991Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/review-worktree.test.js",
+        "amendCommit": "7a27ec8272a85f7a67c63b3b2a12f6c49543ff99",
+        "reason": "The brief test's fixture slice cited no decision, so the decision read from the worktree could not appear; the worktree's slice file now cites D-01"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T12:30:45.974Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/test-shard.test.js",
+        "amendCommit": "2513027d09bad555038cda4053745eb72c8f73ed",
+        "reason": "Marks the slice file's lines that name the files Done when 11 deletes with slicekit:example, so the references rule passes once the slice is merged; the test itself is not changed"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T12:56:36.729Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 70,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+          "headSha": "eb084097b3c0db3c343e0d510ff822cb29611c14",
+          "title": "[P3/S-33] Build and review loop fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T13:35:20.330Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-33i-r1.md",
+          "blockers": 2,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-31T13:42:39.589Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-commit-merge.test.js",
+        "amendCommit": "fa27fa8bc986e6e3656ae03bb6fd66f63f00624f",
+        "reason": "Review r1 B-1 and B-2: the guard judges this slice's own files in default-branch commits and a merge's kit files against its first parent (D-53, replacing D-50); a test for a state file taken whole from an orphan branch is added"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T13:55:50.487Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 70,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+          "headSha": "3f10dedd978f6f2dc499f69f756aeb89109b58ff",
+          "title": "[P3/S-33] Build and review loop fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T14:18:03.194Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-33i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T14:34:24.000Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 70,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/70",
+          "headSha": "60b2baf3f0dd482c80b119348888351bf0ee1629",
+          "title": "[P3/S-33] Build and review loop fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T14:42:47.211Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-33i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T14:54:33.448Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "0e165d3893465d8a4b83afa64b0d04dcf6273a64",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41211408576"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-31T14:54:47.057Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

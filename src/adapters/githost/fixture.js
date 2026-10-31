@@ -9,10 +9,10 @@ import {
   assertLabelColor,
   assertPrNumber,
   assertTitle,
+  decidedSlicekitRun,
   filterMergedSince,
   mapJobs,
   mapPullRequest,
-  newestSlicekitRun,
   pickBranchPullRequest,
   reduceRuns,
 } from './gh-json.js';
@@ -92,14 +92,15 @@ export function fixtureHost(dir) {
       assertSha(sha);
       return reduceRuns(readJson(path.join(dir, `ci-${sha}.json`)) ?? []);
     },
-    // As the GitHub host: ci-<sha>.json narrowed to the slicekit workflow's pull_request runs, and the
-    // newest one's jobs from jobs-<databaseId>.json (none when the file is missing).
+    // As the GitHub host (decidedSlicekitRun): ci-<sha>.json narrowed to the slicekit workflow's
+    // pull_request runs, each completed one's jobs read from jobs-<databaseId>.json (none when the file
+    // is missing), newest first until one is decided.
     slicekitRun(sha) {
       assertSha(sha);
-      const run = newestSlicekitRun(readJson(path.join(dir, `ci-${sha}.json`)) ?? []);
-      if (!run) return null;
-      if (!Number.isInteger(run.databaseId)) throw new GitHostError('git host fixture: a slicekit run with no databaseId');
-      return { run, jobs: mapJobs(readJson(path.join(dir, `jobs-${run.databaseId}.json`))) };
+      return decidedSlicekitRun(readJson(path.join(dir, `ci-${sha}.json`)) ?? [], (run) => {
+        if (!Number.isInteger(run.databaseId)) throw new GitHostError('git host fixture: a slicekit run with no databaseId');
+        return mapJobs(readJson(path.join(dir, `jobs-${run.databaseId}.json`)));
+      });
     },
     setLabel(n, name, present) {
       assertPrNumber(n);
