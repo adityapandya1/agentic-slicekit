@@ -106,7 +106,10 @@ test("a merge that takes this slice's state file from an orphan branch is refuse
     write(p.wt, 'src/t1.js', GREEN);
     const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
     assert.equal(r.code, 1, r.stdout);
-    assert.equal(r.stderr, `slicekit: ${STATE} was changed in ${merge.slice(0, 7)}, a merge, outside the kit; only build commands write it\n`);
+    // The merge takes the file whole from the orphan line, so the orphan commit, judged on its own with
+    // its files listed though it has no parent, is what is refused.
+    assert.notEqual(merge, orphan);
+    assert.match(r.stderr, new RegExp(`was changed in ${orphan.slice(0, 7)} outside the kit`));
 
     // The orphan commit alone on the branch: a commit with no parent has its files judged too.
     plain(p.wt, 'reset', '-q', '--hard', orphan);
@@ -115,6 +118,45 @@ test("a merge that takes this slice's state file from an orphan branch is refuse
     const root = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
     assert.equal(root.code, 1, root.stdout);
     assert.match(root.stderr, new RegExp(`was changed in ${orphan.slice(0, 7)} outside the kit`));
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Review r2 H-1: two worktrees push the slice branch, so it can diverge: a kit commit of the other
+// worktree on one line, a build commit on the other. Their merge takes this slice's state file from a
+// parent off the default branch whose own commits the guard judges one by one, and passes.
+test("a merge of the slice branch's own two lines passes build commit", async () => {
+  const p = await building({ remote: true, init: true });
+  try {
+    const branch = plain(p.wt, 'branch', '--show-current');
+    plain(p.wt, 'checkout', '-q', '-b', 'other');
+    const file = path.join(p.wt, ...STATE.split('/'));
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const step = { from: 'building', to: 'building', at: '2026-10-31T00:00:00Z', by: 'cli' };
+    fs.writeFileSync(file, `${JSON.stringify({ ...state, history: [...state.history, step] }, null, 2)}\n`);
+    plain(p.wt, 'commit', '-q', '--no-verify', '-am', 'chore(slicekit): P1/S-01 building\n\nSlice: P1/S-01');
+    plain(p.wt, 'checkout', '-q', branch);
+    write(p.wt, 'src/t1.js', GREEN);
+    const first = await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green');
+    assert.equal(first.code, 0, first.stderr);
+    plain(p.wt, 'merge', '-q', '--no-verify', '--no-ff', '--no-edit', 'other');
+    write(p.wt, 'src/t2.js', 'export const y = 1;\n');
+    const after = await commitWorkCli(p, '--message', 'feat(P1/S-01): y');
+    assert.equal(after.code, 0, after.stderr);
+
+    // A line whose own commit is a hand edit: the merge takes its state file whole, and that commit,
+    // judged on its own, is refused.
+    plain(p.wt, 'checkout', '-q', '-b', 'forged', 'other');
+    fs.writeFileSync(file, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), unfrozen: ['test/a.test.js'] }, null, 2)}\n`);
+    plain(p.wt, 'commit', '-q', '--no-verify', '-am', 'by hand');
+    const forged = git(p.wt, ['rev-parse', 'HEAD']);
+    plain(p.wt, 'checkout', '-q', branch);
+    plain(p.wt, 'merge', '-q', '--no-verify', '--no-ff', '--no-edit', 'forged');
+    write(p.wt, 'src/t3.js', 'export const z = 1;\n');
+    const refused = await commitWorkCli(p, '--message', 'feat(P1/S-01): z');
+    assert.equal(refused.code, 1, refused.stdout);
+    assert.match(refused.stderr, new RegExp(`${STATE.replace(/[./]/g, '\$&')} was changed in ${forged.slice(0, 7)} outside the kit`));
   } finally {
     p.cleanup();
   }

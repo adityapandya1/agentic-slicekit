@@ -133,8 +133,10 @@ const fromDefault = (wt, sha, file, others, tip) =>
 //   own state file and verdicts are judged in it: the default branch never carries them while the
 //   slice is open, and its tip is a ref a clone can move or a fork's author can push to.
 // - A merge is judged by its kit files against its first parent: each must equal what a parent on
-//   the default branch holds, and this slice's own files never change in a merge. So a hand edit
-//   made while merging, or a file taken whole from another branch, is caught.
+//   the default branch holds. This slice's own state file and verdicts must equal what another parent
+//   in the range holds, off the default branch: a line of the slice branch itself, as when the review
+//   worktree and the build worktree both pushed (review r2 H-1), whose commits are judged one by one
+//   here. So a hand edit made while merging, or a file taken whole from another branch, is caught.
 // - A commit with no parent has every file it adds judged (--root).
 function forgedKitChange(wt, cfg, id, current, slice) {
   const paths = kitPaths(wt, cfg);
@@ -155,12 +157,17 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   let rendered = false;
   const tip = defaultBranchTip(wt, cfg);
   const offDefault = tip === null ? null : new Set(lines(git(wt, ['rev-list', 'HEAD', `^${current.redCommit}`, `^${tip}`])));
-  for (const line of lines(git(wt, ['rev-list', '--parents', 'HEAD', `^${current.redCommit}`]))) {
+  const range = lines(git(wt, ['rev-list', '--parents', 'HEAD', `^${current.redCommit}`]));
+  // Commits whose own changes this loop judges: in the range, and off the default branch.
+  const judged = offDefault ?? new Set(range.map((l) => l.split(' ')[0]));
+  // `file` in merge `sha` is what another parent holds, a parent whose commits are judged here.
+  const fromSlice = (sha, file, others) => others.some((p) => judged.has(p) && blobAt(wt, sha, file) === blobAt(wt, p, file));
+  for (const line of range) {
     const [sha, ...parents] = line.split(' ');
     const onDefault = offDefault !== null && !offDefault.has(sha);
     if (parents.length > 1) {
       const kit = mergeFiles(wt, sha, parents[0]).filter((f) => isKitFile(wt, cfg, slice, f) && !othersOnly(f) && (!onDefault || own(f)));
-      const bad = kit.find((f) => own(f) || !fromDefault(wt, sha, f, parents.slice(1), tip));
+      const bad = kit.find((f) => (own(f) ? !fromSlice(sha, f, parents.slice(1)) : !fromDefault(wt, sha, f, parents.slice(1), tip)));
       if (bad) return `${bad} was changed in ${short(sha)}, a merge, outside the kit; only build commands write it`;
       continue;
     }
