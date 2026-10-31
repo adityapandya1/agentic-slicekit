@@ -42,6 +42,7 @@ test('the reviewer brief with --worktree quotes the slice file the worktree hold
     };
     // Amended in the worktree only: the session root still holds the old text.
     edit('docs/phases/P1-x/S-01-thing-1.md', '1. It works.', '1. The worktree text holds.');
+    edit('docs/phases/P1-x/S-01-thing-1.md', 'decisions: []', 'decisions: [D-01]');
     edit('docs/spec/01-x.md', 'The kit SHALL work.', 'The kit SHALL work from the worktree.');
     edit('docs/decisions.md', '| Name? | demo |', '| Name? | demo-from-worktree |');
 
