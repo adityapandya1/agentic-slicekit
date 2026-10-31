@@ -8,8 +8,9 @@ Fixes for a new user's first minutes.
 
 - `slicekit init` writes the repository's own default branch as `defaultBranch` and as the protected
   branch: the branch `origin`'s HEAD points at when it still exists; else the first of git's
-  `init.defaultBranch`, `main` and `master` that is a local branch; else the current branch, an empty
-  repository's too; else `main`. An existing config is left as it is.
+  `init.defaultBranch`, `main` and `master` that is a local branch, or that an empty repository is on;
+  else `main`. Any other branch you are on is never taken, since the default branch is protected and
+  would refuse your commits. An existing config is left as it is.
   It wrote `main` every time, so in a repository on `master` every graph command failed (#78).
 - `slicekit <command> --help` prints that command's usage on standard output and exits 0. It was refused
   as an unknown option (#77).

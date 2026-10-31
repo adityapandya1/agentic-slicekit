@@ -46,10 +46,12 @@ export function currentBranch(root) {
 export const headSha = (root) => git(root, ['rev-parse', 'HEAD']);
 
 // The branch a new config names as its default (P3/S-36, issue #78): the one origin's HEAD points
-// at; else the first of git's init.defaultBranch, main and master that is a local branch, so a
-// feature branch checked out at init is not taken for the default; else HEAD's own branch (an
-// unborn HEAD counts: a plain `git init` has no branch yet); else main. Outside a repository there
-// is no branch to read, and a global init.defaultBranch is not this project's, so it is main.
+// at; else the first of git's init.defaultBranch, main and master that is a local branch, or that
+// an empty repository's HEAD is on (a plain `git init` has no branch yet); else main. Any other
+// branch HEAD is on is not taken: a branch named the default is protected and refuses commits, so a
+// feature branch guessed wrong would block work, where a wrong main only stops `graph` with a
+// message (issue #87). Outside a repository there is no branch to read, and a global
+// init.defaultBranch is not this project's, so it is main.
 export function detectDefaultBranch(root) {
   if (!isRepo(root)) return 'main';
   const read = (args) => {
@@ -60,24 +62,17 @@ export function detectDefaultBranch(root) {
       throw e;
     }
   };
+  const empty = !hasCommits(root);
   // origin's HEAD counts only while its branch exists: after the remote renames its default and a
   // pruning fetch drops the old branch, HEAD still names it, and graph could not find it. An empty
   // repository has no branch at all yet, so there its name is taken as it is.
   const origin = read(['symbolic-ref', '-q', 'refs/remotes/origin/HEAD']);
-  const present = (ref) => !hasCommits(root) || read(['rev-parse', '--verify', '-q', ref]) !== '';
-  if (origin.startsWith('refs/remotes/origin/') && present(origin)) {
+  if (origin.startsWith('refs/remotes/origin/') && (empty || read(['rev-parse', '--verify', '-q', origin]) !== '')) {
     return origin.slice('refs/remotes/origin/'.length);
   }
+  const head = empty ? read(['symbolic-ref', '-q', 'HEAD']).replace(/^refs\/heads\//, '') : '';
   const named = [read(['config', '--get', 'init.defaultBranch']), 'main', 'master'].filter(Boolean);
-  const local = named.find((b) => read(['rev-parse', '--verify', '-q', `refs/heads/${b}`]) !== '');
-  if (local) return local;
-  let head = null;
-  try {
-    head = currentBranch(root);
-  } catch (e) {
-    if (!(e instanceof GitError)) throw e;
-  }
-  return head ?? 'main';
+  return named.find((b) => b === head || read(['rev-parse', '--verify', '-q', `refs/heads/${b}`]) !== '') ?? 'main';
 }
 
 // Whether `sha` names a commit object in the repository at root.

@@ -15,3 +15,15 @@ test("origin's HEAD that names a branch no longer present is passed over", () =>
     repo.cleanup();
   }
 });
+
+test("an empty repository's master is the default; any other branch HEAD is on is not", () => {
+  const empty = makeRepo({ branch: 'master' });
+  const feature = makeRepo({ commits: 1, branch: 'feature/x' });
+  try {
+    assert.equal(detectDefaultBranch(empty.root), 'master');
+    assert.equal(detectDefaultBranch(feature.root), 'main');
+  } finally {
+    empty.cleanup();
+    feature.cleanup();
+  }
+});
