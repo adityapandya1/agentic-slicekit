@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-36",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 86,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
-    "headSha": "0d1cf26119ea05a7cd57299a9fe185b5ec80fd24"
+    "headSha": "2e96708d421be22bc559b2c4f4f9bae9771eee19"
   },
   "redCommit": "6bcea2932423391f2c2b6da7913a12cd99e18490",
   "frozenTests": [
@@ -101,6 +101,22 @@
           "path": ".slicekit/reviews/P3-S-36i-r1.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T19:43:58.077Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "2e96708d421be22bc559b2c4f4f9bae9771eee19",
+          "title": "[P3/S-36] Release 0.2.1"
         }
       }
     }
