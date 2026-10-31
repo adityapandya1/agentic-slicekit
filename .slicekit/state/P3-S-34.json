@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-34",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 66,
@@ -25,6 +25,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "d0d12ce4c8eec614c0e7f08f1e457f5ca639ca53"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-34i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "e23ee19709bc5c56b86fa104191e700db091f302"
     }
   ],
   "ci": null,
@@ -109,6 +116,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
           "headSha": "e23ee19709bc5c56b86fa104191e700db091f302",
           "title": "[P3/S-34] Graph and visualize fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T12:26:53.554Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-34i-r2.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
