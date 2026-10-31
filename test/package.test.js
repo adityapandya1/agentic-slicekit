@@ -1,3 +1,4 @@
+// REQ-5.7: the package published to npm, its metadata and what it ships.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -38,8 +39,9 @@ test('package metadata', () => {
   assert.deepEqual(pkg.files, ['bin', 'src', 'templates']);
 });
 
-test('package.json is 0.1.2, links the repository and has no dependencies', () => {
-  assert.equal(pkg.version, '0.1.2');
+// P3/S-35: Phase 3 ships as 0.2.0.
+test('package.json is 0.2.0, links the repository and has no dependencies', () => {
+  assert.equal(pkg.version, '0.2.0');
   assert.equal(pkg.dependencies, undefined);
   assert.equal(pkg.repository.url, `git+${REPO}.git`);
   assert.equal(pkg.homepage, `${REPO}#readme`);

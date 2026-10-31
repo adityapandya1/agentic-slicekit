@@ -1,0 +1,205 @@
+{
+  "slice": "P3/S-18",
+  "state": "merged",
+  "branch": null,
+  "pr": {
+    "number": 47,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+    "headSha": "7e146f66ae60dfa8c7b5f6f59e4e6e1d6a989e9d"
+  },
+  "redCommit": "8f0ee1f8b563d25645c990380ed259da1573c1a0",
+  "frozenTests": [
+    "test/graph/queries.test.js",
+    "test/graph/queries-perf.test.js",
+    "test/check/citations.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-18i-r1.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "6153e83a6e7c191f7716456c84a96d908aa3314f"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-18i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "848837628b48363c9c3b085a4d543a4de44218b2"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-18i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "5631c45071ddb0eb672d95df2666c8c7ea92ed3e"
+    }
+  ],
+  "ci": {
+    "sha": "bd0afb92e5232de3b800fa932a44134c80d1b71a",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41117113609"
+  },
+  "mergedAt": "2026-10-30T19:59:20Z",
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T18:23:34.251Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "8f0ee1f8b563d25645c990380ed259da1573c1a0",
+        "testExit": 1,
+        "tests": [
+          "test/graph/queries.test.js",
+          "test/graph/queries-perf.test.js",
+          "test/check/citations.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T18:23:34.809Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T18:31:22.494Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 47,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+          "headSha": "6153e83a6e7c191f7716456c84a96d908aa3314f",
+          "title": "[P3/S-18] Queries"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T18:39:58.054Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-18i-r1.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T18:42:48.735Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 47,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+          "headSha": "848837628b48363c9c3b085a4d543a4de44218b2",
+          "title": "[P3/S-18] Queries"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T18:45:37.444Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-18i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T18:59:48.080Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 47,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+          "headSha": "08d8f5b112dedd95d1b118c3eba5b61472ce912a",
+          "title": "[P3/S-18] Queries"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "draft-pr",
+      "at": "2026-10-30T19:13:46.842Z",
+      "by": "cli",
+      "evidence": {
+        "head": "5631c45071ddb0eb672d95df2666c8c7ea92ed3e"
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T19:39:58.595Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-18i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-30T19:59:04.955Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "bd0afb92e5232de3b800fa932a44134c80d1b71a",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41117113609"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-30T19:59:06.772Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "merged",
+      "at": "2026-10-30T20:04:21.732Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-10-30T19:59:20Z",
+        "pr": {
+          "number": 47,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/47",
+          "headSha": "7e146f66ae60dfa8c7b5f6f59e4e6e1d6a989e9d"
+        },
+        "source": "host"
+      }
+    }
+  ]
+}

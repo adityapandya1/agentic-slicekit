@@ -7,17 +7,18 @@ agent finishes a turn and again in CI, not because anyone remembers to update it
 
 ## Status: preview
 
-Phases 1 and 2 work: intake, specify, the gap scan, plan, the build from red tests to green, the
-review loop, the independent review and `/slicekit build --parallel`. Phase 3 will add the
-traceability graph, its queries and views, and workspaces that span several repositories. Phase 4
-will add release, ops and audit, and the other examples (`fullstack` and `data`). Phases 3 and 4
-are not built yet.
+Phases 1 to 3 work. Phases 1 and 2 are intake, specify, the gap scan, plan, the build from red
+tests to green, the review loop, the independent review and `/slicekit build --parallel`. Phase 3
+is the traceability graph (`graph`), its queries (`trace`, `impact`, `history`, `uncovered` and
+`shipped`), its views (`visualize`), and workspaces that span several repositories. Phase 4
+(release, ops, audit and the other examples) is not built yet. [CHANGELOG.md](https://github.com/adityapandya1/agentic-slicekit/blob/main/CHANGELOG.md) lists what each
+version changed.
 
 The kit is on npm as a preview from 0.1.1. It needs Node 22 or later and git, and it has no
 dependencies of its own. In your project:
 
 ```sh
-npm i -D slicekit
+npm install --save-dev slicekit
 npx slicekit init --shape backend --name <your-project>
 ```
 
@@ -246,7 +247,7 @@ repository has a local install, and `slicekit` otherwise, which needs slicekit o
 is found, init still writes `slicekit` and warns that the hooks will fail until it is installed; it
 never fetches slicekit from the registry. `cli` in `.slicekit/config.json` (or `init --cli <command>`)
 overrides that choice, and init and update warn when the command does not answer `--version`. The
-usual setup is a local install, `npm i -D slicekit`, before init. To run the kit from a clone
+usual setup is a local install, `npm install --save-dev slicekit`, before init. To run the kit from a clone
 instead, pass `--cli` to init, as the walkthrough does:
 `--cli "node \"<path-to-kit>/bin/slicekit.js\""`. The
 hooks run from the session's working directory, so a worktree outside the repository tree needs an

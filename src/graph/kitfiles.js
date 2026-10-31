@@ -11,7 +11,7 @@ const lineOf = (text, needle) => {
 };
 
 // A state file: a patch on its slice (state, mergedAt, history), and the slice's pull request as a
-// reference with the head the state names as its cache key. A file that is not JSON gives a warning.
+// reference. A file that is not JSON gives a warning.
 export function stateFragment(rel, text) {
   let s;
   try {
@@ -25,7 +25,7 @@ export function stateFragment(rel, text) {
   const out = { nodes: [{ id, patch: true, state: s.state ?? null, mergedAt: s.mergedAt ?? null, history }], edges: [], prRefs: [] };
   const n = s.pr?.number;
   if (Number.isInteger(n) && n > 0) {
-    out.prRefs.push({ number: n, key: typeof s.pr.headSha === 'string' ? s.pr.headSha : null, at: `${rel}:${lineOf(text, '"number"')}`, slice: id });
+    out.prRefs.push({ number: n, at: `${rel}:${lineOf(text, '"number"')}`, slice: id });
   }
   return out;
 }

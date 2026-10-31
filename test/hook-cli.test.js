@@ -1,3 +1,4 @@
+// REQ-1.1: the hook command init writes, and the warning when slicekit is not installed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -40,7 +41,7 @@ test('probe order: a local install, then slicekit on PATH, else the PATH form wi
   assert.deepEqual(probeCli(bare, { env: {} }), { cli: 'slicekit', warning: NOT_INSTALLED });
   assert.equal(
     NOT_INSTALLED,
-    'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)',
+    'slicekit is not installed locally or on PATH; hooks will fail until it is (npm install --save-dev slicekit, or set cli in .slicekit/config.json)',
   );
 });
 

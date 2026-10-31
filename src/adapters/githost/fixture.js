@@ -3,12 +3,25 @@ import path from 'node:path';
 import { GitHostError, GitHostNotFound } from './errors.js';
 import { assertDate, assertSha } from '../../evidence.js';
 import { redact } from '../../redact.js';
-import { assertBranch, assertLabel, assertLabelColor, assertPrNumber, assertTitle, filterMergedSince, mapPullRequest, pickBranchPullRequest, reduceRuns } from './gh-json.js';
+import {
+  assertBranch,
+  assertLabel,
+  assertLabelColor,
+  assertPrNumber,
+  assertTitle,
+  decidedSlicekitRun,
+  filterMergedSince,
+  mapJobs,
+  mapPullRequest,
+  pickBranchPullRequest,
+  reduceRuns,
+} from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
 //   pr-<n>.json          what `gh pr view <n> --json ...` prints
 //   merged-since.json    what `gh pr list --state merged --json ...` prints (an array)
 //   ci-<sha>.json        what `gh run list --commit <sha> --json ...` prints (an array)
+//   jobs-<id>.json       what `gh run view <id> --json jobs` prints, for slicekitRun
 //   label-error.txt, label-create-error.txt   gh refusing `pr edit`, `label create`
 //   label-calls.jsonl    written: one line per label call, in order
 //   pr-create-error.txt  gh refusing `pr create`
@@ -78,6 +91,16 @@ export function fixtureHost(dir) {
     ciStatus(sha) {
       assertSha(sha);
       return reduceRuns(readJson(path.join(dir, `ci-${sha}.json`)) ?? []);
+    },
+    // As the GitHub host (decidedSlicekitRun): ci-<sha>.json narrowed to the slicekit workflow's
+    // pull_request runs, each completed one's jobs read from jobs-<databaseId>.json (none when the file
+    // is missing), newest first until one is decided.
+    slicekitRun(sha) {
+      assertSha(sha);
+      return decidedSlicekitRun(readJson(path.join(dir, `ci-${sha}.json`)) ?? [], (run) => {
+        if (!Number.isInteger(run.databaseId)) throw new GitHostError('git host fixture: a slicekit run with no databaseId');
+        return mapJobs(readJson(path.join(dir, `jobs-${run.databaseId}.json`)));
+      });
     },
     setLabel(n, name, present) {
       assertPrNumber(n);

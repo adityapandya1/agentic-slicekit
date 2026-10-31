@@ -10,7 +10,7 @@ export function nodeLine(node) {
     case 'slice': return join('slice', key, node.name ?? node.label, node.state ? `(${node.state})` : undefined);
     case 'test': return join('test', key);
     case 'commit': return join('commit', key.slice(0, 7), node.subject ?? node.label);
-    case 'pull-request': return `${join('pull request', `#${node.number ?? key}`, node.url)}${node.stale ? ', stale' : ''}`;
+    case 'pull-request': return `${join('pull request', node.repo ? key : `#${node.number ?? key}`, node.url)}${node.stale ? ', stale' : ''}`;
     case 'file': return join('file', key);
     case 'release': return join('release', key);
     case 'contract': return join('contract', key, node.label);

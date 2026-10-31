@@ -1168,8 +1168,8 @@ test('examples/backend goes from todo to draft-pr', async () => {
     assert.match(brief.stdout, /^## Where$/m);
     assert.ok(brief.stdout.includes(path.resolve(wt).split(path.sep).join('/')), brief.stdout);
     const testFile = (pattern) =>
-      `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('refuses an empty name', () => assert.throws(() => greet(''), /${pattern}/));\n`;
-    write(wt, 'test/greet.test.js', "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('greets a name', () => assert.equal(greet('Ada'), 'Hello, Ada!'));\n");
+      `// REQ-1.1\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('refuses an empty name', () => assert.throws(() => greet(''), /${pattern}/));\n`;
+    write(wt, 'test/greet.test.js', "// REQ-1.1\nimport { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from '../src/greet.js';\ntest('greets a name', () => assert.equal(greet('Ada'), 'Hello, Ada!'));\n");
     write(wt, 'test/greet-empty.test.js', testFile('name required'));
 
     // Step 3: the developer's `tests:` paths, joined by commas.

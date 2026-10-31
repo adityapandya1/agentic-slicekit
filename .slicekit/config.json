@@ -9,7 +9,7 @@
     "main"
   ],
   "commands": {
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "npm run test:shard",
     "lint": "",
     "build": "",
     "e2e": ""
@@ -46,6 +46,9 @@
   "ci": {
     "matrix": true,
     "observabilitySteps": [],
-    "timeoutMinutes": 60
+    "timeoutMinutes": 60,
+    "shards": {
+      "windows-latest": 3
+    }
   }
 }

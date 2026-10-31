@@ -4,7 +4,7 @@ import { InstructionsError, briefSlice, checkRole, renderBrief, renderProcedure,
 
 const USAGE =
   'instructions <role> [P<n>/S-<nn>] [--worktree <path> | --summary]\n' +
-  '  slicekit instructions --command <name> [args...]';
+  '  instructions --command <name> [args...]';
 
 const usage = (io, why) => {
   io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n`);

@@ -23,8 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
       pull-requests: read
+    outputs:
+      kind: ${{ steps.bookkeeping.outputs.kind }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -38,12 +41,33 @@ jobs:
       - name: Install
         if: hashFiles('package-lock.json') != ''
         run: npm ci
+      - name: Bookkeeping or code (D-49)
+        id: bookkeeping
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLICEKIT_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          SLICEKIT_PR_BASE_BRANCH: ${{ github.base_ref }}
+        run: node node_modules/slicekit/bin/slicekit.js ci bookkeeping --head "$SLICEKIT_PR_HEAD" --base-branch "$SLICEKIT_PR_BASE_BRANCH" --output "$GITHUB_OUTPUT"
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
+      # The pull request cache (D-52): only a merged answer is final, so a run fetches only open,
+      # closed and new pull requests. A pull request run saves only to its own branch's cache.
+      - name: Restore the pull request cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+          restore-keys: slicekit-pr-cache-
       - name: Build the graph
         env:
           GH_TOKEN: ${{ github.token }}
         run: node node_modules/slicekit/bin/slicekit.js graph
+      - name: Save the pull request cache
+        if: always()
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
       - name: slicekit check
         run: node node_modules/slicekit/bin/slicekit.js check --ci
       - name: The workflow matches the generator
@@ -56,6 +80,8 @@ jobs:
           path: .slicekit/graph/graph.json
 
   cmd-test:
+    needs: [gate]
+    if: ${{ !cancelled() && !(needs.gate.outputs.kind == 'bookkeeping') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -72,6 +98,8 @@ jobs:
         run: 'node --test "test/**/*.test.js"'
 
   cmd-lint:
+    needs: [gate]
+    if: ${{ !cancelled() && !(needs.gate.outputs.kind == 'bookkeeping') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -129,7 +157,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && (needs.cmd-lint.result == 'success' || (needs.cmd-lint.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && needs.obs-1.result == 'success' }}
         run: node node_modules/slicekit/bin/slicekit.js ready-label
 
   sync:

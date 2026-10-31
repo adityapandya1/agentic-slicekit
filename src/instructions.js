@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadConfig } from './config.js';
 import { readDecisions } from './decisions.js';
 import { exists, readText } from './fs.js';
 import { GitError, currentBranch, isRepo } from './git.js';
@@ -165,11 +166,26 @@ export function checkRole(cfg, role) {
   if (role === 'designer' && cfg.shape !== 'fullstack') throw new InstructionsError(2, `designer is not installed for shape ${cfg.shape}`);
 }
 
-// The slice file of `sliceId` (null: none) and the role's template with `{{cli}}` filled in, after
-// the role and the slice are checked.
-function briefHead(root, cfg, role, sliceId, templatesDir, fromBranch) {
+// Where a brief reads the slice file, the requirements and the decisions, as { dir, cfg }: the
+// worktree it is given, through that worktree's own config, when the worktree holds the slice's file,
+// so a reviewer is briefed on the text under review (issue #56); else the session root.
+function briefSource(root, cfg, sliceId, worktree) {
+  if (!sliceId || typeof worktree !== 'string' || worktree === '') return { dir: root, cfg };
+  const dir = path.resolve(root, worktree);
+  try {
+    const own = loadConfig(dir);
+    if (sliceFile(dir, own, sliceId)) return { dir, cfg: own };
+  } catch {
+    // No config there, or no slice files it can read: the session root's text, as before.
+  }
+  return { dir: root, cfg };
+}
+
+// The slice file of `sliceId` (null: none), read from `src` (default: the session root), and the
+// role's template with `{{cli}}` filled in, after the role and the slice are checked.
+function briefHead(root, cfg, role, sliceId, templatesDir, fromBranch, src = { dir: root, cfg }) {
   checkRole(cfg, role);
-  const slice = sliceId ? sliceFile(root, cfg, sliceId) : null;
+  const slice = sliceId ? sliceFile(src.dir, src.cfg, sliceId) : null;
   if (sliceId && !slice && !fromBranch) throw new InstructionsError(2, `unknown slice ${sliceId}`);
   const file = path.join(templatesDir, 'agents', `${role}.md`);
   const head = fill(template(file, `the ${role} brief is not built in this version: ${posix(file)} is missing`), { cli: cfg.cli });
@@ -178,14 +194,16 @@ function briefHead(root, cfg, role, sliceId, templatesDir, fromBranch) {
 
 // The whole brief of `role` for `sliceId` (null: no active slice). The essentials come first and the
 // slice's Tasks section last, so a reader that cuts the text from its end loses the least. With
-// `worktree` it names where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2).
+// `worktree` it names where the agent works, so the brief is the agent's whole prompt (REQ-2.6 step 2),
+// and reads the slice from there when the worktree holds its file (briefSource).
 // `fromBranch`: the id came from the branch, so a missing slice file is no active slice, not an error.
 export function renderBrief(root, cfg, role, sliceId, { templatesDir = TEMPLATES, worktree, fromBranch = false } = {}) {
-  const { slice, head } = briefHead(root, cfg, role, sliceId, templatesDir, fromBranch);
+  const src = briefSource(root, cfg, sliceId, worktree);
+  const { slice, head } = briefHead(root, cfg, role, sliceId, templatesDir, fromBranch, src);
   const none = sliceId && !slice ? `No active slice. (branch names ${sliceId}, which has no slice file)` : 'No active slice.';
   const parts = [head.trim(), `## Writing rules\n\n${writingRules(root)}`.trim()];
-  parts.push(`## Requirements\n\n${slice ? requirements(root, cfg, asList(slice.data.requirements)) : none}`);
-  parts.push(`## Decisions\n\n${slice ? decisions(root, cfg, asList(slice.data.decisions)) : none}`);
+  parts.push(`## Requirements\n\n${slice ? requirements(src.dir, src.cfg, asList(slice.data.requirements)) : none}`);
+  parts.push(`## Decisions\n\n${slice ? decisions(src.dir, src.cfg, asList(slice.data.decisions)) : none}`);
   parts.push(slice ? `## Slice ${sliceId}\n\n${sliceSummary(slice)}` : `## Slice\n\n${none}`);
   parts.push(`## Team commands\n\n${TEAM_COMMANDS.map((k) => `- ${k}: ${cfg.commands?.[k] || 'not declared'}`).join('\n')}`);
   // The reviewer's verdict goes in the session root, where `build verdict` and the stop hook read it.

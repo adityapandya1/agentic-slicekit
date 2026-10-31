@@ -3,6 +3,7 @@
 // Locally, with no event file, `SLICEKIT_PR_TITLE` / `SLICEKIT_PR_BODY` stand in for one.
 import fs from 'node:fs';
 import { DEFAULT_BOT_ACTORS } from '../config.js';
+import { resolveCommit } from '../git.js';
 
 // The pseudo-path the ci rules attach their findings to (line 0): the title and body live in the
 // GitHub event, not in a file of the repository, and this reads clearly in CI output.
@@ -50,3 +51,19 @@ export function isBotAuthor(cfg, pr) {
 
 // A `[spec] ` or `[plan] ` title: a spec or plan pull request, not a slice's.
 export const EXEMPT_TITLE = /^\[(spec|plan)\] /;
+
+// The branch a rule judges and the tip it judges it at, or null with no repository, no commits or no
+// branch (moved from the trailer rule in P3/S-18, so trailer and citations share it). Under --ci on
+// a pull request, actions/checkout leaves a detached merge commit whose first parent is the base: the
+// branch is GITHUB_HEAD_REF and the tip the pull request's head, from the event's head sha (or the
+// merge commit's second parent when the event has none). Otherwise the current branch and HEAD.
+export function branchTip(ctx) {
+  if (!ctx.git?.isRepo || !ctx.git.hasCommits) return null;
+  const ref = ctx.env?.GITHUB_HEAD_REF;
+  if (ctx.ci && typeof ref === 'string' && ref !== '') {
+    const headSha = readCiEvent(ctx.env)?.headSha;
+    const tip = (headSha && /^[0-9a-f]{7,40}$/.test(headSha) && resolveCommit(ctx.root, headSha)) || resolveCommit(ctx.root, 'HEAD^2') || 'HEAD';
+    return { branch: ref, tip };
+  }
+  return ctx.git.branch ? { branch: ctx.git.branch, tip: 'HEAD' } : null;
+}

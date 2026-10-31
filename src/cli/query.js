@@ -5,7 +5,7 @@ import { ConfigError, loadConfig } from '../config.js';
 import { indexGraph, loadGraph } from '../graph/load.js';
 import { GraphError } from '../graph/schema.js';
 
-// answer(index, {positionals, values}) -> {lines: string[], json}
+// answer(index, {positionals, values, root, cfg}) -> {lines: string[], json}
 export function queryCommand({ name, usage, options = {}, answer }) {
   async function run(args, io) {
     let parsed;
@@ -25,7 +25,7 @@ export function queryCommand({ name, usage, options = {}, answer }) {
     try {
       const cfg = loadConfig(io.cwd);
       const index = indexGraph(loadGraph(io.cwd, cfg));
-      const result = await answer(index, { positionals: parsed.positionals, values: parsed.values });
+      const result = await answer(index, { positionals: parsed.positionals, values: parsed.values, root: io.cwd, cfg });
       io.stdout(json ? `${JSON.stringify(result.json, null, 2)}\n` : result.lines.map((l) => `${l}\n`).join(''));
       return 0;
     } catch (e) {

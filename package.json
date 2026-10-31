@@ -1,6 +1,6 @@
 {
   "name": "slicekit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Spec-driven agentic workflow kit",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:shard": "node scripts/test-shard.js"
   }
 }

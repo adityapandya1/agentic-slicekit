@@ -36,7 +36,8 @@ function twoInA({ files, docsRoot } = {}) {
   };
 }
 
-const PASSING = (v) => `import { test } from 'node:test';\ntest('x ${v}', () => {});\n`;
+// Fixture test files name REQ-1.1, as every test file on a slice branch must (REQ-4.3).
+const PASSING = (v) => `// REQ-1.1\nimport { test } from 'node:test';\ntest('x ${v}', () => {});\n`;
 
 test('a second run changing the same path stops as a plan defect', async () => {
   const p = twoInA();
@@ -166,6 +167,7 @@ test('a push by the other slice while the commands run is caught before the push
     // S-02's test run pushes S-01's work once the flag exists: S-01's `build pr` landing meanwhile.
     const flag = path.join(p.host, 'race.flag');
     const race = [
+      '// REQ-1.1',
       "import { test } from 'node:test';",
       "import fs from 'node:fs';",
       "import { execFileSync } from 'node:child_process';",

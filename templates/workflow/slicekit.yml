@@ -23,8 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: {{timeoutMinutes}}
     permissions:
+      actions: read
       contents: read
       pull-requests: read
+    outputs:
+      kind: ${{ steps.bookkeeping.outputs.kind }}
     steps:
       - uses: actions/checkout@{{checkoutSha}} # {{checkoutTag}}
         with:
@@ -38,12 +41,33 @@ jobs:
       - name: Install
         if: hashFiles('package-lock.json') != ''
         run: npm ci
+      - name: Bookkeeping or code (D-49)
+        id: bookkeeping
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLICEKIT_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          SLICEKIT_PR_BASE_BRANCH: ${{ github.base_ref }}
+        run: {{cli}} ci bookkeeping --head "$SLICEKIT_PR_HEAD" --base-branch "$SLICEKIT_PR_BASE_BRANCH" --output "$GITHUB_OUTPUT"
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
+      # The pull request cache (D-52): only a merged answer is final, so a run fetches only open,
+      # closed and new pull requests. A pull request run saves only to its own branch's cache.
+      - name: Restore the pull request cache
+        uses: actions/cache/restore@{{cacheSha}} # {{cacheTag}}
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+          restore-keys: slicekit-pr-cache-
       - name: Build the graph
         env:
           GH_TOKEN: ${{ github.token }}
         run: {{cli}} graph
+      - name: Save the pull request cache
+        if: always()
+        uses: actions/cache/save@{{cacheSha}} # {{cacheTag}}
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
 {{gateExtraSteps}}
       - name: slicekit check
         run: {{cli}} check --ci
@@ -81,7 +105,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+          SLICEKIT_CHECKS_OK: {{checksOk}}
         run: {{cli}} ready-label
 
   sync:

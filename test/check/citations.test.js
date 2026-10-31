@@ -1,3 +1,6 @@
+// The citations rule: REQ-1.3 (requirements have one shape and cite their decisions), REQ-1.5 (a
+// slice file names known requirements and decisions) and, since P3/S-18, REQ-4.3 (a test file a
+// slice branch adds or changes names a requirement).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,6 +10,7 @@ import { init } from '../../src/init.js';
 import { check } from '../../src/check/index.js';
 import citations from '../../src/check/rules/citations.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
+import { gitIn } from '../helpers/graph-fixture.js';
 
 const kitRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -270,6 +274,79 @@ test('an evaluation row covering a REQ the slice does not name is a finding', ()
     const found = check(repo.root, { rules: [citations] }).findings;
     assert.deepEqual(found.map((f) => f.message), ['slice P1/S-03 test "a.test.js » works" covers REQ-1.2, which the slice does not name']);
     assert.equal(found[0].file, 'docs/phases/P1-x/S-03-fixture.md');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// REQ-4.3: on a slice branch, each test file the branch adds or changes names a requirement. The
+// fixture is committed on main first (with the hooks bypassed), so the branch's diff holds only what
+// each test commits on it.
+const TEST_FILE_FINDING = 'test file names no requirement (REQ-4.3)';
+const SLICE_BRANCH = 'slice/P1-S-01-x';
+const NO_REQ = "import { test } from 'node:test';\n\ntest('works', () => {});\n";
+
+function committedFixture(files = {}) {
+  const repo = fixture({ extra: files });
+  gitIn(repo.root, ['add', '-A']);
+  gitIn(repo.root, ['commit', '-q', '-m', 'fixture']);
+  return repo;
+}
+
+function commitOn(root, message, { write: files = {}, remove = [] } = {}) {
+  for (const [rel, text] of Object.entries(files)) {
+    const file = path.join(root, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  }
+  for (const rel of remove) gitIn(root, ['rm', '-q', rel]);
+  gitIn(root, ['add', '-A']);
+  gitIn(root, ['commit', '-q', '-m', `${message}\n\nSlice: P1/S-01`]);
+}
+
+const testFileFindings = (root) =>
+  check(root, { rules: [citations] })
+    .findings.filter((f) => f.message === TEST_FILE_FINDING)
+    .map((f) => `${f.file}:${f.line} ${f.message}`);
+
+test('a new test file on a slice branch naming no requirement is a finding', () => {
+  const repo = committedFixture();
+  try {
+    gitIn(repo.root, ['switch', '-q', '-c', SLICE_BRANCH]);
+    commitOn(repo.root, 'add a test', { write: { 'test/b.test.js': NO_REQ } });
+    assert.deepEqual(testFileFindings(repo.root), [`test/b.test.js:1 ${TEST_FILE_FINDING}`]);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a changed test file that names a requirement is not a finding', () => {
+  const repo = committedFixture({ 'test/b.test.js': NO_REQ });
+  try {
+    gitIn(repo.root, ['switch', '-q', '-c', SLICE_BRANCH]);
+    // Changed on the branch and still naming none: judged.
+    commitOn(repo.root, 'change the test', { write: { 'test/b.test.js': `${NO_REQ}test('more', () => {});\n` } });
+    assert.deepEqual(testFileFindings(repo.root), [`test/b.test.js:1 ${TEST_FILE_FINDING}`]);
+    // The same file with a comment naming REQ-1.1 at the branch tip: no finding.
+    commitOn(repo.root, 'name the requirement', { write: { 'test/b.test.js': `// REQ-1.1 the thing works\n${NO_REQ}test('more', () => {});\n` } });
+    assert.deepEqual(testFileFindings(repo.root), []);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('test files are not judged on the default branch or when deleted', () => {
+  const repo = committedFixture({ 'test/b.test.js': NO_REQ });
+  try {
+    // On main the file naming no requirement is not judged.
+    assert.deepEqual(testFileFindings(repo.root), []);
+    gitIn(repo.root, ['switch', '-q', '-c', SLICE_BRANCH]);
+    // A slice branch that deletes it, and adds a non-test file naming no requirement: nothing judged.
+    commitOn(repo.root, 'drop the test', { remove: ['test/b.test.js'], write: { 'src/b.js': 'export const b = 2;\n' } });
+    assert.deepEqual(testFileFindings(repo.root), []);
+    // The same branch adding a test file naming none: only that file is a finding.
+    commitOn(repo.root, 'add another test', { write: { 'test/c.test.js': NO_REQ } });
+    assert.deepEqual(testFileFindings(repo.root), [`test/c.test.js:1 ${TEST_FILE_FINDING}`]);
   } finally {
     repo.cleanup();
   }

@@ -1,0 +1,94 @@
+{
+  "slice": "P3/S-30",
+  "state": "merged",
+  "branch": null,
+  "pr": {
+    "number": 40,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40",
+    "headSha": "383ef720c50d203b3a2c05f552dd1e917777ce30"
+  },
+  "redCommit": "dac05575aedda662a18c484cad4e39f21407cdd8",
+  "frozenTests": [
+    "test/ci-runs.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-30i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c"
+    }
+  ],
+  "ci": null,
+  "mergedAt": "2026-10-30T18:05:11Z",
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T17:28:33.256Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "dac05575aedda662a18c484cad4e39f21407cdd8",
+        "testExit": 1,
+        "tests": [
+          "test/ci-runs.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T17:28:33.744Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T17:30:09.817Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 40,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40",
+          "headSha": "3afbd74410e22c46afaed2725a66f4b6e2625e8c",
+          "title": "[P3/S-30] CI judged by the newest run of each workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T17:34:41.016Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-30i-r1.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "merged",
+      "at": "2026-10-30T18:12:05.983Z",
+      "by": "backfill",
+      "evidence": {
+        "source": "host",
+        "mergedAt": "2026-10-30T18:05:11Z",
+        "pr": {
+          "number": 40,
+          "headSha": "383ef720c50d203b3a2c05f552dd1e917777ce30",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/40"
+        }
+      }
+    }
+  ]
+}

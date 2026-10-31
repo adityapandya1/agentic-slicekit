@@ -4,15 +4,16 @@ import { DecisionError, addDecision, settleDecision } from '../decisions.js';
 
 const USAGE =
   'decide add (--type <T> --question <q> --answer <a> | --open [--type <T>] --question <q> --why <w> --recommendation <r>) [--who <w>] [--replaces D-<n>] [--interface <name> [--source <file>:<line>]]\n' +
-  '  slicekit decide settle D-<n> --answer <a> [--type <T>] [--who <w>]\n' +
-  '  (a value that starts with "-" goes as --answer=<text>, and so for every option)';
+  '  decide settle D-<n> --answer <a> [--type <T>] [--who <w>]';
+// Said only on a usage error; the general help gives the same rule under its options.
+const DASH = '(a value that starts with "-" goes as --answer=<text>, and so for every option)';
 
 const ADD = ['type', 'question', 'answer', 'why', 'recommendation', 'who', 'replaces', 'interface', 'source', 'open'];
 const SETTLE = ['answer', 'who', 'type'];
 const OPTIONS = { ...Object.fromEntries(ADD.map((k) => [k, { type: 'string' }])), open: { type: 'boolean' } };
 
 const usage = (io, why) => {
-  io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n`);
+  io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n  ${DASH}\n`);
   return 2;
 };
 

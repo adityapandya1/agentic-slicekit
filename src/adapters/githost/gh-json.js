@@ -89,11 +89,78 @@ export function filterMergedSince(list, since) {
 
 // gh lists runs newest first. Any run still going → pending; any completed run that did not
 // succeed (skipped and neutral count as success) → failure; all succeeded → success; none → unknown.
-export function reduceRuns(runs) {
-  if (!Array.isArray(runs) || runs.length === 0) return { status: 'unknown', url: null };
+// The newest run of each workflow and event (REQ-2.6 step 9, issue #33): a run that a newer run of the
+// same workflow and event replaced, often cancelled by the workflow's concurrency, is not the
+// commit's answer. A workflow is known by its workflowDatabaseId when every run carries one, so two
+// workflow files that declare one name are judged apart (issue #41), else by its name. Runs with
+// neither, or with no event, are judged together, as before.
+const hasId = (r) => r.workflowDatabaseId !== undefined && r.workflowDatabaseId !== null && r.workflowDatabaseId !== '';
+
+// When a run last started: a re-run moves startedAt and leaves createdAt alone, so an older run
+// re-run after a newer one is the newer answer (issue #42). createdAt for a run with no startedAt.
+const startOf = (r) => String(r.startedAt || r.createdAt || '');
+
+function newestPerWorkflow(runs) {
+  const byId = runs.every(hasId);
+  if (!byId && !runs.every((r) => r.workflowName && r.event)) return runs;
+  const newest = new Map();
+  for (const r of runs) {
+    const key = JSON.stringify(byId ? ['id', r.workflowDatabaseId, r.event ?? null] : ['name', r.workflowName, r.event]);
+    const held = newest.get(key);
+    if (!held || startOf(r) > startOf(held)) newest.set(key, r);
+  }
+  return [...newest.values()];
+}
+
+export function reduceRuns(all) {
+  if (!Array.isArray(all) || all.length === 0) return { status: 'unknown', url: null };
+  const runs = newestPerWorkflow(all);
   const going = runs.find((r) => r.status !== 'completed');
   if (going) return { status: 'pending', url: going.url ?? null };
   const failed = runs.find((r) => !OK_CONCLUSIONS.has(r.conclusion));
   if (failed) return { status: 'failure', url: failed.url ?? null };
   return { status: 'success', url: runs[0].url ?? null };
+}
+
+// D-49: the generated workflow, as `gh run list --workflow` names its file and as its runs name it.
+export const SLICEKIT_WORKFLOW = Object.freeze({ file: 'slicekit.yml', name: 'slicekit' });
+export const SLICEKIT_RUN_FIELDS = 'databaseId,status,conclusion,createdAt,startedAt,workflowName,workflowDatabaseId,event,url';
+
+// The slicekit run of a commit, shared by the GitHub host and the fixture host (issue #52): of gh's
+// runs, the pull_request runs of the slicekit workflow newest first by start, the first whose team
+// command jobs were decided, `passed` or `failed` by commandJobsVerdict, as { run, jobs }; null when
+// none was. A run still in progress (on an `edited` event, the current one) is passed over without
+// asking for its jobs, and so is one whose command jobs were all skipped or cancelled. `jobsOf(run)`
+// is the host's `gh run view <id> --json jobs`, mapped; it refuses a run with no databaseId. Runs of
+// any other workflow or event are never the answer, whatever gh was asked for.
+export function decidedSlicekitRun(runs, jobsOf) {
+  const mine = (Array.isArray(runs) ? runs : []).filter((r) => r && r.workflowName === SLICEKIT_WORKFLOW.name && r.event === 'pull_request');
+  const newestFirst = mine.map((r, i) => ({ r, i })).sort((a, b) => (startOf(b.r) > startOf(a.r) ? 1 : startOf(b.r) < startOf(a.r) ? -1 : a.i - b.i));
+  for (const { r: run } of newestFirst) {
+    if (run.status !== 'completed') continue;
+    const jobs = jobsOf(run);
+    const verdict = commandJobsVerdict(run, jobs);
+    if (verdict === 'passed' || verdict === 'failed') return { run, jobs };
+  }
+  return null;
+}
+
+// The jobs of `gh run view <id> --json jobs`, as { name, status, conclusion }.
+export function mapJobs(view) {
+  const jobs = view?.jobs;
+  if (!Array.isArray(jobs)) return [];
+  return jobs.map((j) => ({ name: String(j?.name ?? ''), status: j?.status ?? null, conclusion: j?.conclusion ?? null }));
+}
+
+// What a slicekit run says about the team command jobs (`cmd-*`) on its commit: `passed` when it
+// completed and at least one ran and every one concluded success (a skipped one, as on a bookkeeping
+// push, is not a pass); `failed` when one concluded anything other than success, skipped or
+// cancelled; `pending` while it runs; `other` otherwise (skipped, cancelled, no command jobs).
+export function commandJobsVerdict(run, jobs) {
+  if (!run) return 'other';
+  if (run.status !== 'completed') return 'pending';
+  const commands = (jobs ?? []).filter((j) => j.name.startsWith('cmd-'));
+  if (commands.some((j) => !['success', 'skipped', 'cancelled'].includes(j.conclusion))) return 'failed';
+  if (commands.length > 0 && commands.every((j) => j.status === 'completed' && j.conclusion === 'success')) return 'passed';
+  return 'other';
 }

@@ -1,12 +1,17 @@
 // citations (03 REQ-3.7): every requirement has the shape of 01 REQ-1.3 (a ## or ### heading) and
 // cites a decision or an intake file that exists; every slice file (REQ-1.5) names only requirements and decisions that
 // exist, and every test in its evaluation set covers a requirement; no D or REQ id is defined twice
-// (REQ-1.4).
+// (REQ-1.4). On a slice branch, each test file (testFiles, D-46) the branch adds or modifies names a
+// REQ ID at the branch tip (REQ-4.3); deleted files and the default branch are not judged.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { re } from '../../ids.js';
+import { re, sliceFromBranch } from '../../ids.js';
 import { headings, tables } from '../../markdown.js';
 import { findSliceFiles, parseSliceFile } from '../../slicefile.js';
+import { assertRef, git, GitError } from '../../git.js';
+import { isTestFile, reqMentions } from '../../graph/tests.js';
+import { branchTip } from '../ci-event.js';
 
 export const id = 'citations';
 export const blocking = true;
@@ -211,6 +216,51 @@ function checkSlices(ctx, out) {
   }
 }
 
+const tryGit = (root, args) => {
+  try {
+    return git(root, args);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+};
+
+// A test file's text at a revision. Not through git(), whose output is capped at Node's 1 MiB
+// default: a larger test file must still be judged (S-18 review H-1).
+function blobText(root, spec) {
+  try {
+    return execFileSync('git', ['show', spec], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
+}
+
+export const TEST_FILE_MESSAGE = 'test file names no requirement (REQ-4.3)';
+
+// REQ-4.3: the test files a slice branch adds or modifies against its merge base with the default
+// branch (local, else origin's), judged at the branch tip.
+export function testFileFindings(ctx) {
+  const at = branchTip(ctx);
+  if (!at || !sliceFromBranch(at.branch)) return [];
+  const { root, cfg } = ctx;
+  const def = assertRef(cfg.defaultBranch ?? 'main');
+  const base = tryGit(root, ['merge-base', at.tip, `refs/heads/${def}`]) || tryGit(root, ['merge-base', at.tip, `refs/remotes/origin/${def}`]);
+  if (!base) return [];
+  const diff = tryGit(root, ['-c', 'core.quotePath=false', 'diff', '-z', '--name-status', '--no-renames', base, at.tip, '--']);
+  if (!diff) return [];
+  const parts = diff.split('\0');
+  const out = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const status = parts[i].trim();
+    const rel = parts[i + 1];
+    if ((status !== 'A' && status !== 'M') || !isTestFile(rel, cfg)) continue;
+    const text = blobText(root, `${at.tip}:${rel}`);
+    if (text === null || reqMentions(text).length > 0) continue;
+    out.push({ file: rel, line: 1, message: TEST_FILE_MESSAGE });
+  }
+  return out;
+}
+
 export function run(ctx) {
   const out = [];
   const defs = [];
@@ -218,6 +268,7 @@ export function run(ctx) {
   decisionDefs(ctx, defs);
   checkDuplicates(defs, out);
   checkSlices(ctx, out);
+  out.push(...testFileFindings(ctx));
   return out;
 }
 
