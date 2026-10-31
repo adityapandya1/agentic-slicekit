@@ -72,10 +72,18 @@ function usageText() {
   const names = Object.keys(COMMANDS).sort();
   if (names.length > 0) {
     lines.push('commands:');
-    for (const name of names) lines.push(`  ${COMMANDS[name].usage}`);
+    // One line per form, each starting with the command's name; a command's own continuation lines
+    // are indented for its usage error and set level here.
+    for (const name of names) for (const line of COMMANDS[name].usage.split('\n')) lines.push(`  ${line.trim()}`);
     lines.push('');
   }
-  lines.push('options:', '  --help       show this text', '  --version    print the version', '');
+  lines.push(
+    'options:',
+    '  --help       show this text',
+    '  --version    print the version',
+    '  --<option>=<value>  a value that starts with "-", for any option',
+    '',
+  );
   return lines.join('\n');
 }
 
@@ -85,8 +93,9 @@ export async function main(argv, io) {
     io.stdout(`${readVersion()}\n`);
     return 0;
   }
+  // The help asked for is the answer, on standard output; the usage after a mistake is an error.
   if (first === '--help') {
-    io.stderr(usageText());
+    io.stdout(usageText());
     return 0;
   }
   const command = Object.hasOwn(COMMANDS, first ?? '') ? COMMANDS[first] : undefined;

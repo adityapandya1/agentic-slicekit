@@ -37,8 +37,8 @@ test('the README opens with two sentences, then Status: preview, the walkthrough
   assert.equal(sentences.length, 2, first);
   assert.deepEqual(headings(), ['Status: preview', 'Walkthrough', 'Scope', 'How the hooks find slicekit']);
   const status = section('Status: preview');
-  assert.match(status, /Phases? 1 and 2/);
-  assert.match(status, /Phases? 3 and 4/);
+  assert.match(status, /Phases 1 to 3 work/);
+  assert.match(status, /Phase 4/);
   assert.match(status, /git clone https:\/\/github\.com\/adityapandya1\/agentic-slicekit/);
   assert.match(status, /node bin\/slicekit\.js --version/);
   assert.match(readme.trimEnd(), /\nLicense: MIT\.$/);
@@ -71,15 +71,30 @@ test('the walkthrough cleans up after itself, and the hooks section points a clo
   assert.match(hooks, /--cli/);
   assert.match(hooks, /clone/);
   // The local install comes first, the clone second.
-  assert.ok(hooks.indexOf('npm i -D slicekit') >= 0 && hooks.indexOf('npm i -D slicekit') < hooks.indexOf('clone'), hooks);
+  const install = 'npm install --save-dev slicekit';
+  assert.ok(hooks.indexOf(install) >= 0 && hooks.indexOf(install) < hooks.indexOf('clone'), hooks);
 });
 
 test('the status section gives the npm install and says the walkthrough runs from a clone', () => {
   const status = section('Status: preview');
   assert.match(status, /0\.1\.1/);
-  assert.match(status, /```sh\nnpm i -D slicekit\nnpx slicekit init --shape backend --name <your-project>\n```/);
+  assert.match(status, /```sh\nnpm install --save-dev slicekit\nnpx slicekit init --shape backend --name <your-project>\n```/);
   assert.match(status, /walkthrough[^.]*clone/i);
   assert.match(status, /examples\/walkthrough/);
+});
+
+// P3/S-35: 0.2.0 ships Phase 3, and the install is spelled out in full wherever the README gives it.
+test("the status names Phase 3's commands and the install uses --save-dev", () => {
+  const status = section('Status: preview');
+  const prose = status.replace(/\s+/g, ' ');
+  assert.match(prose, /Phases 1 to 3 work/);
+  for (const c of ['graph', 'trace', 'impact', 'history', 'uncovered', 'shipped', 'visualize']) assert.ok(status.includes(`\`${c}\``), c);
+  assert.match(prose, /workspaces/);
+  assert.match(prose, /Phase 4 \(release, ops, audit and the other examples\) is not built yet/);
+  assert.doesNotMatch(prose, /Phase 3 will add|Phases 3 and 4 are not built/);
+  assert.match(status, /```sh\nnpm install --save-dev slicekit\n/);
+  assert.match(section('How the hooks find slicekit'), /`npm install --save-dev slicekit`/);
+  assert.doesNotMatch(readme, /npm i -D/);
 });
 
 test('the status section names no placeholder and no release still to come', () => {

@@ -9,7 +9,7 @@ import { LockError, TransitionError, readSlice, setState, unfreeze } from '../st
 
 const USAGE =
   'state set <id> <to> [--commit sha] [--test-exit n] [--check-exit n] [--tests a,b] [--pr-number n --pr-title t --pr-url u --pr-sha s] [--verdict path --round n --blockers n [--independent]] [--ci-status s --ci-sha s] [--merged-at iso] [--release path] [--backfill]\n' +
-  '  slicekit state show <id> [--json]\n  slicekit state unfreeze <id> <path>';
+  '  state show <id> [--json]\n  state unfreeze <id> <path>';
 
 const OPTIONS = {
   commit: { type: 'string' },

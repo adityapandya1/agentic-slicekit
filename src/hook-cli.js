@@ -13,7 +13,7 @@ export function onPath(name, env) {
 
 // The install advice of D-30: the kit is on npm from 0.1.1 (D-41).
 export const NOT_INSTALLED =
-  'slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)';
+  'slicekit is not installed locally or on PATH; hooks will fail until it is (npm install --save-dev slicekit, or set cli in .slicekit/config.json)';
 
 // The command the hooks call, D-30: a local install, else slicekit on PATH, else the PATH form with
 // NOT_INSTALLED. Never a registry fetch: a hook that installs would run whatever the registry serves

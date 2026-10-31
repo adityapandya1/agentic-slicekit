@@ -12,9 +12,9 @@ const SUBCOMMANDS = ['snapshot', 'ask', 'answer', 'done'];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const USAGE =
   'intake snapshot <file|url> [--slug <s>] [--who <w>]\n' +
-  '  slicekit intake ask --pass <product|platform> --topic <t> --question <q>\n' +
-  '  slicekit intake answer (--answer <a> [--type <T>] | --open --why <w> --recommendation <r>) [--who <w>] [--interface <name> [--source <file>:<line>]]\n' +
-  '  slicekit intake done';
+  '  intake ask --pass <product|platform> --topic <t> --question <q>\n' +
+  '  intake answer (--answer <a> [--type <T>] | --open --why <w> --recommendation <r>) [--who <w>] [--interface <name> [--source <file>:<line>]]\n' +
+  '  intake done';
 
 // The options each subcommand takes, and the positionals it wants after its name.
 const SPEC = {
