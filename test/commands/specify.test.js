@@ -1,3 +1,4 @@
+// REQ-2.3: specify writes a clarification marker rather than guess, spec verify resolves every Cites line as check does, and one spec file per capability with a contract per interface named at intake.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

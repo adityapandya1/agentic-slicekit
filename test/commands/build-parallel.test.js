@@ -1,3 +1,4 @@
+// REQ-2.7: build parallel starts one worktree per runnable slice of an Order step, and the second push to change a shared path stops as a plan defect.
 // S-16 Task 4: `build parallel P<n>` starts every runnable slice of a phase's next Order step, each in
 // its own worktree; `build pr` refuses, before pushing, a branch that changes a path another slice of
 // the same step has already pushed: the plan said they do not overlap (D-06).
