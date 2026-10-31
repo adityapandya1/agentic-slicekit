@@ -1,8 +1,12 @@
 {
   "slice": "P3/S-31",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 82,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
+    "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352"
+  },
   "redCommit": "ceedf11825161bf43c5f5556f561e08659f64171",
   "frozenTests": [
     "test/req-tags.test.js"
@@ -32,6 +36,22 @@
       "at": "2026-10-31T16:57:13.006Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T17:04:23.282Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 82,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
+          "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352",
+          "title": "[P3/S-31] Every test names its requirement"
+        }
+      }
     }
   ]
 }
