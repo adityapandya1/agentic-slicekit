@@ -1,11 +1,11 @@
 {
   "slice": "P3/S-34",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 66,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
-    "headSha": "d0d12ce4c8eec614c0e7f08f1e457f5ca639ca53"
+    "headSha": "e23ee19709bc5c56b86fa104191e700db091f302"
   },
   "redCommit": "756610aefa386854326aee5531fbca7a57b8b7a2",
   "frozenTests": [
@@ -94,6 +94,22 @@
         "unfreeze": "test/graph/pr-cache.test.js",
         "amendCommit": "3583dac99b3dcac99aaa742eb61670e98691600b",
         "reason": "Review H-1: a closed pull request can be reopened and merged, so only a merged answer is final (D-52 replaces D-51). The old-entry case now uses a MERGED entry with a key; Done when 5 and 6 say a closed answer is fetched again."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T12:25:44.029Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 66,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
+          "headSha": "e23ee19709bc5c56b86fa104191e700db091f302",
+          "title": "[P3/S-34] Graph and visualize fixes"
+        }
       }
     }
   ]
