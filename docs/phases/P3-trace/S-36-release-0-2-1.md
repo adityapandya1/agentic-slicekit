@@ -10,7 +10,7 @@ decisions: [D-41]
 
 ## Done when
 
-1. `init` writes the repository's own default branch as `defaultBranch` and as the one entry of `protectedBranches` (issue #78). It reads the branch `refs/remotes/origin/HEAD` points at; else the first of git's `init.defaultBranch`, `main` and `master` that is a local branch, so a feature branch checked out at init is not taken for the default; else the branch HEAD is on (an unborn HEAD counts); else `main`. Outside a repository it writes `main`. In a repository whose only branch is `master`, `init` writes `master` and `graph` builds. An existing config is left as it is. The runbook does not change (D-21): it names neither field, and this repository's own config, whose branch is `main`, does not change.
+1. `init` writes the repository's own default branch as `defaultBranch` and as the one entry of `protectedBranches` (issue #78). It reads the branch `refs/remotes/origin/HEAD` points at, while that branch exists (in an empty repository, as it is); else the first of git's `init.defaultBranch`, `main` and `master` that is a local branch, or that an empty repository's HEAD is on; else `main`. Any other branch HEAD is on is never taken: the default branch is protected, so a feature or slice branch taken for it would refuse every commit (issue #87 is the case this leaves at `main`). Outside a repository it writes `main`. In a repository whose only branch is `master`, `init` writes `master` and `graph` builds. An existing config is left as it is. The runbook does not change (D-21): it names neither field, and this repository's own config, whose branch is `main`, does not change.
 2. `slicekit <command> --help` prints that command's usage lines on standard output and exits 0, for every command, with nothing on standard error (issue #77). A `--help` after a `--` is passed to the command as an argument.
 3. `test/check/references.test.js` opens with a comment naming the requirement its tests check, REQ-3.7's references rule, so the graph no longer links it only to REQ-1.1 through its fixture text (issue #83).
 4. `package.json` carries `0.2.1` and the kit's own rendered files are re-rendered for it. `CHANGELOG.md` has a 0.2.1 entry naming the three fixes with their issue numbers. Publishing stays the author's, after merge (D-41).
@@ -30,11 +30,11 @@ decisions: [D-41]
 
 `cli.test.js` was amended after red: the red commit wrote its escaped newlines as real line breaks, so the file did not parse and its two tests failed for that reason. The amendment restores the escapes; the tests and their assertions are the ones above.
 
-`init.test.js` was amended in the build: a feature branch checked out at init would have become the default, so the order reads a local `init.defaultBranch`, `main` or `master` before HEAD's branch, with a test for it. The older test of an unborn slice branch now has origin name `main`, since an unborn branch with nothing else named is the default.
+`init.test.js` was amended in the build: a feature branch checked out at init would have become the default, so the order reads a local `init.defaultBranch`, `main` or `master` first, with a test for it. The older test of an unborn slice branch has origin name `main`. Review round 2 then removed the step that took HEAD's own branch, and `test/default-branch.test.js` covers what replaced it.
 
 ## Expected changes
 
-`package.json`, `CHANGELOG.md`, `src/init.js`, `src/git.js`, `src/cli/index.js`, `.claude/`, `.slicekit/rendered/`, `test/init.test.js`, `test/cli.test.js`, `test/package.test.js`, `test/hook-cli.test.js`, `test/check/references.test.js`, tests.
+`package.json`, `CHANGELOG.md`, `src/init.js`, `src/git.js`, `src/config.js`, `src/cli/index.js`, `.claude/`, `.slicekit/rendered/`, `test/init.test.js`, `test/cli.test.js`, `test/package.test.js`, `test/runbook.test.js`, `test/default-branch.test.js`, `test/check/references.test.js`, tests.
 
 ## Tasks
 
