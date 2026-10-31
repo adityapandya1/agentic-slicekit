@@ -1,0 +1,255 @@
+{
+  "slice": "P3/S-20",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 60,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+    "headSha": "e09a23374462316a17bc71c720a83d9581b85f72"
+  },
+  "redCommit": "dcc7504110c0c0426356d110431d1469c00dda01",
+  "frozenTests": [
+    "test/graph/workspace.test.js",
+    "test/graph/impact-perf.test.js",
+    "test/check/workspace.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-20i-r1.md",
+      "blockers": 2,
+      "independent": true,
+      "headSha": "fb4758cbc429661ba01809da53f9abd595f4f3b3"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-20i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2af6318d68878bf582690a1c928e9e89c83f7ead"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-20i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "0025885a37de0cc77949be8ed5fc0bcda340af3c"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P3-S-20i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "d12c006ea6366731552570b58c53d45c05f5054f"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P3-S-20i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "e09a23374462316a17bc71c720a83d9581b85f72"
+    }
+  ],
+  "ci": {
+    "sha": "dc7cc10918608d795cfda8146acdf7df5b2454bf",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41192117675"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-30T20:40:28.955Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "dcc7504110c0c0426356d110431d1469c00dda01",
+        "testExit": 1,
+        "tests": [
+          "test/graph/workspace.test.js",
+          "test/graph/impact-perf.test.js",
+          "test/check/workspace.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-30T20:40:29.436Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-30T20:51:48.420Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "fb4758cbc429661ba01809da53f9abd595f4f3b3",
+          "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T20:59:12.608Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-20i-r1.md",
+          "blockers": 2,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T21:10:48.046Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "2af6318d68878bf582690a1c928e9e89c83f7ead",
+          "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T21:14:53.655Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-20i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T21:20:38.618Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "0025885a37de0cc77949be8ed5fc0bcda340af3c",
+          "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T21:23:37.889Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-20i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-30T21:25:54.814Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "d12c006ea6366731552570b58c53d45c05f5054f",
+          "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-30T21:27:34.948Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P3-S-20i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T10:14:39.745Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 60,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/60",
+          "headSha": "e09a23374462316a17bc71c720a83d9581b85f72",
+          "title": "[P3/S-20] Workspace and contracts"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T10:16:58.718Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P3-S-20i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T10:27:05.915Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "dc7cc10918608d795cfda8146acdf7df5b2454bf",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41192117675"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-31T10:27:08.493Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

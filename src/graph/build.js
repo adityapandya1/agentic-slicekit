@@ -164,7 +164,10 @@ function commitPart(commits, fromDefault, prefix, repoId) {
 }
 
 // buildGraph(root, cfg, {host, full, repos, skipped}) -> {graph, report, index}. `host` null with
-// `skipped` a note means no host could be made; `repos` (S-20) are [{name, root, defaultBranch}].
+// `skipped` a note means no host could be made; `repos` (S-20) are the reached workspace
+// repositories, [{name, root, defaultBranch, host?, skipped?}]: each is walked as the program
+// repository is, its file and test nodes prefixed `<name>/`, its pull requests read from its own merge
+// commit subjects and from the state files of the slices whose `repo` names it, keyed `<name>#<n>`.
 export function buildGraph(root, cfg, { host = null, full = false, repos = [], skipped = null } = {}) {
   if (!isRepoRoot(root)) throw new GraphError(2, 'graph: not a git repository');
   const old = full ? null : readIndex(root, cfg);
@@ -181,6 +184,7 @@ export function buildGraph(root, cfg, { host = null, full = false, repos = [], s
   const parts = [commitPart(main.commits, main.fromDefault, '', nodeId('repo', '.'))];
   const repoShas = [{ name: '.', sha: main.defaultSha }];
   let allCommits = Object.values(main.commits);
+  const reached = [];
 
   for (const r of [...repos].sort((a, b) => cmp(a.name, b.name))) {
     const prefix = `${r.name}/`;
@@ -195,7 +199,7 @@ export function buildGraph(root, cfg, { host = null, full = false, repos = [], s
     repoNodes.push({ id: nodeId('repo', r.name), kind: 'repo', label: r.name, from: r.name, ...(webUrl(r.root) ? { web: webUrl(r.root) } : {}) });
     parts.push(commitPart(w.commits, w.fromDefault, prefix, nodeId('repo', r.name)));
     repoShas.push({ name: r.name, sha: w.defaultSha });
-    allCommits = allCommits.concat(Object.values(w.commits));
+    reached.push({ repo: r, commits: Object.values(w.commits) });
   }
 
   const fragments = Object.keys(files).sort(cmp).map((k) => files[k].fragment);
@@ -226,7 +230,22 @@ export function buildGraph(root, cfg, { host = null, full = false, repos = [], s
     if (!verdicts.has(slice)) verdicts.set(slice, []);
     verdicts.get(slice).push(n);
   }
-  const prs = pullRequestNodes(prNumbers(fragments, allCommits), { host, cacheDir: cacheDir(root, cfg), verdicts, skipped });
+  // A state file's pull request is its slice's, in the repository the slice names (S-20 B-1); a release
+  // file's refs are the program's. A ref of a slice in a repository that was not reached is dropped.
+  const repoOfSlice = new Map([...byId.values()].filter((n) => n.kind === 'slice').map((n) => [n.id, n.repo ?? '.']));
+  const owner = (ref) => (ref.slice ? (repoOfSlice.get(ref.slice) ?? '.') : '.');
+  const allRefs = fragments.flatMap((f) => f.prRefs ?? []);
+  const refsOf = (name) => [{ prRefs: allRefs.filter((ref) => owner(ref) === name) }];
+  const prs = pullRequestNodes(prNumbers(refsOf('.'), allCommits), { host, cacheDir: cacheDir(root, cfg), verdicts, skipped });
+  for (const { repo: r, commits } of reached) {
+    const sub = pullRequestNodes(prNumbers(refsOf(r.name), commits), { host: r.host ?? null, cacheDir: cacheDir(root, cfg), verdicts, skipped: r.skipped ?? null, repo: r.name });
+    prs.nodes.push(...sub.nodes);
+    prs.edges.push(...sub.edges);
+    prs.notes.push(...sub.notes);
+    prs.fetched += sub.fetched;
+    prs.cached += sub.cached;
+    allCommits = allCommits.concat(commits);
+  }
   for (const n of prs.nodes) if (!byId.has(n.id)) byId.set(n.id, n);
 
   // Edges: deduplicated; one whose endpoint is not a node is dropped with a warning.
@@ -262,7 +281,7 @@ export function buildGraph(root, cfg, { host = null, full = false, repos = [], s
     files: fileCount,
     fetched: prs.fetched,
     cached: prs.cached,
-    notes: prs.notes,
+    notes: [...new Set(prs.notes)],
     warnings: [...new Set(warnings)].sort(cmp),
   };
   return { graph, report, index };
