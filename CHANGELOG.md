@@ -62,8 +62,8 @@ repositories.
 - The bookkeeping walk passes over a run still in progress and a run whose test jobs were all skipped,
   so an edited pull request or a re-run does not run the full suite again (#52).
 - `build commit` no longer refuses a merge of main that brings another slice's render commit, a version
-  bump or a config change (#32), and it judges merge commits, so a merge cannot change this slice's
-  state file or verdicts (#31).
+  bump or a config change (#32), and it judges merge commits: a merge may bring in this slice's state
+  file or verdicts only as a branch whose own commits were each judged (#31, D-53).
 - `build verdict` refuses a review worktree on a detached head and says to run `review start` (#61).
 - A workspace entry whose folder is a git submodule of the program, or whose name is that of a top-level
   file, is no longer refused as a collision (#62).
