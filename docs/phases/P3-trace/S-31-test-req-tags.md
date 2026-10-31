@@ -2,7 +2,7 @@
 slice: P3/S-31
 name: Every test names its requirement
 repo: .
-group: B
+group: C
 runbook: no
 requirements: [REQ-4.3, REQ-5.5]
 decisions: []
