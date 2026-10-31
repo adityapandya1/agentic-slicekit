@@ -46,7 +46,7 @@ decisions: [D-09, D-18, D-35]
 - Three operations on both: `open({title, body, labels = [], slice}) → {id, url}`; `comment(id, body)`; `find(slice, finding) → {id, url} | null`, the issue whose title begins `[<slice>] <finding>:`. None closes an issue.
 - GitHub: `gh issue create --title <t> --body-file - [--label <l>]…` (the id is the number in the printed URL's `/issues/<n>`); `gh issue comment <n> --body-file -`; `gh issue list --state all --search "<slice> <finding> in:title" --json number,url,title --limit 50`, then the title test above. Spawned through `gh` from `src/adapters/githost/github.js`, exported for this.
 - Fixture: `issues.json` holds `[{number, url, title, body, labels, comments}]`; `open` appends one with `url` `https://example.test/issues/<n>` and is refused when `issue-create-error.txt` exists; `comment` appends to `comments`; each write appends `{op, …input}` to `issue-calls.jsonl`.
-- `declineFinding(root, cfg, host, tracker, id, finding, {worktree}) → {url, created}`: `finding` must be an `H-<n>` of the latest verdict (code 2 `<finding> is not a should-have of round <k>`); `tracker.find(id, finding)` returns the open issue when there is one; else `tracker.open({title: '[<id>] <finding>: <what is wrong>', body: <the finding's what, why and how verified, then "Verdict: <path> at <headSha>">, slice: id})`. The issue URL is added to "Should-haves declined" (replacing `none`) when not already there. CLI `build decline <id> <H-n> [--worktree <p>]` prints the URL, and `(already filed)` when found (`(already filed, closed)` for a closed issue). Its test lives in `test/commands/review-loop.test.js` and runs after Task 2 lands, since it needs a recorded verdict.
+- `declineFinding(root, cfg, host, tracker, id, finding, {worktree}) → {url, created}`: `finding` must be an `H-<n>` of the latest verdict (code 2 `<finding> is not a should-have of round <k>`); `tracker.find(id, finding)` returns the open issue when there is one; else `tracker.open({title: '[<id>] <finding>: <what is wrong>', body: <the finding's what, why and how verified, then "Verdict: <path> at <headSha>">, slice: id})`. The issue URL is added to "Should-haves declined" (replacing `none`) when not already there. CLI `build decline <id> <H-n> [--worktree <p>]` prints the URL, and `(already filed)` when found (`(already filed, closed)` for a closed issue). Its test lives in `test/commands/review-loop.test.js` and runs after Task 2 lands, since it needs a recorded verdict. <!-- slicekit:example -->
 
 - [ ] **Step 1: Failing test** — `the fixture tracker opens, finds and comments`: on a temp copy of `test/fixtures/tracker/`, `open` returns id 1 and its URL, `find('P2/S-15', 'H-1')` finds it, `find('P2/S-15', 'H-2')` is null, `comment` adds one comment, and `issue-calls.jsonl` has two lines. Also `the GitHub tracker reads the number from the url` through the `exec` seam.
 - [ ] **Step 2: Run** `node --test test/tracker.test.js` → FAIL.
@@ -56,7 +56,7 @@ decisions: [D-09, D-18, D-35]
 
 ### Task 2: `build verdict`
 
-**Files:** Create `src/build/verdict.js`, `test/commands/review-loop.test.js`. Modify `src/cli/build.js`.
+**Files:** Create `src/build/verdict.js`, `test/commands/review-loop.test.js`. Modify `src/cli/build.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes: `parseVerdict`, `verdictProblems` (`src/verdict.js`); `findWorktree`, `recordState`, `commitBookkeeping` (S-14); `pushBranch` (S-09).
@@ -73,7 +73,7 @@ decisions: [D-09, D-18, D-35]
 
 ### Task 3: The two-round cap and "Reviewer blocked"
 
-**Files:** Modify `src/build/verdict.js`, `test/commands/review-loop.test.js`.
+**Files:** Modify `src/build/verdict.js`, `test/commands/review-loop.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes (S-09): `getSection`, `setSection`; C-1 `getPullRequest`, `updatePullRequestBody`.
@@ -89,7 +89,7 @@ decisions: [D-09, D-18, D-35]
 
 ### Task 4: `ci-green` on a covered head, and `build finish`
 
-**Files:** Create `src/build/finish.js`. Modify `src/state/transitions.js`, `docs/spec/01-layout-and-state.md`, `src/cli/build.js`, `test/state.test.js`, `test/commands/review-loop.test.js`.
+**Files:** Create `src/build/finish.js`. Modify `src/state/transitions.js`, `docs/spec/01-layout-and-state.md`, `src/cli/build.js`, `test/state.test.js`, `test/commands/review-loop.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes: `declineFinding` (Task 1); C-1 `markReady`, `ciStatus`, `getPullRequest`, `updatePullRequestBody`; `recordState`; `headCovers` (`src/state/covers.js`).
@@ -106,7 +106,7 @@ decisions: [D-09, D-18, D-35]
 
 ### Task 5: The reviewer and fixer briefs, and steps 6 to 9
 
-**Files:** Modify `templates/instructions/agents/reviewer.md`, `templates/instructions/agents/fixer.md`, `templates/instructions/commands/build.md`, `src/build/pr.js`, `src/build/verdict.js`, `test/commands/review-loop.test.js`.
+**Files:** Modify `templates/instructions/agents/reviewer.md`, `templates/instructions/agents/fixer.md`, `templates/instructions/commands/build.md`, `src/build/pr.js`, `src/build/verdict.js`, `test/commands/review-loop.test.js`. <!-- slicekit:example -->
 
 **Interfaces:**
 - Consumes (S-09): `briefProblems`; `{{cli}} instructions reviewer`, `{{cli}} instructions fixer`.

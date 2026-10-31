@@ -24,7 +24,8 @@ import { GitError, git, resolveCommit } from '../git.js';
 import { headCovers } from '../state/covers.js';
 
 const USAGE = 'ci bookkeeping [--base <sha>] [--head <sha>] [--base-branch <branch>] [--output <file>]';
-// How far back the walk for a green commit goes; each commit is one or two git host calls.
+// How far back the walk for a green commit goes; each commit is one git host call, and one more for
+// each completed run it judges, newest first, until one is decided.
 export const BASE_WALK_LIMIT = 20;
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
