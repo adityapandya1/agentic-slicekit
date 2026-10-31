@@ -4,16 +4,17 @@ import { GapError, addGap, closeGap, scanGaps, verifyGaps } from '../gaps.js';
 
 const USAGE =
   'gaps scan\n' +
-  '  slicekit gaps verify\n' +
-  '  slicekit gaps add --class <c> --where <file>:<line> --what <text>\n' +
-  '  slicekit gaps close G-<n> (--decision D-<n> | --req <REQ>)\n' +
-  '  (a value that starts with "-" goes as --what=<text>, and so for every option)';
+  '  gaps verify\n' +
+  '  gaps add --class <c> --where <file>:<line> --what <text>\n' +
+  '  gaps close G-<n> (--decision D-<n> | --req <REQ>)';
+// Said only on a usage error; the general help gives the same rule under its options.
+const DASH = '(a value that starts with "-" goes as --what=<text>, and so for every option)';
 
 const ALLOWED = { scan: [], verify: [], add: ['class', 'where', 'what'], close: ['decision', 'req'] };
 const OPTIONS = Object.fromEntries(Object.values(ALLOWED).flat().map((k) => [k, { type: 'string' }]));
 
 const usage = (io, why) => {
-  io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n`);
+  io.stderr(`${why ? `slicekit: ${why}\n` : ''}usage: slicekit ${USAGE}\n  ${DASH}\n`);
   return 2;
 };
 

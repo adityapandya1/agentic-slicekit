@@ -3,7 +3,7 @@ import { failureOutput, runHook } from '../hooks/io.js';
 // `slicekit hook <name>`: read all of stdin, print the hook's JSON decision, exit with its code.
 // Any throw here answers like a failed hook: the refusal for a fail-closed name, {} for a fail-open one.
 export const hookCommand = {
-  usage: 'hook <name>   run a hook handler (called by the agent tool)',
+  usage: 'hook <name>',
   async run(args, io) {
     const [name] = args;
     if (!name) {
