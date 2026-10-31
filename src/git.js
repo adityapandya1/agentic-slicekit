@@ -60,8 +60,14 @@ export function detectDefaultBranch(root) {
       throw e;
     }
   };
+  // origin's HEAD counts only while its branch exists: after the remote renames its default and a
+  // pruning fetch drops the old branch, HEAD still names it, and graph could not find it. An empty
+  // repository has no branch at all yet, so there its name is taken as it is.
   const origin = read(['symbolic-ref', '-q', 'refs/remotes/origin/HEAD']);
-  if (origin.startsWith('refs/remotes/origin/')) return origin.slice('refs/remotes/origin/'.length);
+  const present = (ref) => !hasCommits(root) || read(['rev-parse', '--verify', '-q', ref]) !== '';
+  if (origin.startsWith('refs/remotes/origin/') && present(origin)) {
+    return origin.slice('refs/remotes/origin/'.length);
+  }
   const named = [read(['config', '--get', 'init.defaultBranch']), 'main', 'master'].filter(Boolean);
   const local = named.find((b) => read(['rev-parse', '--verify', '-q', `refs/heads/${b}`]) !== '');
   if (local) return local;
