@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-33",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 70,
@@ -20,7 +20,8 @@
   ],
   "unfrozen": [
     "test/review-worktree.test.js",
-    "test/test-shard.test.js"
+    "test/test-shard.test.js",
+    "test/build-commit-merge.test.js"
   ],
   "verdicts": [
     {
@@ -112,6 +113,17 @@
           "blockers": 2,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-31T13:42:39.589Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-commit-merge.test.js",
+        "amendCommit": "fa27fa8bc986e6e3656ae03bb6fd66f63f00624f",
+        "reason": "Review r1 B-1 and B-2: the guard judges this slice's own files in default-branch commits and a merge's kit files against its first parent (D-53, replacing D-50); a test for a state file taken whole from an orphan branch is added"
       }
     }
   ]
