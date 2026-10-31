@@ -1,0 +1,30 @@
+{
+  "slice": "P3/S-31",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "ceedf11825161bf43c5f5556f561e08659f64171",
+  "frozenTests": [
+    "test/req-tags.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T16:57:12.460Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "ceedf11825161bf43c5f5556f561e08659f64171",
+        "testExit": 1,
+        "tests": [
+          "test/req-tags.test.js"
+        ]
+      }
+    }
+  ]
+}
