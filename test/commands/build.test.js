@@ -1,3 +1,4 @@
+// REQ-2.6, REQ-2.7, REQ-1.8, REQ-1.9, REQ-2.10: build next, start, red, commit, amend and pr move a slice from todo to draft-pr, refuse a precondition that does not hold, run the groups of one step in parallel, carry the Slice trailer and write every pull request body section.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

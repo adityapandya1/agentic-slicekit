@@ -1,3 +1,4 @@
+// REQ-2.11, REQ-3.7: build verdict refuses a verdict whose text fails the references rule, naming each line.
 // P2/S-29 Done when 4: `build verdict` refuses a verdict whose text would fail the `references` rule,
 // naming each line, before it moves or commits the file; the reviewer brief says so.
 import { after, before, test } from 'node:test';

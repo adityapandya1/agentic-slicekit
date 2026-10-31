@@ -1,3 +1,4 @@
+// REQ-3.7: the check runner runs every rule, counts findings against the baselines, exits 1 over baseline, and fails closed on a crashing, missing, duplicate or malformed rule.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
