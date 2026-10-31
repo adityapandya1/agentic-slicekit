@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-31",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "ceedf11825161bf43c5f5556f561e08659f64171",
@@ -25,6 +25,13 @@
           "test/req-tags.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T16:57:13.006Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
