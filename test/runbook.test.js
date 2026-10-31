@@ -45,5 +45,5 @@ test('the release steps write the changelog entry before publishing', () => {
   assert.match(release.replace(/\s+/g, ' '), /CHANGELOG\.md[^.]*release slice/);
   const log = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'CHANGELOG.md'), 'utf8');
   const versions = log.split('\n').filter((l) => /^## /.test(l)).map((l) => l.replace(/^## /, '').split(/\s/)[0]);
-  assert.deepEqual(versions, ['0.2.0', '0.1.2', '0.1.1']);
+  assert.deepEqual(versions, ['0.2.1', '0.2.0', '0.1.2', '0.1.1']);
 });

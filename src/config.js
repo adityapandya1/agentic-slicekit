@@ -10,6 +10,8 @@ export const CONFIG_PATH = path.join('.slicekit', 'config.json');
 const COMMAND_KEYS = ['test', 'lint', 'build', 'e2e'];
 const REVIEW_MODES = ['required', 'optional'];
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+// A branch name the config accepts as defaultBranch or a protected branch.
+export const isBranchName = (name) => BRANCH.test(name);
 
 // Matched case-insensitively: compileDestructive adds the i flag, so `drop table` is caught too.
 // No force-push entry: pre-bash's rule 3 refuses force pushes from the parsed command.
@@ -35,15 +37,15 @@ export function seedBanned() {
 }
 
 // init always passes cli (from --cli or the D-30 probe); the default serves callers that do not.
-export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'slicekit' }) {
+export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, cli = 'slicekit', defaultBranch = 'main' }) {
   return {
     configVersion: CONFIG_VERSION,
     name,
     shape,
     docsRoot,
-    defaultBranch: 'main',
+    defaultBranch,
     cli,
-    protectedBranches: ['main'],
+    protectedBranches: [defaultBranch],
     commands: { test: '', lint: '', build: '', e2e: '', ...commands },
     repos: [],
     gitHost: { kind: 'github' },

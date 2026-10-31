@@ -1,3 +1,5 @@
+// REQ-3.7: the references rule of `slicekit check`. A dead link, heading, path or ID is a finding; a slice's
+// promised paths wait for its merge; an intake file frozen by its sidecar is exempt (REQ-1.2).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';

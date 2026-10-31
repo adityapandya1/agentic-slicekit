@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, ConfigError, defaultConfig, loadConfig, validateConfig } from './config.js';
+import { CONFIG_PATH, ConfigError, defaultConfig, isBranchName, loadConfig, validateConfig } from './config.js';
 import { exists, listFiles, readText, writeText } from './fs.js';
-import { currentBranch, git, GitError, hasCommits, isRepo } from './git.js';
+import { currentBranch, detectDefaultBranch, git, GitError, hasCommits, isRepo } from './git.js';
 import { GITHOOKS, HOOKS_PATH, hooksPathValue, isInstalledHooksPath } from './githooks.js';
 import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
@@ -202,6 +202,7 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
     docsRoot: docsRoot ?? 'docs',
     commands,
     cli: probed.cli,
+    defaultBranch: detectDefaultBranch(root, { accept: isBranchName }),
   });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);

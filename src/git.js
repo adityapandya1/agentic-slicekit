@@ -45,6 +45,41 @@ export function currentBranch(root) {
 
 export const headSha = (root) => git(root, ['rev-parse', 'HEAD']);
 
+// The branch a new config names as its default (P3/S-36, issue #78). In order: the one origin's
+// HEAD points at; else main, master or git's init.defaultBranch, the first that is a local branch;
+// else, in an empty repository (a plain `git init` has no branch yet), the branch HEAD is on when it
+// is one of those three names; else main. main comes before init.defaultBranch because that setting
+// may be the machine's, not this project's (Git for Windows sets master system-wide), while an empty
+// repository's HEAD was named by it. Any other branch HEAD is on is not taken: a branch named the
+// default is protected and refuses commits, so a feature branch guessed wrong would block work,
+// where a wrong main only stops `graph` with a message (issue #87). A name `accept` refuses (one
+// the config would reject) is passed over. Outside a repository there is no branch to read: main.
+export function detectDefaultBranch(root, { accept = () => true } = {}) {
+  if (!isRepo(root)) return 'main';
+  const read = (args) => {
+    try {
+      return git(root, args);
+    } catch (e) {
+      if (e instanceof GitError) return '';
+      throw e;
+    }
+  };
+  const ok = (b) => b !== '' && accept(b);
+  const local = (b) => read(['rev-parse', '--verify', '-q', `refs/heads/${b}`]) !== '';
+  const empty = !hasCommits(root);
+  // origin's HEAD counts only while its branch exists: after the remote renames its default and a
+  // pruning fetch drops the old branch, HEAD still names it, and graph could not find it. An empty
+  // repository has no branch at all yet, so there its name is taken as it is.
+  const origin = read(['symbolic-ref', '-q', 'refs/remotes/origin/HEAD']);
+  const fromOrigin = origin.startsWith('refs/remotes/origin/') ? origin.slice('refs/remotes/origin/'.length) : '';
+  if (ok(fromOrigin) && (empty || read(['rev-parse', '--verify', '-q', origin]) !== '')) return fromOrigin;
+  const named = ['main', 'master', read(['config', '--get', 'init.defaultBranch'])].filter(ok);
+  const found = named.find(local);
+  if (found) return found;
+  const head = empty ? read(['symbolic-ref', '-q', 'HEAD']).replace(/^refs\/heads\//, '') : '';
+  return named.includes(head) ? head : 'main';
+}
+
 // Whether `sha` names a commit object in the repository at root.
 export function commitExists(root, sha) {
   assertRef(sha);

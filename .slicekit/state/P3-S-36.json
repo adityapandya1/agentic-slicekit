@@ -1,0 +1,299 @@
+{
+  "slice": "P3/S-36",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 86,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+    "headSha": "8dc2ae4f0e7386e7b3639a8788afa3d7341fe468"
+  },
+  "redCommit": "6bcea2932423391f2c2b6da7913a12cd99e18490",
+  "frozenTests": [
+    "test/init.test.js",
+    "test/cli.test.js",
+    "test/package.test.js"
+  ],
+  "unfrozen": [
+    "test/cli.test.js",
+    "test/init.test.js",
+    "test/package.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-36i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "0d1cf26119ea05a7cd57299a9fe185b5ec80fd24"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-36-r2.md",
+      "blockers": 2,
+      "independent": false,
+      "headSha": "2e96708d421be22bc559b2c4f4f9bae9771eee19"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-36-r3.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "c1a64a759c5c7b044d413d0d8a626f94b2b26957"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P3-S-36i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "6d73574d4add47c40f8f499325517c651d408831"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P3-S-36i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "8dc2ae4f0e7386e7b3639a8788afa3d7341fe468"
+    }
+  ],
+  "ci": {
+    "sha": "8fd9eef65d3952b64d5b11afc7fdd834491482f8",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41239798124"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T19:22:54.645Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "6bcea2932423391f2c2b6da7913a12cd99e18490",
+        "testExit": 1,
+        "tests": [
+          "test/init.test.js",
+          "test/cli.test.js",
+          "test/package.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T19:22:55.399Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T19:25:19.734Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/cli.test.js",
+        "amendCommit": "b06a5036325ba3a7887d458835d6f6429ea94568",
+        "reason": "the red commit wrote two escaped newlines as real line breaks, so the file did not parse; restored the escapes, the assertions are unchanged"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T19:28:19.217Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "c4e967e47ff2b799b9aa99316bb3940397c673e3",
+        "reason": "a feature branch checked out at init would become the default; the order now reads a local init.defaultBranch, main or master before HEAD's branch, with a test, and the unborn slice-branch case names origin's main"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T19:32:56.296Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "0d1cf26119ea05a7cd57299a9fe185b5ec80fd24",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T19:38:17.485Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-36i-r1.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T19:43:58.077Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "2e96708d421be22bc559b2c4f4f9bae9771eee19",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T20:09:39.450Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-36-r2.md",
+          "blockers": 2,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T20:13:13.922Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "c1a64a759c5c7b044d413d0d8a626f94b2b26957",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T20:17:48.405Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-36-r3.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-10-31T20:17:49.047Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "building",
+      "at": "2026-10-31T20:18:23.322Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/package.test.js",
+        "amendCommit": "a18f64d6a8cf65b82f6d385e0d02e82dac432768",
+        "reason": "review r3 B-3 and r1 H-4: Done when 1 and the init.test.js note state the order the code now uses, and Expected changes lists the files the branch changes; test/package.test.js is named only because build amend needs a locked test, and it is not changed"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T20:20:43.493Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "6d73574d4add47c40f8f499325517c651d408831",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T20:27:13.831Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P3-S-36i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T20:32:46.144Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 86,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/86",
+          "headSha": "8dc2ae4f0e7386e7b3639a8788afa3d7341fe468",
+          "title": "[P3/S-36] Release 0.2.1"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T20:37:29.737Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P3-S-36i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T20:47:50.730Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "8fd9eef65d3952b64d5b11afc7fdd834491482f8",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41239798124"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-31T20:47:53.062Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -620,7 +620,9 @@ test('init on an unborn protected branch says how to make the first commit', () 
     const r = runCli(['init', '--shape', 'backend', '--name', 'demo', '--cli', 'slicekit'], { cwd: root });
     assert.equal(r.stdout.split('\n').filter((l) => l === UNBORN_NEXT).length, 1);
   }, { commits: 0 });
+  // P3/S-36: an unborn branch is the default only when nothing names another, so origin says main here.
   withRepo((root) => {
+    git(root, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main']);
     assert.equal(init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' }).next, null);
   }, { commits: 0, branch: 'slice/P1-S-01-x' });
   withRepo((root) => {
@@ -664,4 +666,56 @@ test('a gitignore with its own node_modules rules gets no node_modules line', ()
     fs.writeFileSync(path.join(root, 'node_modules', 'local-pkg', 'index.js'), '');
     assert.throws(() => git(root, ['check-ignore', '--quiet', 'node_modules/local-pkg/index.js']));
   }, { files: { '.gitignore': 'node_modules/*\n!node_modules/local-pkg/\n' } });
+});
+
+// P3/S-36 (issue #78): init writes the repository's own default branch, so `graph` finds it.
+test('init in a repository whose branch is master writes master as the default and protected branch', () => {
+  withRepo(
+    (root) => {
+      init(root, { name: 'demo', shape: 'backend' });
+      const cfg = loadConfig(root);
+      assert.equal(cfg.defaultBranch, 'master');
+      assert.deepEqual(cfg.protectedBranches, ['master']);
+      const r = runCli(['graph'], { cwd: root });
+      assert.equal(r.code, 0, r.stderr);
+    },
+    { commits: 1, branch: 'master' },
+  );
+});
+
+test("init takes the default branch from origin's HEAD before the current branch", () => {
+  withRepo(
+    (root) => {
+      git(root, ['update-ref', 'refs/remotes/origin/trunk', 'HEAD']);
+      git(root, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk']);
+      init(root, { name: 'demo', shape: 'backend' });
+      const cfg = loadConfig(root);
+      assert.equal(cfg.defaultBranch, 'trunk');
+      assert.deepEqual(cfg.protectedBranches, ['trunk']);
+    },
+    { commits: 1, branch: 'feature' },
+  );
+});
+
+test('init on a feature branch takes the local main as the default', () => {
+  withRepo(
+    (root) => {
+      git(root, ['switch', '-q', '-c', 'feature/x']);
+      init(root, { name: 'demo', shape: 'backend' });
+      assert.equal(loadConfig(root).defaultBranch, 'main');
+    },
+    { commits: 1, branch: 'main' },
+  );
+});
+
+test('init outside a repository writes main', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-plain-'));
+  try {
+    init(root, { name: 'demo', shape: 'data' });
+    const cfg = loadConfig(root);
+    assert.equal(cfg.defaultBranch, 'main');
+    assert.deepEqual(cfg.protectedBranches, ['main']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
