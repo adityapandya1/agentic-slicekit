@@ -16,7 +16,7 @@ export const PINS_PATH = fileURLToPath(new URL('../templates/workflow/pins.json'
 export const WORKFLOW_PATH = '.github/workflows/slicekit.yml';
 export const WORKFLOW_DRIFT = `${WORKFLOW_PATH} differs from the generator; run slicekit workflow --write to regenerate it`;
 
-const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact' };
+const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact', cache: 'actions/cache' };
 const COMMAND_ORDER = ['test', 'lint', 'build', 'e2e'];
 const MATRIX_OS = ['ubuntu-latest', 'windows-latest', 'macos-latest'];
 const SHA = /^[0-9a-f]{40}$/;

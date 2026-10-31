@@ -1,0 +1,161 @@
+{
+  "slice": "P3/S-34",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 66,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
+    "headSha": "e23ee19709bc5c56b86fa104191e700db091f302"
+  },
+  "redCommit": "756610aefa386854326aee5531fbca7a57b8b7a2",
+  "frozenTests": [
+    "test/graph/workspace-collision.test.js",
+    "test/graph/history-order.test.js",
+    "test/visualize-workspace.test.js",
+    "test/workflow-pr-cache.test.js",
+    "test/graph/pr-cache.test.js"
+  ],
+  "unfrozen": [
+    "test/graph/pr-cache.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-34i-r1.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "d0d12ce4c8eec614c0e7f08f1e457f5ca639ca53"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-34i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "e23ee19709bc5c56b86fa104191e700db091f302"
+    }
+  ],
+  "ci": {
+    "sha": "a9a5dfdf9ff56488a1147eb8e240ede6d7727157",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41201150015"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T12:08:26.831Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "756610aefa386854326aee5531fbca7a57b8b7a2",
+        "testExit": 1,
+        "tests": [
+          "test/graph/workspace-collision.test.js",
+          "test/graph/history-order.test.js",
+          "test/visualize-workspace.test.js",
+          "test/workflow-pr-cache.test.js",
+          "test/graph/pr-cache.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T12:08:27.811Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T12:15:02.674Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 66,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
+          "headSha": "d0d12ce4c8eec614c0e7f08f1e457f5ca639ca53",
+          "title": "[P3/S-34] Graph and visualize fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T12:21:55.635Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-34i-r1.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-10-31T12:23:51.052Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/graph/pr-cache.test.js",
+        "amendCommit": "3583dac99b3dcac99aaa742eb61670e98691600b",
+        "reason": "Review H-1: a closed pull request can be reopened and merged, so only a merged answer is final (D-52 replaces D-51). The old-entry case now uses a MERGED entry with a key; Done when 5 and 6 say a closed answer is fetched again."
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T12:25:44.029Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 66,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/66",
+          "headSha": "e23ee19709bc5c56b86fa104191e700db091f302",
+          "title": "[P3/S-34] Graph and visualize fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T12:26:53.554Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-34i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T12:36:56.736Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "a9a5dfdf9ff56488a1147eb8e240ede6d7727157",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41201150015"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-31T12:36:58.499Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -16,14 +16,16 @@ const BRANCH = /^(?!-)(?!.*\.\.)(?!.*\/\/)[^\s~^:?*[\\\0]+(?<![/.])$/;
 const isText = (v) => typeof v === 'string' && v.trim() !== '';
 const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
 
-// The first segment of every tracked path of the program repository, lower-cased: a workspace name
-// that is one of them would share its file nodes (S-20 review H-1). Untracked paths make no file node,
-// so a workspace repository cloned inside the program and not ignored is not one (H-7); a folder
-// only in the program's history is caught after the walk, by historyCollision (H-5).
+// The first segment of every tracked path of the program repository that holds a slash, lower-cased:
+// a workspace name that is one of them would share its file nodes (S-20 review H-1). A top-level file,
+// or a git submodule (one gitlink, the node file:<name>), shares none (P3/S-34, issue #62), the rule
+// historyCollision keeps. Untracked paths make no file node, so a workspace repository cloned inside
+// the program and not ignored is not one (H-7); a folder only in the program's history is caught
+// after the walk, by historyCollision (H-5).
 function topLevel(root) {
   try {
     const out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '-z'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 1024 });
-    return new Set(out.split('\0').filter((p) => p !== '').map((p) => p.split('/')[0].toLowerCase()));
+    return new Set(out.split('\0').filter((p) => p.includes('/')).map((p) => p.split('/')[0].toLowerCase()));
   } catch {
     return new Set();
   }
