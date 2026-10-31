@@ -1,3 +1,4 @@
+// REQ-1.1: what `slicekit init` writes into a repository, and what it warns about.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -375,12 +376,26 @@ test('cli: init with slicekit neither local nor on PATH warns once, never names 
     assert.equal(r.code, 0, r.stderr);
     assert.equal(
       r.stderr,
-      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm i -D slicekit, or set cli in .slicekit/config.json)\n' +
+      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm install --save-dev slicekit, or set cli in .slicekit/config.json)\n' +
         BARE('slicekit'),
     );
     assert.match(r.stdout, /^hooks run: slicekit$/m);
     assert.equal(JSON.parse(read(root, '.slicekit/config.json')).cli, 'slicekit');
     assert.doesNotMatch(read(root, '.claude/settings.json'), /npx/);
+  });
+});
+
+// P3/S-35: the warning gives the same install command as the README, in its long form.
+test('the not-installed warning gives npm install --save-dev slicekit', () => {
+  withRepo((root) => {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: root, env: pathWithoutSlicekit(), shim: false });
+    assert.equal(r.code, 0, r.stderr);
+    const warning = r.stderr.split('\n')[0];
+    assert.equal(
+      warning,
+      'slicekit: slicekit is not installed locally or on PATH; hooks will fail until it is (npm install --save-dev slicekit, or set cli in .slicekit/config.json)',
+    );
+    assert.doesNotMatch(r.stderr, /npm i -D/);
   });
 });
 
