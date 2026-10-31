@@ -109,10 +109,15 @@ var slicekitViews = (function () {
     return idx;
   }
 
+  // A workspace repository's pull request is <repo>#<n>, as src/graph/render.js names it; one of the
+  // program repository is #<n>.
+  function prName(p) {
+    return p.repo ? keyOf(p.id) : '#' + (p.number || keyOf(p.id));
+  }
   function title(n) {
     var key = keyOf(n.id);
     if (n.kind === 'commit') return key.slice(0, 7) + ' ' + (n.subject || n.label || '');
-    if (n.kind === 'pull-request') return '#' + (n.number || key) + ' ' + (n.label || '');
+    if (n.kind === 'pull-request') return prName(n) + ' ' + (n.label || '');
     if (n.kind === 'file' || n.kind === 'test' || n.kind === 'intake' || n.kind === 'repo') return key;
     if (n.kind === 'release') return key;
     return n.label && n.label !== key ? key + ' ' + n.label : key;
@@ -334,7 +339,7 @@ var slicekitViews = (function () {
 
   function prLine(p) {
     var url = webOnly(p.url);
-    var text = '#' + (p.number || keyOf(p.id));
+    var text = prName(p);
     return (url ? link(url, text) : '<code>' + escapeHtml(text) + '</code>') + ' ' + nodeButton(p, p.label || text) +
       (p.state ? ' <span class="n">' + escapeHtml(String(p.state).toLowerCase()) + '</span>' : '');
   }

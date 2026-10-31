@@ -51,7 +51,9 @@ export function history(index, paths) {
       date: c.date ?? null,
     });
   }
-  return out.sort((a, b) => timeOf(b.date) - timeOf(a.date) || cmp(a.sha, b.sha));
+  // A tie on one newest commit falls back to the slice ID, so the order never depends on the order of
+  // the index's edges (P3/S-34, issue #48).
+  return out.sort((a, b) => timeOf(b.date) - timeOf(a.date) || cmp(a.sha, b.sha) || cmp(a.slice, b.slice));
 }
 
 export const historyLine = (e) =>
