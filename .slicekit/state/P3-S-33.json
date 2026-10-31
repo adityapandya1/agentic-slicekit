@@ -1,0 +1,44 @@
+{
+  "slice": "P3/S-33",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
+  "frozenTests": [
+    "test/build-config.test.js",
+    "test/build-commit-merge.test.js",
+    "test/review-worktree.test.js",
+    "test/ci-runs.test.js",
+    "test/ci-runs-host.test.js",
+    "test/ci-bookkeeping-walk.test.js",
+    "test/github-slicekit-run.test.js",
+    "test/test-shard.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T12:10:50.740Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
+        "testExit": 1,
+        "tests": [
+          "test/build-config.test.js",
+          "test/build-commit-merge.test.js",
+          "test/review-worktree.test.js",
+          "test/ci-runs.test.js",
+          "test/ci-runs-host.test.js",
+          "test/ci-bookkeeping-walk.test.js",
+          "test/github-slicekit-run.test.js",
+          "test/test-shard.test.js"
+        ]
+      }
+    }
+  ]
+}
