@@ -50,10 +50,24 @@ jobs:
         run: node bin/slicekit.js ci bookkeeping --head "$SLICEKIT_PR_HEAD" --base-branch "$SLICEKIT_PR_BASE_BRANCH" --output "$GITHUB_OUTPUT"
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
+      # The pull request cache (D-51): a merged or closed answer is final, so a run fetches only open
+      # and new pull requests. A pull request run saves only to its own branch's cache.
+      - name: Restore the pull request cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+          restore-keys: slicekit-pr-cache-
       - name: Build the graph
         env:
           GH_TOKEN: ${{ github.token }}
         run: node bin/slicekit.js graph
+      - name: Save the pull request cache
+        if: always()
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
       - name: No runtime dependencies (REQ-5.3)
         run: |
           node -e "const p = require('./package.json'); const bad = ['dependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies', 'peerDependencies'].flatMap((f) => { const v = p[f]; const n = v === true ? ['true'] : Array.isArray(v) ? v : Object.keys(v || {}); return n.length ? [f + ': ' + n.join(', ')] : []; }); if (bad.length) { console.error('package.json has runtime dependencies: ' + bad.join('; ')); process.exit(1) }"

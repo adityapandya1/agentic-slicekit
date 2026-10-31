@@ -50,10 +50,24 @@ jobs:
         run: {{cli}} ci bookkeeping --head "$SLICEKIT_PR_HEAD" --base-branch "$SLICEKIT_PR_BASE_BRANCH" --output "$GITHUB_OUTPUT"
       - name: Use the repository's git hooks
         run: git config core.hooksPath .githooks
+      # The pull request cache (D-51): a merged or closed answer is final, so a run fetches only open
+      # and new pull requests. A pull request run saves only to its own branch's cache.
+      - name: Restore the pull request cache
+        uses: actions/cache/restore@{{cacheSha}} # {{cacheTag}}
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+          restore-keys: slicekit-pr-cache-
       - name: Build the graph
         env:
           GH_TOKEN: ${{ github.token }}
         run: {{cli}} graph
+      - name: Save the pull request cache
+        if: always()
+        uses: actions/cache/save@{{cacheSha}} # {{cacheTag}}
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
 {{gateExtraSteps}}
       - name: slicekit check
         run: {{cli}} check --ci

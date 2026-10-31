@@ -55,7 +55,8 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   const yml = renderWorkflow(exampleConfig(), pins);
   const uses = [...yml.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
   assert.ok(uses.length > 0);
-  for (const u of uses) assert.match(u, /^actions\/[a-z-]+@[0-9a-f]{40}$/, u);
+  // actions/cache is used through its restore and save sub-actions (D-51).
+  for (const u of uses) assert.match(u, /^actions\/[a-z-]+(?:\/(?:restore|save))?@[0-9a-f]{40}$/, u);
   assert.ok(yml.includes(`actions/checkout@${pins['actions/checkout'].sha} # ${pins['actions/checkout'].tag}`));
   assert.ok(yml.includes(`actions/setup-node@${pins['actions/setup-node'].sha} # ${pins['actions/setup-node'].tag}`));
   assert.ok(yml.includes(`actions/upload-artifact@${pins['actions/upload-artifact'].sha}`));
