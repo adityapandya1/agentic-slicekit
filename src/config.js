@@ -10,6 +10,8 @@ export const CONFIG_PATH = path.join('.slicekit', 'config.json');
 const COMMAND_KEYS = ['test', 'lint', 'build', 'e2e'];
 const REVIEW_MODES = ['required', 'optional'];
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+// A branch name the config accepts as defaultBranch or a protected branch.
+export const isBranchName = (name) => BRANCH.test(name);
 
 // Matched case-insensitively: compileDestructive adds the i flag, so `drop table` is caught too.
 // No force-push entry: pre-bash's rule 3 refuses force pushes from the parsed command.
