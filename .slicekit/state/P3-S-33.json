@@ -14,7 +14,9 @@
     "test/github-slicekit-run.test.js",
     "test/test-shard.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/review-worktree.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -46,6 +48,17 @@
       "at": "2026-10-31T12:10:51.274Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-10-31T12:24:10.991Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/review-worktree.test.js",
+        "amendCommit": "7a27ec8272a85f7a67c63b3b2a12f6c49543ff99",
+        "reason": "The brief test's fixture slice cited no decision, so the decision read from the worktree could not appear; the worktree's slice file now cites D-01"
+      }
     }
   ]
 }
