@@ -1,6 +1,8 @@
 // REQ-3.11, D-49, D-35: `slicekit ci bookkeeping` without --base finds its base on the git host (the
 // path the gate takes): the newest pull request commit whose slicekit run ran every team command job
-// to success, containing the base branch's current tip. Anything else is `code`.
+// to success, containing the base branch's current tip. Anything else is `code`. A commit's answer is
+// its newest slicekit run whose command jobs were decided: runs in progress and skipped runs are passed
+// over (issue #52).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -28,11 +30,11 @@ function commitAll(root, message) {
 
 let runId = 100;
 // One run of `workflow` on `sha` in the fixture host, with its jobs; `jobs` maps a job name to its conclusion.
-function addRun(host, sha, { workflow = 'slicekit', event = 'pull_request', status = 'completed', jobs = {}, createdAt = '2026-10-30T10:00:00Z' } = {}) {
+function addRun(host, sha, { workflow = 'slicekit', event = 'pull_request', status = 'completed', jobs = {}, createdAt = '2026-10-30T10:00:00Z', startedAt } = {}) {
   const file = path.join(host, `ci-${sha}.json`);
   const runs = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
   const id = ++runId;
-  runs.push({ databaseId: id, status, conclusion: status === 'completed' ? 'success' : '', createdAt, workflowName: workflow, event, url: `https://example.test/runs/${id}` });
+  runs.push({ databaseId: id, status, conclusion: status === 'completed' ? 'success' : '', createdAt, ...(startedAt ? { startedAt } : {}), workflowName: workflow, event, url: `https://example.test/runs/${id}` });
   fs.writeFileSync(file, JSON.stringify(runs));
   const list = Object.entries(jobs).map(([name, conclusion]) => ({ name, status: 'completed', conclusion }));
   fs.writeFileSync(path.join(host, `jobs-${id}.json`), JSON.stringify({ jobs: [{ name: 'gate', status: 'completed', conclusion: 'success' }, ...list] }));
@@ -91,10 +93,10 @@ test('a commit green only in another workflow, or only by a bookkeeping skip, is
     // B's run skipped the command jobs (a bookkeeping run): the walk goes on past it, and finds nothing.
     addRun(host, B, { jobs: SKIPPED });
     assert.match(judge(), /^code \(/);
-    // The newest slicekit run of A is the answer: an older green one replaced by a skipped one does not count.
+    // A's newest decided run is the answer: a skipped run on top of a green one is passed over (issue #52).
     addRun(host, A, { jobs: PASSED, createdAt: '2026-10-30T09:00:00Z' });
     addRun(host, A, { jobs: SKIPPED, createdAt: '2026-10-30T11:00:00Z' });
-    assert.match(judge(), /^code \(/);
+    assert.match(judge(), new RegExp(`^bookkeeping ${A.slice(0, 7)}\\.\\.`));
   });
 });
 
@@ -140,5 +142,29 @@ test('the walk looks at the newest 20 commits of the pull request and no further
     write(root, '.slicekit/state/P1-S-01.json', '{"n":"last"}\n');
     head = commitAll(root, 'chore(slicekit): P1/S-01 last');
     assert.match(judge(head), /^code \(no commit of the last 20/);
+  });
+});
+
+// Issue #52: the build loop edits the pull request body, and each edit starts a run on the same head.
+test('an edited event on a head that passed is bookkeeping, passing over the run in progress', () => {
+  withPullRequest(({ host, C, judge }) => {
+    const self = `bookkeeping ${C.slice(0, 7)}..${C.slice(0, 7)}`;
+    addRun(host, C, { jobs: PASSED, createdAt: '2026-10-30T10:00:00Z' });
+    // The current run, started by the edit, is still in progress: never the answer.
+    addRun(host, C, { status: 'in_progress', createdAt: '2026-10-30T11:00:00Z' });
+    assert.equal(judge(), self);
+    // A re-run of all jobs that skipped the command jobs is passed over too.
+    addRun(host, C, { jobs: SKIPPED, createdAt: '2026-10-30T12:00:00Z' });
+    assert.equal(judge(), self);
+  });
+});
+
+test('a head whose runs are all in progress or skipped walks on to its parent', () => {
+  withPullRequest(({ host, B, C, judge }) => {
+    addRun(host, C, { status: 'in_progress', createdAt: '2026-10-30T11:00:00Z' });
+    addRun(host, C, { jobs: SKIPPED, createdAt: '2026-10-30T10:00:00Z' });
+    assert.match(judge(), /^code \(no commit of the last 3/);
+    addRun(host, B, { jobs: PASSED });
+    assert.equal(judge(), `bookkeeping ${B.slice(0, 7)}..${C.slice(0, 7)}`);
   });
 });
