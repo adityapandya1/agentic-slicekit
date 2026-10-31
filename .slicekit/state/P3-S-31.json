@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-31",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 82,
@@ -19,6 +19,13 @@
       "blockers": 0,
       "independent": false,
       "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-31-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717"
     }
   ],
   "ci": null,
@@ -88,6 +95,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
           "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717",
           "title": "[P3/S-31] Every test names its requirement"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T17:53:42.351Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-31-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
