@@ -59,7 +59,7 @@ decisions: [D-43, D-49, D-50]
 
 **Files:** Modify `src/build/worktree.js` (`findWorktree`: the detached review worktree refusal), `src/instructions.js` (`renderBrief` reads the slice, requirements and decisions from the worktree when it holds the slice file). Create `test/review-worktree.test.js`.
 
-- [ ] **Step 1: Failing tests**: the two tests above. The first moves a review worktree with `git checkout --detach <sha>` and runs `build verdict --worktree`. The second amends Done when 1 in the worktree's slice file only, and the brief quotes the amended text.
+- [ ] **Step 1: Failing tests**: the two tests above. The first moves a review worktree with `git checkout --detach <sha>` and runs `build verdict --worktree`. The second amends Done when 1 in the worktree's slice file only, and the brief quotes the amended text; it also amends there a requirement and a decision the slice cites, and the brief quotes those.
 - [ ] **Step 2: Implement**; run `node --test test/review-worktree.test.js test/instructions.test.js` → PASS.
 - [ ] **Step 3: Commit** `fix(P3/S-33): the review worktree on a detached head, and the brief read from the worktree`.
 
