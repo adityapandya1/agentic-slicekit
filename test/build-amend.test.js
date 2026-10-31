@@ -1,3 +1,4 @@
+// REQ-1.8, REQ-2.6: build amend runs from draft-pr, in-review and changes-requested, returns the slice to building, and is refused from ci-green or ready.
 // P2/S-29 Done when 2: `build amend` runs from draft-pr, in-review and changes-requested as well as
 // building, so a finding inside a frozen test can be fixed during review; the slice returns to building.
 import { test } from 'node:test';

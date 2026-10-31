@@ -1,3 +1,4 @@
+// REQ-3.1: hook session-start outside a repository prints {} and exits 0; hook without a name is a usage error.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';

@@ -1,3 +1,4 @@
+// REQ-3.7, REQ-3.10: the style rule fails a filler phrase outside the catalogue, code and example lines, and a catalogue missing a seed phrase.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';

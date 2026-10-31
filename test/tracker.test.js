@@ -1,3 +1,4 @@
+// REQ-2.6, REQ-2.10: a declined should-have is opened as one tracker issue and listed under Should-haves declined in the pull request body.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

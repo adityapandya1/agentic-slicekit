@@ -1,3 +1,4 @@
+// REQ-1.7: stage require refuses a stage until the previous one is complete, naming the first incomplete stage.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

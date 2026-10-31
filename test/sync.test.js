@@ -1,3 +1,4 @@
+// REQ-1.8, REQ-3.11: status --sync moves a slice to merged only on the host's report that its recorded pull request merged.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

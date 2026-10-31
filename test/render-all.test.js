@@ -1,3 +1,4 @@
+// REQ-1.10, REQ-3.12, REQ-5.2: rendered files per shape match the golden files, carry the version markers, and merge into the team's settings.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

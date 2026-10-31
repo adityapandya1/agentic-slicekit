@@ -1,3 +1,4 @@
+// REQ-3.9: the git hooks' fast path refuses every protected branch the config names, however its JSON spells it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
