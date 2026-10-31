@@ -1,6 +1,6 @@
 {
   "slice": "P3/S-33",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "20638a7d1e09c3104f7aed28ae639d0c644d6fa7",
@@ -39,6 +39,13 @@
           "test/test-shard.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T12:10:51.274Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
