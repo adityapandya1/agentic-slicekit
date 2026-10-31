@@ -5,7 +5,7 @@ repo: .
 group: C
 runbook: no
 requirements: [REQ-4.2, REQ-4.4, REQ-4.5, REQ-4.6, REQ-4.7, REQ-3.11]
-decisions: [D-23, D-47, D-51]
+decisions: [D-23, D-47, D-51, D-52]
 ---
 
 ## Done when
@@ -14,8 +14,8 @@ decisions: [D-23, D-47, D-51]
 2. In visualize, a pull request node that carries `repo` is labelled `<repo>#<n>` in its title and in its pull request line, the way `src/graph/render.js` names it; a pull request of the program repository stays `#<n>`. The link is unchanged (issue #63).
 3. `history` breaks a tie on the newest commit by slice ID, in code-unit order. So two slices whose newest commit is the same commit print in one order, whatever order the index returns the `in` edges (issue #48).
 4. A test sends commits whose committer dates carry different UTC offsets through `history` itself, on a repository built by `test/helpers/graph-fixture.js`. In that test the text order of the dates and the instant order disagree, so it fails if `newer` or the final sort in `src/graph/history.js` goes back to comparing text (issue #49).
-5. The gate job keeps the pull request cache between runs. A step `Restore the pull request cache` (`actions/cache/restore`) comes before `Build the graph`, and a step `Save the pull request cache` (`actions/cache/save`, `if: always()`) comes after it. Both name the path `.slicekit/graph/cache` and the key `slicekit-pr-cache-${{ github.run_id }}`, the restore with restore key `slicekit-pr-cache-`, and both are pinned by SHA to the `actions/cache` entry that `templates/workflow/pins.json` gains (v4.2.3). Pins without that entry are refused with `pins: actions/cache needs a 40-hex sha and a vX.Y.Z tag`. So a run fetches only the pull requests that are open or not yet cached, not one per pull request in the history. The kit's own workflow is regenerated with `workflow --write` (issue #37, D-51).
-6. The header comment of `src/graph/prs.js` states the rule the code keeps: a merged or closed answer is never fetched again, and an open one is fetched again whenever the host can be reached. A cache entry is written as `{pr}` alone. The unread `key` leaves the cache entry, `prNumbers`' entries and the state fragment's pull request references. A cache entry written earlier with a `key` still reads (issue #38).
+5. The gate job keeps the pull request cache between runs. A step `Restore the pull request cache` (`actions/cache/restore`) comes before `Build the graph`, and a step `Save the pull request cache` (`actions/cache/save`, `if: always()`) comes after it. Both name the path `.slicekit/graph/cache` and the key `slicekit-pr-cache-${{ github.run_id }}`, the restore with restore key `slicekit-pr-cache-`, and both are pinned by SHA to the `actions/cache` entry that `templates/workflow/pins.json` gains (v4.2.3). Pins without that entry are refused with `pins: actions/cache needs a 40-hex sha and a vX.Y.Z tag`. So a run fetches only the pull requests that are open, closed or not yet cached, not one per pull request in the history. The kit's own workflow is regenerated with `workflow --write` (issue #37, D-52, which replaces D-51).
+6. The header comment of `src/graph/prs.js` states the rule the code keeps: a merged answer is never fetched again, and an open or closed one is fetched again whenever the host can be reached, since a closed pull request can be reopened and merged (D-52, which replaces D-51; review H-1). A cache entry is written as `{pr}` alone. The unread `key` leaves the cache entry, `prNumbers`' entries and the state fragment's pull request references. A cache entry written earlier with a `key` still reads; a merged one is final, a closed one is fetched again (issue #38).
 
 ## Evaluation set
 
