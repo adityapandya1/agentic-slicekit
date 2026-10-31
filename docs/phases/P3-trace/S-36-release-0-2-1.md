@@ -10,7 +10,7 @@ decisions: [D-41]
 
 ## Done when
 
-1. `init` writes the repository's own default branch as `defaultBranch` and as the one entry of `protectedBranches` (issue #78). It reads the branch `refs/remotes/origin/HEAD` points at, else the branch HEAD is on (an unborn HEAD counts), else git's `init.defaultBranch`, else `main`. In a repository whose only branch is `master`, `init` writes `master` and `graph` builds. An existing config is left as it is.
+1. `init` writes the repository's own default branch as `defaultBranch` and as the one entry of `protectedBranches` (issue #78). It reads the branch `refs/remotes/origin/HEAD` points at, else the branch HEAD is on (an unborn HEAD counts), else git's `init.defaultBranch`, else `main`. In a repository whose only branch is `master`, `init` writes `master` and `graph` builds. An existing config is left as it is. The runbook does not change (D-21): it names neither field, and this repository's own config, whose branch is `main`, does not change.
 2. `slicekit <command> --help` prints that command's usage lines on standard output and exits 0, for every command, with nothing on standard error (issue #77). A `--help` after a `--` is passed to the command as an argument.
 3. `test/check/references.test.js` opens with a comment naming the requirement its tests check, REQ-3.7's references rule, so the graph no longer links it only to REQ-1.1 through its fixture text (issue #83).
 4. `package.json` carries `0.2.1` and the kit's own rendered files are re-rendered for it. `CHANGELOG.md` has a 0.2.1 entry naming the three fixes with their issue numbers. Publishing stays the author's, after merge (D-41).
