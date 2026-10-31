@@ -1,3 +1,4 @@
+// REQ-1.8: state set merged --backfill is accepted only when the git host reports the pull request merged.
 // P2/S-29 Done when 5: `state set <id> merged --backfill` is accepted from any state when the git
 // host reports the slice's pull request merged, with its merge time and head, and refused otherwise.
 import { after, before, test } from 'node:test';

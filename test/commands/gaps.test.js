@@ -1,3 +1,4 @@
+// REQ-2.4: gaps scan writes one G row per gap in the five classes, and each row closes only with an existing decision or a REQ change.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

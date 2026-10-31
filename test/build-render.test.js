@@ -1,3 +1,4 @@
+// REQ-2.6, REQ-3.12: build render commits a fresh re-render, and build commit refuses a render commit holding any other or differing file.
 // P2/S-29 Done when 1: `slicekit build render <id>` runs `update --yes` in the slice worktree and
 // commits only the files update writes, as `chore(slicekit): <id> render`; `build commit` accepts that
 // commit when its files equal a fresh render, and refuses one holding any other file or a rendered

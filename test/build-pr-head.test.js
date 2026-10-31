@@ -1,3 +1,4 @@
+// REQ-1.8, REQ-2.6: build pr at draft-pr records a head moved by a merge of the default branch in a bookkeeping commit.
 // P2/S-29 Done when 3: `build pr` at draft-pr records the new head when the worktree's head has
 // moved since the recorded one, in a bookkeeping commit, so `build verdict` accepts the next verdict.
 import { test } from 'node:test';

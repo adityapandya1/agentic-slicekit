@@ -1,3 +1,4 @@
+// REQ-3.7, REQ-3.12: check fails a managed block that drifted from the installed template, or a missing or unmanaged rendered file.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -1,3 +1,4 @@
+// REQ-2.6: the build steps run a local test command and say so, while check keeps the committed one.
 // P2/S-29 Done when 6: an untracked .slicekit/local.json may set `testCommand`; `build red`, `build
 // commit --require-green` and `build pr` run it and say so; CI and `slicekit check` keep the committed
 // command; `init` adds the local file to the ignore rules it owns.

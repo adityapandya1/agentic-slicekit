@@ -1,3 +1,4 @@
+// REQ-3.7: the commands rule fails a declared command whose executable cannot be found.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -1,3 +1,4 @@
+// REQ-1.1, REQ-1.10, REQ-3.7: the layout rule fails a missing install path or a rendered file the shape does not include.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

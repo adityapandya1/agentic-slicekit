@@ -1,3 +1,4 @@
+// REQ-1.6: BUILD.md is rendered from the slice and state files by status --write, keeping the tail below the marker.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

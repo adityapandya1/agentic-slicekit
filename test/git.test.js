@@ -1,3 +1,4 @@
+// REQ-4.2: the git calls the graph reads commits and trailers through, parsed as git interpret-trailers parses them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

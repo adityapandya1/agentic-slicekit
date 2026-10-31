@@ -1,3 +1,4 @@
+// REQ-2.5, REQ-3.7: plan refuses while a marker or open gap exists, every requirement is named by a slice, BUILD.md is regenerated, and an overlap in one Order step is a coverage finding.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

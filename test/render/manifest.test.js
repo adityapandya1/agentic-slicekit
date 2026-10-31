@@ -1,3 +1,4 @@
+// REQ-1.10, REQ-3.10, REQ-3.12: the render manifest per shape, its hook events, and templates free of filler phrases.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

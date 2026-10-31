@@ -1,3 +1,4 @@
+// REQ-2.1: the branch command cuts and switches slice branches, and pushBranch never pushes to a protected or default branch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

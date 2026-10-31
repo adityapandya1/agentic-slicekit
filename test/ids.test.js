@@ -1,3 +1,4 @@
+// REQ-1.9: the ID patterns, the slice address and the slice branch name parse as the spec states.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ID, re, parseSliceAddr, sliceFromBranch, stateFileName } from '../src/ids.js';

@@ -1,3 +1,4 @@
+// REQ-1.8: slice states move only along the allowed transitions, each with its precondition.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

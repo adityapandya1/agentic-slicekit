@@ -1,3 +1,4 @@
+// REQ-3.12: the managed-block markers and front-matter version key are wrapped, extracted and replaced, leaving text outside untouched.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

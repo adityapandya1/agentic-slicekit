@@ -1,3 +1,4 @@
+// REQ-3.7: ratchet baselines only go down, except a recorded --adopt outside CI; a count over its baseline fails check.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

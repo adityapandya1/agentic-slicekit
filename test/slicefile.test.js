@@ -1,3 +1,4 @@
+// REQ-1.5: slice and phase files parse, and a malformed slice file is refused naming the field.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

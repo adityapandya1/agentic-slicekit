@@ -1,3 +1,4 @@
+// REQ-3.12, REQ-5.6: update replaces only the content inside managed markers, shows the diff, and writes only with --yes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

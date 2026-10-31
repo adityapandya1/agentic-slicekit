@@ -1,0 +1,174 @@
+{
+  "slice": "P3/S-31",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 82,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
+    "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717"
+  },
+  "redCommit": "ceedf11825161bf43c5f5556f561e08659f64171",
+  "frozenTests": [
+    "test/req-tags.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P3-S-31-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P3-S-31-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P3-S-31i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717"
+    }
+  ],
+  "ci": {
+    "sha": "6f98a058ad8add0254ca561750222509ca7c3522",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41227847193"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-10-31T16:57:12.460Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "ceedf11825161bf43c5f5556f561e08659f64171",
+        "testExit": 1,
+        "tests": [
+          "test/req-tags.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-10-31T16:57:13.006Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-10-31T17:04:23.282Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 82,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
+          "headSha": "2e1a4daccf149ca4487c1d0250b6c1c142748352",
+          "title": "[P3/S-31] Every test names its requirement"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T17:15:40.857Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P3-S-31-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-10-31T17:44:13.359Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 82,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/82",
+          "headSha": "ba694d72d6e4121c717b1e4fe2dd60c384830717",
+          "title": "[P3/S-31] Every test names its requirement"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-10-31T17:53:42.351Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P3-S-31-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T17:54:30.717Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "6cc8a4c2ad0a39774d4ee97fbf0e70c171051bb7",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41226736372"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-10-31T18:07:24.116Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P3-S-31i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-10-31T18:11:23.149Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "6f98a058ad8add0254ca561750222509ca7c3522",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41227847193"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-10-31T18:11:25.666Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

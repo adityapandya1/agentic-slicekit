@@ -1,3 +1,4 @@
+// REQ-3.12: the rendered settings.json keeps one slicekit hook entry per event and the team's own hooks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeSettings } from '../../src/render/settings.js';

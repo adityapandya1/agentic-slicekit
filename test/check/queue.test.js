@@ -1,3 +1,4 @@
+// REQ-1.6, REQ-3.7: the queue rule fails a BUILD.md that disagrees with the state files.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

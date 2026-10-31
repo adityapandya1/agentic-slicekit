@@ -1,4 +1,4 @@
-// REQ-1.1: the command line the install layout puts on PATH; its help, its usage and its exit codes.
+// REQ-1.1, REQ-5.1: the command line the install layout puts on PATH, whose entry dispatches each subcommand; its help, its usage and its exit codes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
