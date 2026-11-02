@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-46",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "3a3f3df70817be56b46aeb76050748fc5ad13eb3",
@@ -27,6 +27,13 @@
           "test/default-branch.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-02T20:10:03.128Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
