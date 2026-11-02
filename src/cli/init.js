@@ -5,15 +5,16 @@ import { CONFIG_PATH, ConfigError } from '../config.js';
 import { exists } from '../fs.js';
 import { git, GitError, isRepo } from '../git.js';
 import { checkCli } from '../hook-cli.js';
-import { init } from '../init.js';
+import { init, knownDefaultBranch } from '../init.js';
 import { kitVersion } from '../render/index.js';
 
 const USAGE =
-  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]';
+  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>] [--default-branch <name>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]';
 
 const OPTIONS = {
   shape: { type: 'string' },
   cli: { type: 'string' },
+  'default-branch': { type: 'string' },
   name: { type: 'string' },
   docs: { type: 'string' },
   test: { type: 'string' },
@@ -66,12 +67,16 @@ async function run(args, io) {
   }
   let result;
   try {
+    // A new config needs a default branch the repository names, or the flag (issue #87).
+    const defaultBranch =
+      values['default-branch'] ?? (exists(path.join(root, CONFIG_PATH)) ? undefined : knownDefaultBranch(root));
     result = init(root, {
       name: values.name ?? path.basename(root),
       shape: values.shape,
       docsRoot: normaliseDocs(values.docs),
       commands,
       cli: values.cli,
+      defaultBranch,
       env: io.env ?? process.env,
     });
   } catch (e) {
