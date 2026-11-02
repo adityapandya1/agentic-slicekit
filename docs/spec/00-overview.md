@@ -47,7 +47,7 @@ and these five are what an enterprise team is missing:
 | superpowers | No completion claim without fresh evidence; spec review separate from quality review |
 | spec-kit | A hard marker for unresolved questions; a gap class for code nobody asked for |
 | BMAD | Machine-readable state per unit of work; provenance lines carrying the commit they were verified at |
-| Redelio | The queue, the fixed pull request body, the decisions inbox, the ratchets, the two-layer branch guard, the independent second-session review, the audit with citations on both sides, skills that carry the scar and end in a checklist |
+| Building a product with Claude Code | The queue, the fixed pull request body, the decisions inbox, the ratchets, the two-layer branch guard, the independent second-session review, the audit with citations on both sides, skills that carry the scar and end in a checklist |
 
 ## Sections
 

@@ -7,7 +7,7 @@
 ## What the author wants
 
 A public GitHub project that packages a way of building software with AI coding agents. It was
-distilled from building the Redelio product end to end with Claude Code. It must be specification
+distilled from building a product end to end with Claude Code. It must be specification
 driven, technology agnostic, framework agnostic, and fit for systems that must be highly available,
 reliable and secure. Others should be able to install it and use it.
 
