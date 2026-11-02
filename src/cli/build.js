@@ -28,7 +28,7 @@ import { INDEPENDENT_MISSING } from '../state/transitions.js';
 
 const SUBCOMMANDS = ['next', 'start', 'red', 'commit', 'render', 'config', 'amend', 'pr', 'verdict', 'decline', 'finish', 'sync', 'parallel'];
 const USAGE =
-  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] | build render <id> [--worktree <p>] | build config <id> [--worktree <p>] | build amend <id> --test <path> --reason <r> [--worktree <p>] | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
+  'build next | build start <id> [--descr <d>] | build parallel P<n> | build red <id> --tests <a,b> [--worktree <p>] | build commit <id> --message <m> [--require-green] [--worktree <p>] (commits the staged paths; with nothing staged, every changed path) | build render <id> [--worktree <p>] | build config <id> [--worktree <p>] | build amend <id> [--test <path>] --reason <r> [--worktree <p>] (no --test: the slice file alone, once every test it names is unfrozen) | build pr <id> [--notes <file>] [--worktree <p>] | build verdict <id> <file> [--independent] [--worktree <p>] | build decline <id> <H-n> [--worktree <p>] | build finish <id> [--wait <s>, default 90] [--worktree <p>] | build sync <id> [--worktree <p>]';
 
 const OPTIONS = {
   descr: { type: 'string' },
@@ -138,10 +138,10 @@ function configStep(root, io, positionals, values) {
 }
 
 function amendStep(root, io, positionals, values) {
-  if (positionals.length !== 1 || values.test === undefined || values.reason === undefined) return usage(io);
+  if (positionals.length !== 1 || values.reason === undefined) return usage(io);
   const cfg = loadConfig(root);
-  const { test } = amend(root, cfg, positionals[0], { test: values.test, reason: values.reason, worktree: values.worktree });
-  io.stdout(`unfroze ${test}\n`);
+  const { sha, test } = amend(root, cfg, positionals[0], { test: values.test, reason: values.reason, worktree: values.worktree });
+  io.stdout(test === null ? `${sha.slice(0, 7)} amended the slice file\n` : `unfroze ${test}\n`);
   return 0;
 }
 

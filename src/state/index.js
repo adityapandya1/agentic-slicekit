@@ -209,6 +209,17 @@ export function unfreeze(root, cfg, id, file, extra = {}, { to } = {}) {
   });
 }
 
+// One history entry that leaves the state where it is (build amend of the slice file alone), under
+// the slice lock, re-reading the file inside it so a concurrent `slicekit state set` is never undone.
+export function appendHistory(root, cfg, id, evidence) {
+  return withLock(root, cfg, id, () => {
+    const current = readSlice(root, cfg, id);
+    const added = entry(current.state, current.state, 'cli', evidence);
+    writeSlice(root, cfg, { ...current, history: [...current.history, added] });
+    return added;
+  });
+}
+
 // Replaces only the slice's handoff, under the slice lock, re-reading the file inside it so a
 // concurrent `slicekit state set` is never undone. State and history are left as they are. A slice with
 // no state file yet is skipped (returns false): the handoff never creates one. Throws LockError when

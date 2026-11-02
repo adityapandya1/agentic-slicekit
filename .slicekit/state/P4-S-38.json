@@ -1,0 +1,133 @@
+{
+  "slice": "P4/S-38",
+  "state": "ci-green",
+  "branch": null,
+  "pr": {
+    "number": 95,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/95",
+    "headSha": "4d9ecc7ea3f90ea1178f1682896ee0a569630c88"
+  },
+  "redCommit": "07494143997166902f71e7057ed72d7145e036e2",
+  "frozenTests": [
+    "test/check/frozen.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P4-S-38-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "10820e8386309c2be09fcd8a533d34da58e814e5"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P4-S-38-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "4d9ecc7ea3f90ea1178f1682896ee0a569630c88"
+    }
+  ],
+  "ci": {
+    "sha": "a75d3139211c76f9a875a57387dcd07db2910053",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41519525489"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-02T20:05:53.808Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "07494143997166902f71e7057ed72d7145e036e2",
+        "testExit": 1,
+        "tests": [
+          "test/check/frozen.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-02T20:05:55.816Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-02T20:11:52.893Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 95,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/95",
+          "headSha": "10820e8386309c2be09fcd8a533d34da58e814e5",
+          "title": "[P4/S-38] Frozen tests hold in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-02T20:14:31.118Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P4-S-38-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-02T20:27:17.793Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 95,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/95",
+          "headSha": "4d9ecc7ea3f90ea1178f1682896ee0a569630c88",
+          "title": "[P4/S-38] Frozen tests hold in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-02T20:28:26.004Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P4-S-38-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-02T20:52:59.243Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "a75d3139211c76f9a875a57387dcd07db2910053",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/41519525489"
+        }
+      }
+    }
+  ]
+}
