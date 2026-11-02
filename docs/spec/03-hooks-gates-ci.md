@@ -116,7 +116,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
-| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed; with `--ci`, a commit of the pull request that changes a journal file is not signed and verified by the host (D-71) |
+| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed; with `--ci`, a commit of the pull request that changes a journal file is not signed and verified by the host (D-71), or a line the journal-heads file gains differs from what CI recomputes (D-89) |
 | frozen | with `--ci`, on a slice branch, a test of the evaluation set differs from its content at the red commit and the slice file was not amended after it (REQ-3.15) |
 | host-rules | a rule of REQ-3.14 is missing on the default branch, or, with `--ci`, the rules cannot be read (D-81) |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
@@ -160,12 +160,11 @@ The sync pull request (REQ-3.11) SHALL add one line per changed journal file to
 `.slicekit/journal-heads.log`: the file, its last hash, the merge commit, and the CI run's id, <!-- slicekit:example -->
 workflow and triggering actor as the host reports them. The kit manages no keys.
 
-In CI, `slicekit check` SHALL also judge `.slicekit/journal-heads.log` from git objects and the <!-- slicekit:pending P4/S-42 -->
-host, never from the writer: the file at the default branch is a byte prefix of the file at the
-pull request's head; only a pull request from a sync branch (REQ-3.11) changes it; and for each line it adds,
-the merge commit is on the default branch, the named journal file at that commit ends with that
-hash, and C-1 `getRun` reports a run of the kit's workflow on that commit with that id and actor.
-A line that fails any of these fails check, naming the line (D-71).
+Every value in that file comes from git and the host, so in CI `slicekit check` SHALL recompute it
+rather than trust its writer (D-89): the file at the default branch is a byte prefix of the file at <!-- slicekit:pending P4/S-42 -->
+the pull request's head; only a pull request from a sync branch (REQ-3.11) changes it; and each line
+it adds equals the line CI computes for that merge commit from git and C-1 `getRun`. A line that
+differs fails check, naming it.
 
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n> of <file>".
@@ -173,7 +172,7 @@ chain broken at line <n> of <file>".
 Scenario: GIVEN a pull request with an unsigned commit that changes `.slicekit/journal/main--1a2b3c4d.log` <!-- slicekit:example -->
 WHEN `slicekit check --ci` runs THEN it fails naming the commit and "journal commits must be signed".
 
-Cites: D-32, D-34, D-36, D-71, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-32, D-34, D-36, D-71, D-89, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule); the sync job.
 
@@ -304,12 +303,13 @@ and the repository's CODEOWNERS file, and fail naming each one missing: a pull r
 before merge; at least one approving review, from a code owner when CODEOWNERS exists; the kit's CI
 checks required; force push refused. It reads rulesets only, which the workflow's own token may read;
 a repository protected by classic branch protection alone is told to move to a ruleset (D-84). `slicekit init --protect` SHALL apply the missing
-rules as one ruleset through C-1 when a human with admin rights runs it, and print each rule it set.
-No agent, hook or CI job SHALL change a host rule (D-77): `applyBranchRules` has one caller, which a
-test asserts, and the pre-bash guard SHALL deny, in every session, a `gh api` call that writes to a
-repository's rulesets, rules or branch protection (a method other than GET, or a field or input
-flag without `-X GET`). An agent holding an admin credential can still reach the host by a route the
-guard does not parse (REQ-2.1); the host's own audit log records every ruleset change.
+rules as one ruleset through C-1 and print each rule it set; a human runs it from their own terminal.
+The kit's code SHALL change a host rule only there: `applyBranchRules` has one caller, which a test
+asserts. What keeps an agent from changing a host rule is its credentials: the git host login the
+agent session uses SHALL have no admin rights on the repository, a setup rule the runbook states and
+the kit cannot check (D-88). As a convenience that can be bypassed (REQ-2.1), pre-bash denies
+`init --protect` from the agent's shell and a `gh api` call that writes to a repository's rulesets,
+rules or branch protection (a method other than GET, or a field or input flag without `-X GET`).
 When the host cannot be reached or the token may not read the rules, the rule fails in CI and,
 outside CI, prints "host rules not checked" without blocking (D-81).
 
@@ -317,10 +317,11 @@ Scenario: GIVEN a repository whose default branch allows a direct push WHEN `sli
 runs THEN it fails with "main: a pull request is not required before merge; run slicekit init
 --protect as an admin".
 
-Cites: D-70, D-77, D-81, D-84, `../intake/2026-11-02-architect-review.md`.
+Cites: D-70, D-77, D-81, D-84, D-88, `../intake/2026-11-02-architect-review.md`.
 
 Enforced by: `slicekit check` (host-rules rule); `slicekit init --protect`; the test that
-`applyBranchRules` has one caller; `slicekit hook pre-bash`.
+`applyBranchRules` has one caller; `slicekit hook pre-bash`; the runbook's credential rule
+(advisory: the kit cannot see what a login may do).
 
 ## REQ-3.15 Frozen tests hold in CI
 

@@ -5,7 +5,7 @@ repo: .
 group: G
 runbook: yes
 requirements: [REQ-3.14]
-decisions: [D-70, D-77, D-81, D-84]
+decisions: [D-70, D-77, D-81, D-84, D-88]
 ---
 
 ## Done when
@@ -14,7 +14,7 @@ decisions: [D-70, D-77, D-81, D-84]
 2. A new check rule `host-rules` reads the repository rulesets that apply to the default branch and fails naming each rule missing: a pull request required; at least one approval, from a code owner when CODEOWNERS exists; the kit's CI checks required; force push refused. A repository with classic branch protection only is told to move to a ruleset (REQ-3.14, D-84).
 3. When the host cannot be reached or the token may not read the rules, the rule fails under `--ci` and otherwise prints `host rules not checked` without blocking (D-81).
 4. `slicekit init --protect` applies only the missing rules as one ruleset named `slicekit` through `applyBranchRules` and prints each rule it set; without `--protect`, init changes no host setting; a test asserts `applyBranchRules` has one caller (REQ-3.14).
-5. `docs/runbook.md` says who runs `init --protect` and what admin rights it needs (REQ-3.14).
+5. `docs/runbook.md` says a human runs `init --protect` from their own terminal with admin rights, and that the git host login the agent session uses must have no admin rights on the repository (REQ-3.14, D-88).
 
 ## Evaluation set
 

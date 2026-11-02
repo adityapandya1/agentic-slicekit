@@ -5,7 +5,7 @@ repo: .
 group: A
 runbook: no
 requirements: [REQ-3.2, REQ-2.1, REQ-3.14]
-decisions: [D-19, D-66, D-77, D-83]
+decisions: [D-19, D-66, D-83, D-88]
 ---
 
 ## Done when
@@ -14,7 +14,7 @@ decisions: [D-19, D-66, D-77, D-83]
 2. In every session and on every branch (D-83), `pre-bash` denies a git command whose subcommand, ref or remote comes from a variable or a command substitution: `B=main; git push origin HEAD:$B`, `X=push; git $X --force`, `git push origin "$(git branch --show-current)"` (REQ-3.2).
 3. `pre-bash` denies a command that writes a test file frozen for the active slice by `>`, `>>`, `tee`, `sed -i`, `cp`, `mv` or `rm`, naming the file and the slice; reading the file (`cat`, `grep`) stays allowed (REQ-3.2, REQ-3.3).
 4. Commands the loop runs today still pass: `node --test <file>`, `npm test`, `node bin/slicekit.js <command>`, a literal `git status`, `git diff` and `git log` from a subagent, and `node -e` code that names neither `git` nor `gh` (REQ-3.2).
-5. In every session, `pre-bash` denies a `gh api` call that writes to a repository's rulesets, rules or branch protection (`-X`/`--method` other than GET, or `-f`, `-F`, `--field`, `--raw-field` or `--input` without `-X GET`); a read of the same path passes. The header of `src/hooks/pre-bash.js` says the guard is a check that can be bypassed and names the host rules as the control (REQ-3.14, REQ-2.1).
+5. In every session, `pre-bash` denies `slicekit init --protect` (as `node bin/slicekit.js` or `npx slicekit`) and a `gh api` call that writes to a repository's rulesets, rules or branch protection (`-X`/`--method` other than GET, or `-f`, `-F`, `--field`, `--raw-field` or `--input` without `-X GET`); a read of the same path passes. The header of `src/hooks/pre-bash.js` says the guard is a check that can be bypassed and names the host rules as the control (REQ-3.14, REQ-2.1).
 
 ## Evaluation set
 
@@ -24,7 +24,7 @@ decisions: [D-19, D-66, D-77, D-83]
 | `hooks/pre-bash.test.js » a git ref or subcommand from a variable or substitution is denied on any branch` | negative | REQ-3.2 |
 | `hooks/pre-bash.test.js » a Bash write to a frozen test is denied, naming the file and slice` | negative | REQ-3.2 |
 | `hooks/pre-bash.test.js » the commands the loop runs still pass` | happy | REQ-3.2, REQ-2.1 |
-| `hooks/pre-bash.test.js » a gh api write to rulesets or branch protection is denied and a read passes` | negative | REQ-3.14 |
+| `hooks/pre-bash.test.js » init --protect and a gh api write to rulesets are denied and a read passes` | negative | REQ-3.14 |
 
 ## Expected changes
 
