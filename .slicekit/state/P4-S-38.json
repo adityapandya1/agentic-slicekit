@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-38",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "07494143997166902f71e7057ed72d7145e036e2",
@@ -25,6 +25,13 @@
           "test/check/frozen.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-02T20:05:55.816Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
