@@ -10,7 +10,7 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 
 | # | Type | Question | Answer | Who, when |
 |---|---|---|---|---|
-| D-01 | Decision | Is this part of Redelio or its own project? | Its own public project, authored by Aditya Pandya. Redelio is the experience it was distilled from, not the owner. | author, 2026-10-24 |
+| D-01 | Decision | Is this part of another product or its own project? | Its own public project, authored by Aditya Pandya. The product work it was distilled from is experience, not an owner. | author, 2026-10-24 |
 | D-02 | Decision | Name? | The tool, package, folder and command prefix are `slicekit`. The repository is `agentic-slicekit`. `ratchet` was rejected for colliding with twbs/ratchet, sethvargo/ratchet and an npm package. | author, 2026-10-24 |
 | D-03 | Decision | License? | MIT. | author, 2026-10-24 |
 | D-04 | Decision | What does the kit itself run on? | Node, with zero runtime dependencies. Every supported agent tool already requires Node, and plain scripts are readable by a security team. | author, 2026-10-24 |
@@ -25,7 +25,7 @@ do it. *Information* = a fact we did not have. *Open* = not yet answered.
 | D-13 | Decision | What is the graph in version one? | A traceability graph built by the kit from its own IDs and git: requirement, decision, slice, test, commit, pull request, file, release, repo. Deterministic, no model calls. Not a code graph; graphify can sit alongside. | author, 2026-10-24 |
 | D-14 | Decision | How does the kit adapt to full-stack versus backend teams? | A shape chosen at init turns capabilities on or off. A capability that is off is absent from the install, never disabled. | author, 2026-10-24 |
 | D-15 | Decision | Where does the spec live when one requirement spans several repositories? | One program repository holds intake, spec, phases and `BUILD.md`; a slice names the repository it is built in; a workspace file lists the repositories; contracts between services (events, topics, queues, APIs) are spec sections of their own. A single-repo team is the case where the program repo and the service repo are the same. The author was unsure; this is the recommendation taken. | author (by recommendation), 2026-10-24 |
-| D-16 | Decision | Is Redelio the first installation? | No. Publish first; Redelio later. The kit builds itself from its first commit, which is the proof instead. | author, 2026-10-24 |
+| D-16 | Decision | Is an existing product the first installation? | No. Publish first. The kit builds itself from its first commit, which is the proof instead. | author, 2026-10-24 |
 | D-17 | Decision | Where do clarification answers live? | In `docs/decisions.md` with IDs, cited by the spec. This file is the first instance. | author, 2026-10-24 |
 | D-18 | Decision | How many review rounds? | Two in the build session. A blocker that survives both stops the loop with a draft pull request open. An independent review from a second session is required before merge by default and can be set to optional. | author (by recommendation, unopposed), 2026-10-24 |
 | D-19 | Decision | Who runs git? | The command in the human's session. Agents write files and report; they never commit, push or open pull requests. | author (by recommendation, unopposed), 2026-10-24 |
