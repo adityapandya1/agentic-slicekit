@@ -80,3 +80,29 @@ export function activeSlice(root, cfg) {
     return { id, error: e?.message ?? String(e) };
   }
 }
+
+// The slice states in which its frozen tests are guarded (REQ-3.3).
+export const GUARDED_STATES = new Set(['tests-red', 'building']);
+
+const stringList = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
+
+// The tests frozen for root's active slice: {id, files: [POSIX path relative to root's real path]},
+// with `unfrozen` ones left out; null when tests are not frozen, no slice is active, or the slice is
+// not in a guarded state. Throws when the state file cannot be read or its lists are malformed, so a
+// guard calling it fails closed.
+export function frozenTests(root, cfg) {
+  if (!cfg.freezeTests) return null;
+  const active = activeSlice(root, cfg);
+  if (!active) return null;
+  if (active.error) throw new Error(active.error);
+  for (const field of ['frozenTests', 'unfrozen']) {
+    if (!stringList(active.state[field])) throw new Error(`${active.id} state: ${field} must be an array of strings`);
+  }
+  if (!GUARDED_STATES.has(active.state.state)) return null;
+  const canon = real(path.resolve(root));
+  const rel = (f) => toPosix(path.relative(canon, real(path.resolve(canon, fromGitBash(f.replace(/\\/g, '/'))))));
+  const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const unfrozen = new Set(active.state.unfrozen.map((f) => key(rel(f))));
+  const files = active.state.frozenTests.map(rel).filter((f) => !unfrozen.has(key(f)));
+  return { id: active.id, files };
+}
