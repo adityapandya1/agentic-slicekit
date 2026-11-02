@@ -160,6 +160,13 @@ The sync pull request (REQ-3.11) SHALL add one line per changed journal file to
 `.slicekit/journal-heads.log`: the file, its last hash, the merge commit, and the CI run's id, <!-- slicekit:example -->
 workflow and triggering actor as the host reports them. The kit manages no keys.
 
+In CI, `slicekit check` SHALL also judge `.slicekit/journal-heads.log` from git objects and the <!-- slicekit:pending P4/S-42 -->
+host, never from the writer: the file at the default branch is a byte prefix of the file at the
+pull request's head; only a pull request from a sync branch (REQ-3.11) changes it; and for each line it adds,
+the merge commit is on the default branch, the named journal file at that commit ends with that
+hash, and C-1 `getRun` reports a run of the kit's workflow on that commit with that id and actor.
+A line that fails any of these fails check, naming the line (D-71).
+
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n> of <file>".
 
@@ -299,7 +306,10 @@ checks required; force push refused. It reads rulesets only, which the workflow'
 a repository protected by classic branch protection alone is told to move to a ruleset (D-84). `slicekit init --protect` SHALL apply the missing
 rules as one ruleset through C-1 when a human with admin rights runs it, and print each rule it set.
 No agent, hook or CI job SHALL change a host rule (D-77): `applyBranchRules` has one caller, which a
-test asserts.
+test asserts, and the pre-bash guard SHALL deny, in every session, a `gh api` call that writes to a
+repository's rulesets, rules or branch protection (a method other than GET, or a field or input
+flag without `-X GET`). An agent holding an admin credential can still reach the host by a route the
+guard does not parse (REQ-2.1); the host's own audit log records every ruleset change.
 When the host cannot be reached or the token may not read the rules, the rule fails in CI and,
 outside CI, prints "host rules not checked" without blocking (D-81).
 
@@ -310,7 +320,7 @@ runs THEN it fails with "main: a pull request is not required before merge; run 
 Cites: D-70, D-77, D-81, D-84, `../intake/2026-11-02-architect-review.md`.
 
 Enforced by: `slicekit check` (host-rules rule); `slicekit init --protect`; the test that
-`applyBranchRules` has one caller.
+`applyBranchRules` has one caller; `slicekit hook pre-bash`.
 
 ## REQ-3.15 Frozen tests hold in CI
 

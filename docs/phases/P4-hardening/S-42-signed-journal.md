@@ -10,9 +10,9 @@ decisions: [D-32, D-36, D-71]
 
 ## Done when
 
-1. C-1 gains `getCommit(sha) → {verified, signer}`, in `github.js` through `gh api` and in `fixture.js` (REQ-3.8).
+1. C-1 gains `getCommit(sha) → {verified, signer}` and `getRun(id) → {workflow, headSha, actor, conclusion}`, in `github.js` through `gh api` and in `fixture.js` (REQ-3.8).
 2. Under `--ci`, the journal rule fails naming each commit of the pull request that changes a journal file and whose signature the host does not verify, with "journal commits must be signed" (REQ-3.8, D-71).
-3. Outside CI, the rule adds nothing to what it checks today (REQ-3.8).
+3. Under `--ci`, the rule fails naming the line when `.slicekit/journal-heads.log` is not append-only against the default branch, is changed by a pull request whose branch is not `sync/`, or adds a line whose merge commit, journal hash, run id or actor does not match git and `getRun`; outside CI it adds nothing to what it checks today (REQ-3.8). <!-- slicekit:pending P4/S-42 -->
 4. The sync job adds one line per journal file changed by the merge to `.slicekit/journal-heads.log` in its pull request: the file, its last hash, the merge commit, and the run id, workflow and actor from the run's environment (REQ-3.8). <!-- slicekit:example -->
 5. The header of `src/journal.js` says the chain has no key and the actor field proves nothing; `docs/runbook.md` says how to sign commits (REQ-3.8).
 
@@ -23,6 +23,8 @@ decisions: [D-32, D-36, D-71]
 | `journal.test.js » an unsigned commit that changes a journal file fails the rule in CI` | negative | REQ-3.8 |
 | `journal.test.js » a signed commit that changes a journal file passes` | happy | REQ-3.8 |
 | `journal.test.js » outside CI the rule does not read signatures` | happy | REQ-3.8 |
+| `journal.test.js » a journal-heads line whose hash or run does not match fails in CI` | negative | REQ-3.8 |
+| `journal.test.js » a journal-heads change from a branch that is not sync/ fails in CI` | negative | REQ-3.8 |
 | `workflow.test.js » the sync job writes a journal-heads line per changed journal file` | happy | REQ-3.8 |
 
 ## Expected changes
@@ -35,7 +37,7 @@ decisions: [D-32, D-36, D-71]
 
 **Files:** Modify `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/check/rules/journal.js`, `src/journal.js`, `test/journal.test.js`.
 
-- [ ] **Step 1: Failing tests** — the three journal tests above.
+- [ ] **Step 1: Failing tests** — the five journal tests above.
 - [ ] **Step 2: Implement**; the commits are `git log --format=%H <merge base>..HEAD -- .slicekit/journal`.
 - [ ] **Step 3: Run** `node --test test/journal.test.js` → PASS.
 

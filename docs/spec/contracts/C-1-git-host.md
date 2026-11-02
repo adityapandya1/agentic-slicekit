@@ -24,6 +24,7 @@ second file, not a second kit.
 | `renderWorkflow` | config | the CI file content for this host |
 | `getCommit` | sha | signature verified (yes or no), signer |
 | `dispatchWorkflow` | workflow file, ref | — (starts the workflow on that ref, 03 REQ-3.11) |
+| `getRun` | run id | workflow file, head sha, triggering actor, conclusion (03 REQ-3.8) |
 | `readBranchRules` | branch | the repository rulesets that apply: pull request required, approvals, code-owner review, required checks, force push (D-84) |
 | `readCodeowners` | — | the CODEOWNERS file's path and content, or none |
 | `applyBranchRules` | branch, rules | the rules set (called only by `slicekit init --protect`, 03 REQ-3.14) |
