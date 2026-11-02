@@ -181,6 +181,11 @@ function lex(command) {
       }
     } else if (c === '#' && word === null) {
       while (i < s.length && s[i] !== '\n') i += 1;
+    } else if (c === '>' && word !== null && !(word === bare && /^\d*>?$/.test(word))) {
+      // `x>f` is the word `x` and the redirect `>f`, as the shell reads it; `2>f` and `>>f` stay one word.
+      endWord();
+      add(c, false);
+      i += 1;
     } else {
       add(c, false);
       i += 1;
