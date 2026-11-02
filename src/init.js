@@ -214,8 +214,11 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, defaultBran
 // guess, and a guess on a feature branch or a detached HEAD would protect the wrong branch, so the
 // init command refuses and asks for the name (issue #87). Outside a repository the guess is `main`.
 // It throws a ConfigError; init() itself still takes detectDefaultBranch's answer when given none.
-const NO_DEFAULT_BRANCH =
-  'cannot tell the default branch: there is no origin, no init.defaultBranch, and HEAD is not on main or master; run init again with --default-branch <name>';
+// The refusal names init.defaultBranch as it is: absent, or set to a branch this repository lacks.
+function noDefaultBranch(configured) {
+  const setting = configured === '' ? 'no init.defaultBranch' : `init.defaultBranch names ${configured}, which is not a branch here`;
+  return `cannot tell the default branch: there is no origin, ${setting}, and HEAD is not on main or master; run init again with --default-branch <name>`;
+}
 export function knownDefaultBranch(root) {
   const branch = detectDefaultBranch(root, { accept: isBranchName });
   if (!isRepo(root)) return branch;
@@ -237,7 +240,13 @@ export function knownDefaultBranch(root) {
   }
   if (origin === `refs/remotes/origin/${branch}`) return branch;
   if (!hasCommits(root) && currentBranch(root) === branch) return branch;
-  throw new ConfigError([NO_DEFAULT_BRANCH]);
+  let configured = '';
+  try {
+    configured = git(root, ['config', '--get', 'init.defaultBranch']);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+  }
+  throw new ConfigError([noDefaultBranch(configured)]);
 }
 
 // The parsed config when it is a JSON object with no cli key; null otherwise (loadConfig then reads,
