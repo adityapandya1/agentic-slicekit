@@ -24,10 +24,21 @@ the hook knows by the `agent_id` field Claude Code sends on every tool call a su
 delete outside the worktree, database drop and truncate statements, history rewrites on shared
 branches). Each denial SHALL state the rule and the file or command.
 
+The guard reads a command's text and cannot resolve what runs at execution time, so it SHALL also
+deny, in every session and on every branch (D-83), a command it cannot judge: a git subcommand, ref or
+remote taken from a variable or a command substitution; git run through `eval`, `sh -c`, `bash -c`
+or another shell's `-c`; and an interpreter's inline code (`node -e`, `python -c`, `perl -e`,
+`ruby -e`) that names `git` or `gh`. It SHALL deny a command that writes a test file frozen for
+the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv` or `rm`. The guard remains
+a check on the developer's machine (REQ-2.1); REQ-3.14 and REQ-3.15 hold on the host and in CI.
+
 Scenario: GIVEN the current branch is `main` WHEN `git commit` is attempted THEN the hook returns a
 deny decision with "commit on protected branch main; create a slice branch".
 
-Cites: D-05, D-08, D-19.
+Scenario: GIVEN a subagent WHEN it runs `eval "git commit -m x"` or `B=main; git push origin HEAD:$B`
+THEN the hook denies it and says the command cannot be judged.
+
+Cites: D-05, D-08, D-19, D-66, D-83, `../intake/2026-11-02-architect-review.md`.
 
 Enforced by: `slicekit hook pre-bash`.
 
@@ -37,12 +48,14 @@ SHALL deny an edit to a test file listed as frozen in the active slice's state f
 file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
 an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
-directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI.
+directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI;
+deny an edit to `.slicekit/journal-heads.log` by anything other than the CLI; and deny an edit to a <!-- slicekit:pending P4/S-42 -->
+path the config lists in `agents.denyPaths` (REQ-3.13).
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
 
-Cites: D-05, D-10, D-22.
+Cites: D-05, D-10, D-22, D-72.
 
 Enforced by: `slicekit hook pre-edit`.
 
@@ -103,10 +116,12 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | runbook | the slice file's runbook flag is set and the branch changes no section of `runbook.md`, and the pull request body's Runbook line does not begin "no operational change" (D-21) |
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
-| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed |
+| journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed; with `--ci`, a commit of the pull request that changes a journal file is not signed and verified by the host (D-71) |
+| frozen | with `--ci`, on a slice branch, a test of the evaluation set differs from its content at the red commit and the slice file was not amended after it (REQ-3.15) |
+| host-rules | a rule of REQ-3.14 is missing on the default branch, or, with `--ci`, the rules cannot be read (D-81) |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
-| ci-title | with `--ci`, the pull request title does not begin with `[P<n>/S-<nn>]` (a `[spec] ` or `[plan] ` title is exempt), or that slice has no slice file, no state file, a state before `draft-pr`, or a state of `merged` or `released` (a change after merge needs its own slice) (REQ-3.11); a pull request opened by an actor in `ci.botActors` is exempt (D-37); a pull request event file that is named but cannot be read fails the run |
-| ci-body | with `--ci`, the pull request body lacks the `## [P<n>/S-<nn>]` heading naming the title's slice, or a REQ-2.10 section is missing, empty, repeated or out of order; text inside a fenced code block does not count, and a `[spec]` or `[plan]` body needs only Done when, Proof and Decisions; a phrase from the filler list in the body is one finding per phrase (REQ-3.10); a pull request opened by an actor in `ci.botActors` is exempt (D-37) |
+| ci-title | with `--ci`, the pull request title does not begin with `[P<n>/S-<nn>]` (a `[spec] `, `[plan] ` or `[sync] ` title is exempt), or that slice has no slice file, no state file, a state before `draft-pr`, or a state of `merged` or `released` (a change after merge needs its own slice) (REQ-3.11); a pull request opened by an actor in `ci.botActors` is exempt (D-37); a pull request event file that is named but cannot be read fails the run |
+| ci-body | with `--ci`, the pull request body lacks the `## [P<n>/S-<nn>]` heading naming the title's slice, or a REQ-2.10 section is missing, empty, repeated or out of order; text inside a fenced code block does not count, and a `[spec]`, `[plan]` or `[sync]` body needs only Done when, Proof and Decisions; a phrase from the filler list in the body is one finding per phrase (REQ-3.10); a pull request opened by an actor in `ci.botActors` is exempt (D-37) |
 
 For `references`, a line carrying `<!-- slicekit:pending P<n>/S-<nn> -->` (outside a code span) names the slice that will create its paths: they are not checked while that slice is neither merged nor released, and once it is they are checked and the marker itself is a finding until removed; `<!-- slicekit:example -->` marks a true illustration only.
 
@@ -132,17 +147,28 @@ characters kept in the git common directory. There is one file per branch per cl
 whose first line's `prev` is `genesis`, because two branches or two clones appending to one file would
 both chain from the same line and conflict or break at merge (D-34, D-36). CI SHALL verify the chain, and that
 every journal file committed at the merge base with the default branch is still there as a byte prefix
-of the current file. The protection is exactly this: a mid-chain edit is caught by the chain; shortening
+of the current file. The chain's own protection is this: a mid-chain edit is caught by the chain; shortening
 or removing a committed file is caught against the default branch; lines not yet committed are not
-protected. The file is appended by the CLI only (REQ-3.3). A broken chain is a check failure and a
+protected; the signature check below adds to it. The file is appended by the CLI only (REQ-3.3). A broken chain is a check failure and a
 reviewer blocker; it is never auto-repaired.
+
+The chain carries no key, so it shows an edit only against what the default branch already holds;
+the `actor` field is what the session reports and proves nothing. What binds a journal to a person
+is the commit that carries it (D-71): in CI, `slicekit check` SHALL fail when a commit on the pull
+request that changes a journal file is not signed and verified by the git host (C-1 `getCommit`).
+The sync pull request (REQ-3.11) SHALL add one line per changed journal file to
+`.slicekit/journal-heads.log`: the file, its last hash, the merge commit, and the CI run's id, <!-- slicekit:example -->
+workflow and triggering actor as the host reports them. The kit manages no keys.
 
 Scenario: GIVEN a journal line edited by hand WHEN `slicekit check` runs THEN it fails with "journal
 chain broken at line <n> of <file>".
 
-Cites: D-32, D-34, D-36, `../intake/2026-10-24-founding-requirement.md`.
+Scenario: GIVEN a pull request with an unsigned commit that changes `.slicekit/journal/main--1a2b3c4d.log` <!-- slicekit:example -->
+WHEN `slicekit check --ci` runs THEN it fails naming the commit and "journal commits must be signed".
 
-Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule).
+Cites: D-32, D-34, D-36, D-71, `../intake/2026-10-24-founding-requirement.md`.
+
+Enforced by: `slicekit hook session-end`; `slicekit check` (journal rule); the sync job.
 
 ## REQ-3.9 Git hooks — two layers
 
@@ -193,15 +219,38 @@ blockers and, if required, the latest independent verdict on it has none either 
 verdict given on an earlier head counts when every later commit touches only the kit's own
 bookkeeping (D-35). A pull request opened by an actor in `ci.botActors` is exempt from the title
 and body rules (D-37). On merge to the default branch it SHALL run
-`slicekit status --sync --write` and commit the state and `BUILD.md` change as a bot commit (D-12).
+`slicekit status --sync --write` and, when the state, `BUILD.md` or `.slicekit/journal-heads.log` <!-- slicekit:pending P4/S-42 -->
+(REQ-3.8) changed, push the change to a branch `sync/<short sha of the merge commit>` and open a
+pull request titled `[sync] state after <short sha>` for it through C-1, with a Done when, Proof and
+Decisions body. A human
+reviews and merges that pull request like any other; the job SHALL never push to the default branch
+and SHALL not set `ALLOW_PROTECTED_COMMIT` (D-78).
+A pull request opened with the workflow's own token starts no workflow, so the job SHALL then start
+the workflow on the sync branch with `workflow_dispatch` through C-1; the checks REQ-3.14 requires
+run on that head as on any pull request (D-80). A dispatched run has no pull request event: `check
+--ci` reads the title and body of the open pull request for its branch through C-1
+`pullRequestForBranch`.
 Actions SHALL be pinned by SHA.
+
+Each job SHALL run on `ci.runsOn` from config, default `ubuntu-latest`, so a team can name its
+self-hosted runners (D-67); the kit's own three-system test matrix is unchanged. A repository is a Java
+repository when it holds `pom.xml`, `build.gradle` or `build.gradle.kts` at its root, or when a
+declared command calls `mvn`, `gradle` or `./gradlew`. In a Java repository every job that runs a
+team command SHALL also set up a JDK of `ci.java` (default 25, D-85) with the cache of the build
+tool: the one build file present, or, when both or neither are present, the tool the declared
+commands call (D-69). The kit adds no container step: Testcontainers needs Docker on the runner, and
+a GitHub Enterprise Server host needs the pinned actions reachable through GitHub Connect or a
+mirror; the runbook says both (D-86). `workflow --check` accepts these jobs as generated.
 
 Scenario: GIVEN a pull request titled `Fix billing` WHEN CI runs THEN it fails with "title must
 begin with [P<n>/S-<nn>]".
 
-Cites: D-12, D-18, D-20, D-35, D-37.
+Scenario: GIVEN a repository with `pom.xml` and `commands.test` set to `mvn -B verify` WHEN init
+writes the workflow THEN the test job sets up a JDK with the Maven cache and `workflow --check` passes.
 
-Enforced by: the generated workflow; `slicekit check --ci`.
+Cites: D-12, D-18, D-20, D-35, D-37, D-67, D-69, D-78, D-80, D-85, D-86.
+
+Enforced by: the generated workflow; `slicekit check --ci`; `slicekit workflow --check`.
 
 ## REQ-3.12 Rendered files and updates
 
@@ -222,3 +271,60 @@ replaced.
 Cites: D-05.
 
 Enforced by: the renderer; `slicekit check` (managed rule).
+
+## REQ-3.13 Paths agents may not touch
+
+Config key `agents.denyPaths` SHALL hold a list of glob patterns over repository-relative POSIX
+paths, empty by default. Init and update SHALL render each pattern into the agent tool's deny rules
+for reading and editing (C-3), which refuse a read; the pre-edit guard SHALL deny an edit or write to
+a matching path, and the pre-bash guard SHALL deny a command that names a matching path. No hook
+sees a read, so a read is refused by the rendered rules alone. The list is how a team keeps
+real data, such as payment files, and secret files out of the model's context (D-72). It does not
+scan file contents.
+
+Scenario: GIVEN `agents.denyPaths` holds `data/**` WHEN an agent reads `data/pain001-sample.xml` <!-- slicekit:example -->
+or runs `cat data/pain001-sample.xml` THEN the agent tool refuses the read under the rendered deny rule, and pre-bash denies the command
+naming the pattern.
+
+Cites: D-72, `../intake/2026-11-02-architect-review.md`.
+
+Enforced by: the rendered agent-tool settings; `slicekit hook pre-edit`; `slicekit hook pre-bash`.
+
+## REQ-3.14 The git host's rules on the default branch
+
+`slicekit check` SHALL read, through C-1, the repository rulesets that apply to the default branch
+and the repository's CODEOWNERS file, and fail naming each one missing: a pull request required
+before merge; at least one approving review, from a code owner when CODEOWNERS exists; the kit's CI
+checks required; force push refused. It reads rulesets only, which the workflow's own token may read;
+a repository protected by classic branch protection alone is told to move to a ruleset (D-84). `slicekit init --protect` SHALL apply the missing
+rules as one ruleset through C-1 when a human with admin rights runs it, and print each rule it set.
+No agent, hook or CI job SHALL change a host rule (D-77): `applyBranchRules` has one caller, which a
+test asserts.
+When the host cannot be reached or the token may not read the rules, the rule fails in CI and,
+outside CI, prints "host rules not checked" without blocking (D-81).
+
+Scenario: GIVEN a repository whose default branch allows a direct push WHEN `slicekit check --ci`
+runs THEN it fails with "main: a pull request is not required before merge; run slicekit init
+--protect as an admin".
+
+Cites: D-70, D-77, D-81, D-84, `../intake/2026-11-02-architect-review.md`.
+
+Enforced by: `slicekit check` (host-rules rule); `slicekit init --protect`; the test that
+`applyBranchRules` has one caller.
+
+## REQ-3.15 Frozen tests hold in CI
+
+`slicekit check --ci` SHALL fail a slice pull request in which a test file of the slice's
+evaluation set differs from its content at the red commit recorded in the slice's state file, unless
+the slice file was amended after that commit (REQ-3.3, D-10). It reads the state file, the red
+commit and the test files from git objects of the pull request's head, never the working tree, so a
+file hidden with `assume-unchanged` or `skip-worktree` is judged by its committed content (issue
+#71).
+
+Scenario: GIVEN a slice pull request whose frozen `test/billing.test.js` changed after the red <!-- slicekit:example -->
+commit through a Bash write WHEN CI runs THEN check fails with "frozen test changed after red:
+test/billing.test.js".
+
+Cites: D-10, D-66, `../intake/2026-11-02-architect-review.md`.
+
+Enforced by: `slicekit check` (frozen rule).

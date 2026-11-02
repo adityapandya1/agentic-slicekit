@@ -1,5 +1,5 @@
 ---
-slice: P4/S-21
+slice: P5/S-21
 name: Runbook rule and `/slicekit release`
 repo: .
 group: A

@@ -24,3 +24,11 @@ decision on stdout; a renderer only decides which tool event calls which subcomm
 A tool that lacks an event SHALL get the nearest available one and a line in `docs/adapters.md`
 saying which guarantee is weaker there. The git hooks (03 REQ-3.9) and CI (03 REQ-3.11) do not
 depend on the agent tool and hold regardless.
+
+Claude Code is the only renderer built; the teams use it from a terminal and from the IntelliJ
+extension (D-75). `docs/adapters.md` SHALL hold the exit path for a second agent tool: the files a
+renderer writes, each hook subcommand with the event that calls it and the JSON it reads and writes,
+the deny rules of 03 REQ-3.13, and which of the kit's parts are already tool-neutral (the CLI, the
+hook handlers, the git hooks, CI and the host rules).
+
+Cites: D-05, D-68, D-75.

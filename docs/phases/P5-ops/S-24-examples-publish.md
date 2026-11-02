@@ -1,5 +1,5 @@
 ---
-slice: P4/S-24
+slice: P5/S-24
 name: Examples, walkthrough, publish from CI
 repo: .
 group: C
@@ -14,7 +14,7 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61, D-62, D-63]
 2. A config with an older `configVersion` is migrated on the first command that is not `hook`, written once, and each change printed on stderr; a hook reads it migrated and writes nothing; a newer `configVersion` is refused naming both versions; the kit's own config and `examples/backend`'s are at version 2 (REQ-5.6, D-60).
 3. The user guide has a page for every `slicekit` command, every `/slicekit` procedure and every check rule, each rule page with a section The failure it prevents, and a test fails naming any one missing; the graph page says the graph is not a code graph and gives the graphify line; the README links the guide (REQ-5.8, REQ-4.8, D-61).
 4. A publish workflow runs on a pushed `v*` tag that equals `package.json`'s version, uses only actions pinned by SHA from the pins file, and runs `npm publish --provenance --access public` with `id-token: write`, authenticated as D-62 answers; the kit's runbook lists the author's hand steps and how to see the attestation with `npm view` (REQ-5.5, REQ-5.8).
-5. `package.json` and `CHANGELOG.md` carry the version D-63 answers; the README's status names Phase 4 as built; the README walkthrough still exits 0 on `examples/backend` (REQ-5.7).
+5. `package.json` and `CHANGELOG.md` carry the version D-63 answers; the README's status names Phase 5 as built; the README walkthrough still exits 0 on `examples/backend` (REQ-5.7).
 
 ## Evaluation set
 
@@ -33,7 +33,7 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61, D-62, D-63]
 | `publish.test.js » the publish workflow pins every action by SHA and publishes with provenance on a version tag` | happy | REQ-5.5 |
 | `publish.test.js » a tag that differs from package.json's version stops the publish` | negative | REQ-5.5 |
 | `runbook.test.js » the release steps tag, wait for the workflow and check the attestation` | happy | REQ-5.8 |
-| `readme.test.js » the status names Phase 4 as built and links the guide` | happy | REQ-5.7 |
+| `readme.test.js » the status names Phase 5 as built and links the guide` | happy | REQ-5.7 |
 
 ## Expected changes
 
@@ -53,11 +53,11 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61, D-62, D-63]
 - `loadConfig(root)` validates the migrated copy and never writes.
 - `migrateConfigFile(root) → {from, to, changes} | null`: reads the config, and when it is older writes the migrated copy through a temporary name and a rename, JSON with two-space indentation and a final newline; `null` when there is no config file, it is not JSON, or it is current.
 - `main()`: after `--version`, `--help` and the command lookup, and before `command.run`, unless the command is `hook`, calls `migrateConfigFile(io.cwd)` (so `init` rerun on an older config reads it migrated) and prints `config: migrated .slicekit/config.json from configVersion <from> to <to>` and one `  - <change>` line per change on stderr; a `ConfigNewerError` prints `slicekit: <message>` and exits 2.
-- The kit's own config is moved to version 2 by running any command, and committed with `node bin/slicekit.js build config P4/S-24` (D-53).
+- The kit's own config is moved to version 2 by running any command, and committed with `node bin/slicekit.js build config P5/S-24` (D-53).
 
 - [ ] **Step 1: Failing tests** — `an older configVersion is migrated and each change printed`: a repository with a version 1 config holding `repos: []`, then `slicekit status` → stderr holds the migrated line and `  - removed repos, unread since D-47`; the file holds `"configVersion": 2` and no `repos`; a second `slicekit status` prints no migration line. `a hook reads an older config without writing it`: the same config, `slicekit hook stop` with Stop's JSON on stdin → the file's bytes are unchanged. `a configVersion newer than the kit's is refused, naming both`: `configVersion: 3` → exit 2 with `configVersion 3 is newer than this kit's 2`. `init rerun on an older config migrates it first`: the same version 1 config, then `slicekit init --shape backend` → exit 0 and the file holds `"configVersion": 2`. A version 2 config holding `repos` is refused naming `repos`.
 - [ ] **Step 2: Run** `node --test test/config.test.js test/cli.test.js` → FAIL.
-- [ ] **Step 3: Implement**; update the backend example's config by hand; then `node bin/slicekit.js status` and `node bin/slicekit.js build config P4/S-24`.
+- [ ] **Step 3: Implement**; update the backend example's config by hand; then `node bin/slicekit.js status` and `node bin/slicekit.js build config P5/S-24`.
 - [ ] **Step 4: Run** the same and `node --test test/init.test.js` → PASS.
 - [ ] **Step 5: Commit** `feat(config): configVersion 2 drops repos; older configs migrate on first run`.
 
@@ -82,12 +82,12 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61, D-62, D-63]
 **Files:** Create `docs/guide/`, `test/user-guide.test.js`. Modify `README.md`, `test/readme.test.js`.
 
 **Interfaces:**
-- Pages: `docs/guide/README.md` linking every page; `docs/guide/commands/<name>.md` for each key of `COMMANDS` in `src/cli/index.js`; `docs/guide/slash/<name>.md` for each name in `PROCEDURES` of `src/instructions.js`, plus `slash/slicekit.md` for `/slicekit` itself; `docs/guide/rules/<id>.md` for each rule in `ALL_RULES` of `src/check/index.js`. <!-- slicekit:pending P4/S-24 -->
+- Pages: `docs/guide/README.md` linking every page; `docs/guide/commands/<name>.md` for each key of `COMMANDS` in `src/cli/index.js`; `docs/guide/slash/<name>.md` for each name in `PROCEDURES` of `src/instructions.js`, plus `slash/slicekit.md` for `/slicekit` itself; `docs/guide/rules/<id>.md` for each rule in `ALL_RULES` of `src/check/index.js`. <!-- slicekit:pending P5/S-24 -->
 - A command page: the usage line as `--help` prints it, what it reads and writes, its exit codes, one example. A slash command page: what the human types, which agents it spawns, which `slicekit` commands its procedure runs, what it leaves behind. A rule page: what fails, and a section `## The failure it prevents` naming the failure the rule exists for, in one paragraph.
-- `docs/guide/commands/graph.md` holds the README's scope line: the graph is built from the kit's IDs and git, is not a code graph, and the graphify line. <!-- slicekit:pending P4/S-24 -->
+- `docs/guide/commands/graph.md` holds the README's scope line: the graph is built from the kit's IDs and git, is not a code graph, and the graphify line. <!-- slicekit:pending P5/S-24 -->
 - The README gains a `## User guide` section after `## Scope` linking the guide's README and `docs/adapters.md`.
 
-- [ ] **Step 1: Failing tests** — `a command or check rule with no guide page fails, naming it`: the test's `missingPages()` lists `commands/<name>`, `slash/<name>` or `rules/<id>` for each one with no page; it is empty for the kit, and a fake entry added to a copy of the lists is named. `every rule page says the failure it prevents`. `the graph page says the graph is not a code graph and gives the graphify line`. `the status names Phase 4 as built and links the guide` in `test/readme.test.js`, with the status change of Task 5.
+- [ ] **Step 1: Failing tests** — `a command or check rule with no guide page fails, naming it`: the test's `missingPages()` lists `commands/<name>`, `slash/<name>` or `rules/<id>` for each one with no page; it is empty for the kit, and a fake entry added to a copy of the lists is named. `every rule page says the failure it prevents`. `the graph page says the graph is not a code graph and gives the graphify line`. `the status names Phase 5 as built and links the guide` in `test/readme.test.js`, with the status change of Task 5.
 - [ ] **Step 2: Run** `node --test test/user-guide.test.js test/readme.test.js` → FAIL.
 - [ ] **Step 3: Implement** the pages.
 - [ ] **Step 4: Run** the same and `node bin/slicekit.js check` → PASS, `0 findings` (the references and style rules read every page).
@@ -116,8 +116,8 @@ Do not start this task while D-62 is Open in `docs/decisions.md`; the author's a
 
 **Interfaces:**
 - The version D-63 answers, in `package.json` and as the newest `CHANGELOG.md` entry, under New, Improved and Fixed: the release command and record, the runbook rule, observability steps from the doc, ops and audit, configVersion 2, the two examples, the guide, publishing from CI.
-- The README's status section names Phase 4's commands as built and says versions are published from CI with provenance.
-- `node bin/slicekit.js build render P4/S-24` re-renders the kit's `.claude/`; `slicekit update --yes` in each of `examples/fullstack` and `examples/data` re-renders them at the new version, and both are committed.
+- The README's status section names Phase 5's commands as built and says versions are published from CI with provenance.
+- `node bin/slicekit.js build render P5/S-24` re-renders the kit's `.claude/`; `slicekit update --yes` in each of `examples/fullstack` and `examples/data` re-renders them at the new version, and both are committed.
 
 - [ ] **Step 1: Failing tests** — `test/package.test.js` expects the new version; `test/runbook.test.js`'s changelog list gains it; `renderDrift` of Task 2 names every rendered file until the examples are re-rendered.
 - [ ] **Step 2: Run** `node --test test/package.test.js test/runbook.test.js test/readme.test.js test/examples.test.js` → FAIL.

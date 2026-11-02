@@ -16,6 +16,7 @@ src/
   render/                templates → adapter files, managed blocks, update
   adapters/
     githost/             the git host adapter (C-1): GitHub through gh, and a fixture host
+    tracker/             the tracker adapter (C-2): GitHub Issues, Jira Cloud, and a fixture tracker
   baseline.js            reads and writes the ratchet baselines
   config.js              config schema, defaults and validation
   evidence.js            the shapes of evidence accepted: commit SHAs, dates

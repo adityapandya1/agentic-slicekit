@@ -90,7 +90,8 @@ Enforced by: `slicekit <query>`; performance tested in the kit's own suite again
 A program repository MAY hold `.slicekit/workspace.json` listing repositories as `{ name, path or <!-- slicekit:example -->
 url, defaultBranch }` (D-15). `slicekit graph` in a program repository SHALL build across every
 listed repository that is present on disk, prefixing file nodes with the repo name, and SHALL report
-the ones it could not reach. A slice file's `repo:` field SHALL name a workspace entry. A contract
+the ones it could not reach. A slice file's `repo:` field SHALL name a workspace entry. A slice is built in one repository; a
+change that spans repositories is planned as one slice per repository (D-76). A contract
 file in `spec/contracts/C-<n>-<name>.md` SHALL name its producer slice and consumer slices; the graph
 draws `produces` and `consumes` edges, which `impact` follows across repositories.
 
@@ -98,7 +99,7 @@ Scenario: GIVEN contract C-2 "order.created topic" produced by P1/S-04 in repo `
 by P1/S-09 in repo `billing` WHEN `slicekit impact C-2` runs THEN both slices and both repos are <!-- slicekit:example -->
 listed.
 
-Cites: D-15.
+Cites: D-15, D-76.
 
 Enforced by: `slicekit graph`; `slicekit check` (slice `repo:` names a workspace entry; a contract
 names at least one producer and one consumer).

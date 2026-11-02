@@ -10,11 +10,13 @@ from config (default `docs/`, D-24):
 
 ```
 .slicekit/
-  config.json          shape · commands {test, lint, build, e2e} · docsRoot · repos · tracker ·
-                       review {independent: required|optional} · freezeTests · style (phrase list)
+  config.json          shape · commands {test, lint, build, e2e} · docsRoot · repos · tracker
+                       {kind, baseUrl, project, issueType} · review {independent: required|optional}
+                       · freezeTests · style (phrase list) · agents {denyPaths} · ci {runsOn, java}
   state/<P>-<S>.json   one file per slice (D-22); only the CLI writes here
   baselines/           ratchet counts: references.json, style.json
   journal/<branch>--<clone-id>.log  append-only, hash-chained session journal, one per branch per clone (03, REQ-3.8)
+  journal-heads.log    each merged journal's last hash and the CI run that recorded it (03, REQ-3.8)
   graph/               built, never committed (04)
   workspace.json       present only in a program repo that spans repositories (D-15)
 <docsRoot>/
