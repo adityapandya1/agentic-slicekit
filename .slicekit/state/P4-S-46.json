@@ -1,0 +1,32 @@
+{
+  "slice": "P4/S-46",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "3a3f3df70817be56b46aeb76050748fc5ad13eb3",
+  "frozenTests": [
+    "test/check/references.test.js",
+    "test/default-branch.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-02T20:10:01.103Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "3a3f3df70817be56b46aeb76050748fc5ad13eb3",
+        "testExit": 1,
+        "tests": [
+          "test/check/references.test.js",
+          "test/default-branch.test.js"
+        ]
+      }
+    }
+  ]
+}
