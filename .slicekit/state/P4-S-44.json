@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-44",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 109,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/109",
+    "headSha": "d4946867383627a7ef558ef1b22d8d5fd1391297"
+  },
   "redCommit": "0081acfcc0a09f0b7a61a2295a74a18f1d269607",
   "frozenTests": [
     "test/tracker.test.js",
@@ -36,6 +40,22 @@
       "at": "2026-11-02T20:08:08.565Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-02T22:28:43.842Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 109,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/109",
+          "headSha": "d4946867383627a7ef558ef1b22d8d5fd1391297",
+          "title": "[P4/S-44] Jira Cloud as a tracker, and the exit path for a second agent tool"
+        }
+      }
     }
   ]
 }
