@@ -6,6 +6,7 @@ import { findSliceFiles } from '../../slicefile.js';
 import { readSlice } from '../../state/index.js';
 import { MARKER as BUILD_MARKER } from '../../state/build.js';
 import { intakeStatus } from '../context.js';
+import { git, GitError } from '../../git.js';
 
 export const id = 'references';
 export const blocking = true;
@@ -120,6 +121,34 @@ function sliceAddresses(ctx) {
   return out;
 }
 
+// A verdict file already on the default branch, at origin's copy or the local one, is history: it
+// was reviewed and merged. A version bump renames `.slicekit/rendered/<version>/`, so the old
+// version's paths it names are gone; those are not findings (issue #75). A verdict that is on
+// neither, such as the current slice's, is checked in full.
+const REVIEWS = '.slicekit/reviews/';
+const RENDERED = '.slicekit/rendered/';
+// Whether a target names a path under the rendered folder, read from the root or from the verdict's
+// own directory.
+const inRendered = (rel, value) => {
+  const v = toSlashes(value);
+  const fromRoot = path.posix.normalize(v.replace(/^\/+/, ''));
+  const fromDoc = path.posix.normalize(path.posix.join(path.posix.dirname(rel), v));
+  return fromRoot.startsWith(RENDERED) || (!v.startsWith('/') && fromDoc.startsWith(RENDERED));
+};
+function onDefaultBranch(ctx, rel) {
+  const branch = ctx.cfg?.defaultBranch;
+  if (!branch || !rel.startsWith(REVIEWS)) return false;
+  for (const ref of [`refs/remotes/origin/${branch}`, `refs/heads/${branch}`]) {
+    try {
+      git(ctx.root, ['cat-file', '-e', `${ref}:${rel}`]);
+      return true;
+    } catch (e) {
+      if (!(e instanceof GitError)) throw e;
+    }
+  }
+  return false;
+}
+
 export function run(ctx) {
   const findings = [];
   const slugCache = new Map();
@@ -203,6 +232,7 @@ export function run(ctx) {
     // like any doc and is itself a finding (REQ-1.2).
     if (intake === 'unpinned') add(0, 'intake file has no valid sidecar');
     const promises = promiseLines(ctx, doc, sliceIds, (message) => add(0, message));
+    const merged = onDefaultBranch(ctx, doc.rel);
 
     // A pending marker defers its line's paths while the slice it names is not merged or
     // released; once it is, the paths are checked and the marker is stale. Its own address is not
@@ -226,6 +256,7 @@ export function run(ctx) {
       if (ref.kind === 'path') {
         if (ref.line <= viewEnd || deferred.has(ref.line)) continue;
         if (ref.via === 'code' && promises?.has(ref.line)) continue;
+        if (merged && inRendered(doc.rel, ref.value)) continue;
         if (isPathLike(ref.value) && !resolve(doc, ref.value, ref.via)) add(ref.line, `missing file ${ref.value}`);
       } else if (ref.kind === 'anchor') {
         if (!/\.md$/i.test(ref.file)) continue;

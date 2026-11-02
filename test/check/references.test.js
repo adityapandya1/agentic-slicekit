@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { init } from '../../src/init.js';
 import { check } from '../../src/check/index.js';
 import references from '../../src/check/rules/references.js';
-import { makeRepo } from '../helpers/tmp-repo.js';
+import { makeRemote, makeRepo } from '../helpers/tmp-repo.js';
+import { git as gitRun } from '../../src/git.js';
 import { loadConfig } from '../../src/config.js';
 import { readSlice, writeSlice } from '../../src/state/index.js';
 import { renderBuild, MARKER as BUILD_MARKER } from '../../src/state/build.js';
@@ -296,4 +297,54 @@ test("a dead path in a slice file's done-when is reported on the slice file, not
     'references docs/phases/P1-x/S-01-a.md:13 missing file src/gone.js',
     'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
   ]);
+});
+
+// P4/S-46 (issue #75): a verdict already on the default branch is history. A version bump renames
+// `.slicekit/rendered/<version>/`, so the old version's paths named in a merged verdict are gone;
+// those are not findings. A verdict of the current slice is still checked.
+const OLD_RENDERED = '.slicekit/rendered/0.0.1/agents/developer.md';
+const verdictDoc = () => ['# Verdict', '', `The reviewer read \`${OLD_RENDERED}\` and found it current.`, ''].join('\n');
+
+// git with the init'd repo's hooks turned off, so a test commit on main is not refused.
+const gitNoHooks = (root, args) => gitRun(root, ['-c', 'core.hooksPath=.no-hooks', ...args]);
+
+// An init'd repo whose main, pushed to an origin, holds P1/S-01's verdict; HEAD is then on a
+// slice branch for P1/S-02. `onBranch` runs there before check.
+function runOnSliceBranch(onBranch = () => {}) {
+  const repo = makeRepo({ commits: 1 });
+  let remote;
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
+    fs.cpSync(path.join(FIXTURES, 'base'), repo.root, { recursive: true });
+    const reviews = path.join(repo.root, '.slicekit', 'reviews');
+    fs.mkdirSync(reviews, { recursive: true });
+    fs.writeFileSync(path.join(reviews, 'P1-S-01-r1.md'), verdictDoc());
+    gitNoHooks(repo.root, ['add', '-A']);
+    gitNoHooks(repo.root, ['commit', '-q', '-m', 'merged P1/S-01']);
+    remote = makeRemote(repo.root);
+    gitNoHooks(repo.root, ['push', '-q', 'origin', 'main']);
+    gitNoHooks(repo.root, ['switch', '-q', '-c', 'slice/P1-S-02-next']);
+    onBranch(repo.root);
+    return check(repo.root, { rules: [references] });
+  } finally {
+    repo.cleanup();
+    remote?.cleanup();
+  }
+}
+
+test('a rendered path of an old version in a merged verdict is not a finding', () => {
+  const r = runOnSliceBranch();
+  assert.deepEqual(r.lines, ['check: 0 findings, 0 over baseline, 0 blocking, 1 rules']);
+  assert.equal(r.exitCode, 0);
+});
+
+test("a missing rendered path in the current slice's verdict is a finding", () => {
+  const r = runOnSliceBranch((root) => {
+    fs.writeFileSync(path.join(root, '.slicekit', 'reviews', 'P1-S-02-r1.md'), verdictDoc());
+  });
+  assert.deepEqual(r.lines, [
+    `references .slicekit/reviews/P1-S-02-r1.md:3 missing file ${OLD_RENDERED}`,
+    'check: 1 findings, 1 over baseline, 0 blocking, 1 rules',
+  ]);
+  assert.equal(r.exitCode, 1);
 });
