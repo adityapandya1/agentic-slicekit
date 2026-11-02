@@ -1,4 +1,5 @@
 // REQ-1.6: BUILD.md is rendered from the slice and state files by status --write, keeping the tail below the marker.
+// REQ-2.6: build commit commits only the staged paths when some are staged, and a deletion staged with git rm (P4/S-45).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +11,8 @@ import { setState } from '../src/state/index.js';
 import { renderBuild, generatedRegion, MARKER } from '../src/state/build.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
+import { git } from '../src/git.js';
+import { GREEN, building, commitWorkCli, write } from './helpers/build-flow.js';
 import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
 
 const kitRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -284,4 +287,46 @@ test('a done-when pending marker does not reach the rendered row', () => {
     assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
     assert.ok(!out.includes('slicekit:pending'), out);
   }, { slices: 1 });
+});
+
+// The paths and statuses of commit `rev`, as `git diff-tree --name-status` prints them.
+const committedFiles = (wt, rev) =>
+  git(wt, ['diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', rev])
+    .split('\n')
+    .filter((l) => l !== '')
+    .map((l) => l.replace('\t', ' '));
+
+test('build commit with staged paths commits only those paths', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', GREEN);
+    write(p.wt, 'notes.txt', 'not part of this commit\n');
+    git(p.wt, ['add', '--', 'src/t1.js']);
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(committedFiles(p.wt, 'HEAD'), ['A src/t1.js']);
+    // The unstaged path is left as it was: on disk, untracked, not staged.
+    assert.equal(fs.readFileSync(path.join(p.wt, 'notes.txt'), 'utf8'), 'not part of this commit\n');
+    assert.equal(git(p.wt, ['status', '--porcelain', '--', 'notes.txt']), '?? notes.txt');
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('build commit commits a deletion staged with git rm', async () => {
+  const p = await building();
+  try {
+    write(p.wt, 'src/t1.js', GREEN);
+    write(p.wt, 'src/old.js', 'export const old = 1;\n');
+    const first = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
+    assert.equal(first.code, 0, first.stderr);
+    git(p.wt, ['rm', '-q', '--', 'src/old.js']);
+    const r = await commitWorkCli(p, '--message', 'chore(P1/S-01): drop old');
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(!r.stderr.includes('did not match'), r.stderr);
+    assert.deepEqual(committedFiles(p.wt, 'HEAD'), ['D src/old.js']);
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+  } finally {
+    p.cleanup();
+  }
 });

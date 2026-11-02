@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 
 export class GitError extends Error {
   constructor(args, stderr) {
@@ -167,12 +168,40 @@ export function switchBranch(root, name, { create = false, from, track = false }
   else git(root, ['switch', '-q', '--no-guess', name]);
 }
 
+// The paths staged in the index against HEAD, as [{ status, file }] (POSIX paths; a rename is its
+// deletion and its addition). Empty when nothing is staged.
+export function stagedChanges(root) {
+  if (!hasCommits(root)) return [];
+  const fields = git(root, ['diff', '--cached', '--name-status', '--no-renames', '-z', 'HEAD']).split('\0').filter((f) => f !== '');
+  const out = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) out.push({ status: fields[i], file: fields[i + 1] });
+  return out;
+}
+
+// Writes every path of the index, as staged, under the directory `dir` (which must exist); the
+// worktree and the index are not changed.
+export function checkoutIndexTo(root, dir) {
+  const prefix = `${path.resolve(dir).split(path.sep).join('/')}/`;
+  git(root, ['checkout-index', '-a', '-f', `--prefix=${prefix}`]);
+}
+
+// Commits the index as it stands: the staged paths alone, the rest of the worktree untouched.
+export function commitStaged(root, message) {
+  if (succeeds(root, ['diff', '--cached', '--quiet'])) return null;
+  git(root, ['commit', '-q', '-m', message]);
+  return headSha(root);
+}
+
 // Stages `paths` (additions, changes and deletions) and commits only them. Null when none of them
 // has a change to commit; otherwise the new commit's SHA.
 export function commitPaths(root, paths, message) {
   if (!Array.isArray(paths) || paths.length === 0) throw new GitError(['commit'], 'no paths to commit');
+  // A path already staged as deleted is in neither the index nor the worktree, so `git add` of it
+  // fails with "pathspec did not match"; it is committed as staged.
+  const deleted = new Set(stagedChanges(root).filter((c) => c.status === 'D').map((c) => c.file));
+  const toAdd = paths.filter((p) => !deleted.has(p));
   // --literal-pathspecs: a path is a path, never a glob or a magic pathspec such as `:/`.
-  git(root, ['--literal-pathspecs', 'add', '-A', '--', ...paths]);
+  if (toAdd.length > 0) git(root, ['--literal-pathspecs', 'add', '-A', '--', ...toAdd]);
   if (succeeds(root, ['--literal-pathspecs', 'diff', '--cached', '--quiet', '--', ...paths])) return null;
   git(root, ['--literal-pathspecs', 'commit', '-q', '-m', message, '--', ...paths]);
   return headSha(root);

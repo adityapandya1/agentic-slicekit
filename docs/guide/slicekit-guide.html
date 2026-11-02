@@ -760,7 +760,7 @@ tests-red → building</span></pre>
     <header><h4><code>build commit</code></h4><span class="tag t-agent">Run by the agent</span></header>
     <pre class="syn">slicekit build commit &lt;id&gt; --message &lt;m&gt; [--require-green] [--worktree &lt;p&gt;]</pre>
     <dl class="facts">
-      <dt>What</dt><dd>Runs the tests, then commits the worktree's changes with the test run's result and the slice trailer. It refuses a change to a frozen test or to a kit file. It prints <code>&lt;sha7&gt; exit &lt;n&gt;</code>, or <code>nothing to commit</code>, which is success.</dd>
+      <dt>What</dt><dd>Runs the tests, then commits with the test run's result and the slice trailer. With paths staged it commits those paths alone, as staged (a deletion staged with <code>git rm</code> included), and leaves the rest of the worktree as it was; the tests run on the staged content in a temporary directory, so a tracked path changed but not staged stays in the worktree and out of both the run and the commit. With nothing staged it commits every changed path. It refuses a change to a frozen test or to a kit file. It prints <code>&lt;sha7&gt; exit &lt;n&gt;</code>, or <code>nothing to commit</code>, which is success.</dd>
       <dt>When</dt><dd>Each time a test newly passes; with <code>--require-green</code> once all pass; and after the fixer answers review findings.</dd>
       <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> committed, or nothing to commit</li><li><b>1</b> a frozen test changed, tests fail under <code>--require-green</code>, or the state does not allow it</li><li><b>2</b> no <code>--message</code></li></ul></dd>
     </dl>
@@ -775,14 +775,14 @@ tests-red → building</span></pre>
 
   <article class="cmd" id="build-amend">
     <header><h4><code>build amend</code></h4><span class="tag t-agent">Run by the agent</span></header>
-    <pre class="syn">slicekit build amend &lt;id&gt; --test &lt;path&gt; --reason &lt;r&gt; [--worktree &lt;p&gt;]</pre>
+    <pre class="syn">slicekit build amend &lt;id&gt; [--test &lt;path&gt;] --reason &lt;r&gt; [--worktree &lt;p&gt;]</pre>
     <dl class="facts">
-      <dt>What</dt><dd>Unfreezes one frozen test after a person agreed it may change and the slice file in the worktree was edited to record that. From <code>draft-pr</code>, <code>in-review</code> or <code>changes-requested</code> it also takes the slice back to <code>building</code>. It prints <code>unfroze &lt;test&gt;</code>.</dd>
+      <dt>What</dt><dd>Unfreezes one frozen test after a person agreed it may change and the slice file in the worktree was edited to record that. From <code>draft-pr</code>, <code>in-review</code> or <code>changes-requested</code> it also takes the slice back to <code>building</code>. It prints <code>unfroze &lt;test&gt;</code>. With no <code>--test</code>, it commits the slice file alone and records the reason in the state file, without changing the state; it does so only when every test the slice file names is already unfrozen, and prints <code>&lt;sha7&gt; amended the slice file</code>.</dd>
       <dt>When</dt><dd>When the developer reports <code>amend: &lt;test&gt; — &lt;why&gt;</code> and you say yes, or when a review finding sits inside a frozen test.</dd>
-      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> unfrozen</li><li><b>1</b> the slice file has no change, the path is not a frozen test, or it is already unfrozen</li><li><b>2</b> no <code>--test</code> or <code>--reason</code></li></ul></dd>
+      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> unfrozen</li><li><b>1</b> the slice file has no change, the path is not a frozen test, it is already unfrozen, or (no <code>--test</code>) a test of the slice is still frozen</li><li><b>2</b> no <code>--reason</code></li></ul></dd>
     </dl>
     <table class="opts"><thead><tr><th>Option</th><th>What it does</th></tr></thead><tbody>
-      <tr><td><code>--test &lt;path&gt;</code></td><td>The frozen test that may change. Required.</td></tr>
+      <tr><td><code>--test &lt;path&gt;</code></td><td>The frozen test that may change. Without it, the slice file alone is amended, and only when no test of the slice is still frozen.</td></tr>
       <tr><td><code>--reason &lt;r&gt;</code></td><td>Why, recorded in the state history. Required.</td></tr>
     </tbody></table>
     <pre class="ex"><span class="p">$ </span>slicekit build amend P1/S-02 --test test/order-empty.test.js --reason "the empty cart returns 422, not 400"

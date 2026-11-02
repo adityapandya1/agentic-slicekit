@@ -72,8 +72,11 @@ stops.
 After each developer report in which a test newly passes, run
 `{{cli}} build commit <id> --message "<subject>" --worktree <path>`, with a subject such as
 `feat(<id>): <what now works>`. It prints `<sha7> exit <n>`, or `nothing to commit` with exit 0,
-which is success. A refusal naming a frozen test means the developer changed one: send it back with
-the message. While tests still fail, spawn the developer again with what is left.
+which is success. With nothing staged it commits every changed path; with paths staged it commits
+those alone, as staged, and runs the tests on the staged content; a tracked path changed but not
+staged stays in the worktree, out of the commit. A refusal naming
+a frozen test means the developer changed one: send it back with the message. While tests still
+fail, spawn the developer again with what is left.
 
 When the developer reports a line `amend: <test path> — <why>`, ask the human whether that test may
 change. On no, tell the developer the test stands. On yes:
@@ -90,6 +93,13 @@ change. On no, tell the developer the test stands. On yes:
 inside a frozen test: the same three steps, then the slice is back at `building`. The fixer (or the
 developer) changes that test, and step 7's `build commit` and `build pr` take the slice back to
 `draft-pr` on the same pull request.
+
+When the human changes the slice file and every test it names is already unfrozen, there is no test
+to name: edit the slice file in the worktree as in step 1, then run
+`{{cli}} build amend <id> --reason "<why>" --worktree <path>`. It commits the slice file alone,
+records the reason in the state file, leaves the state as it is, and prints
+`<sha7> amended the slice file`. While a test is still frozen it refuses: name that test with
+`--test`.
 
 ## 5. Green, then the draft pull request
 
