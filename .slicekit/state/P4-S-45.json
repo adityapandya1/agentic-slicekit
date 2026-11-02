@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-45",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 96,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/96",
+    "headSha": "1977f2c27f50a77049bff6bf192881844c03de99"
+  },
   "redCommit": "60a96e4d2d07eaa8698690aad4572970784f0ad1",
   "frozenTests": [
     "test/build.test.js",
@@ -34,6 +38,22 @@
       "at": "2026-11-02T20:09:29.420Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-02T20:25:11.887Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 96,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/96",
+          "headSha": "1977f2c27f50a77049bff6bf192881844c03de99",
+          "title": "[P4/S-45] build commit and build amend fixes"
+        }
+      }
     }
   ]
 }
