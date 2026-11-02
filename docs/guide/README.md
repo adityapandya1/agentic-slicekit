@@ -821,7 +821,7 @@ tests-red → building
 slicekit build commit <id> --message <m> [--require-green] [--worktree <p>]
 ```
 
-Runs the tests, then commits the worktree's changes with the test run's result and the slice trailer. It refuses a change to a frozen test or to a kit file. It prints `<sha7> exit <n>`, or `nothing to commit`, which is success.
+Runs the tests, then commits with the test run's result and the slice trailer. With paths staged it commits those paths alone, as staged (a deletion staged with `git rm` included), and leaves the rest of the worktree as it was; it refuses when a tracked path is changed but not staged, since the tests would run on it. With nothing staged it commits every changed path. It refuses a change to a frozen test or to a kit file. It prints `<sha7> exit <n>`, or `nothing to commit`, which is success.
 
 **When to use it:** Each time a test newly passes; with `--require-green` once all pass; and after the fixer answers review findings.
 
@@ -847,26 +847,26 @@ $ slicekit build commit P1/S-02 --message "feat(P1/S-02): place an order" --requ
 
 #### slicekit build amend
 
-*unfreeze one frozen test after a person agreed* (run by the agent)
+*unfreeze one frozen test, or amend the slice file alone, after a person agreed* (run by the agent)
 
 ```text
-slicekit build amend <id> --test <path> --reason <r> [--worktree <p>]
+slicekit build amend <id> [--test <path>] --reason <r> [--worktree <p>]
 ```
 
-Unfreezes one frozen test after a person agreed it may change and the slice file in the worktree was edited to record that. From `draft-pr`, `in-review` or `changes-requested` it also takes the slice back to `building`. It prints `unfroze <test>`.
+Unfreezes one frozen test after a person agreed it may change and the slice file in the worktree was edited to record that. From `draft-pr`, `in-review` or `changes-requested` it also takes the slice back to `building`. It prints `unfroze <test>`. With no `--test`, it commits the slice file alone and records the reason in the state file, without changing the state; it does so only when every test the slice file names is already unfrozen, and prints `<sha7> amended the slice file`.
 
 **When to use it:** When the developer reports `amend: <test> — <why>` and you say yes, or when a review finding sits inside a frozen test.
 
 **What it does:**
 
-- `--test <path>`: The frozen test that may change. Required.
+- `--test <path>`: The frozen test that may change. Without it, the slice file alone is amended, and only when no test of the slice is still frozen.
 - `--reason <r>`: Why, recorded in the state history. Required.
 
 | Exit | Meaning |
 |---|---|
 | 0 | unfrozen |
-| 1 | the slice file has no change, the path is not a frozen test, or it is already unfrozen |
-| 2 | no `--test` or `--reason` |
+| 1 | the slice file has no change, the path is not a frozen test, it is already unfrozen, or (no `--test`) a test of the slice is still frozen |
+| 2 | no `--reason` |
 
 **Example:**
 

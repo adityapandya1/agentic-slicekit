@@ -167,8 +167,6 @@ export function switchBranch(root, name, { create = false, from, track = false }
   else git(root, ['switch', '-q', '--no-guess', name]);
 }
 
-// Stages `paths` (additions, changes and deletions) and commits only them. Null when none of them
-// has a change to commit; otherwise the new commit's SHA.
 // The paths staged in the index against HEAD, as [{ status, file }] (POSIX paths; a rename is its
 // deletion and its addition). Empty when nothing is staged.
 export function stagedChanges(root) {
@@ -186,6 +184,8 @@ export function commitStaged(root, message) {
   return headSha(root);
 }
 
+// Stages `paths` (additions, changes and deletions) and commits only them. Null when none of them
+// has a change to commit; otherwise the new commit's SHA.
 export function commitPaths(root, paths, message) {
   if (!Array.isArray(paths) || paths.length === 0) throw new GitError(['commit'], 'no paths to commit');
   // A path already staged as deleted is in neither the index nor the worktree, so `git add` of it

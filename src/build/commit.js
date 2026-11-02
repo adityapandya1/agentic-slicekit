@@ -222,6 +222,14 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const ranLocal = local ? command : null;
+  // The test run sees the worktree, the commit holds the index: with paths staged, a tracked path
+  // changed but not staged would make the trailer describe a tree other than the one committed.
+  if (staged.length > 0) {
+    const unstaged = git(wt, ['diff', '--name-only', '--no-renames', '-z']).split('\0').filter((f) => f !== '');
+    if (unstaged.length > 0) {
+      throw new BuildError(`${unstaged.join(', ')} changed but not staged; the tests would run on changes the commit leaves out: stage or stash them`);
+    }
+  }
 
   const run = runCommand(wt, command);
   const unusable = unusableRun(command, run);

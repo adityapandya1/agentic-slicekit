@@ -6,7 +6,7 @@ import { commitPaths } from '../git.js';
 import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { renderBuild } from '../state/build.js';
-import { readSlice, setState, writeSlice } from '../state/index.js';
+import { appendHistory, setState } from '../state/index.js';
 
 const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
 
@@ -24,10 +24,9 @@ export function recordState(wt, cfg, id, to, evidence) {
 // An amendment of the slice file alone (build amend with no test named, issue #72): one history
 // entry that leaves the state where it is, with the amendment commit and the reason, then one
 // bookkeeping commit.
+// The entry is written under the slice lock (appendHistory), as setState writes its own.
 export function recordAmendment(wt, cfg, id, evidence) {
-  const current = readSlice(wt, cfg, id);
-  const entry = { from: current.state, to: current.state, at: new Date().toISOString(), by: 'cli', evidence };
-  writeSlice(wt, cfg, { ...current, history: [...current.history, entry] });
+  const entry = appendHistory(wt, cfg, id, evidence);
   commitState(wt, cfg, id, 'amend');
   return entry;
 }
