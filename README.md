@@ -26,6 +26,10 @@ Each change to the kit ships as the next 0.x version, and a 0.x version may chan
 works. After an upgrade, `npx slicekit update` shows what would change in each of the kit's files,
 and `npx slicekit update --yes` writes the changes.
 
+The [user guide](https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/README.md)
+explains the stages and the slash commands, and gives every command's syntax, options, exit codes
+and an example.
+
 The walkthrough below runs from a clone instead, because it copies files only the repository
 holds (`examples/backend` and `examples/walkthrough`):
 
