@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-45",
-  "state": "changes-requested",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 96,
@@ -26,6 +26,13 @@
       "path": ".slicekit/reviews/P4-S-45-r2.md",
       "blockers": 1,
       "independent": false,
+      "headSha": "935b7d65dd3d787cc2ba287d4d77b38d05511f34"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P4-S-45i-r3.md",
+      "blockers": 1,
+      "independent": true,
       "headSha": "935b7d65dd3d787cc2ba287d4d77b38d05511f34"
     }
   ],
@@ -120,6 +127,20 @@
       "at": "2026-11-02T21:24:58.710Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "in-review",
+      "at": "2026-11-02T21:35:50.916Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P4-S-45i-r3.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
     }
   ]
 }
