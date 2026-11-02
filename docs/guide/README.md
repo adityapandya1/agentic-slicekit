@@ -4,7 +4,7 @@ Version 0.2.1. A Node.js command-line tool for spec-driven agentic delivery, dri
 
 slicekit is a Node.js command-line tool for spec-driven agentic delivery. A requirement document goes in and is snapshotted; an interview turns the answers into numbered decisions; those become a spec in which every requirement cites its source, then a plan of phases and slices. Each slice is then built to a reviewed pull request: failing tests first, then code, a reviewer's verdict and green CI. The rules live in the kit, not in a prompt: each slash command prints its procedure from the CLI, and the CLI, not the agent, runs git.
 
-The same guide is also a web page with a contents sidebar and a dark theme: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it.
+The same guide is also a web page with a contents sidebar and a dark theme: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it. For print or offline reading there are A4 PDFs: [light](slicekit-documentation-v0.2.1-light.pdf) and [dark](slicekit-documentation-v0.2.1-dark.pdf).
 
 ## Contents
 
