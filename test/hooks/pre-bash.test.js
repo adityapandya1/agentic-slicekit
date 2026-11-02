@@ -232,7 +232,10 @@ test('git -C runs the branch test in that directory', () => {
     assertDeny(decide(slice.root, `git -C "${main.root}" commit -m x`), 'commit on protected branch main; create a slice branch');
     assertAllow(decide(main.root, `git -C "${slice.root}" commit -m x`, { cwd: main.root }));
     assertDeny(decide(slice.root, `cd "${main.root}" && git commit -m x`), 'commit on protected branch main; create a slice branch');
-    assertDeny(decide(slice.root, `bash -c "cd '${main.root}' && git push"`), 'push to protected branch main');
+    // P4/S-37: a shell's -c that names git cannot be judged.
+    const viaShell = denied(decide(slice.root, `bash -c "cd '${main.root}' && git push"`));
+    assert.match(viaShell, /cannot judge this command/);
+    assert.match(viaShell, /REQ-3\.2/);
   } finally {
     main.cleanup();
     slice.cleanup();
@@ -690,6 +693,218 @@ test('the main session commits while a subagent is open; the subagent is refused
     assertAllow(decide(root, 'git commit -m x'));
     assertDeny(decide(root, 'git commit -m x', { agent: 'B' }), AGENT);
     assertAllow(decide(root, 'git commit -m x', { agent: '' }));
+  } finally {
+    cleanup();
+  }
+});
+
+// ---- P4/S-37: guards refuse what they cannot parse ----
+
+const CANNOT_JUDGE = /cannot judge this command/;
+const S37_SLICE = 'P1/S-06';
+const S37_BRANCH = 'slice/P1-S-06-hooks';
+const S37_FROZEN = 'test/a.test.js';
+const posixRoot = (p) => p.replace(/\\/g, '/');
+
+// The deny decision's reason, after asserting the call was denied.
+function denied(r) {
+  assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `expected a deny, got ${JSON.stringify(r)}`);
+  return reason(r);
+}
+function assertCannotJudge(r, cmd) {
+  const text = denied(r);
+  assert.match(text, CANNOT_JUDGE, `${cmd}: ${text}`);
+  assert.match(text, /REQ-3\.2/, `${cmd}: the reason names the rule: ${text}`);
+}
+
+// A repo on a slice branch whose state file freezes test/a.test.js while the slice is building.
+function frozenSliceRepo() {
+  const repo = makeRepo({ branch: S37_BRANCH, files: { [S37_FROZEN]: 'x\n', 'test/other.js': 'y\n', 'src/a.js': 'a\n' } });
+  const file = path.join(repo.root, '.slicekit', 'state', 'P1-S-06.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ slice: S37_SLICE, state: 'building', frozenTests: [S37_FROZEN], unfrozen: [] }));
+  return repo;
+}
+
+// REQ-3.2, D-83
+test("git through eval, a shell's -c or an interpreter's inline code is denied in every session", () => {
+  const cmds = [
+    'eval "git commit -m x"',
+    "eval 'git push origin slice/x'",
+    'sh -c "git push"',
+    "bash -c 'git commit'",
+    "zsh -c 'git push origin slice/x'",
+    "pwsh -c 'git push'",
+    'cmd /c "git commit -m x"',
+    'bash -c "gh pr create --fill"',
+    `node -e "require('child_process').execSync('git commit')"`,
+    `node --eval "require('child_process').execSync('git push')"`,
+    `python -c "import os; os.system('git push')"`,
+    `perl -e 'system("git commit -m x")'`,
+    `ruby -e 'system("gh pr merge 5")'`,
+  ];
+  for (const branch of ['slice/x', 'main']) {
+    const { root, cleanup } = repoOn(branch);
+    try {
+      for (const cmd of cmds) {
+        assertCannotJudge(decide(root, cmd), cmd);
+        assertCannotJudge(decide(root, cmd, { agent: 'a1' }), cmd);
+      }
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+// REQ-3.2, D-83
+test('a git ref or subcommand from a variable or substitution is denied on any branch', () => {
+  const cmds = [
+    'B=main; git push origin HEAD:$B',
+    'X=push; git $X --force',
+    'git push origin "$(git branch --show-current)"',
+    'git push origin `git branch --show-current`',
+    'git push $REMOTE slice/x',
+    'git push origin ${BRANCH}',
+    'C=commit; git $C -m x',
+    'gh $SUB create --fill',
+  ];
+  for (const branch of ['slice/x', 'main']) {
+    const { root, cleanup } = repoOn(branch);
+    try {
+      for (const cmd of cmds) {
+        assertCannotJudge(decide(root, cmd), cmd);
+        assertCannotJudge(decide(root, cmd, { agent: 'a1' }), cmd);
+      }
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+// REQ-3.2, REQ-3.3
+test('a Bash write to a frozen test is denied, naming the file and slice', () => {
+  const { root, cleanup } = frozenSliceRepo();
+  const abs = `${posixRoot(root)}/${S37_FROZEN}`;
+  try {
+    const writes = [
+      `echo x > ${S37_FROZEN}`,
+      `echo x >> ${S37_FROZEN}`,
+      `printf x 1>${S37_FROZEN}`,
+      `echo x | tee ${S37_FROZEN}`,
+      `echo x | tee -a ${S37_FROZEN}`,
+      `sed -i s/x/y/ ${S37_FROZEN}`,
+      `sed -i.bak -e s/x/y/ ${S37_FROZEN}`,
+      `cp test/other.js ${S37_FROZEN}`,
+      `mv test/other.js ${S37_FROZEN}`,
+      `rm ${S37_FROZEN}`,
+      `rm -f ./${S37_FROZEN}`,
+      `echo x > ${abs}`,
+      `echo x > "${abs}"`,
+      'cd test && echo x > a.test.js',
+    ];
+    for (const cmd of writes) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.ok(text.includes(S37_FROZEN), `${cmd}: the reason names the file: ${text}`);
+        assert.ok(text.includes(S37_SLICE), `${cmd}: the reason names the slice: ${text}`);
+      }
+    }
+    const reads = [
+      `cat ${S37_FROZEN}`,
+      `grep -n x ${S37_FROZEN}`,
+      `cp ${S37_FROZEN} test/copy.js`,
+      `cat ${S37_FROZEN} > test/copy.js`,
+      `node --test ${S37_FROZEN}`,
+      'echo x > test/other.js',
+      'rm test/other.js',
+    ];
+    for (const cmd of reads) {
+      assertAllow(decide(root, cmd));
+      assertAllow(decide(root, cmd, { agent: 'a1' }));
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.2, REQ-2.1
+test('the commands the loop runs still pass', () => {
+  const { root, cleanup } = frozenSliceRepo();
+  try {
+    const both = [
+      'node --test test/hooks/pre-bash.test.js',
+      `node --test ${S37_FROZEN}`,
+      'npm test',
+      'npm run test:shard',
+      'node bin/slicekit.js instructions developer',
+      'node bin/slicekit.js check',
+      'node bin/slicekit.js status',
+      'git status',
+      'git diff',
+      'git diff --stat HEAD',
+      'git log --oneline -5',
+      'git show HEAD',
+      'node -e "console.log(1 + 1)"',
+      `node -e "console.log(require('fs').readFileSync('package.json', 'utf8'))"`,
+    ];
+    for (const cmd of both) {
+      assertAllow(decide(root, cmd));
+      assertAllow(decide(root, cmd, { agent: 'a1' }));
+    }
+    // The main session still commits and pushes on a slice branch.
+    assertAllow(decide(root, 'git add -A && git commit -m "feat: x"'));
+    assertAllow(decide(root, `git push -u origin ${S37_BRANCH}`));
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.14, REQ-2.1, D-88
+test('init --protect and a gh api write to rulesets are denied and a read passes', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  try {
+    const writes = [
+      'node bin/slicekit.js init --protect',
+      'npx slicekit init --protect',
+      'gh api -X PUT repos/o/r/rulesets/1',
+      'gh api -XDELETE repos/o/r/rulesets/1',
+      'gh api --method POST repos/o/r/rulesets',
+      'gh api --method=patch repos/o/r/rulesets/1',
+      'gh api repos/o/r/rulesets -f name=x',
+      'gh api repos/o/r/rulesets -F enforcement=disabled',
+      'gh api repos/o/r/rulesets --field name=x',
+      'gh api repos/o/r/rulesets --raw-field name=x',
+      'gh api repos/o/r/rulesets --input ruleset.json',
+      'gh api -X PUT repos/o/r/branches/main/protection --input p.json',
+      'gh api -X DELETE repos/o/r/branches/main/protection',
+      'gh api repos/o/r/branches/main/protection/required_pull_request_reviews -X PATCH -F required_approving_review_count=0',
+      'gh api -X POST repos/o/r/rules/branches/main',
+    ];
+    for (const cmd of writes) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.match(text, /REQ-3\.14/, `${cmd}: the reason names the rule: ${text}`);
+      }
+    }
+    const reads = [
+      'gh api repos/o/r/rulesets',
+      'gh api repos/o/r/rulesets/1',
+      'gh api -X GET repos/o/r/rulesets -f includes_parents=true',
+      'gh api --method GET repos/o/r/rulesets -F per_page=100',
+      'gh api repos/o/r/rules/branches/main',
+      'gh api repos/o/r/branches/main/protection',
+    ];
+    for (const cmd of reads) {
+      assertAllow(decide(root, cmd));
+      assertAllow(decide(root, cmd, { agent: 'a1' }));
+    }
+    // The main session may still write other API paths.
+    assertAllow(decide(root, 'gh api repos/o/r/issues -f title=x'));
+    // The header says the guard can be bypassed and names the host rules as the control.
+    const src = fs.readFileSync(new URL('../../src/hooks/pre-bash.js', import.meta.url), 'utf8');
+    const header = src.slice(0, src.search(/^import /m));
+    assert.match(header, /bypass/i);
+    assert.match(header, /host rules/i);
   } finally {
     cleanup();
   }
