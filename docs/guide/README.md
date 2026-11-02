@@ -828,7 +828,7 @@ Runs the tests, then commits the worktree's changes with the test run's result a
 - `--message <m>`: The commit subject. Required.
 - `--require-green`: Refuses unless every test passes.
 
-A machine that cannot run the whole test command at once can set `testCommand` in `.slicekit/local.json`. `build red`, `build commit` and `build pr` then use it and say so. CI never reads that file; never commit it.
+A machine that cannot run the whole test command at once can set `testCommand` in `.slicekit/local.json`. `build red`, `build commit` and `build pr` then use it and say so. CI never reads that file; never commit it. <!-- slicekit:example -->
 
 | Exit | Meaning |
 |---|---|
@@ -1197,7 +1197,7 @@ $ echo '{"tool_name":"Bash","tool_input":{"command":"git push --force origin mai
 
 ### The graph and queries
 
-`graph` builds `.slicekit/graph/graph.json` from the kit's IDs and from git: requirements, decisions, slices, tests, commits, pull requests and releases. It is not a code graph. The queries read only that file; they run no git and no host call.
+`graph` builds `.slicekit/graph/graph.json` from the kit's IDs and from git: requirements, decisions, slices, tests, commits, pull requests and releases. It is not a code graph. The queries read only that file; they run no git and no host call. <!-- slicekit:example -->
 
 **Shared by the five queries** (`trace`, `impact`, `history`, `shipped`, `uncovered`). `--json` prints one JSON document, also on an error (`{"error": …}`). Exit codes: **0** answered, **1** no graph (`run slicekit graph`), a graph of an older schema, or a phase with no release record, **2** bad usage, an ID or path not in the graph, or config.
 
@@ -1570,7 +1570,7 @@ $ slicekit baseline show
 slicekit journal verify [--against <ref>]
 ```
 
-Checks the session journal in `.slicekit/journal/`: each file's hash chain, no unexpected entries, and no committed journal file shortened or removed since the merge base. It never writes. The session-end hook appends one line per session.
+Checks the session journal in `.slicekit/journal/`: each file's hash chain, no unexpected entries, and no committed journal file shortened or removed since the merge base. It never writes. The session-end hook appends one line per session. <!-- slicekit:example -->
 
 **When to use it:** When you suspect a journal was edited. `check`'s journal rule makes the same checks.
 
