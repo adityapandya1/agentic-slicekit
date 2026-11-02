@@ -73,7 +73,8 @@ After each developer report in which a test newly passes, run
 `{{cli}} build commit <id> --message "<subject>" --worktree <path>`, with a subject such as
 `feat(<id>): <what now works>`. It prints `<sha7> exit <n>`, or `nothing to commit` with exit 0,
 which is success. With nothing staged it commits every changed path; with paths staged it commits
-those alone, as staged, and refuses while a tracked path is changed but not staged. A refusal naming
+those alone, as staged, and runs the tests on the staged content; a tracked path changed but not
+staged stays in the worktree, out of the commit. A refusal naming
 a frozen test means the developer changed one: send it back with the message. While tests still
 fail, spawn the developer again with what is left.
 

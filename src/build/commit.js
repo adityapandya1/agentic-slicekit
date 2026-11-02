@@ -2,9 +2,10 @@
 // test run that went with it, never touching a frozen test; a frozen test changes only after the
 // human has amended the slice file, and then only that one test.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
-import { GitError, assertRef, commitPaths, commitStaged, git, hasRemote, parseTrailers, stagedChanges } from '../git.js';
+import { GitError, assertRef, checkoutIndexTo, commitPaths, commitStaged, git, hasRemote, parseTrailers, stagedChanges } from '../git.js';
 import { configSubject, namesConfigAt } from './config.js';
 import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
@@ -202,6 +203,28 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   return null;
 }
 
+// The test command run in a temporary directory holding the index as staged (git checkout-index),
+// never the worktree. The worktree's node_modules, when the index does not hold it, is linked in so
+// the run finds the installed packages. The directory is removed whether the run passes or fails.
+function runOnIndex(wt, command) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-index-'));
+  const modules = path.join(dir, 'node_modules');
+  try {
+    checkoutIndexTo(wt, dir);
+    const installed = path.join(wt, 'node_modules');
+    if (fs.existsSync(installed) && !fs.existsSync(modules)) fs.symlinkSync(installed, modules, 'junction');
+    return runCommand(dir, command);
+  } finally {
+    // The link first, so removing the directory never walks into the worktree's packages.
+    try {
+      if (fs.lstatSync(modules).isSymbolicLink()) fs.unlinkSync(modules);
+    } catch {
+      // no link was made
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 export function commitWork(root, cfg, id, { message, requireGreen = false, worktree, env = process.env } = {}) {
   if (typeof message !== 'string' || message.trim() === '') throw new BuildError('--message is required', 2);
   const wt = findWorktree(root, id, { worktree }).path;
@@ -222,16 +245,9 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   const { command, local } = buildTestCommand(root, cfg, env);
   if (command.trim() === '') throw new BuildError('commands.test is not declared in .slicekit/config.json');
   const ranLocal = local ? command : null;
-  // The test run sees the worktree, the commit holds the index: with paths staged, a tracked path
-  // changed but not staged would make the trailer describe a tree other than the one committed.
-  if (staged.length > 0) {
-    const unstaged = git(wt, ['diff', '--name-only', '--no-renames', '-z']).split('\0').filter((f) => f !== '');
-    if (unstaged.length > 0) {
-      throw new BuildError(`${unstaged.join(', ')} changed but not staged; the tests would run on changes the commit leaves out: stage or stash them`);
-    }
-  }
-
-  const run = runCommand(wt, command);
+  // With paths staged the commit holds the index, so the tests run on the index (issue #69): a
+  // tracked path changed but not staged stays in the worktree, out of the run and out of the commit.
+  const run = staged.length > 0 ? runOnIndex(wt, command) : runCommand(wt, command);
   const unusable = unusableRun(command, run);
   if (unusable) throw unusable;
   if (requireGreen && run.exit !== 0) throw new BuildError(`tests fail (exit ${run.exit}): ${run.summary}`);
@@ -298,17 +314,46 @@ function pendingUnfreeze(wt, id, stateRel, sliceRel, file) {
   );
 }
 
+// The state file on disk differs from HEAD's copy only by one history entry that records an
+// amendment commit on HEAD's history and leaves the state where it was, and HEAD's history does not
+// hold that commit yet: a slice-file-only amend wrote its record and stopped before committing it.
+// -> the amendment commit's SHA, or null.
+function pendingAmendment(wt, id, stateRel, sliceRel) {
+  const committed = committedState(wt, stateRel);
+  if (!committed || !AMEND_FROM.includes(committed.state)) return null;
+  const now = JSON.parse(fs.readFileSync(path.join(wt, ...stateRel.split('/')), 'utf8'));
+  const added = now.history.at(-1);
+  const sha = added?.evidence?.amendCommit;
+  const strip = (s) => JSON.stringify({ ...s, history: null, handoff: null });
+  const pending =
+    strip(now) === strip(committed) &&
+    now.history.length === committed.history.length + 1 &&
+    JSON.stringify(now.history.slice(0, -1)) === JSON.stringify(committed.history) &&
+    added?.evidence?.unfreeze === undefined &&
+    !committed.history.some((h) => h.evidence?.amendCommit === sha) &&
+    isAmendment(wt, id, sliceRel, sha);
+  return pending ? sha : null;
+}
+
 // `build amend` with no test named (issue #72): the slice file alone is amended and committed, and
 // the reason recorded in the state file. Refused while any test the slice file names is still
-// frozen: a frozen test changes only when amend names it.
-function amendSliceOnly(wt, cfg, id, current, reason) {
+// frozen: a frozen test changes only when amend names it. A run that stopped after the slice file's
+// commit, or after the record was written but before it was committed, is finished.
+function amendSliceOnly(wt, cfg, id, current, reason, stateRel) {
   const frozen = current.frozenTests.filter((t) => !current.unfrozen.includes(t));
   if (frozen.length > 0) {
     throw new BuildError(`${frozen.join(', ')} ${frozen.length === 1 ? 'is' : 'are'} frozen; name the test amend changes with --test`);
   }
   const sliceRel = posixRel(wt, sliceIn(wt, cfg, id).path);
+  const sliceChanged = git(wt, ['--literal-pathspecs', 'status', '--porcelain', '--', sliceRel]) !== '';
+  const recorded = sliceChanged ? null : pendingAmendment(wt, id, stateRel, sliceRel);
+  if (recorded) {
+    // The record is written; only its bookkeeping commit is left.
+    commitState(wt, cfg, id, 'amend');
+    return { sha: recorded, test: null };
+  }
   let sha;
-  if (git(wt, ['--literal-pathspecs', 'status', '--porcelain', '--', sliceRel]) !== '') {
+  if (sliceChanged) {
     sha = commitPaths(wt, [sliceRel], `docs(${id}): amend evaluation set\n\n${reason}\n\nSlice: ${id}`);
   } else if (headIsAmendment(wt, id, sliceRel) && !current.history.some((h) => h.evidence?.amendCommit === git(wt, ['rev-parse', 'HEAD']))) {
     // A run that committed the slice file and stopped before its record is finished.
@@ -330,7 +375,7 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
   // Where amend runs from is read from HEAD's state file, never the copy on disk.
   const committed = committedState(wt, stateRel) ?? current;
   if (!AMEND_FROM.includes(committed.state)) throw new BuildError(`${id} is ${committed.state}; amend runs from ${AMEND_FROM.join(', ')}`);
-  if (test === undefined || (typeof test === 'string' && test.trim() === '')) return amendSliceOnly(wt, cfg, id, current, reason.trim());
+  if (test === undefined || (typeof test === 'string' && test.trim() === '')) return amendSliceOnly(wt, cfg, id, current, reason.trim(), stateRel);
   const file = toWorktreePath(wt, test);
   // Checked before the slice file is committed; the words are unfreeze's own TransitionError reason.
   if (!current.frozenTests.includes(file)) throw new BuildError(`${file} is not a frozen test of ${id}`);

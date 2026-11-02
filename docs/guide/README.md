@@ -821,7 +821,7 @@ tests-red → building
 slicekit build commit <id> --message <m> [--require-green] [--worktree <p>]
 ```
 
-Runs the tests, then commits with the test run's result and the slice trailer. With paths staged it commits those paths alone, as staged (a deletion staged with `git rm` included), and leaves the rest of the worktree as it was; it refuses when a tracked path is changed but not staged, since the tests would run on it. With nothing staged it commits every changed path. It refuses a change to a frozen test or to a kit file. It prints `<sha7> exit <n>`, or `nothing to commit`, which is success.
+Runs the tests, then commits with the test run's result and the slice trailer. With paths staged it commits those paths alone, as staged (a deletion staged with `git rm` included), and leaves the rest of the worktree as it was; the tests run on the staged content in a temporary directory, so a tracked path changed but not staged stays in the worktree and out of both the run and the commit. With nothing staged it commits every changed path. It refuses a change to a frozen test or to a kit file. It prints `<sha7> exit <n>`, or `nothing to commit`, which is success.
 
 **When to use it:** Each time a test newly passes; with `--require-green` once all pass; and after the fixer answers review findings.
 

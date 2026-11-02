@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 
 export class GitError extends Error {
   constructor(args, stderr) {
@@ -175,6 +176,13 @@ export function stagedChanges(root) {
   const out = [];
   for (let i = 0; i + 1 < fields.length; i += 2) out.push({ status: fields[i], file: fields[i + 1] });
   return out;
+}
+
+// Writes every path of the index, as staged, under the directory `dir` (which must exist); the
+// worktree and the index are not changed.
+export function checkoutIndexTo(root, dir) {
+  const prefix = `${path.resolve(dir).split(path.sep).join('/')}/`;
+  git(root, ['checkout-index', '-a', '-f', `--prefix=${prefix}`]);
 }
 
 // Commits the index as it stands: the staged paths alone, the rest of the worktree untouched.
