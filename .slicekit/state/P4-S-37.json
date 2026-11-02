@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-37",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 98,
@@ -19,6 +19,13 @@
       "blockers": 2,
       "independent": false,
       "headSha": "dcf17eca202cd7a23fe7b38cc105b121c142a259"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P4-S-37-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "4cacc84da9750e9179e079af3623ffa1946ae56f"
     }
   ],
   "ci": null,
@@ -88,6 +95,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/98",
           "headSha": "4cacc84da9750e9179e079af3623ffa1946ae56f",
           "title": "[P4/S-37] Guards refuse what they cannot parse"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-02T21:56:41.039Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P4-S-37-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
