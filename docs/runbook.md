@@ -10,6 +10,8 @@ From a clone: `node bin/slicekit.js <command>`. From npm: `npx slicekit <command
 
 Declined should-haves become GitHub issues through `gh` (`slicekit build decline`), so its login needs permission to open issues in the repository; tests use `SLICEKIT_TRACKER_FIXTURE` instead.
 
+With `tracker.kind` set to `jira`, declined should-haves go to Jira Cloud instead (D-74). The shell that runs `slicekit build decline` needs `JIRA_EMAIL` (the Atlassian account's email) and `JIRA_API_TOKEN` (an API token of that account) set; a missing one fails the command naming it. The kit never stores the token. A 401 means the token is wrong or revoked; a 403 or 404 on `open` means the account cannot create issues of `tracker.issueType` in `tracker.project`. See `docs/adapters.md`.
+
 In a fork, run `gh repo set-default` so issues (and pull requests) go to the right repository.
 
 ## Known failure modes and the first thing to check

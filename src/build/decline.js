@@ -53,6 +53,7 @@ function withUrl(current, url) {
 }
 
 // -> {url, created, state}: state is the filed issue's, `open` or `closed`; a new issue is open.
+// A promise of the same when the tracker answers with promises.
 export function declineFinding(root, cfg, host, tracker, id, finding, { worktree } = {}) {
   const wt = findWorktree(root, id, { worktree }).path;
   const state = readSlice(wt, cfg, id);
@@ -69,13 +70,21 @@ export function declineFinding(root, cfg, host, tracker, id, finding, { worktree
   const number = state.pr?.number;
   if (!Number.isInteger(number)) throw new BuildError(`${id} has no pull request to list the declined should-have on`);
 
-  const filed = tracker.find(id, finding);
-  const issue = filed ?? tracker.open({ title: issueTitle(`[${id}] ${finding}: `, quoteMentions(f.wrong)), body: issueBody(f, v), slice: id });
+  const open = () => tracker.open({ title: issueTitle(`[${id}] ${finding}: `, quoteMentions(f.wrong)), body: issueBody(f, v), slice: id });
+  return after(tracker.find(id, finding), (filed) =>
+    after(filed ?? open(), (issue) => {
+      const body = host.getPullRequest(number).body;
+      const current = getSection(body, SECTION);
+      if (!(current ?? '').split(/\s+/).includes(issue.url)) {
+        host.updatePullRequestBody(number, setSection(body, SECTION, withUrl(current, issue.url)));
+      }
+      return { url: issue.url, created: filed === null, state: filed?.state ?? 'open' };
+    }),
+  );
+}
 
-  const body = host.getPullRequest(number).body;
-  const current = getSection(body, SECTION);
-  if (!(current ?? '').split(/\s+/).includes(issue.url)) {
-    host.updatePullRequestBody(number, setSection(body, SECTION, withUrl(current, issue.url)));
-  }
-  return { url: issue.url, created: filed === null, state: filed?.state ?? 'open' };
+// `fn(value)`, after `value` settles when it is a promise. A synchronous tracker (GitHub Issues, the
+// fixture) keeps declineFinding synchronous; an asynchronous one (Jira) makes it return a promise.
+function after(value, fn) {
+  return value !== null && typeof value?.then === 'function' ? value.then(fn) : fn(value);
 }
