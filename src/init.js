@@ -174,7 +174,7 @@ function setHooksPath(root, warnings) {
 // A new config takes cli from --cli, else from the probe (D-30); the probe's warning comes back with it.
 // One exception: a config with no cli key at all (an example project ships one, so that it names no
 // one's install) takes cli from --cli, else from the probe, and is written back with it.
-function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
+function resolveConfig(root, { name, shape, docsRoot, commands, cli, defaultBranch, env }) {
   const file = path.join(root, CONFIG_PATH);
   if (exists(file)) {
     const raw = configWithoutCli(file);
@@ -184,7 +184,7 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
       raw.cli = probed.cli;
     }
     const cfg = raw ?? loadConfig(root);
-    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot], ['cli', cli]]) {
+    for (const [field, value] of [['shape', shape], ['docsRoot', docsRoot], ['cli', cli], ['defaultBranch', defaultBranch]]) {
       if (value !== undefined && value !== cfg[field]) {
         throw new ConfigError([`config.json already sets ${field} = ${cfg[field]}; remove the flag or edit the config`]);
       }
@@ -202,11 +202,42 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, env }) {
     docsRoot: docsRoot ?? 'docs',
     commands,
     cli: probed.cli,
-    defaultBranch: detectDefaultBranch(root, { accept: isBranchName }),
+    defaultBranch: defaultBranch ?? detectDefaultBranch(root, { accept: isBranchName }),
   });
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
   return { cfg, cliWarning: probed.warning, cliFilled: false };
+}
+
+// The default branch a new config names, when the repository tells it: origin names it, it is a
+// local branch, or an empty repository's HEAD is on it. Otherwise detectDefaultBranch's `main` is a
+// guess, and a guess on a feature branch or a detached HEAD would protect the wrong branch, so the
+// init command refuses and asks for the name (issue #87). Outside a repository the guess is `main`.
+// It throws a ConfigError; init() itself still takes detectDefaultBranch's answer when given none.
+const NO_DEFAULT_BRANCH =
+  'cannot tell the default branch: there is no origin, no init.defaultBranch, and HEAD is not on main or master; run init again with --default-branch <name>';
+export function knownDefaultBranch(root) {
+  const branch = detectDefaultBranch(root, { accept: isBranchName });
+  if (!isRepo(root)) return branch;
+  const has = (ref) => {
+    try {
+      git(root, ['rev-parse', '--verify', '-q', ref]);
+      return true;
+    } catch (e) {
+      if (e instanceof GitError) return false;
+      throw e;
+    }
+  };
+  if (has(`refs/heads/${branch}`) || has(`refs/remotes/origin/${branch}`)) return branch;
+  let origin = '';
+  try {
+    origin = git(root, ['symbolic-ref', '-q', 'refs/remotes/origin/HEAD']);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+  }
+  if (origin === `refs/remotes/origin/${branch}`) return branch;
+  if (!hasCommits(root) && currentBranch(root) === branch) return branch;
+  throw new ConfigError([NO_DEFAULT_BRANCH]);
 }
 
 // The parsed config when it is a JSON object with no cli key; null otherwise (loadConfig then reads,
@@ -228,8 +259,8 @@ export function bareCliWarning(cli) {
   return `cli is "${cli}", a bare command, and CI has no global install, so ${WORKFLOW_PATH} cannot run it; set cli in .slicekit/config.json to a repository path or add an install step`;
 }
 
-export function init(root, { name, shape, docsRoot, commands = {}, cli, env = process.env }) {
-  const { cfg, cliWarning, cliFilled } = resolveConfig(root, { name, shape, docsRoot, commands, cli, env });
+export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultBranch, env = process.env }) {
+  const { cfg, cliWarning, cliFilled } = resolveConfig(root, { name, shape, docsRoot, commands, cli, defaultBranch, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
 
   const paths = kitPaths(root, cfg);
