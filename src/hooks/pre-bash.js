@@ -1,4 +1,18 @@
-// pre-bash (REQ-3.2, REQ-2.1, REQ-1.2): the PreToolUse guard on Bash. Fails closed through io.js.
+// pre-bash (REQ-3.2, REQ-2.1, REQ-1.2, REQ-3.14): the PreToolUse guard on Bash. Fails closed through io.js.
+//
+// This guard is a check on the developer's machine, not a control: an agent with a shell can reach git
+// by a route it does not parse, so it can be bypassed. The control is the git host's rules on the
+// default branch (REQ-3.14), which `slicekit check` verifies, and the agent login's lack of admin
+// rights on the repository (D-88).
+//
+// Before the rules below, in every session and on every branch (D-83): (0a) a command it cannot judge:
+// a git or gh command whose arguments hold a variable or a command substitution; `eval`, a shell's
+// `-c` (`sh`, `bash`, `zsh`, `pwsh`, `cmd /c`, ...) or an interpreter's inline code (`node -e`,
+// `python -c`, `perl -e`, `ruby -e`) that names git or gh; (0b) a change to the host rules from the
+// agent's shell: `slicekit init --protect`, or a `gh api` write (a method other than GET, or a field or
+// input flag without `-X GET`) to rulesets, rules or branch protection; (0c) a write to a test frozen
+// for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
+// `truncate`.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -14,15 +28,16 @@
 // quotes, treats here-document bodies as data, strips shell keywords, env prefixes and wrappers
 // (command/exec/sudo/env/timeout/nice/xargs/...), follows `cd`, `pushd`, `git -C`, `git checkout` and
 // `bash -c "..."`. A directory it cannot resolve makes a commit or push refuse rather than pass.
-// It does not expand variables, aliases, eval, functions or encoded payloads: deliberate obfuscation
-// gets through, and the git hooks (S-06's .githooks) are the backstop for commits and pushes.
+// It does not expand variables, aliases, functions or encoded payloads; where git or gh is named in
+// what it cannot expand, rule (0a) refuses the command. Deliberate obfuscation still gets through
+// (`$G push`, a script file that runs git); the host rules are the control.
 // Known gaps: `--git-dir` / `GIT_DIR` pointing at another repository are not followed (the branch is
 // read from the shell's directory); a command substitution inside double quotes (`echo "$(git ...)"`)
 // is not split out; `echo '...' | bash` (a piped string, not a here-document) and a shell function
 // (`function f { ...; }; f`) are not followed; the default destructive list misses `rm -fr /`
-// spellings and absolute paths inside the worktree; `gh api` with `-f`, `-F` or `--input` and no `-X`
-// is an implicit POST that a subagent may still send; SQL read from a file (`psql -f f.sql`,
-// `cat f.sql | psql`) is not matched against the destructive list.
+// spellings and absolute paths inside the worktree; SQL read from a file (`psql -f f.sql`,
+// `cat f.sql | psql`) is not matched against the destructive list; a frozen test written by a program
+// that names it only inside its own code (`node -e "fs.writeFileSync(...)"`) is not seen.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,7 +45,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { fromGitBash, real, toPosix } from './paths.js';
+import { frozenTests, fromGitBash, real, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -38,24 +53,30 @@ import { fromGitBash, real, toPosix } from './paths.js';
 const SEPARATORS = new Set([';', '\n', '|', '&', '(', ')', '`']);
 const DELIM_END = /[\s;&|()<>`]/;
 
-// -> [{toks: [{v, b}], heredocs: [string], stdin?}]: one entry per simple command. `v` is the word with
-// quotes removed; `b` is only its unquoted characters. Here-document bodies are data, attached to the
-// command that opened them; `stdin` is the command piped into this one.
+// -> [{toks: [{v, b, x}], heredocs: [string], stdin?, subst?}]: one entry per simple command. `v` is the
+// word with quotes removed; `b` is only its unquoted characters; `x` is the characters the shell expands
+// (`v` without single-quoted or backslash-escaped text). Here-document bodies are data, attached to the
+// command that opened them; `stdin` is the command piped into this one; `subst` marks a command that
+// an unquoted backtick substitution interrupts (its output becomes this command's next argument).
 function lex(command) {
   const s = String(command);
   const out = [];
   let cur = { toks: [], heredocs: [] };
   let word = null;
   let bare = '';
+  let expand = '';
   let pending = [];
-  const add = (text, quoted) => {
+  let tickOpen = false;
+  const add = (text, quoted, expands = !quoted) => {
     word = (word ?? '') + text;
     if (!quoted) bare += text;
+    if (expands) expand += text;
   };
   const endWord = () => {
-    if (word !== null) cur.toks.push({ v: word, b: bare });
+    if (word !== null) cur.toks.push({ v: word, b: bare, x: expand });
     word = null;
     bare = '';
+    expand = '';
   };
   const endSegment = () => {
     endWord();
@@ -70,7 +91,7 @@ function lex(command) {
     if (c === "'") {
       const j = s.indexOf("'", i + 1);
       const end = j === -1 ? s.length : j;
-      add(s.slice(i + 1, end), true);
+      add(s.slice(i + 1, end), true, false);
       i = end + 1;
     } else if (c === '"') {
       let j = i + 1;
@@ -84,10 +105,10 @@ function lex(command) {
           j += 1;
         }
       }
-      add(buf, true);
+      add(buf, true, true);
       i = j + 1;
     } else if (c === '\\') {
-      if (i + 1 < s.length && s[i + 1] !== '\n') add(s[i + 1], false);
+      if (i + 1 < s.length && s[i + 1] !== '\n') add(s[i + 1], false, false);
       i += 2;
     } else if (c === '<' && s[i + 1] === '<' && s[i + 2] === '<') {
       // A here-string: a redirect, its operand is the next word.
@@ -135,6 +156,10 @@ function lex(command) {
       endWord();
       i += 1;
     } else if (SEPARATORS.has(c)) {
+      if (c === '`') {
+        if (!tickOpen) cur.subst = true;
+        tickOpen = !tickOpen;
+      }
       const ended = endSegment();
       if (c === '|' && s[i + 1] === '|') i += 1;
       else if (c === '|') cur.stdin = ended;
@@ -398,29 +423,176 @@ function parseSwitch(sub, args) {
 // From a subagent, every gh pr subcommand but these is a write.
 const PR_READS = new Set(['view', 'list', 'status', 'checks', 'diff']);
 
+// gh api flags that send a request body: without an explicit method they make the request a POST.
+const GH_API_BODY = new Set(['-f', '-F', '--field', '--raw-field', '--input']);
+// gh api flags that take a separate value.
+const GH_API_VALUE = new Set(['-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache', '-p', '--preview']);
+
+// `gh api` from index k: {method, endpoint}. The method is the explicit one, else POST when a field or
+// input flag is given, else GET.
+function parseGhApi(w, k) {
+  let method = null;
+  let body = false;
+  let endpoint = null;
+  for (let j = k; j < w.length; j++) {
+    const a = w[j];
+    if (a === '-X' || a === '--method') {
+      if (w[j + 1] !== undefined) method = w[j + 1];
+      j += 1;
+    } else if (a.startsWith('--method=')) {
+      method = a.slice('--method='.length);
+    } else if (/^-X./.test(a)) {
+      method = a.slice(2);
+    } else if (GH_API_BODY.has(a)) {
+      body = true;
+      j += 1;
+    } else if (GH_API_BODY.has(a.startsWith('--') ? a.split('=')[0] : a.slice(0, 2))) {
+      body = true;
+    } else if (GH_API_VALUE.has(a)) {
+      j += 1;
+    } else if (!a.startsWith('-') && endpoint === null) {
+      endpoint = a;
+    }
+  }
+  return { method: (method ?? (body ? 'POST' : 'GET')).toUpperCase(), endpoint };
+}
+
+// A repository's (or organisation's) rulesets and rules, or a branch's protection.
+const HOST_RULES_PATH = /^\/?(?:(?:repos\/[^/]+\/[^/]+|orgs\/[^/]+|enterprises\/[^/]+)\/(?:rulesets|rules)|repos\/[^/]+\/[^/]+\/branches\/.+\/protection)(?:[/?]|$)/;
+
+// gh's command group and the index after it.
+function ghGroup(w) {
+  let k = 1;
+  while (k < w.length && w[k].startsWith('-')) k += w[k] === '-R' || w[k] === '--repo' ? 2 : 1;
+  return { group: w[k], k: k + 1 };
+}
+
 // gh pr <sub> that writes -> 'pr'; gh api with a method other than GET -> 'api-write'; else null.
 function classifyGh(w) {
-  let k = 1;
-  const skipFlags = () => {
-    while (k < w.length && w[k].startsWith('-')) k += w[k] === '-R' || w[k] === '--repo' ? 2 : 1;
-  };
-  skipFlags();
-  const group = w[k];
-  k += 1;
+  const { group, k: after } = ghGroup(w);
+  let k = after;
   if (group === 'pr') {
-    skipFlags();
+    while (k < w.length && w[k].startsWith('-')) k += w[k] === '-R' || w[k] === '--repo' ? 2 : 1;
     return w[k] !== undefined && !PR_READS.has(w[k]) ? 'pr' : null;
   }
-  if (group === 'api') {
-    let method = 'GET';
-    for (let j = k; j < w.length; j++) {
-      if ((w[j] === '-X' || w[j] === '--method') && w[j + 1] !== undefined) method = w[j + 1];
-      else if (w[j].startsWith('--method=')) method = w[j].slice('--method='.length);
-      else if (/^-X./.test(w[j])) method = w[j].slice(2);
-    }
-    return method.toUpperCase() === 'GET' ? null : 'api-write';
-  }
+  if (group === 'api') return parseGhApi(w, k).method === 'GET' ? null : 'api-write';
   return null;
+}
+
+// -> a description of a write to the host's rules (REQ-3.14), or null.
+function hostRulesChange(w) {
+  const head = base(w[0]);
+  if (head === 'gh') {
+    const { group, k } = ghGroup(w);
+    if (group !== 'api') return null;
+    const { method, endpoint } = parseGhApi(w, k);
+    return method !== 'GET' && endpoint !== null && HOST_RULES_PATH.test(endpoint) ? `gh api ${method} ${endpoint}` : null;
+  }
+  const i = w.findIndex((x, idx) => idx <= 3 && /^slicekit(\.[cm]?js)?$/.test(base(x)));
+  if (i === -1) return null;
+  const rest = w.slice(i + 1);
+  return rest.includes('init') && rest.some((a) => a === '--protect' || a.startsWith('--protect='))
+    ? 'slicekit init --protect'
+    : null;
+}
+
+// ---- rule 0a: commands the guard cannot judge ----
+
+// A git or gh word in code or a command string; `.git`, `github` and `git-lfs` are not.
+const NAMES_GIT = /(?:^|[^A-Za-z0-9_.-])(?:git|gh)(?:[^A-Za-z0-9_-]|$)/;
+const OTHER_SHELLS = new Set(['pwsh', 'powershell', 'cmd']);
+
+// The inline code an interpreter runs, or undefined.
+function inlineCode(head, w) {
+  let flag;
+  if (head === 'node' || head === 'nodejs' || head === 'bun') flag = (a) => /^-[ep]+$/.test(a) || a === '--eval' || a === '--print';
+  else if (/^python[0-9.]*$/.test(head) || head === 'py') flag = (a) => /^-[A-Za-z]*c$/.test(a);
+  else if (head === 'perl' || head === 'ruby') flag = (a) => /^-[A-Za-z]*[eE]$/.test(a);
+  else return undefined;
+  for (let k = 1; k < w.length; k++) {
+    if (/^--(eval|print)=/.test(w[k]) && (head === 'node' || head === 'nodejs' || head === 'bun')) return w[k].slice(w[k].indexOf('=') + 1);
+    if (flag(w[k])) return w[k + 1];
+  }
+  return undefined;
+}
+
+// -> why the command cannot be judged, or null. `toks` has prefixes stripped.
+function unjudgeable(seg, toks, w, head) {
+  if (head === 'git' || head === 'gh') {
+    if (seg.subst || toks.slice(1).some((t) => /[$`]/.test(t.x ?? ''))) {
+      return `${head} takes an argument from a variable or a command substitution`;
+    }
+    return null;
+  }
+  if (head === 'eval') return NAMES_GIT.test(w.slice(1).join(' ')) ? 'eval runs a command that names git or gh' : null;
+  if (SHELLS.has(head)) {
+    const k = w.findIndex((x, idx) => idx > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(x));
+    return k !== -1 && NAMES_GIT.test(w[k + 1] ?? '') ? `${head} -c runs a command string that names git or gh` : null;
+  }
+  if (OTHER_SHELLS.has(head)) {
+    const k = w.findIndex((x, idx) => idx > 0 && /^[-/](c|k|command|encodedcommand|ec)$/i.test(x));
+    if (k === -1) return null;
+    if (/^[-/](encodedcommand|ec)$/i.test(w[k])) return `${head} runs an encoded command`;
+    return NAMES_GIT.test(w.slice(k + 1).join(' ')) ? `${head} ${w[k]} runs a command string that names git or gh` : null;
+  }
+  const code = inlineCode(head, w);
+  return code !== undefined && NAMES_GIT.test(code) ? `${head}'s inline code names git or gh` : null;
+}
+
+// ---- rule 0c: what a command writes ----
+
+// Redirection targets in the raw tokens: `> f`, `>>f`, `2> f`, `>| f`; not `>&2`.
+function redirectTargets(toks) {
+  const out = [];
+  for (let k = 0; k < toks.length; k++) {
+    const m = /^\d*(>>|>\||>&|>)/.exec(toks[k].v);
+    if (!m || !toks[k].b.startsWith(m[0])) continue;
+    const target = toks[k].v === m[0] ? toks[k + 1]?.v : toks[k].v.slice(m[0].length);
+    if (toks[k].v === m[0]) k += 1;
+    if (target === undefined || (m[1] === '>&' && /^(\d+-?|-)$/.test(target))) continue;
+    out.push(target);
+  }
+  return out;
+}
+
+// Non-option arguments, skipping the values of the options in `valued`.
+function positionals(args, valued = new Set()) {
+  const out = [];
+  let endOpts = false;
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (!endOpts && a === '--') endOpts = true;
+    else if (!endOpts && a.startsWith('-') && a !== '-') {
+      if (valued.has(a)) k += 1;
+    } else out.push(a);
+  }
+  return out;
+}
+
+// -> [{word, removes?, into?}]: the paths a simple command writes. `removes` also covers a directory
+// holding the file; `into` lists source names for a destination that may be a directory.
+function writeTargets(seg, w, head) {
+  const out = redirectTargets(seg.toks).map((word) => ({ word }));
+  const args = w.slice(1);
+  if (head === 'tee') {
+    for (const word of positionals(args)) out.push({ word });
+  } else if (head === 'sed' && args.some((a) => /^-[A-Za-z]*i/.test(a) || a.startsWith('--in-place'))) {
+    for (const word of positionals(args, new Set(['-e', '-f', '--expression', '--file', '-l', '--line-length']))) out.push({ word });
+  } else if (head === 'cp' || head === 'mv') {
+    let target = args.find((a, k) => args[k - 1] === '-t' || args[k - 1] === '--target-directory');
+    const long = args.find((a) => a.startsWith('--target-directory='));
+    if (long) target = long.slice('--target-directory='.length);
+    const pos = positionals(args, new Set(['-t', '--target-directory', '-S', '--suffix']));
+    const sources = target === undefined ? pos.slice(0, -1) : pos;
+    const dest = target ?? pos.at(-1);
+    if (dest !== undefined) out.push({ word: dest, into: sources });
+    if (head === 'mv') for (const word of sources) out.push({ word, removes: true });
+  } else if (head === 'rm' || head === 'unlink') {
+    for (const word of positionals(args)) out.push({ word, removes: true });
+  } else if (head === 'truncate') {
+    for (const word of positionals(args, new Set(['-s', '--size', '-r', '--reference']))) out.push({ word });
+  }
+  return out;
 }
 
 // ---- rule 6: the text a destructive pattern is matched against ----
@@ -470,11 +642,19 @@ const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
-  if (!toks.length) return;
+  if (!toks.length) {
+    for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
+    return;
+  }
   const w = toks.map((t) => t.v);
   const text = destructiveText(toks, seg.heredocs);
   if (text !== null) acc.texts.push(text);
   const head = base(w[0]);
+  const why = unjudgeable(seg, toks, w, head);
+  if (why && acc.unjudgeable === null) acc.unjudgeable = why;
+  const host = hostRulesChange(w);
+  if (host && acc.hostRules === null) acc.hostRules = host;
+  for (const t of writeTargets(seg, w, head)) acc.writes.push({ ...t, dir: state.cwd });
   const ownCommit = head === 'git' && w[gitSubIndex(w)] === 'commit';
   if (state.cwd !== null && !MENTION_READERS.has(head) && !ownCommit) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
@@ -553,10 +733,11 @@ function walk(seg, state, acc) {
   acc.invs.push({ ...inv, dir, label: dir === null ? label : (label ?? dir) });
 }
 
-// -> {invs, texts, mentions}: every git/gh invocation in order, and each command's text for rule 6.
+// -> {invs, texts, mentions, writes, unjudgeable, hostRules}: every git/gh invocation in order, each
+// command's text for rule 6, the paths written (rule 0c), and the first reason for rules 0a and 0b.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [], mentions: [] };
+  const acc = { invs: [], texts: [], mentions: [], writes: [], unjudgeable: null, hostRules: null };
   const state = { cwd, label: cwd, stack: [] };
   for (const seg of lex(command)) walk(seg, state, acc);
   return acc;
@@ -654,6 +835,68 @@ function frozenIntake(root, cfg, invs, mentions) {
   return null;
 }
 
+// ---- rule 0c: writes to frozen tests ----
+
+const WIN = process.platform === 'win32';
+const fkey = (p) => (WIN ? p.toLowerCase() : p);
+const GLOB = /[*?[]/;
+
+// A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment).
+function globRe(pattern) {
+  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+  return new RegExp(`^${src}$`, WIN ? 'i' : '');
+}
+
+// Whether a write {dir, word, removes?, into?} reaches the frozen file at absolute POSIX path `frozen`.
+function reaches(wr, frozen) {
+  const word = fromGitBash(String(wr.word).replace(/\\/g, '/'));
+  if (word === '') return false;
+  if (/[$`]/.test(word) || (wr.dir === null && !path.isAbsolute(word))) {
+    // The directory or the name is unknown: judge by the last segment.
+    const last = word.split('/').pop();
+    return !/[$`]/.test(last) && (GLOB.test(last) ? globRe(last).test(path.posix.basename(frozen))
+      : fkey(last) === fkey(path.posix.basename(frozen)));
+  }
+  const target = toPosix(path.resolve(wr.dir === null ? '' : real(wr.dir), word));
+  if (GLOB.test(word)) {
+    const re = globRe(target);
+    return re.test(frozen) || (wr.removes === true && frozen.split('/').some((_, k, all) => re.test(all.slice(0, k).join('/'))));
+  }
+  const canon = toPosix(real(target));
+  if (fkey(canon) === fkey(frozen)) return true;
+  if (wr.removes && fkey(frozen).startsWith(`${fkey(canon)}/`)) return true;
+  if (wr.into?.length && fs.existsSync(canon) && fs.statSync(canon).isDirectory()) {
+    return wr.into.some((s) => fkey(`${canon}/${path.posix.basename(s.replace(/\\/g, '/'))}`) === fkey(frozen));
+  }
+  return false;
+}
+
+// -> {rel, id} for the first write that reaches a test frozen for the active slice of the hook's root
+// or of the repository the write runs in; null for none.
+function frozenWrite(root, cfg, writes) {
+  if (!writes.length) return null;
+  const hookTop = real(path.resolve(root));
+  const frozenAt = new Map();
+  const topAt = new Map();
+  for (const wr of writes) {
+    const tops = [hookTop];
+    if (wr.dir !== null) {
+      if (!topAt.has(wr.dir)) topAt.set(wr.dir, topOf(wr.dir));
+      const t = topAt.get(wr.dir);
+      if (t && !tops.some((x) => fkey(toPosix(x)) === fkey(toPosix(t)))) tops.push(t);
+    }
+    for (const top of tops) {
+      if (!frozenAt.has(top)) frozenAt.set(top, frozenTests(top, cfg));
+      const f = frozenAt.get(top);
+      if (!f) continue;
+      for (const rel of f.files) {
+        if (reaches(wr, toPosix(path.join(top, rel)))) return { rel, id: f.id };
+      }
+    }
+  }
+  return null;
+}
+
 // ---- the hook ----
 
 const unknownDir = (label) => deny(`cannot tell which branch ${label} is on; run the command from inside the repository`);
@@ -662,8 +905,20 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts, mentions } = parse(command, start);
+  const { invs, texts, mentions, writes, unjudgeable: why, hostRules } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
+
+  // (0a), in every session and on every branch (D-83)
+  if (why) return deny(`cannot judge this command (REQ-3.2): ${why}; run git and gh with literal arguments`);
+  // (0b)
+  if (hostRules) {
+    return deny(`${hostRules} changes the git host's rules (REQ-3.14); a human runs it from their own terminal`);
+  }
+  // (0c)
+  const hit = frozenWrite(root, cfg, writes);
+  if (hit) {
+    return deny(`${hit.rel} is frozen for ${hit.id}; a Bash command may not write it (REQ-3.3); amend the slice file to change the evaluation set`);
+  }
 
   // The branch each commit and push runs on, following checkouts earlier in the same command.
   const switched = new Map();
