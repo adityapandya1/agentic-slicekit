@@ -260,7 +260,7 @@ test("status --write regenerates the kit's own BUILD.md", () => {
   assert.match(text, /^\| S-01 \|.*\| Done \|$/m);
   assert.ok(text.includes(MARKER), text);
   // Every phase has slice files now, so every phase is generated and nothing below the marker is a phase.
-  for (const phase of ['## Phase 2 — Loop', '## Phase 3 — Trace', '## Phase 4 — Ops']) {
+  for (const phase of ['## Phase 2 — Loop', '## Phase 3 — Trace', '## Phase 4 — Hardening', '## Phase 5 — Ops']) {
     assert.ok(text.includes(phase) && text.indexOf(phase) < text.indexOf(MARKER), phase);
   }
   assert.doesNotMatch(text.slice(text.indexOf(MARKER)), /^## Phase /m);

@@ -90,7 +90,7 @@ test("the status names Phase 3's commands and the install uses --save-dev", () =
   assert.match(prose, /Phases 1 to 3 work/);
   for (const c of ['graph', 'trace', 'impact', 'history', 'uncovered', 'shipped', 'visualize']) assert.ok(status.includes(`\`${c}\``), c);
   assert.match(prose, /workspaces/);
-  assert.match(prose, /Phase 4 \(release, ops, audit and the other examples\) is not built yet/);
+  assert.match(prose, /Phase 4 \(hardening: host rules, guards, the journal, Jira\) and Phase 5 \(release, ops, audit and the other examples\) are not built yet/);
   assert.doesNotMatch(prose, /Phase 3 will add|Phases 3 and 4 are not built/);
   assert.match(status, /```sh\nnpm install --save-dev slicekit\n/);
   assert.match(section('How the hooks find slicekit'), /`npm install --save-dev slicekit`/);
