@@ -186,3 +186,29 @@ test('testFiles is optional, and an entry that is not a regular expression is re
   assert.ok(validateConfig({ ...cfg, testFiles: ['('] })[0].startsWith('testFiles[0]: '));
   assert.deepEqual(validateConfig({ ...cfg, testFiles: 'x' }), ['testFiles: must be an array of strings']);
 });
+
+// P4/S-44 (REQ-1.1, D-74): the Jira tracker validates its own keys when getTracker selects it.
+test('a jira tracker without baseUrl or project, or with an http URL, is refused', async () => {
+  const { getTracker, TrackerError } = await import('../src/adapters/tracker/index.js');
+  const env = { JIRA_EMAIL: 'bot@acme.test', JIRA_API_TOKEN: 'tok-123' };
+  const tracker = { kind: 'jira', baseUrl: 'https://acme.atlassian.net', project: 'SK', issueType: 'Task' };
+  const cfg = (t) => ({ ...base(), tracker: t });
+  assert.equal(getTracker(cfg(tracker), env).kind, 'jira');
+  const refused = (t, key, extra) =>
+    assert.throws(
+      () => getTracker(cfg(t), env),
+      (e) => e instanceof TrackerError && e.message.includes(key) && (!extra || extra.test(e.message)),
+      `${JSON.stringify(t)} should be refused naming ${key}`,
+    );
+  const { baseUrl, ...noBase } = tracker;
+  const { project, ...noProject } = tracker;
+  const { issueType, ...noType } = tracker;
+  refused(noBase, 'tracker.baseUrl');
+  refused(noProject, 'tracker.project');
+  refused(noType, 'tracker.issueType');
+  refused({ ...tracker, project: '' }, 'tracker.project');
+  refused({ ...tracker, baseUrl: 'http://acme.atlassian.net' }, 'tracker.baseUrl', /https/);
+  refused({ ...tracker, baseUrl: 'not a url' }, 'tracker.baseUrl');
+  // src/config.js does not change: its shape check passes a jira tracker through.
+  assert.deepEqual(validateConfig(cfg(tracker)), []);
+});

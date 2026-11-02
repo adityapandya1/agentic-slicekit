@@ -132,7 +132,7 @@ test('the GitHub tracker reads the number from the url', () => {
 test('getTracker picks the fixture, then the configured kind', () => {
   assert.equal(getTracker({ tracker: { kind: 'github-issues' } }, { SLICEKIT_TRACKER_FIXTURE: '/x' }).kind, 'fixture');
   assert.equal(getTracker({ tracker: { kind: 'github-issues' } }, {}).kind, 'github-issues');
-  assert.throws(() => getTracker({ tracker: { kind: 'jira' } }, {}), (e) => e instanceof TrackerError && e.message === 'unsupported tracker: jira');
+  assert.throws(() => getTracker({ tracker: { kind: 'linear' } }, {}), (e) => e instanceof TrackerError && e.message === 'unsupported tracker: linear');
 });
 
 const VERDICT = `Verdict: CHANGES
@@ -262,6 +262,126 @@ test('build decline prints already filed, and closed for a closed issue', () => 
       assert.equal(r.stderr, '');
       assert.equal(r.code, 0);
       assert.equal(r.stdout, line);
+    });
+  }
+});
+
+// P4/S-44 (REQ-1.1, D-74): Jira Cloud behind C-2. The network is a `fetch` passed in, as intake does.
+const JIRA_BASE = 'https://acme.atlassian.net';
+const jiraCfg = () => ({ tracker: { kind: 'jira', baseUrl: JIRA_BASE, project: 'SK', issueType: 'Task' } });
+const loadJira = async () => (await import('../src/adapters/tracker/jira.js')).jiraTracker;
+
+// A fetch that records each request and answers from `answer(call)` ({status, json}).
+function jiraFetch(answer) {
+  const seen = [];
+  const fetchImpl = async (url, init = {}) => {
+    const call = {
+      url: new URL(String(url)),
+      method: String(init.method ?? 'GET').toUpperCase(),
+      auth: new Headers(init.headers ?? {}).get('authorization'),
+      body: init.body === undefined ? undefined : JSON.parse(init.body),
+    };
+    seen.push(call);
+    const { status = 200, json = {} } = answer(call);
+    const text = JSON.stringify(json);
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: '',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => JSON.parse(text),
+      text: async () => text,
+    };
+  };
+  return { seen, fetchImpl };
+}
+
+test('jira open, comment and find call the Jira REST API with the configured project', async () => {
+  const env = { JIRA_EMAIL: 'bot@acme.test', JIRA_API_TOKEN: 'tok-123' };
+  const basic = `Basic ${Buffer.from('bot@acme.test:tok-123').toString('base64')}`;
+  let found = [];
+  const { seen, fetchImpl } = jiraFetch((c) => {
+    if (c.method === 'POST' && c.url.pathname === '/rest/api/3/issue') return { status: 201, json: { id: '10001', key: 'SK-7', self: `${JIRA_BASE}/rest/api/3/issue/10001` } };
+    if (c.method === 'POST' && c.url.pathname === '/rest/api/3/issue/10001/comment') return { status: 201, json: { id: '1' } };
+    if (c.method === 'GET' && c.url.pathname === '/rest/api/3/search/jql') return { json: { issues: found } };
+    return { status: 404, json: { errorMessages: ['no such route'] } };
+  });
+  const jiraTracker = await loadJira();
+  const t = jiraTracker(jiraCfg(), env, fetchImpl);
+  assert.equal(t.kind, 'jira');
+
+  const made = await t.open({ title: '[P2/S-15] H-1: a long function', body: 'the body', labels: ['slicekit'], slice: 'P2/S-15' });
+  assert.deepEqual(made, { id: 10001, url: `${JIRA_BASE}/browse/SK-7` });
+  assert.equal(seen[0].method, 'POST');
+  assert.equal(seen[0].url.origin, JIRA_BASE);
+  assert.equal(seen[0].auth, basic);
+  assert.equal(seen[0].body.fields.project.key, 'SK');
+  assert.equal(seen[0].body.fields.issuetype.name, 'Task');
+  assert.equal(seen[0].body.fields.summary, '[P2/S-15] H-1: a long function');
+  assert.deepEqual(seen[0].body.fields.labels, ['slicekit']);
+  assert.match(JSON.stringify(seen[0].body.fields.description), /the body/);
+
+  await t.comment(10001, 'more');
+  assert.equal(seen[1].method, 'POST');
+  assert.equal(seen[1].url.pathname, '/rest/api/3/issue/10001/comment');
+  assert.equal(seen[1].auth, basic);
+  assert.match(JSON.stringify(seen[1].body), /more/);
+
+  // Oldest first; a summary that only mentions the prefix, or names H-10, is not H-1; done reads as closed.
+  found = [
+    { id: '3', key: 'SK-3', fields: { summary: 'mentions [P2/S-15] H-1: elsewhere', status: { statusCategory: { key: 'new' } } } },
+    { id: '4', key: 'SK-4', fields: { summary: '[P2/S-15] H-10: other', status: { statusCategory: { key: 'new' } } } },
+    { id: '7', key: 'SK-7', fields: { summary: '[P2/S-15] H-1: x', status: { statusCategory: { key: 'done' } } } },
+    { id: '8', key: 'SK-8', fields: { summary: '[P2/S-15] H-1: later', status: { statusCategory: { key: 'indeterminate' } } } },
+  ];
+  assert.deepEqual(await t.find('P2/S-15', 'H-1'), { id: 7, url: `${JIRA_BASE}/browse/SK-7`, state: 'closed' });
+  const search = seen[2];
+  assert.equal(search.method, 'GET');
+  assert.equal(search.url.pathname, '/rest/api/3/search/jql');
+  assert.equal(search.auth, basic);
+  const jql = search.url.searchParams.get('jql');
+  assert.match(jql, /project\s*=\s*"?SK"?/);
+  assert.match(jql, /summary\s*~\s*"/);
+  assert.ok(jql.includes('P2/S-15') && jql.includes('H-1'), jql);
+  assert.match(jql, /ORDER BY created ASC/i);
+
+  found = [{ id: '8', key: 'SK-8', fields: { summary: '[P2/S-15] H-1: later', status: { statusCategory: { key: 'indeterminate' } } } }];
+  assert.deepEqual(await t.find('P2/S-15', 'H-1'), { id: 8, url: `${JIRA_BASE}/browse/SK-8`, state: 'open' });
+  found = [];
+  assert.equal(await t.find('P2/S-15', 'H-2'), null);
+
+  // getTracker selects the Jira adapter from config.
+  assert.equal(getTracker(jiraCfg(), env).kind, 'jira');
+});
+
+test('jira without JIRA_API_TOKEN fails naming the variable and prints no token', async () => {
+  const jiraTracker = await loadJira();
+  const { seen, fetchImpl } = jiraFetch(() => ({ status: 201, json: { id: '1', key: 'SK-1' } }));
+  const attempt = async (env) => {
+    const t = jiraTracker(jiraCfg(), env, fetchImpl);
+    return t.open({ title: '[P2/S-15] H-1: x', body: 'b', slice: 'P2/S-15' });
+  };
+  await assert.rejects(attempt({ JIRA_EMAIL: 'bot@acme.test' }), (e) => e instanceof TrackerError && /JIRA_API_TOKEN/.test(e.message));
+  await assert.rejects(attempt({ JIRA_API_TOKEN: 'tok-123' }), (e) => e instanceof TrackerError && /JIRA_EMAIL/.test(e.message));
+  assert.equal(seen.length, 0, 'no request without both variables');
+
+  // Jira refusing the call: the error names the status but carries neither the token nor the auth header.
+  const token = 'tok-SECRET-9f8e7d';
+  const header = Buffer.from(`bot@acme.test:${token}`).toString('base64');
+  const refusing = jiraFetch(() => ({ status: 401, json: { errorMessages: [`bad credentials ${token} Basic ${header}`] } }));
+  const t = jiraTracker(jiraCfg(), { JIRA_EMAIL: 'bot@acme.test', JIRA_API_TOKEN: token }, refusing.fetchImpl);
+  for (const call of [
+    () => t.open({ title: '[P2/S-15] H-1: x', body: 'b', slice: 'P2/S-15' }),
+    () => t.comment(1, 'x'),
+    () => t.find('P2/S-15', 'H-1'),
+  ]) {
+    await assert.rejects(call(), (e) => {
+      assert.ok(e instanceof TrackerError, String(e));
+      assert.match(e.message, /401/);
+      const shown = `${e.message}\n${e.stack}\n${e.stderr ?? ''}\n${JSON.stringify(e)}`;
+      assert.ok(!shown.includes(token), shown);
+      assert.ok(!shown.includes(header), shown);
+      return true;
     });
   }
 });
