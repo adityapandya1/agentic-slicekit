@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-37",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "8d7dd289fa1b64de8843f08e2efded6be1c8a7eb",
@@ -25,6 +25,13 @@
           "test/hooks/pre-bash.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-02T20:11:01.261Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
