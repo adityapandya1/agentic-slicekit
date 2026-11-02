@@ -6,7 +6,7 @@ import { commitPaths } from '../git.js';
 import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { renderBuild } from '../state/build.js';
-import { setState } from '../state/index.js';
+import { readSlice, setState, writeSlice } from '../state/index.js';
 
 const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
 
@@ -19,6 +19,17 @@ export function recordState(wt, cfg, id, to, evidence) {
   const state = setState(wt, cfg, id, to, evidence);
   commitState(wt, cfg, id, to);
   return state;
+}
+
+// An amendment of the slice file alone (build amend with no test named, issue #72): one history
+// entry that leaves the state where it is, with the amendment commit and the reason, then one
+// bookkeeping commit.
+export function recordAmendment(wt, cfg, id, evidence) {
+  const current = readSlice(wt, cfg, id);
+  const entry = { from: current.state, to: current.state, at: new Date().toISOString(), by: 'cli', evidence };
+  writeSlice(wt, cfg, { ...current, history: [...current.history, entry] });
+  commitState(wt, cfg, id, 'amend');
+  return entry;
 }
 
 // BUILD.md rendered again from the state files, then one bookkeeping commit of the slice's state file
