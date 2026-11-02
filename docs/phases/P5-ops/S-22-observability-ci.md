@@ -1,5 +1,5 @@
 ---
-slice: P4/S-22
+slice: P5/S-22
 name: Observability steps in CI
 repo: .
 group: A

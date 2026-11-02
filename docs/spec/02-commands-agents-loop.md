@@ -15,7 +15,11 @@ do not run git; report and let the command commit".
 
 Cites: D-19.
 
-Enforced by: PreToolUse guard (03 REQ-3.2), which knows a subagent's tool call by the `agent_id` field Claude Code sends with it.
+The guard is a check on the developer's machine, not a control: an agent with a shell can reach git
+by a route the guard does not parse. The control is the git host's rules on the default branch,
+which `slicekit check` verifies (03 REQ-3.14, D-77).
+
+Enforced by: PreToolUse guard (03 REQ-3.2), which knows a subagent's tool call by the `agent_id` field Claude Code sends with it; the host rules (03 REQ-3.14).
 
 ## REQ-2.2 `/slicekit intake <file or URL>`
 

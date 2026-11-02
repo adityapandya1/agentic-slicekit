@@ -17,7 +17,7 @@ and these five are what an enterprise team is missing:
 
 1. Traceability from requirement to test to commit to pull request to release.
 2. Test evidence captured where the merge happens, not asserted in chat.
-3. A tamper-evident record of what agents did and decided.
+3. A record of what agents did and decided, tied to signed commits and the CI run that recorded it (D-71).
 4. Drift detection that runs every session and in CI and can fail, not a report someone must ask for.
 5. The code checked against the spec, not only the spec against the code.
 
@@ -30,7 +30,9 @@ and these five are what an enterprise team is missing:
 - **Ratchets, not warnings.** A count that may only go down. A warning nobody enforces is a warning
   nobody reads.
 - **Absent, not disabled.** A capability a team did not choose is not installed.
-- **Agents never run git.** The human's session commits; agents write files and report.
+- **Agents never run git.** The human's session commits; agents write files and report. The
+  guards that hold this run on the developer's machine and can be bypassed; the rules on the git host
+  are the control (03 REQ-3.14, D-77).
 - **State is files.** Nothing the loop needs lives only in a model's context.
 - **Adapt, do not build.** Platform, monitoring, tracker and deploy belong to the team.
 - **No filler.** Writing says the fact and stops.

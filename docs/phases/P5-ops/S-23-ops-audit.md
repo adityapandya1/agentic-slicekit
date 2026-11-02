@@ -1,5 +1,5 @@
 ---
-slice: P4/S-23
+slice: P5/S-23
 name: `/slicekit ops` and `/slicekit audit`
 repo: .
 group: B
@@ -45,7 +45,7 @@ decisions: [D-13, D-19, D-20, D-57, D-58]
 - `kitPaths(root, cfg).reports` is `<root>/.slicekit/reports`. Init's ignore rules gain the line .slicekit/reports/, and so does the kit's own ignore file.
 - `nextReport(root, cfg, kind) → rel`: `.slicekit/reports/<kind>-<k>.md` with `k` one above the highest of that kind there, else 1; it creates the directory and reserves the path by creating the empty file with the exclusive flag (`wx`), moving to the next `k` while that fails with `EEXIST`, so two runs at once never get one path. It writes nothing else.
 - `reportSections(text) → Map<lower-case heading, {line, lines: [{text, line}]}>` for the `##` sections outside fenced blocks; `reportTable(text, heading) → [{cells, line}]` for the first table in that section, header row dropped.
-- `opsRepo() → {root, host, cleanup}`: `makeRepo` and `makeRemote`; a spec with REQ-1.1 (billing) and REQ-1.2 (health); a runbook whose `## Health` section says ``GET /health answers `ok` (`src/health.js`)`` and whose `## Known failure modes and the first thing to check` names `src/billing/`; an `observability.md`; phase P1 with S-01 (billing, `src/billing/charge.js`, `src/billing/refund.js`) and S-02 (health, `src/health.js`), each merged through pull requests 1 and 2 in a fixture host directory, released with `slicekit release P1` (P4/S-21); then the seeded regression, a commit `fix: health answers up` on `main` under `Slice: P1/S-03` changing `src/health.js` to answer `up`; 60 files under `src/release/` so the word `release` is too broad; then `slicekit graph`. <!-- slicekit:example -->
+- `opsRepo() → {root, host, cleanup}`: `makeRepo` and `makeRemote`; a spec with REQ-1.1 (billing) and REQ-1.2 (health); a runbook whose `## Health` section says ``GET /health answers `ok` (`src/health.js`)`` and whose `## Known failure modes and the first thing to check` names `src/billing/`; an `observability.md`; phase P1 with S-01 (billing, `src/billing/charge.js`, `src/billing/refund.js`) and S-02 (health, `src/health.js`), each merged through pull requests 1 and 2 in a fixture host directory, released with `slicekit release P1` (P5/S-21); then the seeded regression, a commit `fix: health answers up` on `main` under `Slice: P1/S-03` changing `src/health.js` to answer `up`; 60 files under `src/release/` so the word `release` is too broad; then `slicekit graph`. <!-- slicekit:example -->
 
 - [ ] **Step 1: Failing tests** — `test/init.test.js`: init's ignore file holds the line .slicekit/reports/. A report helper test in the ops test file: `nextReport` gives `ops-1.md`, then `ops-2.md`; `two reservations at once get distinct paths`: ten `nextReport` calls from `Promise.all` over child processes give ten distinct paths. Then `ops-1.md` exists.
 - [ ] **Step 2: Run** `node --test test/init.test.js test/commands/ops.test.js` → FAIL.
@@ -96,10 +96,10 @@ decisions: [D-13, D-19, D-20, D-57, D-58]
 - The ops procedure, `{{args}}` the symptom: (1) `{{cli}} graph`; (2) `{{cli}} ops context {{args}}`; on exit 1, ask the human which file or service is meant and run it again with `--path`; (3) spawn **ops** with the symptom and the whole context output, telling it to read the runbook, `observability.md` and the release record it names; (4) write the agent's reply, as it is, to the report path with the Write tool; (5) `{{cli}} ops check <report>`; on findings, send them to the agent once and write its new reply; (6) print the report path and its Proposed actions section, and say that no action was taken.
 - The audit procedure, `{{args}}` the area or `(none)`: (1) `{{cli}} graph`; (2) `{{cli}} audit context {{args}}`; (3) spawn **auditor** with the context output and the report path, in audit mode; (4) `{{cli}} audit check <report> {{args}}`; on findings, send them to the agent once; (5) print the path and the count of each status, and tell the human that each `drifted` row becomes a slice or a decision, by their hand.
 - The ops brief: the report is the reply, with the sections `## Likely slices and pull requests`, `## First checks`, `## Proposed actions`, each action marked `(anyone)`, `(on-call)` or `(owner: <name>)`; the brief names no Write tool. The auditor brief's audit section names the `## Claims` table and its six columns, and says a `drifted` row names one of the claim's candidate commits.
-- `templates/claude-code/agents/ops.md`: `tools: Read, Grep, Glob`; its body no longer says the agent reports and the command commits, since ops writes nothing. The kit's own copy is re-rendered with `node bin/slicekit.js build render P4/S-23`.
+- `templates/claude-code/agents/ops.md`: `tools: Read, Grep, Glob`; its body no longer says the agent reports and the command commits, since ops writes nothing. The kit's own copy is re-rendered with `node bin/slicekit.js build render P5/S-23`.
 
 - [ ] **Step 1: Failing tests** — `the ops and audit procedures name no git or gh command` (the brief lint over both procedures and both briefs); `instructions --command ops "x"` and `--command audit` exit 0; `the ops agent's tools are Read, Grep and Glob` in the rendered `.claude/agents/ops.md` for every shape.
 - [ ] **Step 2: Run** `node --test test/briefs.test.js test/render-all.test.js test/instructions.test.js` → FAIL.
-- [ ] **Step 3: Implement**; regenerate the golden render files; `node bin/slicekit.js build render P4/S-23`.
+- [ ] **Step 3: Implement**; regenerate the golden render files; `node bin/slicekit.js build render P5/S-23`.
 - [ ] **Step 4: Run** the same and `node bin/slicekit.js check` → PASS, `0 findings`.
 - [ ] **Step 5: Commit** `feat(ops): the ops and audit procedures; ops reads and writes nothing`.

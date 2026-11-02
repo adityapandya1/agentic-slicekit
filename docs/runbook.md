@@ -2,7 +2,7 @@
 
 ## How to run it
 
-Not yet known
+From a clone: `node bin/slicekit.js <command>`. From npm: `npx slicekit <command>`. Node 22 or later and git are required; `gh` for the commands that reach the host (D-82).
 
 ## Dependencies and their owners
 
@@ -14,15 +14,19 @@ In a fork, run `gh repo set-default` so issues (and pull requests) go to the rig
 
 ## Known failure modes and the first thing to check
 
-Not yet known
+- The full test suite runs out of memory on a developer machine: run the targeted test files and let CI run the full suite (D-43).
+- A command that reaches the host fails: check `gh auth status`.
+- `slicekit check` fails the hooks rule: run `git config core.hooksPath .githooks` (03 REQ-3.9).
+
+(D-82)
 
 ## Actions and who may take them
 
-Not yet known
+The author merges pull requests and publishes versions. Anyone may run `slicekit check` and the read-only queries (D-82).
 
 ## Rollback
 
-Not yet known
+A bad merge is reverted by a pull request like any other change. A bad version is marked with `npm deprecate` and replaced by a patch version (D-82).
 
 ## Going public as a preview
 

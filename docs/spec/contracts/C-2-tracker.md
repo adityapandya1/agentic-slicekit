@@ -18,3 +18,12 @@ finding's.
 
 A ticket opened by the kit SHALL carry the slice ID in its title and the verdict excerpt in its
 body, so the graph can attach it to the slice. The kit SHALL never close a ticket.
+
+The second implementation is Jira Cloud (D-74), chosen by `tracker.kind: "jira"`. Config holds
+`tracker.baseUrl`, `tracker.project` and `tracker.issueType`; the email and API token are read from
+the environment variables `JIRA_EMAIL` and `JIRA_API_TOKEN` and never written to a file or a log.
+`open` creates an issue in the project with the labels as Jira labels; `comment` adds a comment;
+`find` searches the project for the title prefix `[<slice>] <finding>:` and returns the oldest match
+with its status category (done is closed, any other is open). Jira Data Center is not supported.
+
+Cites: D-09, D-68, D-74.
