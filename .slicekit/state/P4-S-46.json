@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-46",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 97,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/97",
-    "headSha": "f5fa43c7a87b9d7736aa91d2fb5d86f9fa074186"
+    "headSha": "7d5eaca3a80e2b8e5c04a566d9d807fe903e8548"
   },
   "redCommit": "3a3f3df70817be56b46aeb76050748fc5ad13eb3",
   "frozenTests": [
@@ -74,6 +74,22 @@
           "path": ".slicekit/reviews/P4-S-46-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-02T21:34:29.959Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 97,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/97",
+          "headSha": "7d5eaca3a80e2b8e5c04a566d9d807fe903e8548",
+          "title": "[P4/S-46] Old verdicts after a version bump, and init's default branch"
         }
       }
     }
