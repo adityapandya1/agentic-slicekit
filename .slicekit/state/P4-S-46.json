@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-46",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 97,
@@ -13,7 +13,15 @@
     "test/default-branch.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P4-S-46-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "f5fa43c7a87b9d7736aa91d2fb5d86f9fa074186"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -52,6 +60,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/97",
           "headSha": "f5fa43c7a87b9d7736aa91d2fb5d86f9fa074186",
           "title": "[P4/S-46] Old verdicts after a version bump, and init's default branch"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-02T21:29:04.215Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P4-S-46-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
