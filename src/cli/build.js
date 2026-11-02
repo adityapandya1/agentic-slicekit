@@ -182,12 +182,12 @@ function verdictStep(root, io, positionals, values) {
 
 // Prints the issue's URL, and `(already filed)` (`, closed` for a closed one) when the finding's issue
 // was there before.
-function declineStep(root, io, positionals, values) {
+async function declineStep(root, io, positionals, values) {
   if (positionals.length !== 2) return usage(io);
   const cfg = loadConfig(root);
   const env = io.env ?? process.env;
   const [id, finding] = positionals;
-  const { url, created, state } = declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
+  const { url, created, state } = await declineFinding(root, cfg, getHost(cfg, env, root), getTracker(cfg, env, root), id, finding, { worktree: values.worktree });
   const filed = state === 'closed' ? 'already filed, closed' : 'already filed';
   io.stdout(created ? `${url}\n` : `${url} (${filed})\n`);
   return 0;
@@ -240,7 +240,8 @@ async function run(args, io) {
   const handler = Object.hasOwn(HANDLERS, sub ?? '') ? HANDLERS[sub] : undefined;
   if (!handler) return usage(io);
   try {
-    return handler(io.cwd, io, rest, values);
+    // Awaited, so a handler that rejects (decline on an asynchronous tracker) is caught below.
+    return await handler(io.cwd, io, rest, values);
   } catch (e) {
     if (e instanceof BuildError || e instanceof PrError) {
       io.stderr(`slicekit: ${e.message}\n`);

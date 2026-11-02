@@ -36,6 +36,38 @@ When `SLICEKIT_TRACKER_FIXTURE` names a directory, `fixture.js` answers from its
 records each write in `issue-calls.jsonl`, and refuses `open` while `issue-create-error.txt` exists,
 so tests never reach the network.
 
+## Tracker: Jira Cloud (C-2)
+
+`src/adapters/tracker/jira.js` implements C-2 for Jira Cloud only, through its REST API v3 (D-74).
+`getTracker` selects it when `tracker.kind` is `jira`. Config:
+
+```json
+"tracker": { "kind": "jira", "baseUrl": "https://acme.atlassian.net", "project": "SK", "issueType": "Task" }
+```
+
+`getTracker` calls the adapter's `validate(cfg)`, which refuses a missing `tracker.baseUrl`,
+`tracker.project` or `tracker.issueType`, and a base URL that is not `https`, naming the key.
+`src/config.js` checks only that `tracker.kind` is a string.
+
+Credentials come from two environment variables, read at each call and never written anywhere:
+
+| Variable | Holds |
+|---|---|
+| `JIRA_EMAIL` | the Atlassian account's email |
+| `JIRA_API_TOKEN` | an API token of that account |
+
+A missing variable fails the call with an error naming it, before any request. Every error the
+adapter raises has the token and the `Authorization` value replaced by `***`.
+
+| Operation | Request |
+|---|---|
+| `open` | `POST /rest/api/3/issue` with the project key, issue type, summary, labels and the body as an Atlassian Document Format description; returns the numeric issue id and `<baseUrl>/browse/<key>` |
+| `comment` | `POST /rest/api/3/issue/{id}/comment` |
+| `find` | `GET /rest/api/3/search/jql` with `project = "<key>" AND summary ~ "<prefix>" ORDER BY created ASC`; keeps the oldest issue whose summary begins `[<slice>] <finding>:`, `closed` when its status category is done, else `open` |
+
+The Jira operations return promises; `slicekit build decline` awaits them. With `tracker.kind` unset
+or `github-issues`, the GitHub Issues adapter answers as before.
+
 ## Agent tool (C-3)
 
 The renderer in `src/render/` reads `templates/claude-code/manifest.json`, renders the files the
@@ -47,6 +79,65 @@ which subcommand.
 Every Claude Code event that C-3 lists exists, so no guarantee is weaker on Claude Code. A tool that
 lacks one of those events gets the nearest available event and a row here naming the guarantee that
 is weaker.
+
+## A second agent tool: the exit path (C-3)
+
+The kit ships no GitHub Copilot adapter (D-75, amending D-68): the teams use Claude Code from a
+terminal or the IntelliJ extension. A team that needs another agent tool writes a second renderer
+under C-3. This section lists what that renderer must produce and what it can reuse unchanged.
+
+### Files a renderer writes
+
+| Claude Code file | Source | What it holds |
+|---|---|---|
+| `.claude/commands/slicekit*.md` | `templates/claude-code/commands/` | one command per kit stage (intake, specify, gaps, plan, build, review, release, ops) |
+| `.claude/agents/<role>.md` | `templates/claude-code/agents/` | the role briefs: auditor, designer, developer, fixer, ops, reviewer |
+| `.claude/skills/<name>/` | `templates/claude-code/skills/` | slicekit-ids, slicekit-loop, slicekit-writing |
+| `.claude/settings.json` | `templates/claude-code/hooks.json` | the hook registrations below, merged in |
+| `.slicekit/rendered/<version>/` | the same | a reference copy, so an update can tell a user edit from a kit change |
+
+`templates/claude-code/manifest.json` lists each source, its destination and the shapes that select
+it. Each rendered file sits inside managed-block markers (03 REQ-3.12). A second renderer gets its
+own template directory and manifest beside `templates/claude-code/`.
+
+### Hook subcommands
+
+Each hook is `slicekit hook <name>`. It reads one JSON object on stdin and writes one JSON object on
+stdout. The renderer only maps the tool's event to the subcommand.
+
+| Subcommand | Claude Code event | Reads (stdin) | Writes (stdout) | On failure |
+|---|---|---|---|---|
+| `hook session-start` | SessionStart | `cwd`, `source` (`startup`, `resume`, `clear`, `compact`) | `hookSpecificOutput.additionalContext`: branch status, active slice, handoff | fails open |
+| `hook pre-bash` | PreToolUse, matcher `Bash` | `cwd`, `tool_input.command`, `agent_id` | `{}`, or `hookSpecificOutput.permissionDecision: "deny"` with a reason | denies |
+| `hook pre-edit` | PreToolUse, matcher `Edit\|Write\|MultiEdit\|NotebookEdit` | `cwd`, `tool_input.file_path` or `tool_input.notebook_path` | `{}`, or the same deny | denies |
+| `hook subagent-start` | SubagentStart | `session_id`, `agent_id`, `agent_type` | `hookSpecificOutput.additionalContext`: the role brief and the writing rules | fails open |
+| `hook subagent-stop` | SubagentStop | `session_id`, `agent_id`, `agent_type`, `last_assistant_message`, `stop_hook_active` | `{}`, or `{"decision": "block", "reason": ...}` when the reply lacks its role's shape | blocks |
+| `hook pre-compact` | PreCompact | `cwd`, `transcript_path` | `{}`; writes the handoff into the slice's state file | fails open |
+| `hook stop` | Stop | `cwd`, `transcript_path`, `stop_hook_active` | `{}`, or a block naming the first ten failing `slicekit check` findings | blocks |
+| `hook session-end` | SessionEnd | `cwd` | `{}`; appends one line to the clone's journal | fails open |
+
+### Deny rules
+
+The deny rules sit in the subcommands, not in the tool's settings, so a second tool gets them by
+calling the same subcommands before a shell command or a file edit runs:
+
+- `hook pre-bash` denies a commit or push on a protected branch, any force push, a commit that
+  changes a frozen intake snapshot, any git write or `gh pr` write from a subagent, and a command
+  matching `destructive` in `.slicekit/config.json`.
+- `hook pre-edit` denies an edit to a kit-owned file (`.slicekit/state/`,
+  `.slicekit/baselines/` and the session journal), to a frozen test of the active slice, and the creation of a new file
+  under the docs root outside the slice's phase directory and the runbook.
+
+A tool that cannot deny a tool call before it runs cannot carry these guarantees; list that tool's
+gap in the Agent tool section above.
+
+### Already tool-neutral
+
+These parts are tool-neutral and need no change for a second tool: the `slicekit` CLI and every
+`slicekit hook <name>` handler under `src/hooks/`, the JSON protocol in `src/hooks/io.js`, the role
+briefs printed by `slicekit instructions <role>`, `slicekit check`, the state files, the journal,
+the git hooks under `.githooks/` and the CI workflow. Only the template directory, its manifest and
+the event mapping are tool-specific.
 
 ## Adding an implementation
 

@@ -113,3 +113,32 @@ test('the scope line says the graph is built from IDs and git and is not a code 
   assert.match(scope, /https:\/\/github\.com\/Graphify-Labs\/graphify/);
   assert.match(section('Scope'), /```sh\npip install graphifyy && graphify install\n```/);
 });
+
+// P4/S-44 (REQ-5.8, D-75): the exit path for a second agent tool names every hook subcommand the
+// Claude Code renderer registers, with the event that calls it.
+test('docs/adapters.md names every hook subcommand in its exit path', () => {
+  const adapters = fs.readFileSync(new URL('../docs/adapters.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const hooks = JSON.parse(fs.readFileSync(new URL('../templates/claude-code/hooks.json', import.meta.url), 'utf8'));
+  const lines = adapters.split('\n');
+  const start = lines.findIndex((l) => /^##\s/.test(l) && /exit path/i.test(l));
+  assert.ok(start >= 0, 'docs/adapters.md has no ## heading naming the exit path');
+  const end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  const exit = lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+  const pairs = [];
+  for (const [event, groups] of Object.entries(hooks)) {
+    for (const g of groups) {
+      for (const h of g.hooks) {
+        const m = /\bhook\s+([a-z-]+)/.exec(h.command);
+        if (m) pairs.push({ event, name: m[1] });
+      }
+    }
+  }
+  assert.ok(pairs.length >= 7, `hooks.json registers ${pairs.length} hook subcommands`);
+  for (const { event, name } of pairs) {
+    assert.ok(exit.includes(`hook ${name}`), `the exit path does not name hook ${name}`);
+    assert.ok(exit.includes(event), `the exit path does not name the event ${event} for hook ${name}`);
+  }
+  assert.match(exit, /deny/i, 'the exit path names the deny rules');
+  assert.match(exit, /tool-neutral/i, 'the exit path names the parts already tool-neutral');
+  assert.match(adapters, /^##\s.*Jira/m, 'docs/adapters.md has a Jira section');
+});
