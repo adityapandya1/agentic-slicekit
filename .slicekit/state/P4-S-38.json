@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-38",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 95,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/95",
+    "headSha": "10820e8386309c2be09fcd8a533d34da58e814e5"
+  },
   "redCommit": "07494143997166902f71e7057ed72d7145e036e2",
   "frozenTests": [
     "test/check/frozen.test.js"
@@ -32,6 +36,22 @@
       "at": "2026-11-02T20:05:55.816Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-02T20:11:52.893Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 95,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/95",
+          "headSha": "10820e8386309c2be09fcd8a533d34da58e814e5",
+          "title": "[P4/S-38] Frozen tests hold in CI"
+        }
+      }
     }
   ]
 }
