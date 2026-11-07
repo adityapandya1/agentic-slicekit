@@ -563,3 +563,26 @@ test('sync open opens nothing when nothing changed or a sync pull request is ope
     assert.deepEqual(fs.readdirSync(fixture).filter((n) => /^pr-\d+\.json$/.test(n)).sort(), ['pr-1.json', 'pr-14.json']);
   });
 });
+
+test('sync open starts the workflow again when its sync pull request is already open', async () => {
+  await withSyncRepo(async ({ root, remote, fixture }) => {
+    const short = gitIn(root, ['rev-parse', '--short', 'HEAD']);
+    const branch = `sync/${short}`;
+    const open = { number: 1, url: 'https://example.test/pull/1', state: 'OPEN', isDraft: false, isCrossRepository: false, headRefName: branch, baseRefName: 'main', title: `[sync] state after ${short}`, body: '**Done when:** a\n**Proof:** b\n**Decisions:** none\n', headRefOid: null, labels: [] };
+    fs.writeFileSync(path.join(fixture, 'pr-1.json'), `${JSON.stringify(open, null, 2)}\n`);
+    await syncState(root, fixture);
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /already open/);
+    assert.deepEqual(syncCalls(fixture), [{ op: 'dispatchWorkflow', file: 'slicekit.yml', ref: branch }]);
+    assert.deepEqual(remoteBranches(remote), ['main']);
+  });
+});
+
+test('dispatchWorkflow takes only a .yml or .yaml file name', async () => {
+  const { assertWorkflowFile } = await import('../src/adapters/githost/gh-json.js');
+  for (const ok of ['slicekit.yml', 'ci.yaml', 'a_b-c.d.yml']) assert.equal(assertWorkflowFile(ok), ok);
+  for (const bad of ['slicekitXyml', 'a-yml', '.yml', '-x.yml', 'dir/x.yml', 'x.yml\n', 'x.json', 42]) {
+    assert.throws(() => assertWorkflowFile(bad), /workflow must be a \.yml file name/, String(bad));
+  }
+});

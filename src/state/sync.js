@@ -139,7 +139,12 @@ export function openSyncPullRequest(root, cfg, host) {
   const short = git(root, ['rev-parse', '--short', 'HEAD']);
   const branch = `${SYNC_BRANCH_PREFIX}${short}`;
   const open = host.pullRequestForBranch(branch, { base: cfg.defaultBranch });
-  if (open) return { outcome: 'open', branch, number: open.number, url: open.url };
+  if (open) {
+    // A re-run of the job: the pull request is there, but the first run may have stopped before its
+    // dispatch, so start the workflow on the branch again; a second run of the checks is harmless.
+    host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
+    return { outcome: 'open', branch, number: open.number, url: open.url };
+  }
 
   const title = syncTitle(short);
   const body = syncBody(short, cfg.defaultBranch, files);

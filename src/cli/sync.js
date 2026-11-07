@@ -1,7 +1,8 @@
 // `slicekit sync open` (03 REQ-3.11, D-78, D-80): the CI sync job's second step, after `status --sync
 // --write` on the default branch. It puts the state change on a `sync/<short sha>` branch, opens a
 // `[sync]` pull request for it through the git host (C-1) and starts the workflow there; see
-// openSyncPullRequest. Exit 0 when it opened one, found one open, or had nothing to open; 1 when git,
+// openSyncPullRequest. With that pull request already open it opens no second one and starts the
+// workflow on the branch again. Exit 0 when it opened one, found one open, or had nothing to open; 1 when git,
 // the host or the body refuses; 2 on bad usage or a bad config.
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
