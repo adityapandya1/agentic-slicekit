@@ -87,9 +87,24 @@ jobs:
 {{commandJobs}}
 {{observabilityJobs}}
 
+  # The one check the default branch's ruleset requires besides the gate (REQ-3.14). A job skipped
+  # by its own if, such as a test matrix on a bookkeeping push (D-49), reports no matrix names, so
+  # the ruleset names this job instead: it always runs, and passes when every job a merge waits on
+  # passed or was skipped because the gate said bookkeeping.
+  checks:
+    if: ${{ always() }}
+    needs: [{{readyNeeds}}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every job a merge waits on passed
+        env:
+          SLICEKIT_CHECKS_OK: {{checksOk}}
+        run: test "$SLICEKIT_CHECKS_OK" = true
+
   ready-label:
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
-    needs: [{{readyNeeds}}]
+    needs: [checks]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -110,7 +125,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLICEKIT_CHECKS_OK: {{checksOk}}
+          SLICEKIT_CHECKS_OK: ${{ needs.checks.result == 'success' }}
         run: {{cli}} ready-label
 
   sync:

@@ -25,7 +25,7 @@ test('init --protect removes a stale check from the slicekit ruleset only and na
       { type: 'pull_request', parameters: { required_approving_review_count: 1 }, ruleset_id: 3 },
       { type: 'non_fast_forward', ruleset_id: 3 },
       checks(3, ['team-lint']),
-      checks('slicekit', ['gate', 'cmd-test', 'cmd-test (windows-latest, 3/3)']),
+      checks('slicekit', ['gate', 'checks', 'cmd-test (windows-latest, 3/3)']),
     ]));
     const r = runCli(['init', '--shape', 'backend', '--test', 'node --test', '--protect'], { cwd: repo.root, env });
     assert.equal(r.code, 0, r.stdout + r.stderr);
@@ -34,7 +34,7 @@ test('init --protect removes a stale check from the slicekit ruleset only and na
     ]);
     const after = JSON.parse(fs.readFileSync(file, 'utf8'));
     const contexts = (id) => after.filter((x) => x.ruleset_id === id && x.type === 'required_status_checks').flatMap((x) => x.parameters.required_status_checks.map((c) => c.context));
-    assert.deepEqual(contexts('slicekit'), ['gate', 'cmd-test']);
+    assert.deepEqual(contexts('slicekit'), ['gate', 'checks']);
     assert.deepEqual(contexts(3), ['team-lint']);
 
     // Nothing stale and nothing missing: no write.

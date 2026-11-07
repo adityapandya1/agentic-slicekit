@@ -18,18 +18,19 @@ export const blocking = true;
 export const ratchet = false;
 
 const PROTECT = 'run slicekit init --protect as an admin';
-// The jobs of the generated workflow that judge a pull request. ready-label and sync are not checks
-// a merge waits on.
-const CHECK_JOB = /^(gate|cmd-[A-Za-z0-9_-]+|obs-\d+)$/;
+// The jobs of the generated workflow a merge waits on: the gate, and the checks job, which needs every
+// command and observability job and passes when each passed or was skipped for bookkeeping. A command
+// job's matrix names are never required: a job skipped by its own if reports one check under its id
+// and none of them (D-49), so a bookkeeping head would never satisfy them.
+const CHECK_JOB = /^(gate|checks)$/;
 
 const unquote = (v) => (v.startsWith("'") && v.endsWith("'") && v.length >= 2 ? v.slice(1, -1).replace(/''/g, "'") : v);
 
-// The check names GitHub gives the pull request jobs of a rendered workflow: the job's `name:` or its
-// id, followed by its matrix values in parentheses, `cmd-test (windows-latest, 1/3)`.
+// The check names GitHub gives the gate and checks jobs of a rendered workflow: each job's `name:` or
+// its id. Neither job has a matrix.
 export function workflowCheckNames(text) {
   const jobs = [];
   let inJobs = false;
-  let job = null;
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
     if (/^jobs:\s*$/.test(line)) {
       inJobs = true;
@@ -41,28 +42,13 @@ export function workflowCheckNames(text) {
       continue;
     }
     let m = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
-    if (m) {
-      job = { id: m[1], name: null, include: [], os: null };
-      jobs.push(job);
-      continue;
-    }
-    if (!job) continue;
-    if ((m = /^ {4}name: (.+)$/.exec(line))) job.name = unquote(m[1].trim());
-    else if ((m = /^ {10}- os: (\S+)\s*$/.exec(line))) job.include.push([m[1]]);
-    else if ((m = /^ {12}shard: (.+)$/.exec(line)) && job.include.length > 0) job.include.at(-1).push(unquote(m[1].trim()));
-    else if ((m = /^ {8}os: \[(.*)\]\s*$/.exec(line))) job.os = m[1].split(',').map((s) => s.trim()).filter(Boolean);
+    if (m) jobs.push({ id: m[1], name: null });
+    else if ((m = /^ {4}name: (.+)$/.exec(line)) && jobs.length > 0) jobs.at(-1).name = unquote(m[1].trim());
   }
-  return jobs
-    .filter((j) => CHECK_JOB.test(j.id))
-    .flatMap((j) => {
-      const base = j.name ?? j.id;
-      if (j.include.length > 0) return j.include.map((values) => `${base} (${values.join(', ')})`);
-      if (j.os) return j.os.map((os) => `${base} (${os})`);
-      return [base];
-    });
+  return jobs.filter((j) => CHECK_JOB.test(j.id)).map((j) => j.name ?? j.id);
 }
 
-// The checks a merge into the default branch must wait on: the jobs renderWorkflow writes.
+// The checks a merge into the default branch must wait on: the gate and checks jobs renderWorkflow writes.
 export const requiredChecks = (cfg) => workflowCheckNames(renderWorkflow(cfg));
 
 // Each rule `rules` (C-1 readBranchRules) lacks, as { key, value, missing, set }: `value` is what the

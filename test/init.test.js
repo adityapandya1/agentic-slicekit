@@ -742,9 +742,9 @@ test('init --protect applies only the missing rules and prints them', () => {
     (root) => withHostFixture([pullRequest], (dir, env) => {
       const r = runCli(['init', '--shape', 'backend', '--test', 'node --test', '--protect'], { cwd: root, env });
       assert.equal(r.code, 0, r.stdout + r.stderr);
-      assert.deepEqual(rulesetCalls(dir), [{ branch: 'main', rules: { requiredChecks: ['gate', 'cmd-test'], refuseForcePush: true } }]);
+      assert.deepEqual(rulesetCalls(dir), [{ branch: 'main', rules: { requiredChecks: ['gate', 'checks'], refuseForcePush: true } }]);
       const set = r.stdout.split('\n').filter((l) => l.startsWith('set '));
-      assert.deepEqual(set, ['set main: the kit\'s CI checks are required: gate, cmd-test', 'set main: force push is refused']);
+      assert.deepEqual(set, ['set main: the kit\'s CI checks are required: gate, checks', 'set main: force push is refused']);
       assert.ok(r.stdout.includes('ruleset slicekit'), r.stdout);
 
       // Run again: the fixture now holds the slicekit ruleset, so nothing is missing and nothing is set.

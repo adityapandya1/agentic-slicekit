@@ -139,9 +139,24 @@ jobs:
           STAGING_URL: 'https://staging.example.com'
         run: curl -fsS "$STAGING_URL/health"
 
+  # The one check the default branch's ruleset requires besides the gate (REQ-3.14). A job skipped
+  # by its own if, such as a test matrix on a bookkeeping push (D-49), reports no matrix names, so
+  # the ruleset names this job instead: it always runs, and passes when every job a merge waits on
+  # passed or was skipped because the gate said bookkeeping.
+  checks:
+    if: ${{ always() }}
+    needs: [gate, cmd-test, cmd-lint, obs-1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every job a merge waits on passed
+        env:
+          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && (needs.cmd-lint.result == 'success' || (needs.cmd-lint.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && needs.obs-1.result == 'success' }}
+        run: test "$SLICEKIT_CHECKS_OK" = true
+
   ready-label:
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
-    needs: [gate, cmd-test, cmd-lint, obs-1]
+    needs: [checks]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -162,7 +177,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && (needs.cmd-lint.result == 'success' || (needs.cmd-lint.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && needs.obs-1.result == 'success' }}
+          SLICEKIT_CHECKS_OK: ${{ needs.checks.result == 'success' }}
         run: node node_modules/slicekit/bin/slicekit.js ready-label
 
   sync:

@@ -134,7 +134,7 @@ function commandJob(name, command, v, systems, timeout, shards) {
   return ['', `  cmd-${name}:`, '    needs: [gate]', COMMAND_IF, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), stepName, ...env, ...rest];
 }
 
-// SLICEKIT_CHECKS_OK for ready-label: the gate and every observability job succeeded, and each team
+// SLICEKIT_CHECKS_OK for the checks job, which ready-label reads through its result: the gate and every observability job succeeded, and each team
 // command job succeeded or was skipped because the gate said bookkeeping. A job that failed, was
 // cancelled or was skipped for any other reason is not passed.
 function checksOk(commands, steps) {

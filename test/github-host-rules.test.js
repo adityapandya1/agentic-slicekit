@@ -8,7 +8,10 @@ import { githubHost } from '../src/adapters/githost/github.js';
 import { GitHostError } from '../src/adapters/githost/errors.js';
 import { parseRemoteUrl } from '../src/adapters/githost/gh-json.js';
 import { requiredChecks, workflowCheckNames } from '../src/check/rules/host-rules.js';
-import { defaultConfig } from '../src/config.js';
+import { defaultConfig, loadConfig } from '../src/config.js';
+import { fileURLToPath } from 'node:url';
+
+const kitRoot = fileURLToPath(new URL('..', import.meta.url));
 
 // A host whose `git remote get-url origin` prints `url` and whose `gh api <endpoint>` answers from
 // `answers` (a value, or an Error whose stderr gh would print). Every call is recorded.
@@ -119,21 +122,55 @@ test('applyBranchRules creates the slicekit ruleset, or folds the rules into the
   assert.deepEqual(put.bypass_actors, [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }]);
 });
 
-test('the required checks are the pull request jobs the generated workflow writes', () => {
+test('the required checks are the gate and checks jobs, never a matrix name (B-1)', () => {
   const cfg = { ...defaultConfig({ name: 'demo', shape: 'backend' }), cli: 'node bin/slicekit.js', commands: { test: 'npm test', lint: 'npm run lint', build: '', e2e: '' } };
-  assert.deepEqual(requiredChecks(cfg), ['gate', 'cmd-test', 'cmd-lint']);
-  const sharded = { ...cfg, ci: { ...cfg.ci, matrix: true, shards: { 'windows-latest': 2 } } };
-  assert.deepEqual(requiredChecks(sharded), [
-    'gate',
-    'cmd-test (ubuntu-latest, 1/1)',
-    'cmd-test (windows-latest, 1/2)',
-    'cmd-test (windows-latest, 2/2)',
-    'cmd-test (macos-latest, 1/1)',
-    'cmd-lint',
-  ]);
-  const matrix = { ...cfg, ci: { ...cfg.ci, matrix: true }, commands: { ...cfg.commands, lint: '' } };
-  assert.deepEqual(requiredChecks(matrix), ['gate', 'cmd-test (ubuntu-latest)', 'cmd-test (windows-latest)', 'cmd-test (macos-latest)']);
-  assert.deepEqual(workflowCheckNames('jobs:\n  obs-1:\n    name: \'Smoke: prod\'\n  sync:\n    runs-on: x\n'), ['Smoke: prod']);
+  assert.deepEqual(requiredChecks(cfg), ['gate', 'checks']);
+  const sharded = { ...cfg, ci: { ...cfg.ci, matrix: true, shards: { 'windows-latest': 2 } }, ...{ ci: { ...cfg.ci, matrix: true, shards: { 'windows-latest': 2 }, observabilitySteps: [{ name: 'Smoke', run: 'true' }] } } };
+  assert.deepEqual(requiredChecks(sharded), ['gate', 'checks']);
+  assert.deepEqual(workflowCheckNames("jobs:\n  gate:\n    runs-on: x\n  obs-1:\n    name: 'Smoke: prod'\n  checks:\n    name: 'All checks'\n  sync:\n    runs-on: x\n"), ['gate', 'All checks']);
+});
+
+// The `slicekit` ruleset as the author created it on 2026-11-07: the gate and the five matrix names of
+// the kit's test job, with a bypass for Repository admin on pull requests only.
+const LIVE_MATRIX = ['cmd-test (ubuntu-latest, 1/1)', 'cmd-test (windows-latest, 1/3)', 'cmd-test (windows-latest, 2/3)', 'cmd-test (windows-latest, 3/3)', 'cmd-test (macos-latest, 1/1)'];
+const LIVE_BYPASS = [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'pull_request' }];
+
+test('the live slicekit ruleset loses its five matrix names, gains checks and keeps its bypass', () => {
+  const kit = loadConfig(kitRoot);
+  const kitChecks = requiredChecks(kit);
+  assert.deepEqual(kitChecks, ['gate', 'checks']);
+  const live = [{ context: 'gate' }, ...LIVE_MATRIX.map((context) => ({ context }))];
+  const { host, calls } = hostWith('https://github.com/adityapandya1/agentic-slicekit.git', {
+    'GET repos/adityapandya1/agentic-slicekit/rulesets?includes_parents=false&per_page=100': [
+      { id: 26101926, name: 'protected-main', source_type: 'Repository' },
+      { id: 26757970, name: 'slicekit', source_type: 'Repository' },
+    ],
+    'GET repos/adityapandya1/agentic-slicekit/rulesets/26757970': {
+      id: 26757970,
+      name: 'slicekit',
+      target: 'branch',
+      enforcement: 'active',
+      conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
+      rules: [
+        { type: 'pull_request', parameters: { required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } },
+        { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: false, required_status_checks: live } },
+      ],
+      bypass_actors: LIVE_BYPASS,
+    },
+    'PUT repos/adityapandya1/agentic-slicekit/rulesets/26757970': { id: 26757970 },
+  });
+  // What protect() passes once the rules are read: the live rules have gate but not checks.
+  const missing = kitChecks.filter((c) => !live.some((l) => l.context === c));
+  assert.deepEqual(missing, ['checks']);
+  const done = host.applyBranchRules('main', { requiredChecks: missing, kitChecks });
+  assert.deepEqual(done.removedChecks, LIVE_MATRIX);
+  const puts = calls.filter((c) => c.args.includes('PUT'));
+  assert.equal(puts.length, 1);
+  assert.ok(puts[0].args.includes('repos/adityapandya1/agentic-slicekit/rulesets/26757970'), 'only the slicekit ruleset is written');
+  const body = JSON.parse(puts[0].input);
+  assert.deepEqual(body.bypass_actors, LIVE_BYPASS);
+  assert.deepEqual(body.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'gate' }, { context: 'checks' }]);
+  assert.equal(body.rules.find((r) => r.type === 'pull_request').parameters.required_approving_review_count, 1);
 });
 
 test('applyBranchRules takes a check no job reports out of the slicekit ruleset, and writes nothing when nothing changes', () => {

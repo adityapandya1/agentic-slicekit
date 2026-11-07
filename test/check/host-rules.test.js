@@ -21,8 +21,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(here, '..', '..', 'src');
 const BIN = path.resolve(here, '..', '..', 'bin');
 
-// The check names the generated workflow writes for an init'd backend repository with a test command.
-const CHECKS = ['gate', 'cmd-test'];
+// The checks a merge waits on in the generated workflow: the gate and the checks job (B-1).
+const CHECKS = ['gate', 'checks'];
 
 const pullRequestRule = (params = {}) => ({
   type: 'pull_request',
@@ -91,7 +91,7 @@ test('each missing rule is a finding naming it', () => {
     assert.equal(found.length, 4, found.join('\n'));
     assert.ok(found.includes('main: a pull request is not required before merge; run slicekit init --protect as an admin'), found.join('\n'));
     assert.ok(found.some((m) => /^main: no approving review is required\b/.test(m)), found.join('\n'));
-    assert.ok(found.some((m) => /^main: the kit's CI checks are not required: gate, cmd-test\b/.test(m)), found.join('\n'));
+    assert.ok(found.some((m) => /^main: the kit's CI checks are not required: gate, checks\b/.test(m)), found.join('\n'));
     assert.ok(found.some((m) => /^main: force push is not refused\b/.test(m)), found.join('\n'));
     for (const m of found) assert.match(m, /; run slicekit init --protect as an admin$/);
     const r = check(root, { ci: false, env, rules: [hostRules] });
@@ -100,7 +100,7 @@ test('each missing rule is a finding naming it', () => {
   // One rule missing at a time: only that one is named.
   const cases = [
     [[pullRequestRule({ required_approving_review_count: 0 }), checksRule(CHECKS), noForcePush], /^main: no approving review is required\b/],
-    [[pullRequestRule(), checksRule(['gate']), noForcePush], /^main: the kit's CI checks are not required: cmd-test;/],
+    [[pullRequestRule(), checksRule(['gate']), noForcePush], /^main: the kit's CI checks are not required: checks;/],
     [[pullRequestRule(), checksRule(CHECKS)], /^main: force push is not refused\b/],
   ];
   for (const [rules, expected] of cases) {
