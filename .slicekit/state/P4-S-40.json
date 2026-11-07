@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-40",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 116,
@@ -37,6 +37,13 @@
       "blockers": 1,
       "independent": true,
       "headSha": "cdcbc1720856249226ed51b5c84416a5b2a4a4f7"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-40i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "859a1496b92afc7d69706d0690c48e36f480d1c2"
     }
   ],
   "ci": null,
@@ -183,6 +190,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/116",
           "headSha": "859a1496b92afc7d69706d0690c48e36f480d1c2",
           "title": "[P4/S-40] The git host's rules on the default branch"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-07T15:16:41.135Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-40i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
