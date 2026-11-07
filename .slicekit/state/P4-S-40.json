@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-40",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 116,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/116",
-    "headSha": "cdcbc1720856249226ed51b5c84416a5b2a4a4f7"
+    "headSha": "859a1496b92afc7d69706d0690c48e36f480d1c2"
   },
   "redCommit": "11d71d436eec2ade900989fd27aeb60e43556601",
   "frozenTests": [
@@ -168,6 +168,22 @@
       "evidence": {
         "amendCommit": "ec947adfc7ccdcbb9edf4afc98ccd3dd6de32184",
         "reason": "the amendment line names the test by its repository path"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-07T13:48:27.058Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 116,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/116",
+          "headSha": "859a1496b92afc7d69706d0690c48e36f480d1c2",
+          "title": "[P4/S-40] The git host's rules on the default branch"
+        }
       }
     }
   ]
