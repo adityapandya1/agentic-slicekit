@@ -27,7 +27,7 @@ decisions: [D-70, D-77, D-81, D-84, D-88]
 | `init.test.js » init without --protect calls no host write` | negative | REQ-3.14 |
 | `check/host-rules.test.js » applyBranchRules has one caller, init --protect` | negative | REQ-3.14 |
 
-Amended (independent review B-1, author's decision): the required checks are `gate` and `checks`, never a command job's matrix names, so `check/host-rules.test.js` names those two checks.
+Amended (independent review B-1, author's decision): the required checks are `gate` and `checks`, never a command job's matrix names, so `test/check/host-rules.test.js` names those two checks.
 
 Amended (same decision): `init.test.js » init --protect applies only the missing rules and prints them` expects the required checks `gate, checks`.
 
