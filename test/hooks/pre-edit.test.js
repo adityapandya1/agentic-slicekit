@@ -479,3 +479,43 @@ test('an edit to a path in agents.denyPaths is denied, naming the pattern', () =
     cleanup();
   }
 });
+
+// Codex review of 57e41b0: a listed path that is a symlink out of the repository is judged by its name.
+test('an edit to a listed symlink that points out of the repository is denied', (t) => {
+  const { root, cleanup } = makeRepo({ files: { 'data/x.xml': '<x/>', 'src/a.js': 'x' } });
+  const outside = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-out-')));
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 's');
+    const cfg = cfgFor({ agents: { denyPaths: ['data/**'] } });
+    // A file symlink needs a privilege on Windows; a directory junction does not.
+    const files = [];
+    const link = (target, at, type, names) => {
+      try {
+        fs.symlinkSync(target, path.join(root, at), type);
+        files.push(...names);
+      } catch {
+        // no right to make this link here
+      }
+    };
+    link(path.join(outside, 'secret.txt'), 'data/link.txt', 'file', ['data/link.txt']);
+    link(outside, 'data/out', process.platform === 'win32' ? 'junction' : 'dir', ['data/out/secret.txt', 'data/out/new.txt']);
+    if (!files.length) {
+      t.skip('no symlink right on this machine');
+      return;
+    }
+    for (const file of files) {
+      for (const tool of ['Edit', 'Write']) {
+        const r = decide(root, file, { tool, cfg });
+        assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `${tool} ${file}: ${JSON.stringify(r)}`);
+        assert.ok(reason(r).includes('agents.denyPaths pattern data/**'), reason(r));
+      }
+      assert.equal(decide(root, path.join(root, file), { cfg }).hookSpecificOutput?.permissionDecision, 'deny', `${file} absolute`);
+      assertAllow(decide(root, file, { cfg: cfgFor({ agents: { denyPaths: [] } }) }));
+    }
+    // A path really outside the repository is still not the list's business.
+    assertAllow(decide(root, path.join(outside, 'secret.txt'), { cfg }));
+  } finally {
+    cleanup();
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
