@@ -10,7 +10,9 @@
     "test/check/ci-title.test.js",
     "test/check/ci-body.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/sync.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -38,6 +40,17 @@
       "at": "2026-11-07T22:11:24.971Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T23:22:09.741Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/sync.test.js",
+        "amendCommit": "5b6fa82688ca854c79c42a1d2646eea4621afbb8",
+        "reason": "the body-section regex in the happy test lost its backslashes in a template literal and threw; the backslashes are doubled"
+      }
     }
   ]
 }
