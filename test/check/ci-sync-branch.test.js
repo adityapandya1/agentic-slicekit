@@ -1,3 +1,5 @@
+// REQ-3.11: a `[sync]` title is the state sync pull request, accepted by ci-title only on a
+// `sync/<short sha>` branch (D-78).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
