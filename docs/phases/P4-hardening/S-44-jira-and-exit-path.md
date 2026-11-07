@@ -10,7 +10,7 @@ decisions: [D-68, D-74, D-75]
 
 ## Done when
 
-1. `tracker.kind: "jira"` with `tracker.baseUrl`, `tracker.project` and `tracker.issueType` selects `src/adapters/tracker/jira.js`; a missing key, or a base URL that is not https, is refused by `getTracker` naming it (REQ-1.1, D-74). <!-- slicekit:pending P4/S-44 -->
+1. `tracker.kind: "jira"` with `tracker.baseUrl`, `tracker.project` and `tracker.issueType` selects `src/adapters/tracker/jira.js`; a missing key, or a base URL that is not https, is refused by `getTracker` naming it (REQ-1.1, D-74).
 2. `open`, `comment` and `find` call Jira Cloud's REST API with the email and token from `JIRA_EMAIL` and `JIRA_API_TOKEN`; a missing variable is an error naming it; the token appears in no output, error or file (D-74).
 3. `find` returns the oldest issue whose summary begins `[<slice>] <finding>:`, open unless its status category is done (D-74).
 4. `docs/adapters.md` holds the Jira section and the exit path for a second agent tool: the files a renderer writes, each hook subcommand with its event and the JSON it reads and writes, the deny rules, and the parts already tool-neutral (REQ-5.8, D-75).
