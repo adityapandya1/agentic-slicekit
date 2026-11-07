@@ -14,7 +14,9 @@
 // for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
 // `truncate`; (0d) a command naming a path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
 // argument, redirection target, option value or `<rev>:<path>` path, resolved against the shell's
-// directory, a glob by what it expands to, and the directory a pattern starts with (`data` for `data/**`).
+// directory, a glob or brace expression by what it expands to, and the directory a pattern starts with
+// (`data` for `data/**`); the directory each command runs in and each `cd`/`pushd` target are judged
+// too, and while the list is set a `cd` it cannot resolve from the text is refused.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
