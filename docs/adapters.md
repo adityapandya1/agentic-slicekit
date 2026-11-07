@@ -15,9 +15,27 @@ or agent tool is a new implementation of an existing contract, not a change to t
 `src/adapters/githost/index.js` exports `getHost(cfg, env, root)`, the only door to a git host. It
 picks the implementation from `cfg.gitHost.kind`. Today `github.js` implements `openPullRequest`,
 `updatePullRequestBody`, `markReady`, `markDraft`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
-`ciStatus`, `setLabel` (which adds or removes) and `ensureLabel`; `renderWorkflow` is `src/workflow.js`.
+`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `readBranchRules`, `readCodeowners` and
+`applyBranchRules`; `renderWorkflow` is `src/workflow.js`.
 Setting `SLICEKIT_GITHOST_FIXTURE` to a directory replaces the host with `fixture.js`, which reads
 answers from that directory, so tests never reach the network.
+
+The three rule operations (03 REQ-3.14) go through `gh api`. `gh api` does not take the host from the
+remote, so `github.js` reads `git remote get-url origin`, takes the host, owner and repository from it
+(an `https://`, `ssh://` or `user@host:` URL) and passes `--hostname <host>` on every call: github.com,
+a GitHub Enterprise Cloud host and a GitHub Enterprise Server hostname alike (D-70). A remote that
+names no host, such as a local path, is a `GitHostError` before any call.
+
+| Operation | Request |
+|---|---|
+| `readBranchRules(branch)` | `GET repos/{owner}/{repo}/rules/branches/{branch}` (rulesets only, D-84), folded into the strictest value of each rule: `{pullRequest, approvals, codeOwnerReview, requiredChecks, refuseForcePush}`; and `GET repos/{owner}/{repo}/branches/{branch}`, whose `protection.enabled` gives `classic` |
+| `readCodeowners()` | `GET repos/{owner}/{repo}/contents/{path}` for `.github/CODEOWNERS`, `CODEOWNERS` and `docs/CODEOWNERS`, in that order; the first present is `{path, text}`, none is null |
+| `applyBranchRules(branch, rules)` | `GET repos/{owner}/{repo}/rulesets`; then `POST repos/{owner}/{repo}/rulesets` for a new active branch ruleset named `slicekit` on `refs/heads/<branch>`, or, when one named `slicekit` exists, `PUT repos/{owner}/{repo}/rulesets/{id}` with the rules folded into its own, each required check not in `rules.kitChecks` taken out, and its bypass list kept; nothing is written when nothing changes. Returns the checks it took out as `removedChecks` |
+
+`slicekit init --protect` is the one caller of `applyBranchRules`, which a test asserts. The fixture
+reads `branch-rules-<branch>.json` (missing: the rules cannot be read), `branch-<branch>.json` and `codeowners.json`, refuses the read
+while `branch-rules-error.txt` exists and the write while `ruleset-apply-error.txt` exists, records
+each write in `ruleset-calls.jsonl` and adds the rules set to `branch-rules-<branch>.json`.
 
 ## Tracker (C-2)
 

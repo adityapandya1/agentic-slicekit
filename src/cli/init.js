@@ -5,11 +5,12 @@ import { CONFIG_PATH, ConfigError } from '../config.js';
 import { exists } from '../fs.js';
 import { git, GitError, isRepo } from '../git.js';
 import { checkCli } from '../hook-cli.js';
-import { init, knownDefaultBranch } from '../init.js';
+import { GitHostError } from '../adapters/githost/errors.js';
+import { init, knownDefaultBranch, protect } from '../init.js';
 import { kitVersion } from '../render/index.js';
 
 const USAGE =
-  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>] [--default-branch <name>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]';
+  'init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>] [--default-branch <name>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>] [--protect]';
 
 const OPTIONS = {
   shape: { type: 'string' },
@@ -21,6 +22,7 @@ const OPTIONS = {
   lint: { type: 'string' },
   build: { type: 'string' },
   e2e: { type: 'string' },
+  protect: { type: 'boolean' },
 };
 
 function samePath(a, b) {
@@ -94,6 +96,24 @@ async function run(args, io) {
   if (!result.cliWarned) {
     const unanswered = checkCli(result.cli, { version: kitVersion(), cwd: root });
     if (unanswered) io.stderr(`slicekit: ${unanswered}\n`);
+  }
+  // Only with --protect does init change a host setting (REQ-3.14).
+  if (values.protect) {
+    let done;
+    try {
+      done = protect(root, { env: io.env ?? process.env });
+    } catch (e) {
+      if (!(e instanceof GitHostError || e instanceof ConfigError)) throw e;
+      io.stderr(`slicekit: init --protect: ${e.message}\n`);
+      return 1;
+    }
+    if (done.set.length === 0 && done.removed.length === 0) {
+      io.stdout(`host rules: ${done.branch} has every rule; nothing set\n`);
+    } else {
+      for (const line of done.set) io.stdout(`set ${done.branch}: ${line}\n`);
+      for (const check of done.removed) io.stdout(`removed ${done.branch}: required check ${check}, which no job of the generated workflow reports\n`);
+      io.stdout(`host rules: ruleset slicekit applied to ${done.branch}\n`);
+    }
   }
   return 0;
 }

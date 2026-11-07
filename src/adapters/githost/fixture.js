@@ -11,10 +11,14 @@ import {
   assertTitle,
   decidedSlicekitRun,
   filterMergedSince,
+  mapBranchRules,
   mapJobs,
   mapPullRequest,
   pickBranchPullRequest,
   reduceRuns,
+  RULESET_NAME,
+  rulesetRules,
+  pruneRulesetChecks,
 } from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
@@ -26,6 +30,14 @@ import {
 //   label-calls.jsonl    written: one line per label call, in order
 //   pr-create-error.txt  gh refusing `pr create`
 //   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready, draft)
+//   branch-rules-<branch>.json   what `gh api repos/{o}/{r}/rules/branches/<branch>` prints (an array,
+//                        `[]` for no rules; missing: the rules cannot be read); `/` is written `%2F`
+//   branch-<branch>.json what `gh api repos/{o}/{r}/branches/<branch>` prints (missing: no classic protection)
+//   branch-rules-error.txt   gh refusing the rules read (no token, no network)
+//   codeowners.json      `{path, text}`, the CODEOWNERS file GitHub reads (missing: none)
+//   ruleset-apply-error.txt  gh refusing the ruleset write
+//   ruleset-calls.jsonl  written: `{branch, rules}` per ruleset write; the rules are also added to
+//                        branch-rules-<branch>.json, so a later read sees them
 // openPullRequest writes pr-<n>.json (n one above the highest there, else 1); updatePullRequestBody,
 // markReady and markDraft rewrite it, so a later getPullRequest or pullRequestForBranch sees the change.
 // A missing file is what the real host says for "not there"; an unreadable one is a host failure.
@@ -75,9 +87,43 @@ function readPr(dir, n) {
   return raw;
 }
 
+const branchFile = (dir, kind, branch) => path.join(dir, `${kind}-${branch.replace(/\//g, '%2F')}.json`);
+
 export function fixtureHost(dir) {
   return {
     kind: 'fixture',
+    readBranchRules(branch) {
+      assertBranch(branch);
+      refuse(dir, 'branch-rules-error.txt', 'gh api');
+      const rules = readJson(branchFile(dir, 'branch-rules', branch));
+      if (rules === undefined) throw new GitHostError(`git host fixture ${dir}: no branch-rules-${branch}.json`);
+      return mapBranchRules(rules, readJson(branchFile(dir, 'branch', branch)) ?? null);
+    },
+    readCodeowners() {
+      const got = readJson(path.join(dir, 'codeowners.json'));
+      if (got === undefined) return null;
+      if (typeof got?.path !== 'string' || typeof got?.text !== 'string') throw new GitHostError('git host fixture codeowners.json: needs {path, text}');
+      return { path: got.path, text: got.text };
+    },
+    // As the GitHub host: the rules of branch-rules-<branch>.json whose ruleset_id is "slicekit" are
+    // the slicekit ruleset; only they lose a check not in rules.kitChecks. Nothing changed, nothing written.
+    applyBranchRules(branch, rules) {
+      assertBranch(branch);
+      refuse(dir, 'ruleset-apply-error.txt', 'gh api');
+      const file = branchFile(dir, 'branch-rules', branch);
+      const now = readJson(file) ?? [];
+      const mine = now.filter((r) => r?.ruleset_id === RULESET_NAME);
+      const others = now.filter((r) => r?.ruleset_id !== RULESET_NAME);
+      const { rules: pruned, removed } = pruneRulesetChecks(mine, rules.kitChecks);
+      const added = rulesetRules(rules).map((r) => ({ ...r, ruleset_source_type: 'Repository', ruleset_source: 'fixture', ruleset_id: RULESET_NAME }));
+      if (added.length === 0 && removed.length === 0) return { id: null, name: RULESET_NAME, created: false, removedChecks: [] };
+      const { kitChecks, ...set } = rules;
+      fs.appendFileSync(path.join(dir, 'ruleset-calls.jsonl'), `${JSON.stringify({ branch, rules: set, ...(removed.length > 0 ? { removedChecks: removed } : {}) })}
+`);
+      fs.writeFileSync(file, `${JSON.stringify([...others, ...pruned, ...added], null, 2)}
+`);
+      return { id: null, name: RULESET_NAME, created: mine.length === 0, removedChecks: removed };
+    },
     getPullRequest(n) {
       assertPrNumber(n);
       const raw = readJson(path.join(dir, `pr-${n}.json`));
