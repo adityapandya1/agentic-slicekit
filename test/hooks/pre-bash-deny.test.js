@@ -290,17 +290,53 @@ test('deny » a bundled short option carries its value after any option letter',
   }
 });
 
-test('deny » ** in a glob reaches files at any depth', () => {
+test('deny » ** reaches files at any depth after shopt -s globstar, and one level without it', () => {
   const { root, cleanup } = repo();
   try {
     fs.mkdirSync(path.join(root, 'data', 'a', 'b'), { recursive: true });
     fs.writeFileSync(path.join(root, 'data', 'a', 'b', 'secret.txt'), 's');
     const list = ['data/a/b/secret.txt'];
-    for (const command of ['shopt -s globstar; cat data/**/secret.txt', 'cat d*/**/secret.txt', 'ls data/a/**', 'cat **/secret.txt']) {
+    for (const command of [
+      'shopt -s globstar; cat data/**/secret.txt',
+      'shopt -s globstar && cat d*/**/secret.txt',
+      'shopt -s globstar\nls data/a/**',
+      'shopt -s extglob globstar; cat **/secret.txt',
+      'shopt -u globstar; shopt -s globstar; cat **/secret.txt',
+      '(shopt -s globstar; cat **/secret.txt)',
+    ]) {
       assert.equal(withList(root, list, command), 'deny', command);
       assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
     }
-    for (const command of ['cat src/**', 'cat data/**/other.txt']) assert.equal(withList(root, list, command), 'allow', command);
+    // Without globstar, or after it is turned off or its subshell ends, `**` is `*`: one level.
+    for (const command of [
+      'cat **/secret.txt',
+      'cat d*/**/secret.txt',
+      'shopt -s globstar; shopt -u globstar; cat **/secret.txt',
+      '(shopt -s globstar); cat **/secret.txt',
+      'shopt -s globstar; cat src/**',
+      'shopt -s globstar; cat data/**/other.txt',
+    ]) {
+      assert.equal(withList(root, list, command), 'allow', command);
+    }
+    // `**` as `*` still reaches the level below.
+    fs.writeFileSync(path.join(root, 'src', 'secret.txt'), 's');
+    assert.equal(withList(root, ['src/secret.txt'], 'cat **/secret.txt'), 'deny');
+  } finally {
+    cleanup();
+  }
+});
+
+test('deny » ** over a tree wider than the cap is judged as * unless globstar is on', () => {
+  const { root, cleanup } = repo();
+  try {
+    // 21 x 1000 files under node_modules: more than the glob cap of 20000, but 21 entries one level down.
+    for (let d = 0; d < 21; d++) {
+      const dir = path.join(root, 'node_modules', `p${d}`);
+      fs.mkdirSync(dir, { recursive: true });
+      for (let f = 0; f < 1000; f++) fs.writeFileSync(path.join(dir, `f${f}.md`), '');
+    }
+    assert.equal(decision(decide(root, 'ls **/*.md')), 'allow');
+    assert.equal(decision(decide(root, 'shopt -s globstar; ls **/*.md')), 'deny');
   } finally {
     cleanup();
   }

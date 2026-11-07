@@ -684,7 +684,7 @@ function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
   // The directory a command runs in is judged too (rule 0d): `cd data && ls` reads data.
   if (toks.length && state.cwd !== null) acc.named.push({ word: state.cwd, dir: null, isDir: true });
-  for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd });
+  for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd, globstar: !!state.globstar });
   if (!toks.length) {
     for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
     return;
@@ -703,6 +703,14 @@ function walk(seg, state, acc) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
   }
   const b = base(w[0]);
+  // `shopt -s globstar` makes a later `**` recursive, `shopt -u globstar` ends it; a subshell's
+  // setting ends with it.
+  if (b === 'shopt') {
+    const flags = w.slice(1).filter((x) => /^-[a-z]+$/.test(x)).join('');
+    const set = flags.includes('s') ? true : flags.includes('u') ? false : null;
+    if (set !== null && w.slice(1).includes('globstar')) state.globstar = set;
+    return;
+  }
   if (b === 'cd' || b === 'pushd') {
     const at = toks.findIndex((t, k) => k > 0 && (!t.v.startsWith('-') || t.v === '-'));
     const target = at === -1 ? undefined : toks[at].v;
@@ -808,7 +816,7 @@ function walkAll(segs, state, acc) {
   const saved = [];
   for (const seg of segs) {
     const depth = seg.depth ?? 0;
-    while (saved.length < depth) saved.push({ cwd: state.cwd, label: state.label, stack: [...state.stack] });
+    while (saved.length < depth) saved.push({ cwd: state.cwd, label: state.label, stack: [...state.stack], globstar: state.globstar });
     while (saved.length > depth) Object.assign(state, saved.pop());
     walk(seg, state, acc);
   }
@@ -1105,18 +1113,19 @@ function firstBrace(w, m) {
 }
 
 // The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
-// in one segment); a segment starting with `.` alone matches dot names. A segment that is only `**`
-// is read as Bash's `globstar` reads it, whether or not the command turns it on: the directory itself
-// and everything under it, at any depth (dot names and symlinked directories aside). Null when a
-// segment expands to more than `cap` entries, so the caller fails closed instead of judging a part.
-function expandGlob(base, word, cap = 20000) {
+// in one segment; `**` as `*`, as Bash reads it by default); a segment starting with `.` alone matches
+// dot names. With `globstar` (the command ran `shopt -s globstar` first), a segment that is only `**`
+// is the directory itself and everything under it, at any depth (dot names and symlinked directories
+// aside). Null when a segment expands to more than `cap` entries, so the caller fails closed instead of
+// judging a part.
+function expandGlob(base, word, globstar = false, cap = 20000) {
   const target = toPosix(path.resolve(base, word));
   const segs = target.split('/');
   let found = [segs[0] === '' ? '/' : `${segs[0]}/`];
   for (const seg of segs.slice(1)) {
     if (seg === '') continue;
     const next = [];
-    if (/^\*\*+$/.test(seg)) {
+    if (globstar && /^\*\*+$/.test(seg)) {
       const stack = [...found];
       while (stack.length) {
         const d = stack.pop();
@@ -1180,9 +1189,9 @@ function deniedPath(root, cfg, named) {
     return pattern === null ? null : { rel: r, pattern };
   };
   const judge = (abs, top, isDir) => judgeRel(path.relative(top, abs), abs, isDir) ?? judgeRel(path.relative(top, real(abs)), abs, isDir);
-  for (const { dir, word, fromTop, glob, wide, isDir } of named) {
+  for (const { dir, word, fromTop, glob, wide, isDir, globstar } of named) {
     if (wide) return { wide: word };
-    const once = JSON.stringify([dir, word, fromTop, glob, isDir]);
+    const once = JSON.stringify([dir, word, fromTop, glob, isDir, globstar]);
     if (seen.has(once)) continue;
     seen.add(once);
     const p = fromGitBash(word.replace(/\\/g, '/'));
@@ -1197,7 +1206,7 @@ function deniedPath(root, cfg, named) {
       if (base === null && !path.isAbsolute(p)) continue;
       const candidates = [path.resolve(base ?? top, p)];
       if (glob && GLOB.test(p)) {
-        const expanded = expandGlob(base ?? top, p);
+        const expanded = expandGlob(base ?? top, p, globstar);
         if (expanded === null) return { wide: p };
         candidates.push(...expanded);
       }
