@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-39",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 115,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
-    "headSha": "dd740532dcb712a49e155c727f403755bb93f0b7"
+    "headSha": "63af0ac14fe87727d6b3c1de614cfa508edb520e"
   },
   "redCommit": "bc80ea0541ef2e73aa17d920e6bd49f356a288de",
   "frozenTests": [
@@ -382,6 +382,22 @@
           "path": ".slicekit/reviews/P4-S-39i-r7.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-07T17:29:32.805Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 115,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
+          "headSha": "63af0ac14fe87727d6b3c1de614cfa508edb520e",
+          "title": "[P4/S-39] Paths agents may not touch"
         }
       }
     }
