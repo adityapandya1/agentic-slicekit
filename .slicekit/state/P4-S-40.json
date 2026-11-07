@@ -13,7 +13,8 @@
     "test/init.test.js"
   ],
   "unfrozen": [
-    "test/check/host-rules.test.js"
+    "test/check/host-rules.test.js",
+    "test/init.test.js"
   ],
   "verdicts": [
     {
@@ -146,6 +147,17 @@
         "unfreeze": "test/check/host-rules.test.js",
         "amendCommit": "f8a6a255bd3c6d7bfa5133edfa664d83488bc71e",
         "reason": "B-1: the required checks are gate and checks, not matrix names"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T13:42:14.509Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "a087a9cc7b1b99e054d0483fa213cd87257953e6",
+        "reason": "B-1: init --protect requires gate and checks"
       }
     }
   ]
