@@ -159,6 +159,16 @@
         "amendCommit": "a087a9cc7b1b99e054d0483fa213cd87257953e6",
         "reason": "B-1: init --protect requires gate and checks"
       }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T13:46:15.921Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "ec947adfc7ccdcbb9edf4afc98ccd3dd6de32184",
+        "reason": "the amendment line names the test by its repository path"
+      }
     }
   ]
 }
