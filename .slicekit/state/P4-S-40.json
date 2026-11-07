@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-40",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 116,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/116",
+    "headSha": "7026605ed9b5724b32f2d86478a3571b90c10eb7"
+  },
   "redCommit": "11d71d436eec2ade900989fd27aeb60e43556601",
   "frozenTests": [
     "test/check/host-rules.test.js",
@@ -34,6 +38,22 @@
       "at": "2026-11-07T12:10:44.315Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-07T12:46:13.291Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 116,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/116",
+          "headSha": "7026605ed9b5724b32f2d86478a3571b90c10eb7",
+          "title": "[P4/S-40] The git host's rules on the default branch"
+        }
+      }
     }
   ]
 }
