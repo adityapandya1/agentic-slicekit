@@ -198,3 +198,12 @@ test('a bot pull request is exempt from the body style check too (D-37)', () => 
   const env = { GITHUB_EVENT_PATH: path.join(events, 'pr-bot.json') };
   assert.deepEqual(ciBody.run({ ci: true, env, cfg: { style: { banned: ['Bumps'] } } }), []);
 });
+
+// P4/S-41, REQ-3.11: a [sync] pull request carries Done when, Proof and Decisions, like [spec] and [plan].
+test('a [sync] body without Proof fails', () => {
+  const title = '[sync] state after abc1234';
+  const full = ['**Done when:** the state of P1/S-01 reaches main', '**Proof:** slicekit status --sync --write: synced P1/S-01', '**Decisions:** none'].join('\n');
+  assert.deepEqual(local(full, title), []);
+  const noProof = ['**Done when:** the state of P1/S-01 reaches main', '**Decisions:** none'].join('\n');
+  assert.deepEqual(local(noProof, title), [{ file: FILE, line: 0, message: 'pull request body is missing "Proof"' }]);
+});

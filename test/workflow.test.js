@@ -771,3 +771,33 @@ test('a bookkeeping run satisfies the required checks: checks runs and passes wh
   assert.ok(checks.includes('run: test "$SLICEKIT_CHECKS_OK" = true\n'), checks);
   assert.ok(jobBlock(yml, 'ready-label').includes('needs: [checks]'));
 });
+
+// P4/S-41, REQ-3.11, D-78, D-80: the sync job opens a pull request with the state change through
+// `slicekit sync open` instead of committing to the default branch, and the workflow can be started
+// on the sync branch with workflow_dispatch.
+test('the sync job never pushes to the default branch or sets ALLOW_PROTECTED_COMMIT', () => {
+  const cfg = exampleConfig();
+  const yml = renderWorkflow(cfg, loadPins());
+  const sync = jobBlock(yml, 'sync');
+  assert.ok(sync.includes("if: github.event_name == 'push'"), sync);
+  assert.ok(!yml.includes('ALLOW_PROTECTED_COMMIT'), 'no job sets ALLOW_PROTECTED_COMMIT');
+  assert.ok(!/\bgit push\b/.test(sync), 'the job itself never pushes');
+  assert.ok(!/\bgit commit\b/.test(sync), 'the job itself never commits');
+  const syncStep = `run: ${cfg.cli} status --sync --write\n`;
+  const openStep = `run: ${cfg.cli} sync open\n`;
+  assert.ok(sync.includes(syncStep), sync);
+  assert.ok(sync.includes(openStep), sync);
+  assert.ok(sync.indexOf(syncStep) < sync.indexOf(openStep), 'status --sync --write runs before sync open');
+  const open = sync.slice(sync.lastIndexOf('- name:', sync.indexOf(openStep)), sync.indexOf(openStep));
+  assert.ok(open.includes('GH_TOKEN: ${{ github.token }}'), open);
+  // Its permissions are exactly these three.
+  const lines = sync.split('\n');
+  const at = lines.indexOf('    permissions:');
+  assert.notEqual(at, -1, sync);
+  const perms = [];
+  for (let i = at + 1; i < lines.length && /^ {6}\S/.test(lines[i]); i++) perms.push(lines[i].trim());
+  assert.deepEqual(perms.sort(), ['actions: write', 'contents: write', 'pull-requests: write']);
+  // The workflow accepts workflow_dispatch, so the sync branch's checks can be started on it.
+  const on = yml.slice(yml.indexOf('\non:\n'), yml.indexOf('\npermissions:\n'));
+  assert.match(on, /^ {2}workflow_dispatch:/m, on);
+});

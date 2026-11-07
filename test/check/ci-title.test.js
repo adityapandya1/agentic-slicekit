@@ -11,6 +11,7 @@ import { buildContext } from '../../src/check/context.js';
 import { check } from '../../src/check/index.js';
 import { readCiEvent } from '../../src/check/ci-event.js';
 import ciTitle from '../../src/check/rules/ci-title.js';
+import ciBody from '../../src/check/rules/ci-body.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
 import { writeSliceFixtures } from '../helpers/slice-fixture.js';
 
@@ -175,5 +176,59 @@ test('a pull request from a listed bot is exempt from ci-title (D-37)', () => {
     ]);
     const { botActors, ...noList } = cfg.ci;
     assert.deepEqual(runWith({ ...cfg, ci: noList }), [], 'an absent list is the default');
+  });
+});
+
+// P4/S-41, REQ-3.11, D-80: a workflow_dispatch run has no pull request in its event; check --ci finds
+// the open pull request for the run's branch through C-1 pullRequestForBranch and judges it.
+test('a dispatched run on a sync branch reads its pull request and accepts a [sync] title', () => {
+  withKit(({ root, cfg, run }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-dispatch-'));
+    try {
+      const branch = 'sync/abc1234';
+      const eventFile = path.join(dir, 'event.json');
+      fs.writeFileSync(eventFile, JSON.stringify({ ref: `refs/heads/${branch}`, inputs: {}, workflow: '.github/workflows/slicekit.yml' }));
+      const host = path.join(dir, 'host');
+      fs.mkdirSync(host);
+      const pr = (over) => ({
+        number: 3,
+        url: 'https://example.test/pull/3',
+        state: 'OPEN',
+        isDraft: false,
+        isCrossRepository: false,
+        headRefName: branch,
+        baseRefName: 'main',
+        title: '[sync] state after abc1234',
+        body: '**Done when:** the state of P1/S-01 reaches main\n**Proof:** slicekit status --sync --write: synced P1/S-01\n**Decisions:** none\n',
+        headRefOid: 'abc1234def5678abc1234def5678abc1234def56',
+        labels: [],
+        ...over,
+      });
+      const writePr = (over = {}) => fs.writeFileSync(path.join(host, 'pr-3.json'), JSON.stringify(pr(over)));
+      // Another branch's open pull request is not this run's.
+      fs.writeFileSync(path.join(host, 'pr-2.json'), JSON.stringify(pr({ number: 2, url: 'https://example.test/pull/2', headRefName: 'slice/P1-S-01-x', title: 'Fix billing' })));
+      const env = {
+        GITHUB_EVENT_NAME: 'workflow_dispatch',
+        GITHUB_EVENT_PATH: eventFile,
+        GITHUB_REF: `refs/heads/${branch}`,
+        GITHUB_REF_NAME: branch,
+        SLICEKIT_GITHOST_FIXTURE: host,
+      };
+
+      writePr();
+      assert.deepEqual(run(env), []);
+      const r = check(root, { ci: true, env, rules: [ciTitle, ciBody] });
+      assert.equal(r.exitCode, 0, JSON.stringify(r.findings));
+      assert.deepEqual(r.findings, []);
+
+      // The title judged is the pull request's: a title without a slice id or [sync] fails.
+      writePr({ title: 'Fix billing' });
+      assert.deepEqual(run(env), [{ file: FILE, line: 0, message: 'title must begin with [P<n>/S-<nn>]' }]);
+      // And so is the body: a [sync] body without Proof fails ci-body.
+      writePr({ body: '**Done when:** a\n**Decisions:** none\n' });
+      assert.deepEqual(ciBody.run(buildContext(root, cfg, { ci: true, env })).map((f) => f.message), ['pull request body is missing "Proof"']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

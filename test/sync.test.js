@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
 import { kitPaths } from '../src/paths.js';
@@ -15,7 +16,8 @@ import { getHost } from '../src/adapters/githost/index.js';
 import { reduceRuns } from '../src/adapters/githost/gh-json.js';
 import { ghExitError, githubHost } from '../src/adapters/githost/github.js';
 import { GitHostError, GitHostNotFound } from '../src/adapters/githost/errors.js';
-import { makeRepo } from './helpers/tmp-repo.js';
+import { makeRemote, makeRepo } from './helpers/tmp-repo.js';
+import { prBodyProblems } from '../src/prbody.js';
 import { runCli } from './helpers/run-cli.js';
 import { writeSliceFixtures } from './helpers/slice-fixture.js';
 
@@ -434,4 +436,130 @@ test('the GitHub host runs gh in the project root and searches by merge date', (
   assert.equal(calls[1].args[calls[1].args.indexOf('--search') + 1], 'merged:>=2026-10-19');
   host.ciStatus('abcdef0');
   assert.equal(calls[2].opts.cwd, '/the/project');
+});
+
+// P4/S-41, REQ-3.11, D-78, D-80: `slicekit sync open` puts merged-slice state on a sync branch, opens
+// a [sync] pull request for it and starts the workflow there. The helpers below are this slice's.
+async function syncCli(root, fixture, args) {
+  const { main } = await import('../src/cli/index.js');
+  let stdout = '';
+  let stderr = '';
+  const io = { cwd: root, env: { SLICEKIT_GITHOST_FIXTURE: fixture }, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } };
+  const code = await main(args, io);
+  return { code, stdout, stderr };
+}
+
+// git in `cwd`; the setup's own commits on main carry the documented exception, nothing else does.
+function gitIn(cwd, args, { allowProtected = false } = {}) {
+  const env = { ...process.env };
+  delete env.ALLOW_PROTECTED_COMMIT;
+  if (allowProtected) env.ALLOW_PROTECTED_COMMIT = '1';
+  return execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+const remoteBranches = (remote) => gitIn(remote, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n').filter(Boolean).sort();
+const syncCalls = (fixture) => {
+  const file = path.join(fixture, 'pr-calls.jsonl');
+  return fs.existsSync(fixture) && fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+};
+
+// An initialised kit with one slice parked at ready on pull request 14, committed on main and pushed
+// to a bare origin, and a git host fixture directory holding pull request 14 (merged).
+async function withSyncRepo(fn) {
+  const repo = makeRepo();
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-syncfix-'));
+  let origin;
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend' });
+    const ids = writeSliceFixtures(repo.root, 1);
+    fs.writeFileSync(path.join(repo.root, 'docs', 'phases', 'P1-x', 'P1.md'), '# Phase 1 — Spine\n');
+    const cfg = loadConfig(repo.root);
+    park(repo.root, cfg, ids[0], pr14);
+    gitIn(repo.root, ['add', '-A']);
+    gitIn(repo.root, ['commit', '-q', '-m', 'kit'], { allowProtected: true });
+    origin = makeRemote(repo.root);
+    gitIn(repo.root, ['push', '-q', 'origin', 'main']);
+    fs.copyFileSync(path.join(FIXTURE, 'pr-14.json'), path.join(fixture, 'pr-14.json'));
+    return await fn({ root: repo.root, remote: origin.remote, fixture, cfg, ids });
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+    origin?.cleanup();
+    repo.cleanup();
+  }
+}
+
+// What the merge-to-main run leaves before `sync open`: status --sync --write moved the slice and
+// rewrote BUILD.md, and the journal heads log gained a line.
+async function syncState(root, fixture) {
+  const r = await syncCli(root, fixture, ['status', '--sync', '--write']);
+  assert.equal(r.code, 0, r.stderr);
+  fs.appendFileSync(path.join(root, '.slicekit', 'journal-heads.log'), 'P1/S-01 abc1234def5678\n');
+}
+
+test('sync open pushes a sync branch, opens a [sync] pull request and dispatches the workflow', async () => {
+  await withSyncRepo(async ({ root, remote, fixture, cfg, ids }) => {
+    const mainTip = gitIn(root, ['rev-parse', 'HEAD']);
+    const short = gitIn(root, ['rev-parse', '--short', 'HEAD']);
+    const branch = `sync/${short}`;
+    await syncState(root, fixture);
+
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /https:\/\/example\.test\/pull\/1/);
+
+    // The default branch is untouched; the change is on the sync branch, one commit on main's tip.
+    assert.deepEqual(remoteBranches(remote), [branch, 'main'].sort());
+    assert.equal(gitIn(remote, ['rev-parse', 'refs/heads/main']), mainTip);
+    assert.equal(gitIn(remote, ['rev-parse', `refs/heads/${branch}^`]), mainTip);
+    const rel = (p) => path.relative(root, p).split(path.sep).join('/');
+    const want = [rel(kitPaths(root, cfg).build), rel(path.join(kitPaths(root, cfg).state, stateFileName(ids[0]))), '.slicekit/journal-heads.log'].sort();
+    const changed = gitIn(remote, ['diff', '--name-only', 'refs/heads/main', `refs/heads/${branch}`]).split('\n').filter(Boolean).sort();
+    assert.deepEqual(changed, want);
+
+    // One pull request through C-1 openPullRequest, then the workflow started on the sync branch.
+    const made = syncCalls(fixture);
+    assert.deepEqual(made.map((c) => c.op), ['openPullRequest', 'dispatchWorkflow']);
+    const [open, dispatch] = made;
+    assert.equal(open.branch, branch);
+    assert.equal(open.base, 'main');
+    assert.equal(open.title, `[sync] state after ${short}`);
+    for (const section of ['Done when', 'Proof', 'Decisions']) assert.match(open.body, new RegExp(`^\*\*${section}:\*\* \S`, 'm'), section);
+    assert.deepEqual(prBodyProblems(open.title, open.body, cfg), []);
+    assert.deepEqual(dispatch, { op: 'dispatchWorkflow', file: 'slicekit.yml', ref: branch });
+  });
+});
+
+test('sync open opens nothing when nothing changed or a sync pull request is open', async () => {
+  // Nothing changed: no branch, no pull request, no dispatch.
+  await withSyncRepo(async ({ root, remote, fixture }) => {
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(remoteBranches(remote), ['main']);
+    assert.deepEqual(syncCalls(fixture), []);
+  });
+
+  // A pull request for this sync branch is already open: no second one.
+  await withSyncRepo(async ({ root, fixture }) => {
+    const short = gitIn(root, ['rev-parse', '--short', 'HEAD']);
+    const branch = `sync/${short}`;
+    const open = {
+      number: 1,
+      url: 'https://example.test/pull/1',
+      state: 'OPEN',
+      isDraft: false,
+      isCrossRepository: false,
+      headRefName: branch,
+      baseRefName: 'main',
+      title: `[sync] state after ${short}`,
+      body: '**Done when:** a\n**Proof:** b\n**Decisions:** none\n',
+      headRefOid: null,
+      labels: [],
+    };
+    fs.writeFileSync(path.join(fixture, 'pr-1.json'), `${JSON.stringify(open, null, 2)}\n`);
+    await syncState(root, fixture);
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(syncCalls(fixture).filter((c) => c.op === 'openPullRequest'), []);
+    assert.deepEqual(fs.readdirSync(fixture).filter((n) => /^pr-\d+\.json$/.test(n)).sort(), ['pr-1.json', 'pr-14.json']);
+  });
 });
