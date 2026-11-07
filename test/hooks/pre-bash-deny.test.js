@@ -62,6 +62,11 @@ test('deny » the index form, a path git reads from the shell directory, a home 
       assert.equal(decision(decide(root, command)), 'allow', command);
     }
     assert.equal(decision(decide(root, 'cat d*/x.xml')), 'deny');
+    // A negated class expands as the shell expands it.
+    const one = { ...cfg, agents: { denyPaths: ['data/x.xml'] } };
+    const withOne = (command) => decision(handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: one, env: {} }));
+    assert.equal(withOne('cat data/[!a].xml'), 'deny');
+    assert.equal(withOne('cat data/[!x].xml'), 'allow');
   } finally {
     cleanup();
   }

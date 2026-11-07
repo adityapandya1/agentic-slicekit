@@ -851,7 +851,7 @@ const GLOB = /[*?[]/;
 
 // A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment).
 function globRe(pattern) {
-  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\[!/g, '[^').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
   return new RegExp(`^${src}$`, WIN ? 'i' : '');
 }
 
@@ -944,9 +944,9 @@ function namedWords(toks, head) {
 }
 
 // The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
-// in one segment; `**` as `*`), at most `cap` of them; a segment starting with `.` alone matches dot
-// names.
-function expandGlob(base, word, cap = 2000) {
+// in one segment; `**` as `*`); a segment starting with `.` alone matches dot names. Null when a
+// segment expands to more than `cap` entries, so the caller fails closed instead of judging a part.
+function expandGlob(base, word, cap = 20000) {
   const target = toPosix(path.resolve(base, word));
   const segs = target.split('/');
   let found = [segs[0] === '' ? '/' : `${segs[0]}/`];
@@ -967,7 +967,7 @@ function expandGlob(base, word, cap = 2000) {
         for (const n of names) {
           if (n.startsWith('.') && !seg.startsWith('.')) continue;
           if (re.test(n)) next.push(path.posix.join(d, n));
-          if (next.length >= cap) break;
+          if (next.length > cap) return null;
         }
       }
     }
@@ -1005,7 +1005,11 @@ function deniedPath(root, cfg, named) {
       const base = fromTop ? top : dir === null ? null : real(dir);
       if (base === null && !path.isAbsolute(p)) continue;
       const candidates = [path.resolve(base ?? top, p)];
-      if (glob && GLOB.test(p)) candidates.push(...expandGlob(base ?? top, p));
+      if (glob && GLOB.test(p)) {
+        const expanded = expandGlob(base ?? top, p);
+        if (expanded === null) return { wide: p };
+        candidates.push(...expanded);
+      }
       for (const abs of candidates) {
         const hit = judge(abs, top);
         if (hit) return hit;
@@ -1039,6 +1043,9 @@ export function handle(input, { root, cfg }) {
   }
   // (0d)
   const named0d = deniedPath(root, cfg, named);
+  if (named0d?.wide) {
+    return deny(`the glob ${named0d.wide} expands too wide to judge against agents.denyPaths (REQ-3.13); name the paths or narrow the glob`);
+  }
   if (named0d) {
     return deny(`the command names ${named0d.rel}, which matches agents.denyPaths pattern ${named0d.pattern}; agents may not read or change it (REQ-3.13)`);
   }
