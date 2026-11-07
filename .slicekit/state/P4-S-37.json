@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-37",
-  "state": "draft-pr",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 98,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/98",
-    "headSha": "8cdd26246029f6b1ba01bce19710e959e2cb5589"
+    "headSha": "a120b1fd78b08166999aa5509ac594e055d29a92"
   },
   "redCommit": "8d7dd289fa1b64de8843f08e2efded6be1c8a7eb",
   "frozenTests": [
@@ -29,7 +29,7 @@
     }
   ],
   "ci": null,
-  "mergedAt": null,
+  "mergedAt": "2026-11-02T22:12:22Z",
   "handoff": null,
   "history": [
     {
@@ -126,6 +126,21 @@
           "headSha": "8cdd26246029f6b1ba01bce19710e959e2cb5589",
           "title": "[P4/S-37] Guards refuse what they cannot parse"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "merged",
+      "at": "2026-11-07T11:08:07.821Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-11-02T22:12:22Z",
+        "pr": {
+          "number": 98,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/98",
+          "headSha": "a120b1fd78b08166999aa5509ac594e055d29a92"
+        },
+        "source": "host"
       }
     }
   ]
