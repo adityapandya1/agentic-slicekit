@@ -10,7 +10,9 @@
     "test/hooks/pre-edit.test.js",
     "test/hooks/pre-bash.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/hooks/pre-edit.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -38,6 +40,17 @@
       "at": "2026-11-07T12:06:10.652Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T12:07:22.895Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/hooks/pre-edit.test.js",
+        "amendCommit": "dbdb9dc9a5628ece7df15d6a63f541046ab2a9e6",
+        "reason": "the backslashed path in the deny test lost its escapes when written; the test doubles them"
+      }
     }
   ]
 }
