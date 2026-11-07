@@ -25,6 +25,8 @@ decisions: [D-72]
 | `hooks/pre-bash.test.js » a command naming a path in agents.denyPaths is denied` | negative | REQ-3.13 |
 | `config.test.js » agents.denyPaths that is not a list of strings is refused` | negative | REQ-3.13 |
 
+Amended: `hooks/pre-edit.test.js`. The backslashed path in the deny test lost its escapes when it was written, so a backslash and `n` became a line break; the test now doubles them, as the file's other backslashed paths do.
+
 ## Expected changes
 
 `src/config.js`, `src/render/settings.js`, `src/hooks/paths.js`, `src/hooks/pre-edit.js`, `src/hooks/pre-bash.js`, `docs/runbook.md`, `test/fixtures/golden/`, tests.
