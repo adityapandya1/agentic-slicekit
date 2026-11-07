@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-39",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 115,
@@ -39,6 +39,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "91d6c6ed91126566d0397c9f26a27aeb0159b701"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-39i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "4e7469c1d38ccfe2fe337c7184e09630986884cc"
     }
   ],
   "ci": null,
@@ -210,6 +217,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
           "headSha": "4e7469c1d38ccfe2fe337c7184e09630986884cc",
           "title": "[P4/S-39] Paths agents may not touch"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-07T13:02:58.385Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-39i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
