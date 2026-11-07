@@ -164,3 +164,109 @@ export function commandJobsVerdict(run, jobs) {
   if (commands.length > 0 && commands.every((j) => j.status === 'completed' && j.conclusion === 'success')) return 'passed';
   return 'other';
 }
+
+// REQ-3.14, D-84: the rules of the repository rulesets that apply to a branch, as
+// `GET repos/{owner}/{repo}/rules/branches/{branch}` prints them (one entry per rule per ruleset),
+// folded into one view: the strictest value any ruleset sets. `branch` is what
+// `GET repos/{owner}/{repo}/branches/{branch}` prints, or null; its `protection.enabled` is true when
+// classic branch protection is on, which the kit does not read beyond that flag.
+export function mapBranchRules(rules, branch = null) {
+  if (!Array.isArray(rules)) throw new Error('branch rules: expected an array of rules');
+  const of = (type) => rules.filter((r) => r?.type === type);
+  const pr = of('pull_request').map((r) => r.parameters ?? {});
+  const counts = pr.map((p) => (Number.isInteger(p.required_approving_review_count) ? p.required_approving_review_count : 0));
+  const checks = of('required_status_checks').flatMap((r) => r.parameters?.required_status_checks ?? []);
+  return {
+    pullRequest: pr.length > 0,
+    approvals: counts.length > 0 ? Math.max(...counts) : 0,
+    codeOwnerReview: pr.some((p) => p.require_code_owner_review === true),
+    requiredChecks: [...new Set(checks.map((c) => c?.context).filter((c) => typeof c === 'string' && c !== ''))],
+    refuseForcePush: of('non_fast_forward').length > 0,
+    classic: branch?.protection?.enabled === true,
+    ruleCount: rules.length,
+  };
+}
+
+// The name of the one ruleset `slicekit init --protect` writes.
+export const RULESET_NAME = 'slicekit';
+
+// The rules to set, in the shape mapBranchRules reads, as GitHub ruleset rules. `set` holds only the
+// keys to set: pullRequest, approvals and codeOwnerReview (any of them gives one pull_request rule,
+// with at least one approval), requiredChecks (names) and refuseForcePush.
+export function rulesetRules(set) {
+  const out = [];
+  if (set.pullRequest || set.approvals !== undefined || set.codeOwnerReview) {
+    out.push({
+      type: 'pull_request',
+      parameters: {
+        required_approving_review_count: Math.max(1, Number.isInteger(set.approvals) ? set.approvals : 1),
+        dismiss_stale_reviews_on_push: false,
+        require_code_owner_review: set.codeOwnerReview === true,
+        require_last_push_approval: false,
+        required_review_thread_resolution: false,
+      },
+    });
+  }
+  if (Array.isArray(set.requiredChecks) && set.requiredChecks.length > 0) {
+    out.push({
+      type: 'required_status_checks',
+      parameters: { strict_required_status_checks_policy: false, required_status_checks: set.requiredChecks.map((context) => ({ context })) },
+    });
+  }
+  if (set.refuseForcePush) out.push({ type: 'non_fast_forward' });
+  return out;
+}
+
+// An existing slicekit ruleset's rules with `add` folded in: the strictest pull_request rule, the union
+// of required checks, and any other rule type kept once.
+export function mergeRulesetRules(existing, add) {
+  const byType = new Map();
+  for (const r of [...(existing ?? []), ...add]) {
+    const prev = byType.get(r.type);
+    if (!prev) {
+      byType.set(r.type, { type: r.type, ...(r.parameters ? { parameters: { ...r.parameters } } : {}) });
+    } else if (r.type === 'pull_request') {
+      const a = prev.parameters;
+      const b = r.parameters ?? {};
+      a.required_approving_review_count = Math.max(a.required_approving_review_count ?? 0, b.required_approving_review_count ?? 0);
+      a.require_code_owner_review = a.require_code_owner_review === true || b.require_code_owner_review === true;
+    } else if (r.type === 'required_status_checks') {
+      const seen = new Set(prev.parameters.required_status_checks.map((c) => c.context));
+      for (const c of r.parameters?.required_status_checks ?? []) if (!seen.has(c.context)) prev.parameters.required_status_checks.push(c);
+    }
+  }
+  return [...byType.values()];
+}
+
+// The ruleset body for `branch`: one active branch ruleset named slicekit.
+export function rulesetBody(branch, rules) {
+  return {
+    name: RULESET_NAME,
+    target: 'branch',
+    enforcement: 'active',
+    conditions: { ref_name: { include: [`refs/heads/${branch}`], exclude: [] } },
+    rules,
+  };
+}
+
+// The paths GitHub reads CODEOWNERS from, in the order it looks; the first one present counts.
+export const CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
+
+// A remote URL as { host, owner, repo }, or null when it names no host (a local path, file://).
+// Takes https://host[:port]/owner/repo(.git), ssh://[user@]host[:port]/owner/repo(.git) and
+// [user@]host:owner/repo(.git).
+export function parseRemoteUrl(url) {
+  const text = String(url ?? '').trim();
+  let host;
+  let rest;
+  let m = /^(?:https?):\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/i.exec(text);
+  if (m) [, host, rest] = m;
+  else if ((m = /^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i.exec(text))) [, host, rest] = m;
+  else if ((m = /^(?:[^@/]+@)?([A-Za-z0-9.-]+):(?!\/)(.+)$/.exec(text)) && m[1].includes('.')) [, host, rest] = m;
+  else return null;
+  const parts = rest.replace(/\/+$/, '').replace(/\.git$/i, '').split('/');
+  const name = /^[A-Za-z0-9_.-]+$/;
+  if (parts.length !== 2 || !parts.every((p) => name.test(p) && p !== '.' && p !== '..')) return null;
+  if (!/^[A-Za-z0-9.-]+(?::\d+)?$/.test(host)) return null;
+  return { host: host.toLowerCase(), owner: parts[0], repo: parts[1] };
+}
