@@ -23,6 +23,7 @@ import { stageCommand } from './stage.js';
 import { shippedCommand } from './shipped.js';
 import { stateCommand } from './state.js';
 import { statusCommand } from './status.js';
+import { syncCommand } from './sync.js';
 import { traceCommand } from './trace.js';
 import { uncoveredCommand } from './uncovered.js';
 import { updateCommand } from './update.js';
@@ -55,6 +56,7 @@ export const COMMANDS = {
   stage: stageCommand,
   state: stateCommand,
   status: statusCommand,
+  sync: syncCommand,
   trace: traceCommand,
   uncovered: uncoveredCommand,
   update: updateCommand,

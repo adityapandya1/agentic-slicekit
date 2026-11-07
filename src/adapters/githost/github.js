@@ -8,6 +8,7 @@ import {
   assertLabelColor,
   assertPrNumber,
   assertTitle,
+  assertWorkflowFile,
   BRANCH_PR_FIELDS,
   CODEOWNERS_PATHS,
   filterMergedSince,
@@ -217,6 +218,13 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertBranch(branch);
       const list = ghJson(['pr', 'list', '--head', branch, '--state', 'open', '--json', BRANCH_PR_FIELDS]);
       return pickBranchPullRequest(list, branch, base);
+    },
+    // Starts the workflow `file` on branch `ref` with workflow_dispatch (D-80): a pull request opened
+    // with the workflow's own token starts no run, and this is how its checks run. Needs actions: write.
+    dispatchWorkflow(file, ref) {
+      assertWorkflowFile(file);
+      assertBranch(ref);
+      gh(exec, ['workflow', 'run', file, `--ref=${ref}`], { env, cwd: root });
     },
     // Creates the label, or with --force updates its colour and description: safe to run every time.
     ensureLabel(name, { color, description }) {

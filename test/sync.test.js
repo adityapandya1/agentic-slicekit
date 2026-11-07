@@ -523,7 +523,7 @@ test('sync open pushes a sync branch, opens a [sync] pull request and dispatches
     assert.equal(open.branch, branch);
     assert.equal(open.base, 'main');
     assert.equal(open.title, `[sync] state after ${short}`);
-    for (const section of ['Done when', 'Proof', 'Decisions']) assert.match(open.body, new RegExp(`^\*\*${section}:\*\* \S`, 'm'), section);
+    for (const section of ['Done when', 'Proof', 'Decisions']) assert.match(open.body, new RegExp(`^\\*\\*${section}:\\*\\* \\S`, 'm'), section);
     assert.deepEqual(prBodyProblems(open.title, open.body, cfg), []);
     assert.deepEqual(dispatch, { op: 'dispatchWorkflow', file: 'slicekit.yml', ref: branch });
   });

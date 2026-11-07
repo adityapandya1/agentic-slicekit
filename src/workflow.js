@@ -1,5 +1,6 @@
 // The GitHub Actions workflow init writes (REQ-3.11): a gate, a job per declared team command, a job
-// per observability step (D-20), the ready label and the post-merge state sync (D-12). The YAML is
+// per observability step (D-20), the ready label and the post-merge state sync (D-12), which opens a
+// [sync] pull request and starts the workflow on its branch with workflow_dispatch (D-78, D-80). The YAML is
 // generated as text; every free-text value goes through yamlScalar so a quote, colon or hash in a
 // team's command cannot change the document's structure.
 import fs from 'node:fs';
@@ -7,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, shardErrors } from './config.js';
 import { readText } from './fs.js';
-import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
 
 export const WORKFLOW_TEMPLATE = fileURLToPath(new URL('../templates/workflow/slicekit.yml', import.meta.url));
@@ -24,7 +24,7 @@ const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
 // Filled as written: values the kit computes or validates to a safe shape.
 const VALUE_KEYS = [
-  'checksOk', 'defaultBranchItem', 'readyNeeds', 'syncPaths', 'timeoutMinutes',
+  'checksOk', 'defaultBranchItem', 'readyNeeds', 'timeoutMinutes',
   ...Object.keys(ACTIONS).flatMap((k) => [`${k}Sha`, `${k}Tag`]),
 ];
 // The team's own text: a mapping value holding one is filled, then quoted as a whole.
@@ -161,13 +161,6 @@ function fillFreeText(line, vars) {
   return m[1] + yamlScalar(substitute(m[2], vars, FREE_TEXT_KEYS));
 }
 
-// What the sync commit may stage: BUILD.md and the state directory, as repository-relative paths.
-function syncPaths(cfg) {
-  // Neither path depends on docsRoot; the default only keeps a partial config renderable.
-  const p = kitPaths('.', { docsRoot: 'docs', ...cfg });
-  return [p.build, p.state].map((f) => path.relative('.', f).split(path.sep).join('/')).join(' ');
-}
-
 export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8') } = {}) {
   if (/[\r\n]/.test(cfg.cli)) throw new Error('cli: must be one line to render the workflow');
   const v = checkPins(pins);
@@ -199,7 +192,6 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
     checksOk: checksOk(commands, steps),
     defaultBranchItem: yamlScalar(cfg.defaultBranch),
     readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`), ...steps.map((_s, i) => `obs-${i + 1}`)].join(', '),
-    syncPaths: syncPaths(cfg),
     timeoutMinutes: String(timeout),
   };
   const free = { cli: cfg.cli, defaultBranch: cfg.defaultBranch };

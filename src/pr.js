@@ -19,7 +19,7 @@ export class PrError extends Error {
 }
 
 // A slice pull request opens as a draft (the build loop marks it ready once review clears it); a
-// `[spec] ` or `[plan] ` pull request opens ready for review. `draft: true` forces a draft.
+// `[spec] `, `[plan] ` or `[sync] ` pull request opens ready for review. `draft: true` forces a draft.
 export const opensAsDraft = (title) => !EXEMPT_TITLE.test(title);
 
 const NOT_INSIDE = '--paths must name files or folders inside the repository, not the root';

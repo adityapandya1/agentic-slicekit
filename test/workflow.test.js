@@ -7,7 +7,6 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
-import { kitPaths } from '../src/paths.js';
 import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
@@ -83,11 +82,10 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   const sync = jobBlock(yml, 'sync');
   assert.ok(sync.includes("if: github.event_name == 'push'"));
   assert.ok(sync.includes('contents: write'));
-  assert.ok(sync.includes("ALLOW_PROTECTED_COMMIT: '1'"));
   assert.ok(sync.includes('slicekit.js status --sync --write'));
-  assert.ok(sync.includes('chore(slicekit): sync state [skip ci]'));
+  assert.ok(sync.includes('slicekit.js sync open'));
   assert.ok(sync.includes('github-actions[bot]'));
-  assert.ok(sync.includes('git diff --cached --quiet'));
+  assert.ok(!sync.includes('[skip ci]'), 'nothing in the sync job suppresses the dispatched run');
   assert.match(yml, /^permissions:\n {2}contents: read\n/m);
   assert.match(yml, /^on:\n {2}pull_request:\n {4}types: \[opened, synchronize, reopened, edited\]\n {2}push:\n {4}branches: \[main\]\n/m);
   assert.ok(yml.includes('group: slicekit-${{ github.ref }}'));
@@ -187,11 +185,14 @@ test('config: ci.observabilitySteps entries and ci.matrix are validated', () => 
 
 // Fix round 1 (review of d20a820).
 
-test('sync reads pull requests and hands the cli a token (C1)', () => {
+test('sync opens pull requests, dispatches the workflow and hands the cli a token (C1)', () => {
   const sync = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'sync');
-  assert.ok(sync.includes('    permissions:\n      contents: write\n      pull-requests: read\n'));
-  const step = sync.slice(sync.indexOf('- name: Sync state'), sync.indexOf('- name: Commit state'));
-  assert.ok(step.includes('GH_TOKEN: ${{ github.token }}'), step);
+  assert.ok(sync.includes('    permissions:\n      actions: write\n      contents: write\n      pull-requests: write\n'));
+  for (const name of ['Sync state', 'Open the sync pull request']) {
+    const at = sync.indexOf(`- name: ${name}`);
+    const step = sync.slice(at, sync.indexOf('- name:', at + 1) === -1 ? undefined : sync.indexOf('- name:', at + 1));
+    assert.ok(step.includes('GH_TOKEN: ${{ github.token }}'), step);
+  }
 });
 
 test('ready-label runs only for same-repository pull requests not opened by dependabot (I2)', () => {
@@ -219,15 +220,13 @@ test('ready-label still runs when a needed job failed, and is told so', () => {
   assert.ok(!ready.includes('always()'), 'always() would also run a cancelled, superseded run');
 });
 
-test('sync stages only BUILD.md and the state directory (I3)', () => {
+// P4/S-41: sync open stages only BUILD.md, the state directory and the journal heads log
+// (test/sync.test.js); the job stages nothing itself, whatever the docs root.
+test('the sync job stages nothing itself (I3)', () => {
   const cfg = exampleConfig();
   cfg.docsRoot = 'documentation';
   const sync = jobBlock(renderWorkflow(cfg, loadPins()), 'sync');
-  assert.ok(!/git add -A/.test(sync));
-  const build = path.relative('.', kitPaths('.', cfg).build).split(path.sep).join('/');
-  const state = path.relative('.', kitPaths('.', cfg).state).split(path.sep).join('/');
-  assert.ok(sync.includes(`git add -- ${build} ${state}\n`), sync);
-  assert.ok(sync.includes('git add -- BUILD.md .slicekit/state\n'));
+  assert.ok(!/git add/.test(sync), sync);
 });
 
 test('the default branch is a YAML string wherever it lands (M4)', () => {
@@ -390,15 +389,18 @@ test('config: ci.timeoutMinutes is an integer from 1 to 360 (I5)', () => {
   }
 });
 
-test('sync stages its paths, then commits only when they changed (M1)', () => {
+// P4/S-41: whether anything changed decides whether a pull request opens; sync open makes that test.
+test('sync sets its commit identity, then runs sync open (M1)', () => {
   const sync = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'sync');
-  const step = sync.slice(sync.indexOf('      - name: Commit state'));
-  assert.ok(!step.includes('git status --porcelain'), 'no whole-tree test');
+  const step = sync.slice(sync.indexOf('      - name: Commit identity'));
   assert.ok(
-    step.includes(
+    step.startsWith(
       [
-        '          git add -- BUILD.md .slicekit/state',
-        "          git diff --cached --quiet || { git commit -m 'chore(slicekit): sync state [skip ci]' && git push; }",
+        '      - name: Commit identity',
+        '        run: |',
+        "          git config user.name 'github-actions[bot]'",
+        "          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'",
+        '      - name: Open the sync pull request',
         '',
       ].join('\n'),
     ),

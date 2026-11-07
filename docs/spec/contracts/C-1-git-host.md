@@ -33,6 +33,7 @@ A consumer that knows the last synced commit derives the date with `git show -s 
 
 Every operation SHALL be stubbable for tests (05 REQ-5.2) by an environment variable naming a
 fixture directory. No operation SHALL merge a pull request; a human merges. The sync job opens its
-pull request through `openPullRequest` (03 REQ-3.11, D-78).
+pull request through `openPullRequest` (03 REQ-3.11, D-78), then starts the workflow on its branch
+through `dispatchWorkflow`, so the required checks run on that head (D-80).
 
 Cites: D-09, D-67, D-70, D-71, D-77, D-78, D-80, D-84.

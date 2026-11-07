@@ -14,7 +14,7 @@ export const ratchet = false;
 
 export function run(ctx) {
   if (!ctx.ci) return [];
-  const pr = readCiEvent(ctx.env);
+  const pr = readCiEvent(ctx.env, ctx);
   if (!pr || isBotAuthor(ctx.cfg, pr)) return [];
   return prBodyProblems(pr.title, pr.body, ctx.cfg).map((message) => ({ file: PR_FILE, line: 0, message }));
 }

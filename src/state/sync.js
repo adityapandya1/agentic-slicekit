@@ -1,4 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { GitHostNotFound } from '../adapters/githost/errors.js';
+import { SLICEKIT_WORKFLOW } from '../adapters/githost/gh-json.js';
+import { GitError, currentBranch, git, pushBranch, switchBranch } from '../git.js';
+import { kitPaths } from '../paths.js';
+import { prBodyProblems } from '../prbody.js';
 import { listSlices, setState } from './index.js';
 import { isDate } from '../evidence.js';
 import { HOST_MERGE_FROM } from './transitions.js';
@@ -61,4 +67,95 @@ export function syncFromHost(root, cfg, host) {
     throw e;
   }
   return { changes, warnings };
+}
+
+// `slicekit sync open` (03 REQ-3.11, D-78, D-80): after status --sync --write on the default branch's
+// merge commit, the state change goes up for review instead of onto the default branch. The paths it
+// may carry are the state directory, BUILD.md and the journal heads log; nothing else is staged. When
+// none of them changed it opens nothing. Otherwise it commits them on `sync/<short sha>` (a new branch
+// from the merge commit), pushes that branch alone, opens `[sync] state after <short sha>` into the
+// default branch through C-1, and starts the kit's workflow on the branch with workflow_dispatch, since
+// a pull request opened with the workflow's own token starts no run. An open pull request for that
+// branch means a run already did this: nothing is opened a second time. The commit is made with
+// ALLOW_PROTECTED_COMMIT removed from its environment, so the git hooks guard it as any other.
+// Returns { outcome: 'unchanged' } | { outcome: 'open', branch, number, url } |
+// { outcome: 'opened', branch, number, url, files }. Throws SyncOpenError, GitError or GitHostError.
+export class SyncOpenError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SyncOpenError';
+  }
+}
+
+export const SYNC_BRANCH_PREFIX = 'sync/';
+export const syncTitle = (short) => `[sync] state after ${short}`;
+
+const posix = (p) => p.split(path.sep).join('/');
+
+// The paths a sync commit may carry, relative to the repository root.
+export function syncPaths(root, cfg) {
+  const p = kitPaths(root, cfg);
+  return [p.build, p.state, path.join(p.kit, 'journal-heads.log')].map((f) => posix(path.relative(root, f)));
+}
+
+// git with ALLOW_PROTECTED_COMMIT taken out of the environment (REQ-3.11: the sync never sets it).
+function gitGuarded(root, args) {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) if (k.toUpperCase() === 'ALLOW_PROTECTED_COMMIT') delete env[k];
+  try {
+    return execFileSync('git', args, { cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    throw new GitError(args, String(e.stderr ?? e.message).trim());
+  }
+}
+
+// The files under `paths` that differ from HEAD, untracked ones included, as POSIX paths.
+function changedUnder(root, paths) {
+  const out = gitGuarded(root, ['--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all', '--', ...paths]);
+  return out
+    .split('\0')
+    .filter((e) => e.length > 3)
+    .map((e) => e.slice(3))
+    .sort();
+}
+
+export function syncBody(short, defaultBranch, files) {
+  const list = files.map((f) => `\`${f}\``).join(', ');
+  return [
+    `**Done when:** the slice state that \`slicekit status --sync --write\` recorded after ${short} is on ${defaultBranch}: ${list}`,
+    `**Proof:** \`slicekit status --sync --write\` on ${short} changed ${files.length} file${files.length === 1 ? '' : 's'}; the checks run on this branch through workflow_dispatch`,
+    '**Decisions:** none',
+    '',
+  ].join('\n');
+}
+
+export function openSyncPullRequest(root, cfg, host) {
+  const start = currentBranch(root);
+  if (start !== cfg.defaultBranch) {
+    throw new SyncOpenError(`sync open runs on ${cfg.defaultBranch}, at the merge commit; HEAD is ${start === null ? 'detached' : `on ${start}`}`);
+  }
+  const files = changedUnder(root, syncPaths(root, cfg));
+  if (files.length === 0) return { outcome: 'unchanged' };
+  const short = git(root, ['rev-parse', '--short', 'HEAD']);
+  const branch = `${SYNC_BRANCH_PREFIX}${short}`;
+  const open = host.pullRequestForBranch(branch, { base: cfg.defaultBranch });
+  if (open) return { outcome: 'open', branch, number: open.number, url: open.url };
+
+  const title = syncTitle(short);
+  const body = syncBody(short, cfg.defaultBranch, files);
+  const problems = prBodyProblems(title, body, cfg);
+  if (problems.length > 0) throw new SyncOpenError(problems.join('\n'));
+
+  switchBranch(root, branch, { create: true });
+  try {
+    gitGuarded(root, ['--literal-pathspecs', 'add', '-A', '--', ...files]);
+    gitGuarded(root, ['--literal-pathspecs', 'commit', '-q', '-m', `chore(slicekit): sync state after ${short}`, '--', ...files]);
+    pushBranch(root, { protectedBranches: cfg.protectedBranches ?? [], defaultBranch: cfg.defaultBranch });
+  } finally {
+    // Back to where it started; the change lives on the sync branch.
+    git(root, ['switch', '-q', start]);
+  }
+  const made = host.openPullRequest({ branch, base: cfg.defaultBranch, title, body, draft: false });
+  host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
+  return { outcome: 'opened', branch, number: made.number, url: made.url, files };
 }

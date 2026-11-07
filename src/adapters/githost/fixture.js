@@ -9,6 +9,7 @@ import {
   assertLabelColor,
   assertPrNumber,
   assertTitle,
+  assertWorkflowFile,
   decidedSlicekitRun,
   filterMergedSince,
   mapBranchRules,
@@ -30,6 +31,8 @@ import {
 //   label-calls.jsonl    written: one line per label call, in order
 //   pr-create-error.txt  gh refusing `pr create`
 //   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready, draft)
+//                        and per workflow dispatch (`{op: 'dispatchWorkflow', file, ref}`), in order
+//   dispatch-error.txt   gh refusing `workflow run`
 //   branch-rules-<branch>.json   what `gh api repos/{o}/{r}/rules/branches/<branch>` prints (an array,
 //                        `[]` for no rules; missing: the rules cannot be read); `/` is written `%2F`
 //   branch-<branch>.json what `gh api repos/{o}/{r}/branches/<branch>` prints (missing: no classic protection)
@@ -192,6 +195,12 @@ export function fixtureHost(dir) {
       const raw = readPr(dir, n);
       writePr(dir, { ...raw, isDraft: true });
       recordPr(dir, { op: 'markDraft', number: n });
+    },
+    dispatchWorkflow(file, ref) {
+      assertWorkflowFile(file);
+      assertBranch(ref);
+      refuse(dir, 'dispatch-error.txt', 'gh workflow run');
+      recordPr(dir, { op: 'dispatchWorkflow', file, ref });
     },
     // As the GitHub host: the open pull requests with that head, a fork's (isCrossRepository) dropped.
     pullRequestForBranch(branch, { base } = {}) {

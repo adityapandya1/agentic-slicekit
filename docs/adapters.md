@@ -15,10 +15,15 @@ or agent tool is a new implementation of an existing contract, not a change to t
 `src/adapters/githost/index.js` exports `getHost(cfg, env, root)`, the only door to a git host. It
 picks the implementation from `cfg.gitHost.kind`. Today `github.js` implements `openPullRequest`,
 `updatePullRequestBody`, `markReady`, `markDraft`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
-`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `readBranchRules`, `readCodeowners` and
+`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `dispatchWorkflow`, `readBranchRules`, `readCodeowners` and
 `applyBranchRules`; `renderWorkflow` is `src/workflow.js`.
 Setting `SLICEKIT_GITHOST_FIXTURE` to a directory replaces the host with `fixture.js`, which reads
 answers from that directory, so tests never reach the network.
+
+`dispatchWorkflow(file, ref)` runs `gh workflow run <file> --ref=<ref>`; the sync job calls it once its
+`[sync]` pull request is open, because a pull request opened with the workflow's own token starts no
+workflow (D-80). The fixture records each call as `{op: 'dispatchWorkflow', file, ref}` in
+`pr-calls.jsonl` and refuses while `dispatch-error.txt` exists.
 
 The three rule operations (03 REQ-3.14) go through `gh api`. `gh api` does not take the host from the
 remote, so `github.js` reads `git remote get-url origin`, takes the host, owner and repository from it

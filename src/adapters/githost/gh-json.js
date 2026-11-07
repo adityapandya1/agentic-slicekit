@@ -32,6 +32,14 @@ export function assertBranch(name) {
   return name;
 }
 
+// A workflow as `gh workflow run` takes it: a file name under .github/workflows/, nothing else.
+export function assertWorkflowFile(file) {
+  if (typeof file !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9._-]*.ya?ml$/.test(file)) {
+    throw new Error(`workflow must be a .yml file name, got ${JSON.stringify(file)}`);
+  }
+  return file;
+}
+
 // A pull request title as gh takes it: one non-empty line.
 export function assertTitle(title) {
   if (typeof title !== 'string' || title.trim() === '' || /[\r\n]/.test(title)) {
