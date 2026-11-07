@@ -719,3 +719,53 @@ test('init outside a repository writes main', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// REQ-3.14: init --protect sets only the rules the default branch lacks, as one ruleset, through the
+// git host fixture's applyBranchRules (recorded in ruleset-calls.jsonl); plain init writes nothing there.
+function withHostFixture(rules, fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
+  try {
+    if (rules !== undefined) fs.writeFileSync(path.join(dir, 'branch-rules-main.json'), JSON.stringify(rules));
+    return fn(dir, { ...process.env, SLICEKIT_GITHOST_FIXTURE: dir });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+const rulesetCalls = (dir) => {
+  const file = path.join(dir, 'ruleset-calls.jsonl');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+};
+
+test('init --protect applies only the missing rules and prints them', () => {
+  const pullRequest = { type: 'pull_request', parameters: { required_approving_review_count: 1, require_code_owner_review: false }, ruleset_id: 3 };
+  withRepo(
+    (root) => withHostFixture([pullRequest], (dir, env) => {
+      const r = runCli(['init', '--shape', 'backend', '--test', 'node --test', '--protect'], { cwd: root, env });
+      assert.equal(r.code, 0, r.stdout + r.stderr);
+      assert.deepEqual(rulesetCalls(dir), [{ branch: 'main', rules: { requiredChecks: ['gate', 'cmd-test'], refuseForcePush: true } }]);
+      const set = r.stdout.split('\n').filter((l) => l.startsWith('set '));
+      assert.deepEqual(set, ['set main: the kit\'s CI checks are required: gate, cmd-test', 'set main: force push is refused']);
+      assert.ok(r.stdout.includes('ruleset slicekit'), r.stdout);
+
+      // Run again: the fixture now holds the slicekit ruleset, so nothing is missing and nothing is set.
+      const again = runCli(['init', '--protect'], { cwd: root, env });
+      assert.equal(again.code, 0, again.stdout + again.stderr);
+      assert.equal(rulesetCalls(dir).length, 1);
+      assert.deepEqual(again.stdout.split('\n').filter((l) => l.startsWith('set ')), []);
+      assert.match(again.stdout, /main has every rule; nothing set/);
+    }),
+    { commits: 1, branch: 'main' },
+  );
+});
+
+test('init without --protect calls no host write', () => {
+  withRepo(
+    (root) => withHostFixture([], (dir, env) => {
+      const r = runCli(['init', '--shape', 'backend', '--test', 'node --test'], { cwd: root, env });
+      assert.equal(r.code, 0, r.stdout + r.stderr);
+      assert.deepEqual(fs.readdirSync(dir).sort(), ['branch-rules-main.json']);
+      assert.ok(!r.stdout.split('\n').some((l) => l.startsWith('set ')), r.stdout);
+    }),
+    { commits: 1, branch: 'main' },
+  );
+});
