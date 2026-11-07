@@ -11,7 +11,8 @@
     "test/hooks/pre-bash.test.js"
   ],
   "unfrozen": [
-    "test/hooks/pre-edit.test.js"
+    "test/hooks/pre-edit.test.js",
+    "test/config.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -50,6 +51,17 @@
         "unfreeze": "test/hooks/pre-edit.test.js",
         "amendCommit": "dbdb9dc9a5628ece7df15d6a63f541046ab2a9e6",
         "reason": "the backslashed path in the deny test lost its escapes when written; the test doubles them"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T12:17:59.369Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/config.test.js",
+        "amendCommit": "7a589336da822894bfefccd44905965b5b35487d",
+        "reason": "no change to test/config.test.js: amend refuses a slice-file-only change while other tests are frozen, and the amendment line must name test/hooks/pre-edit.test.js by its full path for check's references rule"
       }
     }
   ]
