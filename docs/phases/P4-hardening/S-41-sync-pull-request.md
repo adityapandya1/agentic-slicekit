@@ -26,6 +26,8 @@ decisions: [D-12, D-78, D-80]
 | `check/ci-title.test.js » a dispatched run on a sync branch reads its pull request and accepts a [sync] title` | happy | REQ-3.11 |
 | `check/ci-body.test.js » a [sync] body without Proof fails` | negative | REQ-3.11 |
 
+Amendment, `test/sync.test.js`: the body-section regex in the happy test was written in a template literal that drops its backslashes, so it threw "Nothing to repeat"; the backslashes are doubled. The test's name and what it asserts stay the same.
+
 ## Expected changes
 
 `src/cli/sync.js`, `src/cli/index.js`, `src/state/sync.js`, `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/check/ci-event.js`, `src/workflow.js`, `.github/workflows/slicekit.yml`, `test/fixtures/golden/workflow/`, `docs/runbook.md`, tests.
