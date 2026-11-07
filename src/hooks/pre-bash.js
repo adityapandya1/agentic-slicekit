@@ -758,7 +758,16 @@ function walk(seg, state, acc) {
     if (k !== -1 && w[k + 1] !== undefined) bodies = [w[k + 1]];
     else if (seg.heredocs.length) bodies = seg.heredocs;
     else bodies = seg.stdin ? seg.stdin.heredocs : [];
-    for (const body of bodies) walkAll(lex(body), { cwd: state.cwd, label: state.label, stack: [] }, acc);
+    // A new shell starts with globstar off, unless its own options turn it on: `-O globstar`,
+    // `-Oglobstar`; `+O globstar` turns it off; the last one before the body wins.
+    let globstar = false;
+    for (let j = 1; j < (k === -1 ? w.length : k); j++) {
+      const opt = /^([-+])O(.*)$/.exec(w[j]);
+      if (!opt) continue;
+      const name = opt[2] === '' ? w[++j] : opt[2];
+      if (name === 'globstar') globstar = opt[1] === '-';
+    }
+    for (const body of bodies) walkAll(lex(body), { cwd: state.cwd, label: state.label, stack: [], globstar }, acc);
     return;
   }
   if (b === 'gh') {

@@ -341,3 +341,31 @@ test('deny » ** over a tree wider than the cap is judged as * unless globstar i
     cleanup();
   }
 });
+
+// H-19: a shell started with `-O globstar` runs its body with globstar on; `+O globstar` leaves it off.
+test('deny » bash -O globstar -c runs its body with ** recursive', () => {
+  const { root, cleanup } = repo();
+  try {
+    fs.mkdirSync(path.join(root, 'data', 'a', 'b'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'data', 'a', 'b', 'secret.txt'), 's');
+    const list = ['data/a/b/secret.txt'];
+    const on = [
+      'bash -O globstar -c "cat data/**/secret.txt"',
+      'bash -Oglobstar -c "cat data/**/secret.txt"',
+      'bash -O extglob -O globstar -c "cat data/**/secret.txt"',
+      'sh -O globstar -c "cat **/secret.txt"',
+      'bash +O globstar -O globstar -c "cat data/**/secret.txt"',
+    ];
+    const off = [
+      'bash -c "cat data/**/secret.txt"',
+      'bash +O globstar -c "cat data/**/secret.txt"',
+      'bash -O globstar +O globstar -c "cat data/**/secret.txt"',
+      'bash -O extglob -c "cat data/**/secret.txt"',
+    ];
+    for (const command of on) assert.equal(withList(root, list, command), 'deny', command);
+    for (const command of off) assert.equal(withList(root, list, command), 'allow', command);
+    for (const command of [...on, ...off]) assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+  } finally {
+    cleanup();
+  }
+});
