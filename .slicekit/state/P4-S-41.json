@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-41",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "33550d0c80fd3e061b8e823c04367d491e947a8b",
@@ -31,6 +31,13 @@
           "test/check/ci-body.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-07T22:11:24.971Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
