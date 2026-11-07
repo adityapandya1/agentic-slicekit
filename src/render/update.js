@@ -72,7 +72,7 @@ function fileItem(root, cfg, entry, opts) {
 function settingsItem(root, cfg, { version, templates }) {
   const hooks = loadHooks(templates, varsFor(cfg, version));
   const existing = readSettings(root);
-  const next = `${JSON.stringify(mergeSettings(existing, hooks, { version, cli: cfg.cli }), null, 2)}\n`;
+  const next = `${JSON.stringify(mergeSettings(existing, hooks, { version, cli: cfg.cli, denyPaths: cfg.agents?.denyPaths }), null, 2)}\n`;
   const file = path.join(root, SETTINGS);
   const current = exists(file) ? readText(file) : null;
   const refText = `${JSON.stringify({ hooks }, null, 2)}\n`;

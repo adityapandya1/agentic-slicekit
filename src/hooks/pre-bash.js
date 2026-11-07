@@ -12,7 +12,8 @@
 // agent's shell: `slicekit init --protect`, or a `gh api` write (a method other than GET, or a field or
 // input flag without `-X GET`) to rulesets, rules or branch protection; (0c) a write to a test frozen
 // for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
-// `truncate`.
+// `truncate`; (0d) a command naming a path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
+// argument, redirection target or `--opt=value` value, resolved against the shell's directory.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -45,7 +46,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { frozenTests, fromGitBash, real, toPosix } from './paths.js';
+import { denyPaths, frozenTests, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -647,6 +648,7 @@ const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
+  for (const word of namedWords(seg.toks, toks[0])) acc.named.push({ dir: state.cwd, word });
   if (!toks.length) {
     for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
     return;
@@ -742,7 +744,7 @@ function walk(seg, state, acc) {
 // command's text for rule 6, the paths written (rule 0c), and the first reason for rules 0a and 0b.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [], mentions: [], writes: [], unjudgeable: null, hostRules: null };
+  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, hostRules: null };
   const state = { cwd, label: cwd, stack: [] };
   for (const seg of lex(command)) walk(seg, state, acc);
   return acc;
@@ -902,6 +904,54 @@ function frozenWrite(root, cfg, writes) {
   return null;
 }
 
+// ---- rule 0d: paths agents may not touch (REQ-3.13) ----
+
+// Every word of a simple command that may name a path: the command and its arguments, a redirection's
+// target with the operator cut off, and the value of `--opt=value` or `NAME=value`. A word holding a
+// variable or a command substitution is not judged, nor the command's name when it holds no `/` (the
+// shell looks that up on PATH).
+function namedWords(toks, head) {
+  const out = [];
+  for (const t of toks) {
+    if (t === head && !/[/\\]/.test(t.v)) continue;
+    let v = t.v;
+    const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(v);
+    if (op && t.b.startsWith(op[0])) v = v.slice(op[0].length);
+    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(v)) v = v.slice(v.indexOf('=') + 1);
+    else if (v.startsWith('-')) continue;
+    if (v === '' || /[$`]/.test(t.x ?? '')) continue;
+    out.push(v);
+  }
+  return out;
+}
+
+// -> {rel, pattern} for the first named word that resolves, inside the hook's root or the repository
+// the word is named in, to a path matching agents.denyPaths; null for none.
+function deniedPath(root, cfg, named) {
+  const patterns = denyPaths(cfg);
+  if (!patterns.length || !named.length) return null;
+  const hookTop = real(path.resolve(root));
+  const topAt = new Map();
+  for (const { dir, word } of named) {
+    const p = fromGitBash(word.replace(/\\/g, '/'));
+    if (dir === null && !path.isAbsolute(p)) continue;
+    const abs = real(path.resolve(dir === null ? hookTop : real(dir), p));
+    const tops = [hookTop];
+    if (dir !== null) {
+      if (!topAt.has(dir)) topAt.set(dir, topOf(dir));
+      const t = topAt.get(dir);
+      if (t) tops.push(t);
+    }
+    for (const top of tops) {
+      const rel = path.relative(top, abs);
+      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+      const pattern = matchesDeny(toPosix(rel), patterns);
+      if (pattern !== null) return { rel: toPosix(rel), pattern };
+    }
+  }
+  return null;
+}
+
 // ---- the hook ----
 
 const unknownDir = (label) => deny(`cannot tell which branch ${label} is on; run the command from inside the repository`);
@@ -910,7 +960,7 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts, mentions, writes, unjudgeable: why, hostRules } = parse(command, start);
+  const { invs, texts, mentions, writes, named, unjudgeable: why, hostRules } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // (0a), in every session and on every branch (D-83)
@@ -923,6 +973,11 @@ export function handle(input, { root, cfg }) {
   const hit = frozenWrite(root, cfg, writes);
   if (hit) {
     return deny(`${hit.rel} is frozen for ${hit.id}; a Bash command may not write it (REQ-3.3); amend the slice file to change the evaluation set`);
+  }
+  // (0d)
+  const named0d = deniedPath(root, cfg, named);
+  if (named0d) {
+    return deny(`the command names ${named0d.rel}, which matches agents.denyPaths pattern ${named0d.pattern}; agents may not read or change it (REQ-3.13)`);
   }
 
   // The branch each commit and push runs on, following checkouts earlier in the same command.

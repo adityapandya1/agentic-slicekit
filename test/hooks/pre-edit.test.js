@@ -462,7 +462,7 @@ test('an edit to a path in agents.denyPaths is denied, naming the pattern', () =
       denied(decide(root, 'data/pain001-sample.xml', { tool, cfg }), 'data/pain001-sample.xml', 'data/**');
       denied(decide(root, path.join(root, 'data', 'pain001-sample.xml'), { tool, cfg }), 'data/pain001-sample.xml', 'data/**');
     }
-    denied(decide(root, `${backslashed(root)}\data\new\deep.csv`, { cfg }), 'data/new/deep.csv', 'data/**');
+    denied(decide(root, `${backslashed(root)}\\data\\new\\deep.csv`, { cfg }), 'data/new/deep.csv', 'data/**');
     denied(decide(root, 'config/prod.pem', { tool: 'Edit', cfg }), 'config/prod.pem', '**/*.pem');
     denied(decide(root, 'secrets/token.txt', { cfg }), 'secrets/token.txt', 'secrets/');
     denied(decide(root, 'cells.ipynb', { tool: 'NotebookEdit', key: 'notebook_path', cfg: cfgFor({ agents: { denyPaths: ['*.ipynb'] } }) }),
