@@ -10,6 +10,8 @@ import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
 import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from './workflow.js';
+import { getHost } from './adapters/githost/index.js';
+import { missingRules, requiredChecks } from './check/rules/host-rules.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
@@ -266,6 +268,26 @@ function configWithoutCli(file) {
 export function bareCliWarning(cli) {
   if (/[\\/]/.test(cli) || /^node\s/.test(cli)) return null;
   return `cli is "${cli}", a bare command, and CI has no global install, so ${WORKFLOW_PATH} cannot run it; set cli in .slicekit/config.json to a repository path or add an install step`;
+}
+
+// `slicekit init --protect` (REQ-3.14, D-77, D-88): the rules of REQ-3.14 the default branch lacks,
+// set as the one repository ruleset named slicekit. A human with admin rights runs it from their own
+// terminal; this is the kit's one call of a host write of a rule. A required check of the slicekit
+// ruleset that is not gate or checks is taken out of that ruleset; a check
+// another ruleset requires is the team's and stays. Returns the branch, what each rule set reads as,
+// and the checks removed: both empty when nothing changed. A GitHostError (no token, no admin rights)
+// is the caller's to print.
+export function protect(root, { env = process.env } = {}) {
+  const cfg = loadConfig(root);
+  const branch = cfg.defaultBranch;
+  const host = getHost(cfg, env, root);
+  const rules = host.readBranchRules(branch);
+  const missing = missingRules(cfg, rules, host.readCodeowners());
+  const kitChecks = requiredChecks(cfg);
+  const unknown = (rules.requiredChecks ?? []).filter((c) => !kitChecks.includes(c));
+  if (missing.length === 0 && unknown.length === 0) return { branch, set: [], removed: [] };
+  const done = host.applyBranchRules(branch, { ...Object.fromEntries(missing.map((m) => [m.key, m.value])), kitChecks });
+  return { branch, set: missing.map((m) => m.set), removed: done?.removedChecks ?? [] };
 }
 
 export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultBranch, env = process.env }) {

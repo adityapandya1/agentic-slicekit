@@ -73,6 +73,11 @@ jobs:
           node -e "const p = require('./package.json'); const bad = ['dependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies', 'peerDependencies'].flatMap((f) => { const v = p[f]; const n = v === true ? ['true'] : Array.isArray(v) ? v : Object.keys(v || {}); return n.length ? [f + ': ' + n.join(', ')] : []; }); if (bad.length) { console.error('package.json has runtime dependencies: ' + bad.join('; ')); process.exit(1) }"
       - name: slicekit check
         run: node bin/slicekit.js check --ci
+        # The host-rules rule reads the default branch's rulesets and CODEOWNERS (REQ-3.14). gh reads
+        # GH_TOKEN on github.com and GH_ENTERPRISE_TOKEN on a GitHub Enterprise Server host (D-70).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ENTERPRISE_TOKEN: ${{ github.token }}
       - name: The workflow matches the generator
         run: node bin/slicekit.js workflow --check
       - name: Upload the graph
@@ -116,9 +121,24 @@ jobs:
           SLICEKIT_SHARD: ${{ matrix.shard }}
         run: 'npm run test:shard'
 
+  # The one check the default branch's ruleset requires besides the gate (REQ-3.14). A job skipped
+  # by its own if, such as a test matrix on a bookkeeping push (D-49), reports no matrix names, so
+  # the ruleset names this job instead: it always runs, and passes when every job a merge waits on
+  # passed or was skipped because the gate said bookkeeping.
+  checks:
+    if: ${{ always() }}
+    needs: [gate, cmd-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every job a merge waits on passed
+        env:
+          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) }}
+        run: test "$SLICEKIT_CHECKS_OK" = true
+
   ready-label:
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
-    needs: [gate, cmd-test]
+    needs: [checks]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -139,7 +159,7 @@ jobs:
       - name: Ready label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) }}
+          SLICEKIT_CHECKS_OK: ${{ needs.checks.result == 'success' }}
         run: node bin/slicekit.js ready-label
 
   sync:

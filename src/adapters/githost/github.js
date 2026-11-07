@@ -9,7 +9,15 @@ import {
   assertPrNumber,
   assertTitle,
   BRANCH_PR_FIELDS,
+  CODEOWNERS_PATHS,
   filterMergedSince,
+  mapBranchRules,
+  mergeRulesetRules,
+  parseRemoteUrl,
+  pruneRulesetChecks,
+  RULESET_NAME,
+  rulesetBody,
+  rulesetRules,
   mapPullRequest,
   parsePullRequestUrl,
   pickBranchPullRequest,
@@ -33,6 +41,9 @@ const RUN_FIELDS = 'status,conclusion,url,createdAt,startedAt,workflowName,workf
 export function ghExitError(args, stderr) {
   if (args[0] === 'pr' && args[1] === 'view' && /Could not resolve to a PullRequest/i.test(stderr)) {
     return new GitHostNotFound(`pull request ${args[2]} not found`, { stderr });
+  }
+  if (args[0] === 'api' && /\(HTTP 404\)/.test(stderr)) {
+    return new GitHostNotFound(`gh api ${args.at(-1)}: not found`, { stderr });
   }
   const first = stderr.split(/\r?\n/).find((l) => l.trim() !== '')?.trim() ?? '';
   return new GitHostError(`gh ${args.slice(0, 2).join(' ')} failed: ${redact(first)}`, { stderr });
@@ -62,8 +73,84 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       throw new GitHostError(`gh ${args.slice(0, 2).join(' ')} printed something that is not JSON: ${e.message}`);
     }
   };
+  // REQ-3.14, D-70: `gh api` takes the host from --hostname, never from the remote, so the host and
+  // the repository are read from the origin remote here, once, and passed on every call.
+  let remote;
+  const origin = () => {
+    if (remote) return remote;
+    let url;
+    try {
+      url = String(exec('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8', cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })).trim();
+    } catch (e) {
+      throw new GitHostError(`the origin remote could not be read: ${redact(String(e.stderr ?? e.message).trim())}`);
+    }
+    const parsed = parseRemoteUrl(url);
+    if (parsed === null) throw new GitHostError(`the origin remote names no git host: ${redact(url)}`);
+    remote = parsed;
+    return remote;
+  };
+  const api = (endpoint, { method, body } = {}) => {
+    const { host } = origin();
+    const args = ['api', '--hostname', host, ...(method ? ['--method', method, '--input', '-'] : []), endpoint];
+    const out = gh(exec, args, { env, cwd: root, ...(method ? { input: JSON.stringify(body) } : {}) });
+    try {
+      return JSON.parse(out);
+    } catch (e) {
+      throw new GitHostError(`gh api ${endpoint} printed something that is not JSON: ${e.message}`);
+    }
+  };
+  const repoPath = () => `repos/${origin().owner}/${origin().repo}`;
+  const branchPath = (branch) => branch.split('/').map(encodeURIComponent).join('/');
   return {
     kind: 'github',
+    // The rules of the repository rulesets that apply to `branch` (D-84), and whether classic branch
+    // protection is on, which only decides the message.
+    readBranchRules(branch) {
+      assertBranch(branch);
+      const rules = api(`${repoPath()}/rules/branches/${branchPath(branch)}?per_page=100`);
+      return mapBranchRules(rules, api(`${repoPath()}/branches/${branchPath(branch)}`));
+    },
+    // The CODEOWNERS file GitHub reads on the default branch, as { path, text }, or null.
+    readCodeowners() {
+      for (const file of CODEOWNERS_PATHS) {
+        let got;
+        try {
+          got = api(`${repoPath()}/contents/${file}`);
+        } catch (e) {
+          if (e instanceof GitHostNotFound) continue;
+          throw e;
+        }
+        if (got?.type !== 'file' || typeof got.content !== 'string') continue;
+        return { path: file, text: Buffer.from(got.content, got.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8') };
+      }
+      return null;
+    },
+    // Sets `rules` (rulesetRules' input) on `branch` as the one repository ruleset named slicekit:
+    // created, or, when the repository has one, updated with the rules folded in. With
+    // `rules.kitChecks`, a required check of the slicekit ruleset that is not in that list is taken
+    // out; no other ruleset is touched. Writes nothing when nothing changes. Returns
+    // { id, name, created, removedChecks }. The only host write of a rule; `slicekit init --protect`
+    // is its one caller (REQ-3.14).
+    applyBranchRules(branch, rules) {
+      assertBranch(branch);
+      const add = rulesetRules(rules);
+      const list = api(`${repoPath()}/rulesets?includes_parents=false&per_page=100`);
+      const mine = (Array.isArray(list) ? list : []).find((r) => r?.name === RULESET_NAME && r?.source_type !== 'Organization');
+      if (!mine) {
+        if (add.length === 0) return { id: null, name: RULESET_NAME, created: false, removedChecks: [] };
+        const made = api(`${repoPath()}/rulesets`, { method: 'POST', body: rulesetBody(branch, add) });
+        return { id: made?.id ?? null, name: RULESET_NAME, created: true, removedChecks: [] };
+      }
+      if (!Number.isInteger(mine.id)) throw new GitHostError('gh api printed a ruleset with no id');
+      const full = api(`${repoPath()}/rulesets/${mine.id}`);
+      const { rules: pruned, removed } = pruneRulesetChecks(mergeRulesetRules(full?.rules, add), rules.kitChecks);
+      if (add.length === 0 && removed.length === 0) return { id: mine.id, name: RULESET_NAME, created: false, removedChecks: [] };
+      const include = [...new Set([...(full?.conditions?.ref_name?.include ?? []), `refs/heads/${branch}`])];
+      const body = { ...rulesetBody(branch, pruned), conditions: { ref_name: { include, exclude: full?.conditions?.ref_name?.exclude ?? [] } } };
+      if (Array.isArray(full?.bypass_actors)) body.bypass_actors = full.bypass_actors;
+      api(`${repoPath()}/rulesets/${mine.id}`, { method: 'PUT', body });
+      return { id: mine.id, name: RULESET_NAME, created: false, removedChecks: removed };
+    },
     getPullRequest(n) {
       assertPrNumber(n);
       return mapPullRequest(ghJson(['pr', 'view', String(n), '--json', PR_FIELDS]));
