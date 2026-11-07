@@ -191,7 +191,19 @@ export function validateConfig(cfg) {
   }
   errors.push(...ciErrors(cfg.ci));
   errors.push(...testFilesErrors(cfg.testFiles));
+  errors.push(...agentsErrors(cfg.agents));
   return errors;
+}
+
+// REQ-3.13, D-72: agents is optional; agents.denyPaths holds glob patterns over repository-relative
+// POSIX paths that agents may not read or change, and reads as the empty list when absent.
+function agentsErrors(agents) {
+  if (agents === undefined) return [];
+  if (!isObject(agents)) return ['agents: must be an object'];
+  const list = agents.denyPaths;
+  if (list === undefined) return [];
+  if (!(isStringArray(list) && list.every((s) => s !== ''))) return ['agents.denyPaths: must be an array of non-empty strings'];
+  return [];
 }
 
 // D-46: testFiles is optional; when present, regular expressions over the repository-relative POSIX

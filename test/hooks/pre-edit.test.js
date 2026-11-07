@@ -447,3 +447,35 @@ test('the intake interview session is kit-owned', () => {
     cleanup();
   }
 });
+
+// P4/S-39 (REQ-3.13, REQ-3.3, D-72)
+test('an edit to a path in agents.denyPaths is denied, naming the pattern', () => {
+  const { root, cleanup } = makeRepo({ files: { 'data/pain001-sample.xml': '<x/>', 'config/prod.pem': 'k', 'src/a.js': 'x' } });
+  try {
+    const cfg = cfgFor({ agents: { denyPaths: ['data/**', '**/*.pem', 'secrets/'] } });
+    const denied = (r, file, pattern) => {
+      assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `expected a deny, got ${JSON.stringify(r)}`);
+      assert.ok(reason(r).includes(`agents.denyPaths pattern ${pattern}`), reason(r));
+      assert.ok(reason(r).includes(file), reason(r));
+    };
+    for (const tool of ['Edit', 'Write', 'MultiEdit']) {
+      denied(decide(root, 'data/pain001-sample.xml', { tool, cfg }), 'data/pain001-sample.xml', 'data/**');
+      denied(decide(root, path.join(root, 'data', 'pain001-sample.xml'), { tool, cfg }), 'data/pain001-sample.xml', 'data/**');
+    }
+    denied(decide(root, `${backslashed(root)}\\data\\new\\deep.csv`, { cfg }), 'data/new/deep.csv', 'data/**');
+    denied(decide(root, 'config/prod.pem', { tool: 'Edit', cfg }), 'config/prod.pem', '**/*.pem');
+    denied(decide(root, 'secrets/token.txt', { cfg }), 'secrets/token.txt', 'secrets/');
+    denied(decide(root, 'cells.ipynb', { tool: 'NotebookEdit', key: 'notebook_path', cfg: cfgFor({ agents: { denyPaths: ['*.ipynb'] } }) }),
+      'cells.ipynb', '*.ipynb');
+    // A relative path from a subdirectory resolves against it.
+    denied(decide(root, '../data/pain001-sample.xml', { cfg, cwd: path.join(root, 'src') }), 'data/pain001-sample.xml', 'data/**');
+    assertAllow(decide(root, 'src/a.js', { tool: 'Edit', cfg }));
+    assertAllow(decide(root, 'src/data.js', { cfg }));
+    assertAllow(decide(root, 'database/a.sql', { cfg }));
+    // With the list empty or absent, nothing new is denied.
+    assertAllow(decide(root, 'data/pain001-sample.xml', { tool: 'Edit', cfg: cfgFor({ agents: { denyPaths: [] } }) }));
+    assertAllow(decide(root, 'data/pain001-sample.xml', { tool: 'Edit' }));
+  } finally {
+    cleanup();
+  }
+});

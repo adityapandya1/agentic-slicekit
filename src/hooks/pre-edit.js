@@ -7,7 +7,8 @@
 // under any root, or a `slicekit/subagent-*` marker, `slicekit/retry-*` retry state or `slicekit/agents-*`
 // started-agents record in a git directory (`.git` or `*.git`), or the `slicekit/interview.json` intake
 // session in one (a linked worktree's included)
-// — always; then, only while
+// — always; (4) a path that matches a pattern of the root's `agents.denyPaths` (REQ-3.13) — always;
+// then, only while
 // the file's own root has an active slice (a `slice/*` branch with a state file) in `tests-red` or
 // `building`: (1) a frozen test of that slice, unless `unfrozen` lists it; (2) a file under the docs root
 // that does not exist yet (only a create can name a missing file), except the runbook and anything in
@@ -28,7 +29,7 @@ import { parseSliceAddr } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { phaseOfDir } from '../slicefile.js';
 import { allow, deny } from './io.js';
-import { activeSlice, existingAncestor, fromGitBash, real, toPosix } from './paths.js';
+import { activeSlice, denyPaths, existingAncestor, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
 
 const WIN = process.platform === 'win32';
 const GUARDED_STATES = new Set(['tests-red', 'building']);
@@ -127,6 +128,10 @@ function judge(filePath, input, hookRoot, hookCfg) {
   // (3)
   if (kitOwned(abs)) return deny(`${rel ?? toPosix(abs)} is written only by the slicekit CLI`);
   if (rel === null) return allow();
+
+  // (4)
+  const pattern = matchesDeny(rel, denyPaths(cfg));
+  if (pattern !== null) return deny(`${rel} matches agents.denyPaths pattern ${pattern}; agents may not read or change it (REQ-3.13)`);
 
   const active = activeSlice(root, cfg);
   if (active?.error) throw new Error(active.error);

@@ -106,3 +106,80 @@ export function frozenTests(root, cfg) {
   const files = active.state.frozenTests.map(rel).filter((f) => !unfrozen.has(key(f)));
   return { id: active.id, files };
 }
+
+// ---- agents.denyPaths (REQ-3.13, D-72) ----
+
+// One gitignore-style pattern over repository-relative POSIX paths as an anchored regular expression:
+// `**` crosses segments, `*` and `?` stay in one, `[...]` is a class; a leading `/` or `./` anchors at
+// the root, which a pattern with no inner `/` is not (it matches at any depth); a trailing `/` names a
+// directory. Case-insensitive on win32.
+function denyRe(pattern) {
+  let p = pattern.replace(/\\/g, '/');
+  p = p.replace(/^\.\//, '');
+  let anchored = p.startsWith('/');
+  p = p.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (p.includes('/')) anchored = true;
+  let src = '';
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === '*' && p[i + 1] === '*') {
+      const atStart = i === 0 || p[i - 1] === '/';
+      const atEnd = i + 2 === p.length || p[i + 2] === '/';
+      if (atStart && p[i + 2] === '/') {
+        src += '(?:.*/)?';
+        i += 2;
+      } else if (atStart && atEnd) {
+        src += '.*';
+        i += 1;
+      } else {
+        src += '[^/]*';
+        i += 1;
+      }
+    } else if (c === '*') src += '[^/]*';
+    else if (c === '?') src += '[^/]';
+    else if (c === '[' && p.indexOf(']', i + 2) !== -1) {
+      const end = p.indexOf(']', i + 2);
+      const body = p.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\');
+      src += `[${body}]`;
+      i = end;
+    } else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
+  }
+  return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${src}$`, process.platform === 'win32' ? 'i' : '');
+}
+
+// -> the first pattern of `patterns` that matches the repository-relative POSIX path `rel` or one of
+// its parent directories, or null. Shared by pre-edit and pre-bash.
+export function matchesDeny(rel, patterns) {
+  if (!Array.isArray(patterns) || patterns.length === 0 || typeof rel !== 'string' || rel === '') return null;
+  const segs = rel.replace(/\\/g, '/').replace(/^\.\//, '').split('/').filter((s) => s !== '' && s !== '.');
+  if (segs.length === 0) return null;
+  const prefixes = segs.map((_, k) => segs.slice(0, k + 1).join('/'));
+  for (const pattern of patterns) {
+    if (typeof pattern !== 'string' || pattern === '') continue;
+    const re = denyRe(pattern);
+    if (prefixes.some((pre) => re.test(pre))) return pattern;
+  }
+  return null;
+}
+
+// -> the first pattern anchored at the root whose literal leading directories, up to its first glob
+// segment, are exactly the repository-relative directory `rel` (`data` for `data/**` or
+// `data/*.xml`), or null. A command naming that directory reads what the pattern covers.
+export function denyDir(rel, patterns) {
+  if (!Array.isArray(patterns) || typeof rel !== 'string' || rel === '') return null;
+  const key = (s) => (process.platform === 'win32' ? s.toLowerCase() : s);
+  const want = key(rel.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, ''));
+  for (const pattern of patterns) {
+    if (typeof pattern !== 'string' || pattern === '') continue;
+    const p = pattern.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!p.includes('/')) continue;
+    const segs = p.split('/');
+    const first = segs.findIndex((s) => /[*?[]/.test(s));
+    if (first <= 0) continue;
+    if (key(segs.slice(0, first).join('/')) === want) return pattern;
+  }
+  return null;
+}
+
+// The config's deny list, the empty list when absent.
+export const denyPaths = (cfg) => (Array.isArray(cfg?.agents?.denyPaths) ? cfg.agents.denyPaths : []);
