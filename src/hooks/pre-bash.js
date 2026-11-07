@@ -12,7 +12,11 @@
 // agent's shell: `slicekit init --protect`, or a `gh api` write (a method other than GET, or a field or
 // input flag without `-X GET`) to rulesets, rules or branch protection; (0c) a write to a test frozen
 // for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
-// `truncate`.
+// `truncate`; (0d) a command naming a path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
+// argument, redirection target, option value or `<rev>:<path>` path, resolved against the shell's
+// directory, a glob or brace expression by what it expands to, and the directory a pattern starts with
+// (`data` for `data/**`); the directory each command runs in and each `cd`/`pushd` target are judged
+// too, and while the list is set a `cd` it cannot resolve from the text is refused.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -45,7 +49,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { frozenTests, fromGitBash, real, toPosix } from './paths.js';
+import { denyDir, denyPaths, frozenTests, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -61,28 +65,46 @@ const DELIM_END = /[\s;&|()<>`]/;
 function lex(command) {
   const s = String(command);
   const out = [];
-  let cur = { toks: [], heredocs: [] };
+  // `depth` counts the unquoted subshell parentheses a segment sits in.
+  let depth = 0;
+  let cur = { toks: [], heredocs: [], depth };
   let word = null;
   let bare = '';
   let expand = '';
   let pending = [];
   let tickOpen = false;
+  // `m` is one character per character of the word: `1` where it was quoted or escaped, `0` where
+  // the shell reads it as syntax (a brace expression's braces and commas count only there).
+  let mask = '';
+  // Open `case` commands: in each, whether the next `)` ends a pattern rather than a subshell.
+  const cases = [];
   const add = (text, quoted, expands = !quoted) => {
     word = (word ?? '') + text;
     if (!quoted) bare += text;
     if (expands) expand += text;
+    mask += (quoted || !expands ? '1' : '0').repeat(text.length);
   };
   const endWord = () => {
-    if (word !== null) cur.toks.push({ v: word, b: bare, x: expand });
+    if (word !== null) {
+      const plain = word === bare && !mask.includes('1');
+      // A command starts at a segment's first word or after the reserved words that open a
+      // construct: `then case ...`, `do case ...`, `{ case ...`, `! case ...`.
+      const atStart = cur.toks.every((t) => t.v === t.b && !t.m?.includes('1') && KEYWORDS.has(t.v));
+      if (plain && atStart && word === 'case') cases.push({ pattern: false, awaitIn: true });
+      else if (plain && atStart && word === 'esac' && cases.length) cases.pop();
+      else if (plain && word === 'in' && cases.at(-1)?.awaitIn) Object.assign(cases.at(-1), { awaitIn: false, pattern: true });
+      cur.toks.push({ v: word, b: bare, x: expand, m: mask });
+    }
     word = null;
     bare = '';
     expand = '';
+    mask = '';
   };
   const endSegment = () => {
     endWord();
     const ended = cur;
     if (cur.toks.length) out.push(cur);
-    cur = { toks: [], heredocs: [] };
+    cur = { toks: [], heredocs: [], depth };
     return ended;
   };
   let i = 0;
@@ -161,6 +183,19 @@ function lex(command) {
         tickOpen = !tickOpen;
       }
       const ended = endSegment();
+      const open = cases.at(-1);
+      if (open?.pattern && (c === '(' || c === ')')) {
+        // A case pattern's parentheses: `a)` and the optional `(a)`; no subshell starts or ends.
+        if (c === ')') open.pattern = false;
+      } else if (c === '(' || c === ')') {
+        depth = c === '(' ? depth + 1 : Math.max(0, depth - 1);
+        cur.depth = depth;
+      }
+      // `;;` (and `;&`, `;;&`) ends a case arm: the next `)` ends a pattern again.
+      if (c === ';' && open && (s[i + 1] === ';' || s[i + 1] === '&')) {
+        open.pattern = true;
+        i += s[i + 2] === '&' ? 2 : 1;
+      }
       if (c === '|' && s[i + 1] === '|') i += 1;
       else if (c === '|') cur.stdin = ended;
       i += 1;
@@ -647,6 +682,9 @@ const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
+  // The directory a command runs in is judged too (rule 0d): `cd data && ls` reads data.
+  if (toks.length && state.cwd !== null) acc.named.push({ word: state.cwd, dir: null, isDir: true });
+  for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd, globstar: !!state.globstar });
   if (!toks.length) {
     for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
     return;
@@ -665,8 +703,35 @@ function walk(seg, state, acc) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
   }
   const b = base(w[0]);
+  // `shopt -s globstar` makes a later `**` recursive, `shopt -u globstar` ends it; a subshell's
+  // setting ends with it.
+  if (b === 'shopt') {
+    const flags = w.slice(1).filter((x) => /^-[a-z]+$/.test(x)).join('');
+    const set = flags.includes('s') ? true : flags.includes('u') ? false : null;
+    if (set !== null && w.slice(1).includes('globstar')) state.globstar = set;
+    return;
+  }
   if (b === 'cd' || b === 'pushd') {
-    const target = w.slice(1).find((x) => !x.startsWith('-') || x === '-');
+    const at = toks.findIndex((t, k) => k > 0 && (!t.v.startsWith('-') || t.v === '-'));
+    const target = at === -1 ? undefined : toks[at].v;
+    // Rule 0d judges where the cd goes, whether or not the directory exists yet; a target it
+    // cannot resolve from the text is recorded, and refused while agents.denyPaths is set.
+    const unknown = (label) => {
+      if (acc.cdUnknown === null) acc.cdUnknown = label;
+    };
+    // An unquoted backtick ends the segment in the lexer, so the real target, the substitution's
+    // output, is not among `toks`: `cd `echo data`` would otherwise read as a cd with no target.
+    if (seg.subst) unknown(`${b} \`...\``);
+    if (target === undefined) {
+      if (b === 'cd') acc.named.push({ word: os.homedir(), dir: null, isDir: true });
+      else unknown('pushd');
+    } else if (target === '-' || /[$`]/.test(toks[at].x ?? target) || (target.startsWith('~') && !/^~(\/|$)/.test(target))) {
+      unknown(`${b} ${target}`);
+    } else {
+      const t = fromGitBash((target === '~' || target.startsWith('~/') ? os.homedir() + target.slice(1) : target).replace(/\\/g, '/'));
+      if (state.cwd === null && !path.isAbsolute(t)) unknown(`${b} ${target}`);
+      else acc.named.push({ word: path.resolve(state.cwd ?? '', t), dir: null, isDir: true });
+    }
     if (b === 'pushd') state.stack.push({ cwd: state.cwd, label: state.label });
     if (target === undefined) {
       state.cwd = b === 'cd' ? os.homedir() : null;
@@ -682,6 +747,7 @@ function walk(seg, state, acc) {
   }
   if (b === 'popd') {
     const prev = state.stack.pop();
+    if (!prev && acc.cdUnknown === null) acc.cdUnknown = 'popd';
     state.cwd = prev ? prev.cwd : null;
     state.label = prev ? prev.label : 'popd';
     return;
@@ -692,10 +758,16 @@ function walk(seg, state, acc) {
     if (k !== -1 && w[k + 1] !== undefined) bodies = [w[k + 1]];
     else if (seg.heredocs.length) bodies = seg.heredocs;
     else bodies = seg.stdin ? seg.stdin.heredocs : [];
-    for (const body of bodies) {
-      const inner = { cwd: state.cwd, label: state.label, stack: [] };
-      for (const s of lex(body)) walk(s, inner, acc);
+    // A new shell starts with globstar off, unless its own options turn it on: `-O globstar`,
+    // `-Oglobstar`; `+O globstar` turns it off; the last one before the body wins.
+    let globstar = false;
+    for (let j = 1; j < (k === -1 ? w.length : k); j++) {
+      const opt = /^([-+])O(.*)$/.exec(w[j]);
+      if (!opt) continue;
+      const name = opt[2] === '' ? w[++j] : opt[2];
+      if (name === 'globstar') globstar = opt[1] === '-';
     }
+    for (const body of bodies) walkAll(lex(body), { cwd: state.cwd, label: state.label, stack: [], globstar }, acc);
     return;
   }
   if (b === 'gh') {
@@ -742,10 +814,21 @@ function walk(seg, state, acc) {
 // command's text for rule 6, the paths written (rule 0c), and the first reason for rules 0a and 0b.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [], mentions: [], writes: [], unjudgeable: null, hostRules: null };
-  const state = { cwd, label: cwd, stack: [] };
-  for (const seg of lex(command)) walk(seg, state, acc);
+  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, hostRules: null, cdUnknown: null };
+  walkAll(lex(command), { cwd, label: cwd, stack: [] }, acc);
   return acc;
+}
+
+// Walks segments in order; a `cd` inside a subshell `( ... )` ends with it, so the directory is put
+// back when the segments leave the parentheses.
+function walkAll(segs, state, acc) {
+  const saved = [];
+  for (const seg of segs) {
+    const depth = seg.depth ?? 0;
+    while (saved.length < depth) saved.push({ cwd: state.cwd, label: state.label, stack: [...state.stack], globstar: state.globstar });
+    while (saved.length > depth) Object.assign(state, saved.pop());
+    walk(seg, state, acc);
+  }
 }
 
 export const invocations = (command, cwd = process.cwd()) => parse(command, cwd).invs;
@@ -846,9 +929,10 @@ const WIN = process.platform === 'win32';
 const fkey = (p) => (WIN ? p.toLowerCase() : p);
 const GLOB = /[*?[]/;
 
-// A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment).
+// A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment;
+// `[!...]` and `[^...]` are both a negated class, as Bash reads them).
 function globRe(pattern) {
-  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\[(?:!|\\\^)/g, '[^').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
   return new RegExp(`^${src}$`, WIN ? 'i' : '');
 }
 
@@ -902,6 +986,250 @@ function frozenWrite(root, cfg, writes) {
   return null;
 }
 
+// ---- rule 0d: paths agents may not touch (REQ-3.13) ----
+
+// Every word of a simple command that may name a path, as {word, fromTop?}: the command and its
+// arguments, a redirection's target with the operator cut off, the value of `--opt=value` or
+// `NAME=value`, the value a short option carries attached (`-fFILE`), and the path of a
+// `<rev>:<path>` word (`fromTop` when git reads it from the repository's top); `glob` marks a word
+// the shell would expand. A word holding a
+// variable or a command substitution is not judged, nor the command's name when it holds no `/` (the
+// shell looks that up on PATH).
+function namedWords(toks, head) {
+  const out = [];
+  // `cd` and `pushd` read nothing; the commands after them are judged from the new directory.
+  if (head && (base(head.v) === 'cd' || base(head.v) === 'pushd')) return out;
+  for (const t of toks) {
+    if (t === head && !/[/\\]/.test(t.v)) continue;
+    if (/[$`]/.test(t.x ?? '')) continue;
+    const cuts = [];
+    const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(t.v);
+    if (op && t.b.startsWith(op[0])) cuts.push(op[0].length);
+    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(t.v)) cuts.push(t.v.indexOf('=') + 1);
+    else if (/^-[^-]./.test(t.v)) {
+      // Bundled short options (`tar -tfdata/x.tar`): the value may start after any option letter, so
+      // the tail after each leading letter is judged.
+      cuts.push(2);
+      for (let k = 3; k < t.v.length && /[A-Za-z]/.test(t.v[k - 1]); k++) cuts.push(k);
+    } else if (t.v.startsWith('-')) continue;
+    else cuts.push(0);
+    for (const cut of cuts) wordPaths(t, cut, out);
+  }
+  return out;
+}
+
+// Appends to `out` the paths word `t` names from character `cut` on: each word its braces expand to,
+// with `~` as the home directory, and the path of a `<rev>:<path>` word.
+function wordPaths(t, cut, out) {
+  const v = t.v.slice(cut);
+  if (v === '') return;
+  const m = (t.m ?? '0'.repeat(t.v.length)).slice(cut);
+  // An unquoted brace expression becomes each word it expands to; one too wide is refused.
+  const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v, m) : [v];
+  if (variants === null) {
+    out.push({ word: v, wide: true });
+    return;
+  }
+  const glob = GLOB.test(t.b);
+  for (let w of variants) {
+    // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
+    if ((w === '~' || w.startsWith('~/')) && t.b.includes('~')) w = os.homedir() + w.slice(1);
+    out.push({ word: w, glob });
+    // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
+    // repository's top, or from the shell's directory when it starts with `./` or `../`.
+    const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(w);
+    if (rev && !/^[A-Za-z]:[\\/]/.test(w)) {
+      const p = rev[1];
+      out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
+    }
+  }
+}
+
+// The words a Bash brace expression expands to: `{a,b}` lists (nested too) and `{1..3}` or `{a..c}`
+// sequences, left to right; a `{` with no top-level `,` or `..` stays literal. `mask` marks each
+// character of `word` that was quoted or escaped (`1`): such a brace or comma is text, not syntax, as
+// Bash reads it (brace expansion runs before quotes are removed). Null when the expansion passes `cap`
+// words, so the caller refuses rather than judges a part.
+export function expandBraces(word, mask = '0'.repeat(word.length), cap = 1000) {
+  const out = [];
+  const stack = [[word, mask]];
+  while (stack.length) {
+    const [w, m] = stack.pop();
+    const found = firstBrace(w, m);
+    if (!found) {
+      out.push(w);
+      if (out.length > cap) return null;
+      continue;
+    }
+    const { start, end, parts } = found;
+    for (let k = parts.length - 1; k >= 0; k--) {
+      stack.push([w.slice(0, start) + parts[k][0] + w.slice(end + 1), m.slice(0, start) + parts[k][1] + m.slice(end + 1)]);
+    }
+    if (stack.length + out.length > cap) return null;
+  }
+  return out;
+}
+
+// -> {start, end, parts: [[text, mask]]} for the first brace pair in w that expands, or null. Only
+// characters the mask leaves unquoted count as `{`, `,` and `}`; an unclosed `{` is skipped and a
+// later one tried.
+function firstBrace(w, m) {
+  const syntax = (j, c) => w[j] === c && m[j] !== '1';
+  for (let i = 0; i < w.length; i++) {
+    if (!syntax(i, '{')) continue;
+    let depth = 0;
+    const commas = [];
+    let end = -1;
+    for (let j = i; j < w.length; j++) {
+      if (syntax(j, '{')) depth += 1;
+      else if (syntax(j, '}')) {
+        depth -= 1;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      } else if (syntax(j, ',') && depth === 1) commas.push(j);
+    }
+    if (end === -1) continue;
+    if (commas.length) {
+      const parts = [];
+      let from = i + 1;
+      for (const c of [...commas, end]) {
+        parts.push([w.slice(from, c), m.slice(from, c)]);
+        from = c + 1;
+      }
+      return { start: i, end, parts };
+    }
+    const body = w.slice(i + 1, end);
+    const seq = m.slice(i + 1, end).includes('1') ? null : /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])$/.exec(body);
+    if (seq) {
+      const num = /^-?\d+$/.test(seq[1]) && /^-?\d+$/.test(seq[2]);
+      if (num || (!/\d/.test(seq[1]) && !/\d/.test(seq[2]))) {
+        const a = num ? Number(seq[1]) : seq[1].charCodeAt(0);
+        const b = num ? Number(seq[2]) : seq[2].charCodeAt(0);
+        if (Math.abs(b - a) > 100000) return { start: i, end, parts: new Array(100001).fill(['', '']) };
+        const parts = [];
+        for (let n = a; a <= b ? n <= b : n >= b; n += a <= b ? 1 : -1) {
+          const text = num ? String(n) : String.fromCharCode(n);
+          parts.push([text, '0'.repeat(text.length)]);
+        }
+        return { start: i, end, parts };
+      }
+    }
+    // Not an expansion: look for a later `{`, past this one.
+  }
+  return null;
+}
+
+// The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
+// in one segment; `**` as `*`, as Bash reads it by default); a segment starting with `.` alone matches
+// dot names. With `globstar` (the command ran `shopt -s globstar` first), a segment that is only `**`
+// is the directory itself and everything under it, at any depth (dot names and symlinked directories
+// aside). Null when a segment expands to more than `cap` entries, so the caller fails closed instead of
+// judging a part.
+function expandGlob(base, word, globstar = false, cap = 20000) {
+  const target = toPosix(path.resolve(base, word));
+  const segs = target.split('/');
+  let found = [segs[0] === '' ? '/' : `${segs[0]}/`];
+  for (const seg of segs.slice(1)) {
+    if (seg === '') continue;
+    const next = [];
+    if (globstar && /^\*\*+$/.test(seg)) {
+      const stack = [...found];
+      while (stack.length) {
+        const d = stack.pop();
+        next.push(d);
+        if (next.length > cap) return null;
+        let entries = [];
+        try {
+          entries = fs.readdirSync(d, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const e of entries) {
+          if (e.name.startsWith('.')) continue;
+          const p = path.posix.join(d, e.name);
+          if (e.isDirectory()) stack.push(p);
+          else next.push(p);
+          if (next.length + stack.length > cap) return null;
+        }
+      }
+    } else if (!GLOB.test(seg)) {
+      for (const d of found) next.push(path.posix.join(d, seg));
+    } else {
+      const re = globRe(seg.replace(/\*\*+/g, '*'));
+      for (const d of found) {
+        let names = [];
+        try {
+          names = fs.readdirSync(d);
+        } catch {
+          continue;
+        }
+        for (const n of names) {
+          if (n.startsWith('.') && !seg.startsWith('.')) continue;
+          if (re.test(n)) next.push(path.posix.join(d, n));
+          if (next.length > cap) return null;
+        }
+      }
+    }
+    found = next;
+    if (!found.length) return [];
+  }
+  return found.filter((p) => fs.existsSync(p));
+}
+
+// -> {rel, pattern} for the first named word that resolves, inside the hook's root or the repository
+// the word is named in, to a path matching agents.denyPaths, or to the directory a pattern names
+// (`data` for `data/**`); a glob word is judged by what it expands to. Null for none.
+function deniedPath(root, cfg, named) {
+  const patterns = denyPaths(cfg);
+  if (!patterns.length || !named.length) return null;
+  const hookTop = real(path.resolve(root));
+  const topAt = new Map();
+  const seen = new Set();
+  let dirHit = null;
+  // The path is judged as written (`data/link`) and as resolved: a symlink under a listed directory
+  // that points out of the repository resolves to a `..` path, and its listed name must still count.
+  const judgeRel = (rel, abs, isDir) => {
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    const r = toPosix(rel);
+    let pattern = matchesDeny(r, patterns);
+    if (pattern === null && (isDir || (fs.existsSync(abs) && fs.statSync(abs).isDirectory()))) pattern = denyDir(r, patterns);
+    return pattern === null ? null : { rel: r, pattern };
+  };
+  const judge = (abs, top, isDir) => judgeRel(path.relative(top, abs), abs, isDir) ?? judgeRel(path.relative(top, real(abs)), abs, isDir);
+  for (const { dir, word, fromTop, glob, wide, isDir, globstar } of named) {
+    if (wide) return { wide: word };
+    const once = JSON.stringify([dir, word, fromTop, glob, isDir, globstar]);
+    if (seen.has(once)) continue;
+    seen.add(once);
+    const p = fromGitBash(word.replace(/\\/g, '/'));
+    const tops = [hookTop];
+    if (dir !== null) {
+      if (!topAt.has(dir)) topAt.set(dir, topOf(dir));
+      const t = topAt.get(dir);
+      if (t && !tops.includes(t)) tops.push(t);
+    }
+    for (const top of tops) {
+      const base = fromTop ? top : dir === null ? null : real(dir);
+      if (base === null && !path.isAbsolute(p)) continue;
+      const candidates = [path.resolve(base ?? top, p)];
+      if (glob && GLOB.test(p)) {
+        const expanded = expandGlob(base ?? top, p, globstar);
+        if (expanded === null) return { wide: p };
+        candidates.push(...expanded);
+      }
+      for (const abs of candidates) {
+        const hit = judge(abs, top, isDir);
+        // A path the command names is reported before the directory it runs in.
+        if (hit && !isDir) return hit;
+        if (hit && dirHit === null) dirHit = hit;
+      }
+    }
+  }
+  return dirHit;
+}
+
 // ---- the hook ----
 
 const unknownDir = (label) => deny(`cannot tell which branch ${label} is on; run the command from inside the repository`);
@@ -910,7 +1238,7 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts, mentions, writes, unjudgeable: why, hostRules } = parse(command, start);
+  const { invs, texts, mentions, writes, named, cdUnknown, unjudgeable: why, hostRules } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // (0a), in every session and on every branch (D-83)
@@ -923,6 +1251,17 @@ export function handle(input, { root, cfg }) {
   const hit = frozenWrite(root, cfg, writes);
   if (hit) {
     return deny(`${hit.rel} is frozen for ${hit.id}; a Bash command may not write it (REQ-3.3); amend the slice file to change the evaluation set`);
+  }
+  // (0d)
+  if (cdUnknown !== null && denyPaths(cfg).length) {
+    return deny(`cannot tell where ${cdUnknown} goes, so its paths cannot be judged against agents.denyPaths (REQ-3.13); cd to a literal directory`);
+  }
+  const named0d = deniedPath(root, cfg, named);
+  if (named0d?.wide) {
+    return deny(`${named0d.wide} expands too wide to judge against agents.denyPaths (REQ-3.13); name the paths or narrow the expression`);
+  }
+  if (named0d) {
+    return deny(`the command names ${named0d.rel}, which matches agents.denyPaths pattern ${named0d.pattern}; agents may not read or change it (REQ-3.13)`);
   }
 
   // The branch each commit and push runs on, following checkouts earlier in the same command.

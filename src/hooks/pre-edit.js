@@ -7,7 +7,8 @@
 // under any root, or a `slicekit/subagent-*` marker, `slicekit/retry-*` retry state or `slicekit/agents-*`
 // started-agents record in a git directory (`.git` or `*.git`), or the `slicekit/interview.json` intake
 // session in one (a linked worktree's included)
-// — always; then, only while
+// — always; (4) a path that matches a pattern of the root's `agents.denyPaths` (REQ-3.13) — always;
+// then, only while
 // the file's own root has an active slice (a `slice/*` branch with a state file) in `tests-red` or
 // `building`: (1) a frozen test of that slice, unless `unfrozen` lists it; (2) a file under the docs root
 // that does not exist yet (only a create can name a missing file), except the runbook and anything in
@@ -28,7 +29,7 @@ import { parseSliceAddr } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { phaseOfDir } from '../slicefile.js';
 import { allow, deny } from './io.js';
-import { activeSlice, existingAncestor, fromGitBash, real, toPosix } from './paths.js';
+import { activeSlice, denyPaths, existingAncestor, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
 
 const WIN = process.platform === 'win32';
 const GUARDED_STATES = new Set(['tests-red', 'building']);
@@ -47,12 +48,18 @@ function relInside(root, abs) {
 // -> the canonical absolute path. Accepts absolute Windows paths with either slash, Git Bash `/c/...`
 // on win32, and relative paths (against cwd, else root). Throws on a win32 stream name.
 function absolute(filePath, root, cwd) {
+  return real(written(filePath, root, cwd));
+}
+
+// -> the absolute path as named, its symlinks not followed: the directory it is named from is
+// canonical, the rest is the text (`data/link.txt` stays under data even when it points outside).
+function written(filePath, root, cwd) {
   const p = fromGitBash(String(filePath).replace(/\\/g, '/'));
   if (WIN && p.replace(/^[A-Za-z]:/, '').includes(':')) {
     throw new Error(`${filePath}: a stream name is not a file path`);
   }
   const base = typeof cwd === 'string' && cwd !== '' ? path.resolve(root, fromGitBash(cwd.replace(/\\/g, '/'))) : root;
-  return real(path.resolve(base, p));
+  return path.isAbsolute(p) ? path.resolve(p) : path.resolve(real(base), p);
 }
 
 // -> the POSIX path relative to root, or null when it is outside root.
@@ -126,7 +133,20 @@ function judge(filePath, input, hookRoot, hookCfg) {
 
   // (3)
   if (kitOwned(abs)) return deny(`${rel ?? toPosix(abs)} is written only by the slicekit CLI`);
+
+  // (4), the path as named: a symlink under a listed directory that points out of the repository
+  // resolves outside it, and its listed name must still count.
+  const lex = written(filePath, hookRoot, input.cwd);
+  for (const [r, c] of [[hookCanon, hookCfg], [root, cfg]]) {
+    const named = relInside(r, lex);
+    const hit = named === null ? null : matchesDeny(named, denyPaths(c));
+    if (hit !== null) return deny(`${named} matches agents.denyPaths pattern ${hit}; agents may not read or change it (REQ-3.13)`);
+  }
   if (rel === null) return allow();
+
+  // (4)
+  const pattern = matchesDeny(rel, denyPaths(cfg));
+  if (pattern !== null) return deny(`${rel} matches agents.denyPaths pattern ${pattern}; agents may not read or change it (REQ-3.13)`);
 
   const active = activeSlice(root, cfg);
   if (active?.error) throw new Error(active.error);

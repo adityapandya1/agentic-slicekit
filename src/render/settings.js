@@ -62,7 +62,26 @@ export function ourEntries(settings, prefixes) {
   return out;
 }
 
-export function mergeSettings(existing, hooks, { version, cli } = {}) {
+// REQ-3.13: each agents.denyPaths pattern as a Read and an Edit rule of permissions.deny. The rules
+// slicekit wrote last time are recorded in `_slicekit.deny` and replaced; every other deny entry is
+// the team's and stays, and a rule the team already holds is left the team's. -> {permissions, deny}:
+// the permissions object to write (undefined when there is none) and the rules slicekit now owns.
+function mergeDeny(base, denyPaths) {
+  const permissions = base.permissions && typeof base.permissions === 'object' && !Array.isArray(base.permissions) ? base.permissions : undefined;
+  const current = Array.isArray(permissions?.deny) ? permissions.deny : [];
+  const recorded = Array.isArray(base._slicekit?.deny) ? base._slicekit.deny : [];
+  const kept = current.filter((e) => !recorded.includes(e));
+  const rules = denyPaths.flatMap((p) => [`Read(${p})`, `Edit(${p})`]);
+  const ours = [...new Set(rules)].filter((e) => !kept.includes(e));
+  const deny = [...kept, ...ours];
+  if (deny.length === current.length && deny.every((e, i) => e === current[i])) return { permissions: base.permissions, deny: ours };
+  const next = { ...permissions };
+  if (deny.length > 0) next.deny = deny;
+  else delete next.deny;
+  return { permissions: Object.keys(next).length > 0 ? next : undefined, deny: ours };
+}
+
+export function mergeSettings(existing, hooks, { version, cli, denyPaths = [] } = {}) {
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
   const prefixes = ourPrefixes(base, cli);
   const merged = { ...(base.hooks ?? {}) };
@@ -72,5 +91,10 @@ export function mergeSettings(existing, hooks, { version, cli } = {}) {
   }
   const meta = { managed: true, version };
   if (cli) meta.cli = cli;
-  return { ...base, hooks: merged, _slicekit: meta };
+  const { permissions, deny } = mergeDeny(base, Array.isArray(denyPaths) ? denyPaths : []);
+  if (deny.length > 0) meta.deny = deny;
+  const out = { ...base, hooks: merged, _slicekit: meta };
+  if (permissions === undefined) delete out.permissions;
+  else out.permissions = permissions;
+  return out;
 }

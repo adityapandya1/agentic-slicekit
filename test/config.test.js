@@ -212,3 +212,17 @@ test('a jira tracker without baseUrl or project, or with an http URL, is refused
   // src/config.js does not change: its shape check passes a jira tracker through.
   assert.deepEqual(validateConfig(cfg(tracker)), []);
 });
+
+// P4/S-39 (REQ-3.13, D-72)
+test('agents.denyPaths that is not a list of strings is refused', () => {
+  const cfg = base();
+  const ERR = 'agents.denyPaths: must be an array of non-empty strings';
+  assert.deepEqual(validateConfig(cfg), [], 'absent reads as the empty list');
+  assert.deepEqual(validateConfig({ ...cfg, agents: { denyPaths: [] } }), []);
+  assert.deepEqual(validateConfig({ ...cfg, agents: { denyPaths: ['data/**', '**/*.pem', '.env'] } }), []);
+  for (const bad of ['data/**', [1], [['data/**']], {}, null, [''], ['data/**', 2]]) {
+    assert.deepEqual(validateConfig({ ...cfg, agents: { denyPaths: bad } }), [ERR], JSON.stringify(bad));
+  }
+  assert.deepEqual(validateConfig({ ...cfg, agents: 'data/**' }), ['agents: must be an object']);
+  assert.deepEqual(validateConfig({ ...cfg, agents: ['data/**'] }), ['agents: must be an object']);
+});

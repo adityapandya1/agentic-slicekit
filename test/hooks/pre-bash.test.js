@@ -909,3 +909,34 @@ test('init --protect and a gh api write to rulesets are denied and a read passes
     cleanup();
   }
 });
+
+// P4/S-39 (REQ-3.13, D-72)
+test('a command naming a path in agents.denyPaths is denied', () => {
+  const { root, cleanup } = repoOn('slice/P4-S-39-x', { 'data/pain001-sample.xml': '<x/>', 'src/a.js': 'x', 'keys/prod.pem': 'k' });
+  try {
+    const cfg = cfgFor({ agents: { denyPaths: ['data/**', '**/*.pem'] } });
+    const denied = (command, file, pattern, opts = {}) => {
+      const r = decide(root, command, { cfg, ...opts });
+      assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `${command}: expected a deny, got ${JSON.stringify(r)}`);
+      assert.ok(reason(r).includes(`agents.denyPaths pattern ${pattern}`), reason(r));
+      assert.ok(reason(r).includes(file), reason(r));
+    };
+    denied('cat data/pain001-sample.xml', 'data/pain001-sample.xml', 'data/**');
+    denied('head -n 5 ./data/pain001-sample.xml | grep Amt', 'data/pain001-sample.xml', 'data/**');
+    denied(`cat "${root}/data/pain001-sample.xml"`, 'data/pain001-sample.xml', 'data/**');
+    denied('cd data && cat pain001-sample.xml', 'data/pain001-sample.xml', 'data/**');
+    denied('cp src/a.js data/copy.js', 'data/copy.js', 'data/**');
+    denied('echo x > data/out.txt', 'data/out.txt', 'data/**');
+    denied('bash -c "cat data/pain001-sample.xml"', 'data/pain001-sample.xml', 'data/**');
+    denied('grep -r Amt --include=x data/pain001-sample.xml', 'data/pain001-sample.xml', 'data/**');
+    denied('openssl x509 -in keys/prod.pem', 'keys/prod.pem', '**/*.pem');
+    denied('cat ../data/pain001-sample.xml', 'data/pain001-sample.xml', 'data/**', { cwd: path.join(root, 'src') });
+    assertAllow(decide(root, 'cat src/a.js', { cfg }));
+    assertAllow(decide(root, 'ls src && echo database', { cfg }));
+    // With the list empty or absent, nothing new is denied.
+    assertAllow(decide(root, 'cat data/pain001-sample.xml', { cfg: cfgFor({ agents: { denyPaths: [] } }) }));
+    assertAllow(decide(root, 'cat data/pain001-sample.xml'));
+  } finally {
+    cleanup();
+  }
+});
