@@ -81,6 +81,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
   const counts = {};
   const lines = [];
   const ratchetCounts = {};
+  const notes = [];
   const seen = new Map();
   let over = 0;
   let blocking = 0;
@@ -103,6 +104,9 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
     let found;
     try {
       found = runRule(rule, ctx);
+      // A note (D-81: host rules not checked outside CI) is printed and never counted or blocking.
+      for (const f of found) if (f.note === true) notes.push(`note: ${f.rule} ${f.message}`);
+      found = found.filter((f) => f.note !== true);
     } catch (e) {
       block({ rule: rule.id, file: '-', line: 0, message: `rule ${rule.id} crashed: ${e?.message ?? e}`, bucket: '-' });
       continue;
@@ -135,6 +139,7 @@ export function check(root, { ci = false, env = process.env, rules = ALL_RULES }
   }
 
   const ruleCount = rules.filter((r) => !r.synthetic).length;
+  lines.push(...notes);
   lines.push(`check: ${findings.length} findings, ${over} over baseline, ${blocking} blocking, ${ruleCount} rules`);
-  return { findings, counts, ratchetCounts, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount, over, blocking };
+  return { findings, counts, ratchetCounts, notes, exitCode: over > 0 || blocking > 0 ? 1 : 0, lines, rules: ruleCount, over, blocking };
 }

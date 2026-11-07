@@ -60,7 +60,7 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   assert.ok(yml.includes(`actions/checkout@${pins['actions/checkout'].sha} # ${pins['actions/checkout'].tag}`));
   assert.ok(yml.includes(`actions/setup-node@${pins['actions/setup-node'].sha} # ${pins['actions/setup-node'].tag}`));
   assert.ok(yml.includes(`actions/upload-artifact@${pins['actions/upload-artifact'].sha}`));
-  assert.deepEqual(jobIds(yml), ['gate', 'cmd-test', 'cmd-lint', 'obs-1', 'ready-label', 'sync']);
+  assert.deepEqual(jobIds(yml), ['gate', 'cmd-test', 'cmd-lint', 'obs-1', 'checks', 'ready-label', 'sync']);
   assert.ok(jobBlock(yml, 'cmd-lint').includes('run: npm run lint\n'));
   assert.ok(jobBlock(yml, 'cmd-test').includes(`run: 'node --test "test/**/*.test.js"'\n`));
 
@@ -74,8 +74,9 @@ test('renders pinned actions and a job per non-empty command (REQ-3.11)', () => 
   assert.ok(!gate.includes('write'), 'gate keeps read-only permissions');
   assert.ok(!yml.includes('npx'), 'never a registry fetch (D-30)');
 
+  assert.ok(jobBlock(yml, 'checks').includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
   const ready = jobBlock(yml, 'ready-label');
-  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
+  assert.ok(ready.includes('needs: [checks]'));
   assert.ok(ready.includes('pull-requests: write'));
   assert.ok(ready.includes('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}'));
   assert.ok(ready.includes('slicekit.js ready-label'));
@@ -101,7 +102,7 @@ test('empty e2e command renders no job (REQ-3.11)', () => {
   assert.ok(!ids.includes('cmd-e2e'));
   assert.ok(!ids.includes('cmd-lint'), 'whitespace-only is empty');
   assert.deepEqual(ids.filter((id) => id.startsWith('cmd-')), ['cmd-test', 'cmd-build']);
-  assert.ok(jobBlock(yml, 'ready-label').includes('needs: [gate, cmd-test, cmd-build, obs-1]'));
+  assert.ok(jobBlock(yml, 'checks').includes('needs: [gate, cmd-test, cmd-build, obs-1]'));
 });
 
 test('observability steps render as jobs (REQ-3.11)', () => {
@@ -205,10 +206,13 @@ test('ready-label runs only for same-repository pull requests not opened by depe
 test('ready-label still runs when a needed job failed, and is told so', () => {
   // A failed gate or command job must take the label away, so the job runs unless the run was
   // cancelled (a newer push superseded it), and passes the failure to the CLI.
-  const ready = jobBlock(renderWorkflow(exampleConfig(), loadPins()), 'ready-label');
-  assert.ok(ready.includes('needs: [gate, cmd-test, cmd-lint, obs-1]'));
-  // What the expression counts as passed is held by the P3/S-32 test below, which evaluates it.
-  assert.match(ready, /^ {10}SLICEKIT_CHECKS_OK: \$\{\{ .*'failure'.*'cancelled'.* \}\}$/m, ready);
+  const yml = renderWorkflow(exampleConfig(), loadPins());
+  const ready = jobBlock(yml, 'ready-label');
+  // ready-label reads the checks job's result; the checks job needs every gating job and holds the
+  // expression, which the P3/S-32 test below evaluates.
+  assert.ok(ready.includes('needs: [checks]'));
+  assert.ok(ready.includes("          SLICEKIT_CHECKS_OK: ${{ needs.checks.result == 'success' }}\n"), ready);
+  assert.match(jobBlock(yml, 'checks'), /^ {10}SLICEKIT_CHECKS_OK: \$\{\{ .*'failure'.*'cancelled'.* \}\}$/m);
   assert.ok(!ready.includes('SLICEKIT_CHECKS_FAILED'));
   // D-35: telling a bookkeeping-only commit from a code change needs the reviewed head in the clone.
   assert.ok(ready.includes('          fetch-depth: 0\n'), 'ready-label checks out full history');
@@ -622,7 +626,7 @@ function bookkeepingOutput(yml, cli) {
   return { key: /^ {6}([A-Za-z0-9_-]+):/.exec(line)[1], step };
 }
 
-test('team command jobs are skipped for bookkeeping and ready-label counts them as passed', () => {
+test('team command jobs are skipped for bookkeeping and the checks job counts them as passed', () => {
   const cfg = exampleConfig();
   const yml = renderWorkflow(cfg, loadPins());
   const { key, step } = bookkeepingOutput(yml, cfg.cli);
@@ -645,7 +649,7 @@ test('team command jobs are skipped for bookkeeping and ready-label counts them 
     assert.equal(jobRuns(block, { needs: { gate: gateWith('success', '') } }), true, `${id} runs when there is no decision`);
   }
 
-  const ready = jobBlock(yml, 'ready-label');
+  const ready = jobBlock(yml, 'checks');
   const okLine = /^ {10}SLICEKIT_CHECKS_OK: (.*)$/m.exec(ready);
   assert.ok(okLine, ready);
   assert.deepEqual(listOf(ready, 'needs'), ['gate', 'cmd-test', 'cmd-lint', 'obs-1']);
@@ -741,4 +745,29 @@ test('a shard count that is not a positive integer is refused, naming the field'
     const errors = validateConfig(withShards(bad));
     assert.ok(errors.some((e) => e.startsWith('ci.shards: ')), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
   }
+});
+
+// P4/S-40 B-1, REQ-3.14: the ruleset requires gate and checks. On a bookkeeping head the command jobs
+// are skipped by their own if (no matrix names are reported), and the checks job still runs and passes,
+// so the required checks are satisfied.
+test('a bookkeeping run satisfies the required checks: checks runs and passes while cmd-test is skipped', () => {
+  const cfg = exampleConfig();
+  cfg.ci.matrix = true;
+  const yml = renderWorkflow(cfg, loadPins());
+  const { key } = bookkeepingOutput(yml, cfg.cli);
+  const book = { result: 'success', outputs: { [key]: 'bookkeeping' } };
+  const checks = jobBlock(yml, 'checks');
+  assert.ok(checks.includes('    if: ${{ always() }}\n'), checks);
+  assert.ok(!/strategy:|matrix/.test(checks), 'the checks job has no matrix, so its name is fixed');
+  const needs = listOf(checks, 'needs');
+  assert.deepEqual(needs, ['gate', ...jobIds(yml).filter((id) => /^(cmd-|obs-)/.test(id))]);
+  assert.equal(jobRuns(jobBlock(yml, 'cmd-test'), { needs: { gate: book } }), false, 'cmd-test is skipped for bookkeeping');
+  const results = { gate: book, 'obs-1': { result: 'success' } };
+  for (const id of needs.filter((n) => n.startsWith('cmd-'))) results[id] = { result: 'skipped' };
+  // A skipped need would skip a job without always(); the checks job runs anyway.
+  assert.equal(jobRuns(checks, { needs: results, __anySkipped: true }), true, 'checks runs');
+  const okLine = /^ {10}SLICEKIT_CHECKS_OK: (.*)$/m.exec(checks);
+  assert.equal(evalExpression(okLine[1], { needs: results, github: { event_name: 'pull_request' } }), true, 'checks passes');
+  assert.ok(checks.includes('run: test "$SLICEKIT_CHECKS_OK" = true\n'), checks);
+  assert.ok(jobBlock(yml, 'ready-label').includes('needs: [checks]'));
 });
