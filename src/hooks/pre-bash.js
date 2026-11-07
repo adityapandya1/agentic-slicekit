@@ -87,8 +87,11 @@ function lex(command) {
   const endWord = () => {
     if (word !== null) {
       const plain = word === bare && !mask.includes('1');
-      if (plain && cur.toks.length === 0 && word === 'case') cases.push({ pattern: false, awaitIn: true });
-      else if (plain && cur.toks.length === 0 && word === 'esac' && cases.length) cases.pop();
+      // A command starts at a segment's first word or after the reserved words that open a
+      // construct: `then case ...`, `do case ...`, `{ case ...`, `! case ...`.
+      const atStart = cur.toks.every((t) => t.v === t.b && !t.m?.includes('1') && KEYWORDS.has(t.v));
+      if (plain && atStart && word === 'case') cases.push({ pattern: false, awaitIn: true });
+      else if (plain && atStart && word === 'esac' && cases.length) cases.pop();
       else if (plain && word === 'in' && cases.at(-1)?.awaitIn) Object.assign(cases.at(-1), { awaitIn: false, pattern: true });
       cur.toks.push({ v: word, b: bare, x: expand, m: mask });
     }
@@ -708,6 +711,9 @@ function walk(seg, state, acc) {
     const unknown = (label) => {
       if (acc.cdUnknown === null) acc.cdUnknown = label;
     };
+    // An unquoted backtick ends the segment in the lexer, so the real target, the substitution's
+    // output, is not among `toks`: `cd `echo data`` would otherwise read as a cd with no target.
+    if (seg.subst) unknown(`${b} \`...\``);
     if (target === undefined) {
       if (b === 'cd') acc.named.push({ word: os.homedir(), dir: null, isDir: true });
       else unknown('pushd');

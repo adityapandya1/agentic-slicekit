@@ -194,6 +194,35 @@ test("deny » a case pattern's parenthesis does not end the subshell's cd", () =
   }
 });
 
+// H-16 and H-17: a case after a reserved word starts a command too, and a cd whose target is an
+// unquoted backtick substitution cannot be resolved; both judged under the list, unchanged without it.
+test('deny » a case after then, else, do, { or ! keeps the subshell, and a backtick cd target is refused', () => {
+  const { root, cleanup } = repo();
+  try {
+    const forms = [
+      '(cd src; if true; then case a in a) cat ../data/x.xml;; esac; fi)',
+      '(cd src; if false; then :; else case a in a) cat ../data/x.xml;; esac; fi)',
+      '(cd src; if false; then :; elif true; then case a in a) cat ../data/x.xml;; esac; fi)',
+      '(cd src; { case a in a) cat ../data/x.xml;; esac; })',
+      '(cd src; while true; do case a in a) cat ../data/x.xml; break;; esac; done)',
+      '(cd src; ! case a in a) cat ../data/x.xml;; esac)',
+      '(cd src; if case a in a) cat ../data/x.xml;; esac; then :; fi)',
+      'cd `echo data` && cat x.xml',
+      'cd `pwd` && ls',
+      'pushd `echo data` && ls',
+    ];
+    for (const command of forms) assert.equal(decision(decide(root, command)), 'deny', command);
+    // The subshell still ends at its own `)`, and a word that only looks like a keyword does not open a case.
+    assert.equal(decision(decide(root, '(cd src; if true; then case a in a) ls;; esac; fi); cat src/a.js')), 'allow');
+    assert.equal(decision(decide(root, '(cd src; echo then case a in a); cat src/a.js')), 'allow');
+    const plain = defaultConfig({ name: 'demo', shape: 'backend' });
+    const run = (command) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: plain, env: {} });
+    for (const command of forms) assert.equal(decision(run(command)), 'allow', `${command} with no list`);
+  } finally {
+    cleanup();
+  }
+});
+
 test('deny » matchesDeny and denyDir read gitignore-style patterns', () => {
   assert.equal(matchesDeny('data/x.xml', ['data/**']), 'data/**');
   assert.equal(matchesDeny('a/data/x.xml', ['data/**']), null);
