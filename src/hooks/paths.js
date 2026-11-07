@@ -162,5 +162,24 @@ export function matchesDeny(rel, patterns) {
   return null;
 }
 
+// -> the first pattern anchored at the root whose literal leading directories, up to its first glob
+// segment, are exactly the repository-relative directory `rel` (`data` for `data/**` or
+// `data/*.xml`), or null. A command naming that directory reads what the pattern covers.
+export function denyDir(rel, patterns) {
+  if (!Array.isArray(patterns) || typeof rel !== 'string' || rel === '') return null;
+  const key = (s) => (process.platform === 'win32' ? s.toLowerCase() : s);
+  const want = key(rel.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, ''));
+  for (const pattern of patterns) {
+    if (typeof pattern !== 'string' || pattern === '') continue;
+    const p = pattern.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!p.includes('/')) continue;
+    const segs = p.split('/');
+    const first = segs.findIndex((s) => /[*?[]/.test(s));
+    if (first <= 0) continue;
+    if (key(segs.slice(0, first).join('/')) === want) return pattern;
+  }
+  return null;
+}
+
 // The config's deny list, the empty list when absent.
 export const denyPaths = (cfg) => (Array.isArray(cfg?.agents?.denyPaths) ? cfg.agents.denyPaths : []);

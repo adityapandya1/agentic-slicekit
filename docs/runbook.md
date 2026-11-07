@@ -38,7 +38,7 @@ A team lists the paths agents may not read or change in `.slicekit/config.json`,
 "agents": { "denyPaths": ["data/**", "**/*.pem", ".env*", "secrets/"] }
 ```
 
-`**` crosses directories; `*` and `?` stay inside one. A pattern with no `/` but a trailing one, such as `*.pem` or a directory name ending in `/`, matches at any depth; any other pattern starts at the repository root. A pattern that matches a directory covers everything under it. Absent or empty, nothing is denied.
+`**` crosses directories; `*` and `?` stay inside one. A pattern with no `/` in it, such as `*.pem`, matches at any depth, and so does a directory name with only a trailing `/`; any other pattern starts at the repository root. A pattern that matches a directory covers everything under it, and pre-bash also refuses a command that names the directory a pattern starts with, such as `ls data` under `data/**`. Absent or empty, nothing is denied.
 
 1. List the directories that hold real records (payment files, exports, customer extracts) and every file that holds a secret (keys, certificates, `.env` files).
 2. Run `slicekit update`. It writes a `Read(<pattern>)` and an `Edit(<pattern>)` rule per pattern into `permissions.deny` of `.claude/settings.json`; Claude Code refuses a read under those rules, since no hook sees a read. The rules slicekit wrote are recorded in `_slicekit.deny` and replaced on the next update; the team's own deny entries stay.

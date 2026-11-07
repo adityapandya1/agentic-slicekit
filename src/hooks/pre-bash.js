@@ -13,7 +13,8 @@
 // input flag without `-X GET`) to rulesets, rules or branch protection; (0c) a write to a test frozen
 // for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
 // `truncate`; (0d) a command naming a path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
-// argument, redirection target or `--opt=value` value, resolved against the shell's directory.
+// argument, redirection target, option value or `<rev>:<path>` path, resolved against the shell's
+// directory, a glob by what it expands to, and the directory a pattern starts with (`data` for `data/**`).
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -46,7 +47,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { denyPaths, frozenTests, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
+import { denyDir, denyPaths, frozenTests, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -648,7 +649,7 @@ const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
-  for (const word of namedWords(seg.toks, toks[0])) acc.named.push({ dir: state.cwd, word });
+  for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd });
   if (!toks.length) {
     for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
     return;
@@ -906,47 +907,100 @@ function frozenWrite(root, cfg, writes) {
 
 // ---- rule 0d: paths agents may not touch (REQ-3.13) ----
 
-// Every word of a simple command that may name a path: the command and its arguments, a redirection's
-// target with the operator cut off, and the value of `--opt=value` or `NAME=value`. A word holding a
+// Every word of a simple command that may name a path, as {word, fromTop?}: the command and its
+// arguments, a redirection's target with the operator cut off, the value of `--opt=value` or
+// `NAME=value`, the value a short option carries attached (`-fFILE`), and the path of a
+// `<rev>:<path>` word, which git reads from the repository's top (`fromTop`). A word holding a
 // variable or a command substitution is not judged, nor the command's name when it holds no `/` (the
 // shell looks that up on PATH).
 function namedWords(toks, head) {
   const out = [];
+  // `cd` and `pushd` read nothing; the commands after them are judged from the new directory.
+  if (head && (base(head.v) === 'cd' || base(head.v) === 'pushd')) return out;
   for (const t of toks) {
     if (t === head && !/[/\\]/.test(t.v)) continue;
+    if (/[$`]/.test(t.x ?? '')) continue;
     let v = t.v;
     const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(v);
     if (op && t.b.startsWith(op[0])) v = v.slice(op[0].length);
     else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(v)) v = v.slice(v.indexOf('=') + 1);
+    else if (/^-[^-]./.test(v)) v = v.slice(2);
     else if (v.startsWith('-')) continue;
-    if (v === '' || /[$`]/.test(t.x ?? '')) continue;
-    out.push(v);
+    if (v === '') continue;
+    out.push({ word: v });
+    const rev = /^[^:]+:(.+)$/.exec(v);
+    if (rev && !/^[A-Za-z]:[\\/]/.test(v)) out.push({ word: rev[1].replace(/^\.\//, ''), fromTop: true });
   }
   return out;
 }
 
+// The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
+// in one segment; `**` as `*`), at most `cap` of them; a segment starting with `.` alone matches dot
+// names.
+function expandGlob(base, word, cap = 2000) {
+  const target = toPosix(path.resolve(base, word));
+  const segs = target.split('/');
+  let found = [segs[0] === '' ? '/' : `${segs[0]}/`];
+  for (const seg of segs.slice(1)) {
+    if (seg === '') continue;
+    const next = [];
+    if (!GLOB.test(seg)) {
+      for (const d of found) next.push(path.posix.join(d, seg));
+    } else {
+      const re = globRe(seg.replace(/\*\*+/g, '*'));
+      for (const d of found) {
+        let names = [];
+        try {
+          names = fs.readdirSync(d);
+        } catch {
+          continue;
+        }
+        for (const n of names) {
+          if (n.startsWith('.') && !seg.startsWith('.')) continue;
+          if (re.test(n)) next.push(path.posix.join(d, n));
+          if (next.length >= cap) break;
+        }
+      }
+    }
+    found = next;
+    if (!found.length) return [];
+  }
+  return found.filter((p) => fs.existsSync(p));
+}
+
 // -> {rel, pattern} for the first named word that resolves, inside the hook's root or the repository
-// the word is named in, to a path matching agents.denyPaths; null for none.
+// the word is named in, to a path matching agents.denyPaths, or to the directory a pattern names
+// (`data` for `data/**`); a glob word is judged by what it expands to. Null for none.
 function deniedPath(root, cfg, named) {
   const patterns = denyPaths(cfg);
   if (!patterns.length || !named.length) return null;
   const hookTop = real(path.resolve(root));
   const topAt = new Map();
-  for (const { dir, word } of named) {
+  const judge = (abs, top) => {
+    const rel = path.relative(top, real(abs));
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    const r = toPosix(rel);
+    let pattern = matchesDeny(r, patterns);
+    if (pattern === null && fs.existsSync(abs) && fs.statSync(abs).isDirectory()) pattern = denyDir(r, patterns);
+    return pattern === null ? null : { rel: r, pattern };
+  };
+  for (const { dir, word, fromTop } of named) {
     const p = fromGitBash(word.replace(/\\/g, '/'));
-    if (dir === null && !path.isAbsolute(p)) continue;
-    const abs = real(path.resolve(dir === null ? hookTop : real(dir), p));
     const tops = [hookTop];
     if (dir !== null) {
       if (!topAt.has(dir)) topAt.set(dir, topOf(dir));
       const t = topAt.get(dir);
-      if (t) tops.push(t);
+      if (t && !tops.includes(t)) tops.push(t);
     }
     for (const top of tops) {
-      const rel = path.relative(top, abs);
-      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
-      const pattern = matchesDeny(toPosix(rel), patterns);
-      if (pattern !== null) return { rel: toPosix(rel), pattern };
+      const base = fromTop ? top : dir === null ? null : real(dir);
+      if (base === null && !path.isAbsolute(p)) continue;
+      const candidates = [path.resolve(base ?? top, p)];
+      if (GLOB.test(p)) candidates.push(...expandGlob(base ?? top, p));
+      for (const abs of candidates) {
+        const hit = judge(abs, top);
+        if (hit) return hit;
+      }
     }
   }
   return null;
