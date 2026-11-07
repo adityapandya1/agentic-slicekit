@@ -63,7 +63,9 @@ const DELIM_END = /[\s;&|()<>`]/;
 function lex(command) {
   const s = String(command);
   const out = [];
-  let cur = { toks: [], heredocs: [] };
+  // `depth` counts the unquoted subshell parentheses a segment sits in.
+  let depth = 0;
+  let cur = { toks: [], heredocs: [], depth };
   let word = null;
   let bare = '';
   let expand = '';
@@ -84,7 +86,7 @@ function lex(command) {
     endWord();
     const ended = cur;
     if (cur.toks.length) out.push(cur);
-    cur = { toks: [], heredocs: [] };
+    cur = { toks: [], heredocs: [], depth };
     return ended;
   };
   let i = 0;
@@ -163,6 +165,10 @@ function lex(command) {
         tickOpen = !tickOpen;
       }
       const ended = endSegment();
+      if (c === '(' || c === ')') {
+        depth = c === '(' ? depth + 1 : Math.max(0, depth - 1);
+        cur.depth = depth;
+      }
       if (c === '|' && s[i + 1] === '|') i += 1;
       else if (c === '|') cur.stdin = ended;
       i += 1;
@@ -649,6 +655,8 @@ const tagLists = (args) => args.length === 0 || args.some((a) => a === '-l' || a
 // One simple command -> invocations {kind, dir, label, ...}; `state` carries cd/pushd forward.
 function walk(seg, state, acc) {
   const toks = stripPrefixes(seg.toks);
+  // The directory a command runs in is judged too (rule 0d): `cd data && ls` reads data.
+  if (toks.length && state.cwd !== null) acc.named.push({ word: state.cwd, dir: null, isDir: true });
   for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd });
   if (!toks.length) {
     for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
@@ -669,7 +677,23 @@ function walk(seg, state, acc) {
   }
   const b = base(w[0]);
   if (b === 'cd' || b === 'pushd') {
-    const target = w.slice(1).find((x) => !x.startsWith('-') || x === '-');
+    const at = toks.findIndex((t, k) => k > 0 && (!t.v.startsWith('-') || t.v === '-'));
+    const target = at === -1 ? undefined : toks[at].v;
+    // Rule 0d judges where the cd goes, whether or not the directory exists yet; a target it
+    // cannot resolve from the text is recorded, and refused while agents.denyPaths is set.
+    const unknown = (label) => {
+      if (acc.cdUnknown === null) acc.cdUnknown = label;
+    };
+    if (target === undefined) {
+      if (b === 'cd') acc.named.push({ word: os.homedir(), dir: null, isDir: true });
+      else unknown('pushd');
+    } else if (target === '-' || /[$`]/.test(toks[at].x ?? target) || (target.startsWith('~') && !/^~(\/|$)/.test(target))) {
+      unknown(`${b} ${target}`);
+    } else {
+      const t = fromGitBash((target === '~' || target.startsWith('~/') ? os.homedir() + target.slice(1) : target).replace(/\\/g, '/'));
+      if (state.cwd === null && !path.isAbsolute(t)) unknown(`${b} ${target}`);
+      else acc.named.push({ word: path.resolve(state.cwd ?? '', t), dir: null, isDir: true });
+    }
     if (b === 'pushd') state.stack.push({ cwd: state.cwd, label: state.label });
     if (target === undefined) {
       state.cwd = b === 'cd' ? os.homedir() : null;
@@ -685,6 +709,7 @@ function walk(seg, state, acc) {
   }
   if (b === 'popd') {
     const prev = state.stack.pop();
+    if (!prev && acc.cdUnknown === null) acc.cdUnknown = 'popd';
     state.cwd = prev ? prev.cwd : null;
     state.label = prev ? prev.label : 'popd';
     return;
@@ -695,10 +720,7 @@ function walk(seg, state, acc) {
     if (k !== -1 && w[k + 1] !== undefined) bodies = [w[k + 1]];
     else if (seg.heredocs.length) bodies = seg.heredocs;
     else bodies = seg.stdin ? seg.stdin.heredocs : [];
-    for (const body of bodies) {
-      const inner = { cwd: state.cwd, label: state.label, stack: [] };
-      for (const s of lex(body)) walk(s, inner, acc);
-    }
+    for (const body of bodies) walkAll(lex(body), { cwd: state.cwd, label: state.label, stack: [] }, acc);
     return;
   }
   if (b === 'gh') {
@@ -745,10 +767,21 @@ function walk(seg, state, acc) {
 // command's text for rule 6, the paths written (rule 0c), and the first reason for rules 0a and 0b.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, hostRules: null };
-  const state = { cwd, label: cwd, stack: [] };
-  for (const seg of lex(command)) walk(seg, state, acc);
+  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, hostRules: null, cdUnknown: null };
+  walkAll(lex(command), { cwd, label: cwd, stack: [] }, acc);
   return acc;
+}
+
+// Walks segments in order; a `cd` inside a subshell `( ... )` ends with it, so the directory is put
+// back when the segments leave the parentheses.
+function walkAll(segs, state, acc) {
+  const saved = [];
+  for (const seg of segs) {
+    const depth = seg.depth ?? 0;
+    while (saved.length < depth) saved.push({ cwd: state.cwd, label: state.label, stack: [...state.stack] });
+    while (saved.length > depth) Object.assign(state, saved.pop());
+    walk(seg, state, acc);
+  }
 }
 
 export const invocations = (command, cwd = process.cwd()) => parse(command, cwd).invs;
@@ -849,9 +882,10 @@ const WIN = process.platform === 'win32';
 const fkey = (p) => (WIN ? p.toLowerCase() : p);
 const GLOB = /[*?[]/;
 
-// A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment).
+// A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment;
+// `[!...]` and `[^...]` are both a negated class, as Bash reads them).
 function globRe(pattern) {
-  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\[!/g, '[^').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\[(?:!|\\\^)/g, '[^').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
   return new RegExp(`^${src}$`, WIN ? 'i' : '');
 }
 
@@ -928,19 +962,95 @@ function namedWords(toks, head) {
     else if (/^-[^-]./.test(v)) v = v.slice(2);
     else if (v.startsWith('-')) continue;
     if (v === '') continue;
-    // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
-    if ((v === '~' || v.startsWith('~/')) && t.b.includes('~')) v = os.homedir() + v.slice(1);
+    // An unquoted brace expression becomes each word it expands to; one too wide is refused.
+    const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v) : [v];
+    if (variants === null) {
+      out.push({ word: v, wide: true });
+      continue;
+    }
     const glob = GLOB.test(t.b);
-    out.push({ word: v, glob });
-    // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
-    // repository's top, or from the shell's directory when it starts with `./` or `../`.
-    const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(v);
-    if (rev && !/^[A-Za-z]:[\\/]/.test(v)) {
-      const p = rev[1];
-      out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
+    for (let w of variants) {
+      // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
+      if ((w === '~' || w.startsWith('~/')) && t.b.includes('~')) w = os.homedir() + w.slice(1);
+      out.push({ word: w, glob });
+      // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
+      // repository's top, or from the shell's directory when it starts with `./` or `../`.
+      const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(w);
+      if (rev && !/^[A-Za-z]:[\\/]/.test(w)) {
+        const p = rev[1];
+        out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
+      }
     }
   }
   return out;
+}
+
+// The words a Bash brace expression expands to: `{a,b}` lists (nested too) and `{1..3}` or `{a..c}`
+// sequences, left to right; a `{` with no top-level `,` or `..` stays literal. Null when the
+// expansion passes `cap` words, so the caller refuses rather than judges a part.
+export function expandBraces(word, cap = 1000) {
+  const out = [];
+  const stack = [word];
+  while (stack.length) {
+    const w = stack.pop();
+    const found = firstBrace(w);
+    if (!found) {
+      out.push(w);
+      if (out.length > cap) return null;
+      continue;
+    }
+    const { start, end, parts } = found;
+    const pre = w.slice(0, start);
+    const post = w.slice(end + 1);
+    for (let k = parts.length - 1; k >= 0; k--) stack.push(pre + parts[k] + post);
+    if (stack.length + out.length > cap) return null;
+  }
+  return out;
+}
+
+// -> {start, end, parts} for the first brace pair in w that expands, or null.
+function firstBrace(w) {
+  for (let i = 0; i < w.length; i++) {
+    if (w[i] !== '{') continue;
+    let depth = 0;
+    const commas = [];
+    let end = -1;
+    for (let j = i; j < w.length; j++) {
+      if (w[j] === '{') depth += 1;
+      else if (w[j] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      } else if (w[j] === ',' && depth === 1) commas.push(j);
+    }
+    if (end === -1) return null;
+    const body = w.slice(i + 1, end);
+    if (commas.length) {
+      const parts = [];
+      let from = i + 1;
+      for (const c of [...commas, end]) {
+        parts.push(w.slice(from, c));
+        from = c + 1;
+      }
+      return { start: i, end, parts };
+    }
+    const seq = /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])$/.exec(body);
+    if (seq) {
+      const num = /^-?\d+$/.test(seq[1]) && /^-?\d+$/.test(seq[2]);
+      if (num || (!/\d/.test(seq[1]) && !/\d/.test(seq[2]))) {
+        const a = num ? Number(seq[1]) : seq[1].charCodeAt(0);
+        const b = num ? Number(seq[2]) : seq[2].charCodeAt(0);
+        if (Math.abs(b - a) > 100000) return { start: i, end, parts: new Array(100001).fill('') };
+        const parts = [];
+        for (let n = a; a <= b ? n <= b : n >= b; n += a <= b ? 1 : -1) parts.push(num ? String(n) : String.fromCharCode(n));
+        return { start: i, end, parts };
+      }
+    }
+    // Not an expansion: look for a later `{`, past this one.
+  }
+  return null;
 }
 
 // The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
@@ -985,15 +1095,20 @@ function deniedPath(root, cfg, named) {
   if (!patterns.length || !named.length) return null;
   const hookTop = real(path.resolve(root));
   const topAt = new Map();
-  const judge = (abs, top) => {
+  const seen = new Set();
+  const judge = (abs, top, isDir) => {
     const rel = path.relative(top, real(abs));
     if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
     const r = toPosix(rel);
     let pattern = matchesDeny(r, patterns);
-    if (pattern === null && fs.existsSync(abs) && fs.statSync(abs).isDirectory()) pattern = denyDir(r, patterns);
+    if (pattern === null && (isDir || (fs.existsSync(abs) && fs.statSync(abs).isDirectory()))) pattern = denyDir(r, patterns);
     return pattern === null ? null : { rel: r, pattern };
   };
-  for (const { dir, word, fromTop, glob } of named) {
+  for (const { dir, word, fromTop, glob, wide, isDir } of named) {
+    if (wide) return { wide: word };
+    const once = JSON.stringify([dir, word, fromTop, glob, isDir]);
+    if (seen.has(once)) continue;
+    seen.add(once);
     const p = fromGitBash(word.replace(/\\/g, '/'));
     const tops = [hookTop];
     if (dir !== null) {
@@ -1011,7 +1126,7 @@ function deniedPath(root, cfg, named) {
         candidates.push(...expanded);
       }
       for (const abs of candidates) {
-        const hit = judge(abs, top);
+        const hit = judge(abs, top, isDir);
         if (hit) return hit;
       }
     }
@@ -1027,7 +1142,7 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts, mentions, writes, named, unjudgeable: why, hostRules } = parse(command, start);
+  const { invs, texts, mentions, writes, named, cdUnknown, unjudgeable: why, hostRules } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // (0a), in every session and on every branch (D-83)
@@ -1042,9 +1157,12 @@ export function handle(input, { root, cfg }) {
     return deny(`${hit.rel} is frozen for ${hit.id}; a Bash command may not write it (REQ-3.3); amend the slice file to change the evaluation set`);
   }
   // (0d)
+  if (cdUnknown !== null && denyPaths(cfg).length) {
+    return deny(`cannot tell where ${cdUnknown} goes, so its paths cannot be judged against agents.denyPaths (REQ-3.13); cd to a literal directory`);
+  }
   const named0d = deniedPath(root, cfg, named);
   if (named0d?.wide) {
-    return deny(`the glob ${named0d.wide} expands too wide to judge against agents.denyPaths (REQ-3.13); name the paths or narrow the glob`);
+    return deny(`${named0d.wide} expands too wide to judge against agents.denyPaths (REQ-3.13); name the paths or narrow the expression`);
   }
   if (named0d) {
     return deny(`the command names ${named0d.rel}, which matches agents.denyPaths pattern ${named0d.pattern}; agents may not read or change it (REQ-3.13)`);
