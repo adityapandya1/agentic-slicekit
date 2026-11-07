@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-40",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 116,
@@ -12,7 +12,9 @@
     "test/check/host-rules.test.js",
     "test/init.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/check/host-rules.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -133,6 +135,17 @@
           "blockers": 1,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-07T13:42:00.784Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/host-rules.test.js",
+        "amendCommit": "f8a6a255bd3c6d7bfa5133edfa664d83488bc71e",
+        "reason": "B-1: the required checks are gate and checks, not matrix names"
       }
     }
   ]
