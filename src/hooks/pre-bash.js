@@ -985,37 +985,47 @@ function namedWords(toks, head) {
   for (const t of toks) {
     if (t === head && !/[/\\]/.test(t.v)) continue;
     if (/[$`]/.test(t.x ?? '')) continue;
-    let v = t.v;
-    let cut = 0;
-    const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(v);
-    if (op && t.b.startsWith(op[0])) cut = op[0].length;
-    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(v)) cut = v.indexOf('=') + 1;
-    else if (/^-[^-]./.test(v)) cut = 2;
-    else if (v.startsWith('-')) continue;
-    v = v.slice(cut);
-    if (v === '') continue;
-    const m = (t.m ?? '0'.repeat(t.v.length)).slice(cut);
-    // An unquoted brace expression becomes each word it expands to; one too wide is refused.
-    const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v, m) : [v];
-    if (variants === null) {
-      out.push({ word: v, wide: true });
-      continue;
-    }
-    const glob = GLOB.test(t.b);
-    for (let w of variants) {
-      // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
-      if ((w === '~' || w.startsWith('~/')) && t.b.includes('~')) w = os.homedir() + w.slice(1);
-      out.push({ word: w, glob });
-      // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
-      // repository's top, or from the shell's directory when it starts with `./` or `../`.
-      const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(w);
-      if (rev && !/^[A-Za-z]:[\\/]/.test(w)) {
-        const p = rev[1];
-        out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
-      }
-    }
+    const cuts = [];
+    const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(t.v);
+    if (op && t.b.startsWith(op[0])) cuts.push(op[0].length);
+    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(t.v)) cuts.push(t.v.indexOf('=') + 1);
+    else if (/^-[^-]./.test(t.v)) {
+      // Bundled short options (`tar -tfdata/x.tar`): the value may start after any option letter, so
+      // the tail after each leading letter is judged.
+      cuts.push(2);
+      for (let k = 3; k < t.v.length && /[A-Za-z]/.test(t.v[k - 1]); k++) cuts.push(k);
+    } else if (t.v.startsWith('-')) continue;
+    else cuts.push(0);
+    for (const cut of cuts) wordPaths(t, cut, out);
   }
   return out;
+}
+
+// Appends to `out` the paths word `t` names from character `cut` on: each word its braces expand to,
+// with `~` as the home directory, and the path of a `<rev>:<path>` word.
+function wordPaths(t, cut, out) {
+  const v = t.v.slice(cut);
+  if (v === '') return;
+  const m = (t.m ?? '0'.repeat(t.v.length)).slice(cut);
+  // An unquoted brace expression becomes each word it expands to; one too wide is refused.
+  const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v, m) : [v];
+  if (variants === null) {
+    out.push({ word: v, wide: true });
+    return;
+  }
+  const glob = GLOB.test(t.b);
+  for (let w of variants) {
+    // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
+    if ((w === '~' || w.startsWith('~/')) && t.b.includes('~')) w = os.homedir() + w.slice(1);
+    out.push({ word: w, glob });
+    // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
+    // repository's top, or from the shell's directory when it starts with `./` or `../`.
+    const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(w);
+    if (rev && !/^[A-Za-z]:[\\/]/.test(w)) {
+      const p = rev[1];
+      out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
+    }
+  }
 }
 
 // The words a Bash brace expression expands to: `{a,b}` lists (nested too) and `{1..3}` or `{a..c}`
@@ -1095,7 +1105,9 @@ function firstBrace(w, m) {
 }
 
 // The existing paths a shell glob word expands to, segment by segment from `base` (`*`, `?` and `[...]`
-// in one segment; `**` as `*`); a segment starting with `.` alone matches dot names. Null when a
+// in one segment); a segment starting with `.` alone matches dot names. A segment that is only `**`
+// is read as Bash's `globstar` reads it, whether or not the command turns it on: the directory itself
+// and everything under it, at any depth (dot names and symlinked directories aside). Null when a
 // segment expands to more than `cap` entries, so the caller fails closed instead of judging a part.
 function expandGlob(base, word, cap = 20000) {
   const target = toPosix(path.resolve(base, word));
@@ -1104,7 +1116,27 @@ function expandGlob(base, word, cap = 20000) {
   for (const seg of segs.slice(1)) {
     if (seg === '') continue;
     const next = [];
-    if (!GLOB.test(seg)) {
+    if (/^\*\*+$/.test(seg)) {
+      const stack = [...found];
+      while (stack.length) {
+        const d = stack.pop();
+        next.push(d);
+        if (next.length > cap) return null;
+        let entries = [];
+        try {
+          entries = fs.readdirSync(d, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const e of entries) {
+          if (e.name.startsWith('.')) continue;
+          const p = path.posix.join(d, e.name);
+          if (e.isDirectory()) stack.push(p);
+          else next.push(p);
+          if (next.length + stack.length > cap) return null;
+        }
+      }
+    } else if (!GLOB.test(seg)) {
       for (const d of found) next.push(path.posix.join(d, seg));
     } else {
       const re = globRe(seg.replace(/\*\*+/g, '*'));
@@ -1138,14 +1170,16 @@ function deniedPath(root, cfg, named) {
   const topAt = new Map();
   const seen = new Set();
   let dirHit = null;
-  const judge = (abs, top, isDir) => {
-    const rel = path.relative(top, real(abs));
+  // The path is judged as written (`data/link`) and as resolved: a symlink under a listed directory
+  // that points out of the repository resolves to a `..` path, and its listed name must still count.
+  const judgeRel = (rel, abs, isDir) => {
     if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
     const r = toPosix(rel);
     let pattern = matchesDeny(r, patterns);
     if (pattern === null && (isDir || (fs.existsSync(abs) && fs.statSync(abs).isDirectory()))) pattern = denyDir(r, patterns);
     return pattern === null ? null : { rel: r, pattern };
   };
+  const judge = (abs, top, isDir) => judgeRel(path.relative(top, abs), abs, isDir) ?? judgeRel(path.relative(top, real(abs)), abs, isDir);
   for (const { dir, word, fromTop, glob, wide, isDir } of named) {
     if (wide) return { wide: word };
     const once = JSON.stringify([dir, word, fromTop, glob, isDir]);

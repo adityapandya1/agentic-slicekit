@@ -238,3 +238,70 @@ test('deny » matchesDeny and denyDir read gitignore-style patterns', () => {
   assert.equal(matchesDeny('data/b.xml', ['data/[!a].xml']), 'data/[!a].xml');
   assert.equal(matchesDeny('data/a.xml', ['data/[^a].xml']), null);
 });
+
+// Codex review of d8f9a89: a symlink out of the repository is judged by the name it is listed under,
+// a bundled short option's value is judged after every option letter, and `**` reaches any depth.
+const withList = (root, list, command) =>
+  decision(handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: { ...cfg, agents: { denyPaths: list } }, env: {} }));
+
+test('deny » a listed symlink that points out of the repository is still listed', (t) => {
+  const { root, cleanup } = repo();
+  const outside = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-out-')));
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 's');
+    // A file symlink needs a privilege on Windows; a directory junction does not. Each form is tested
+    // where its link could be made.
+    const commands = [];
+    const link = (target, at, type, forms) => {
+      try {
+        fs.symlinkSync(target, path.join(root, 'data', at), type);
+        commands.push(...forms);
+      } catch {
+        // no right to make this link here
+      }
+    };
+    link(path.join(outside, 'secret.txt'), 'link.txt', 'file', ['cat data/link.txt', '(cd src; cat ../data/link.txt)']);
+    link(outside, 'out', process.platform === 'win32' ? 'junction' : 'dir', ['cat data/out/secret.txt', 'cat src/../data/out/secret.txt']);
+    if (!commands.length) {
+      t.skip('no symlink right on this machine');
+      return;
+    }
+    for (const command of commands) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+      assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+    }
+  } finally {
+    cleanup();
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('deny » a bundled short option carries its value after any option letter', () => {
+  const { root, cleanup } = repo();
+  try {
+    const list = ['data/secret.tar'];
+    for (const command of ['tar -tfdata/secret.tar', 'grep -rfdata/secret.tar src', 'tar -xvzfdata/secret.tar']) {
+      assert.equal(withList(root, list, command), 'deny', command);
+      assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+    }
+    for (const command of ['tar -tfsrc/a.tar', 'grep -rn x src', 'ls -la']) assert.equal(withList(root, list, command), 'allow', command);
+  } finally {
+    cleanup();
+  }
+});
+
+test('deny » ** in a glob reaches files at any depth', () => {
+  const { root, cleanup } = repo();
+  try {
+    fs.mkdirSync(path.join(root, 'data', 'a', 'b'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'data', 'a', 'b', 'secret.txt'), 's');
+    const list = ['data/a/b/secret.txt'];
+    for (const command of ['shopt -s globstar; cat data/**/secret.txt', 'cat d*/**/secret.txt', 'ls data/a/**', 'cat **/secret.txt']) {
+      assert.equal(withList(root, list, command), 'deny', command);
+      assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+    }
+    for (const command of ['cat src/**', 'cat data/**/other.txt']) assert.equal(withList(root, list, command), 'allow', command);
+  } finally {
+    cleanup();
+  }
+});
