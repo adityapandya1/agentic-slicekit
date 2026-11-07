@@ -29,6 +29,8 @@ decisions: [D-70, D-77, D-81, D-84, D-88]
 
 Amended (independent review B-1, author's decision): the required checks are `gate` and `checks`, never a command job's matrix names, so `check/host-rules.test.js` names those two checks.
 
+Amended (same decision): `init.test.js » init --protect applies only the missing rules and prints them` expects the required checks `gate, checks`.
+
 ## Expected changes
 
 `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/check/rules/host-rules.js`, `src/init.js`, `src/cli/init.js`, `docs/adapters.md`, `docs/runbook.md`, `test/fixtures/githost/`, tests.
