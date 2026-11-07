@@ -27,6 +27,13 @@
       "blockers": 0,
       "independent": false,
       "headSha": "cdcbc1720856249226ed51b5c84416a5b2a4a4f7"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P4-S-40i-r3.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "cdcbc1720856249226ed51b5c84416a5b2a4a4f7"
     }
   ],
   "ci": null,
@@ -111,6 +118,20 @@
           "path": ".slicekit/reviews/P4-S-40-r2.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-07T13:39:53.072Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P4-S-40i-r3.md",
+          "blockers": 1,
+          "independent": true
         }
       }
     }
