@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-39",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 115,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
+    "headSha": "c4e32d3bf8fffe233067aec93fe8dacac76ec4f4"
+  },
   "redCommit": "bc80ea0541ef2e73aa17d920e6bd49f356a288de",
   "frozenTests": [
     "test/config.test.js",
@@ -62,6 +66,22 @@
         "unfreeze": "test/config.test.js",
         "amendCommit": "7a589336da822894bfefccd44905965b5b35487d",
         "reason": "no change to test/config.test.js: amend refuses a slice-file-only change while other tests are frozen, and the amendment line must name test/hooks/pre-edit.test.js by its full path for check's references rule"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-07T12:22:09.648Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 115,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
+          "headSha": "c4e32d3bf8fffe233067aec93fe8dacac76ec4f4",
+          "title": "[P4/S-39] Paths agents may not touch"
+        }
       }
     }
   ]
