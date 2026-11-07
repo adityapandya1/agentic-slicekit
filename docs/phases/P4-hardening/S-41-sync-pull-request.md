@@ -28,6 +28,8 @@ decisions: [D-12, D-78, D-80]
 
 Amendment, `test/sync.test.js`: the body-section regex in the happy test was written in a template literal that drops its backslashes, so it threw "Nothing to repeat"; the backslashes are doubled. The test's name and what it asserts stay the same.
 
+Amendment, `test/workflow.test.js`: four older tests in the file (renders pinned actions and a job per non-empty command, C1, I3, M1) asserted the sync job this slice removes (ALLOW_PROTECTED_COMMIT, the `[skip ci]` commit and push, `pull-requests: read`); they now assert the new sync job. The evaluation test is unchanged.
+
 ## Expected changes
 
 `src/cli/sync.js`, `src/cli/index.js`, `src/state/sync.js`, `src/adapters/githost/github.js`, `src/adapters/githost/fixture.js`, `src/check/ci-event.js`, `src/workflow.js`, `.github/workflows/slicekit.yml`, `test/fixtures/golden/workflow/`, `docs/runbook.md`, tests.
