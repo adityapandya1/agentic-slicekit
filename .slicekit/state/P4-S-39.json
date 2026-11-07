@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-39",
-  "state": "ready",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 115,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
-    "headSha": "4e7469c1d38ccfe2fe337c7184e09630986884cc"
+    "headSha": "6439b443435cc24b47723567febab7396138e81b"
   },
   "redCommit": "bc80ea0541ef2e73aa17d920e6bd49f356a288de",
   "frozenTests": [
@@ -48,11 +48,7 @@
       "headSha": "4e7469c1d38ccfe2fe337c7184e09630986884cc"
     }
   ],
-  "ci": {
-    "sha": "62067e65bf15cc171f6f29b5a55b46bbe83d1546",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42375172223"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -257,6 +253,22 @@
       "at": "2026-11-07T13:14:18.504Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-07T13:27:18.611Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 115,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/115",
+          "headSha": "6439b443435cc24b47723567febab7396138e81b",
+          "title": "[P4/S-39] Paths agents may not touch"
+        }
+      }
     }
   ]
 }
