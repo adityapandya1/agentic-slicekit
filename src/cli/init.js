@@ -111,7 +111,7 @@ async function run(args, io) {
       io.stdout(`host rules: ${done.branch} has every rule; nothing set\n`);
     } else {
       for (const line of done.set) io.stdout(`set ${done.branch}: ${line}\n`);
-      for (const check of done.removed) io.stdout(`removed ${done.branch}: required check ${check}, which no job of the generated workflow reports\n`);
+      for (const check of done.removed) io.stdout(`removed ${done.branch}: required check ${check}, which is not gate or checks\n`);
       io.stdout(`host rules: ruleset slicekit applied to ${done.branch}\n`);
     }
   }

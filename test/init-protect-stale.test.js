@@ -30,7 +30,7 @@ test('init --protect removes a stale check from the slicekit ruleset only and na
     const r = runCli(['init', '--shape', 'backend', '--test', 'node --test', '--protect'], { cwd: repo.root, env });
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.deepEqual(r.stdout.split('\n').filter((l) => l.startsWith('removed ') || l.startsWith('set ')), [
-      'removed main: required check cmd-test (windows-latest, 3/3), which no job of the generated workflow reports',
+      'removed main: required check cmd-test (windows-latest, 3/3), which is not gate or checks',
     ]);
     const after = JSON.parse(fs.readFileSync(file, 'utf8'));
     const contexts = (id) => after.filter((x) => x.ruleset_id === id && x.type === 'required_status_checks').flatMap((x) => x.parameters.required_status_checks.map((c) => c.context));

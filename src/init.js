@@ -273,7 +273,7 @@ export function bareCliWarning(cli) {
 // `slicekit init --protect` (REQ-3.14, D-77, D-88): the rules of REQ-3.14 the default branch lacks,
 // set as the one repository ruleset named slicekit. A human with admin rights runs it from their own
 // terminal; this is the kit's one call of a host write of a rule. A required check of the slicekit
-// ruleset that no job of the generated workflow reports any more is taken out of that ruleset; a check
+// ruleset that is not gate or checks is taken out of that ruleset; a check
 // another ruleset requires is the team's and stays. Returns the branch, what each rule set reads as,
 // and the checks removed: both empty when nothing changed. A GitHostError (no token, no admin rights)
 // is the caller's to print.
