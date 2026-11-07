@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { handle } from '../../src/hooks/pre-bash.js';
@@ -67,6 +68,83 @@ test('deny » the index form, a path git reads from the shell directory, a home 
     const withOne = (command) => decision(handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: one, env: {} }));
     assert.equal(withOne('cat data/[!a].xml'), 'deny');
     assert.equal(withOne('cat data/[!x].xml'), 'allow');
+    // H-11: `[^...]` is a negated class too.
+    assert.equal(withOne('cat data/[^a].xml'), 'deny');
+    assert.equal(withOne('cat [^s]ata/x.xml'), 'deny');
+    assert.equal(withOne('cat data/[^x].xml'), 'allow');
+  } finally {
+    cleanup();
+  }
+});
+
+// H-11: the frozen-test rule reads both negated forms through the same glob matcher.
+test('deny » a negated class written either way reaches a frozen test', () => {
+  const r = makeRepo({ branch: 'slice/P1-S-06-hooks', files: { 'test/a.test.js': 'x\n', 'src/a.js': 'a\n' } });
+  try {
+    const file = path.join(r.root, '.slicekit', 'state', 'P1-S-06.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ slice: 'P1/S-06', state: 'building', frozenTests: ['test/a.test.js'], unfrozen: [] }));
+    const plain = defaultConfig({ name: 'demo', shape: 'backend' });
+    const run = (command) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: r.root }, { root: r.root, cfg: plain, env: {} });
+    for (const command of ['rm test/[!b].test.js', 'rm test/[^b].test.js']) {
+      const out = run(command);
+      assert.equal(decision(out), 'deny', command);
+      assert.match(out.hookSpecificOutput.permissionDecisionReason, /frozen/, command);
+    }
+    assert.equal(decision(run('rm test/[^a].test.js')), 'allow');
+  } finally {
+    r.cleanup();
+  }
+});
+
+// H-7: a brace expression is judged by each word it expands to.
+test('deny » brace expansion is judged, quoted braces are not expanded, and a wide one is refused', () => {
+  const { root, cleanup } = repo();
+  try {
+    for (const command of ['cat {data,src}/x.xml', 'cat {src,{keys,data}}/x.xml', 'cat data/x.{txt,xml}', 'cat {x..z}/../data/x.xml']) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+    }
+    for (const command of ["cat '{data,src}/x.xml'", 'cat "{data,src}"/x.xml', 'cat {src,lib}/a.js', 'echo {}', 'cat src/{a}.js']) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+    const wide = decide(root, 'touch f{1..2000}');
+    assert.equal(decision(wide), 'deny');
+    assert.match(wide.hookSpecificOutput.permissionDecisionReason, /too wide/);
+    assert.equal(decision(handle({ session_id: 's', tool_name: 'Bash', tool_input: { command: 'touch f{1..2000}' }, cwd: root },
+      { root, cfg: defaultConfig({ name: 'demo', shape: 'backend' }), env: {} })), 'allow', 'with no list nothing new is denied');
+  } finally {
+    cleanup();
+  }
+});
+
+// H-9: cd and pushd are followed across the chain, a subshell's cd ends with it, and a cd the guard
+// cannot resolve is refused while the list is set.
+test('deny » cd is followed, its target and the working directory are judged, and an unknown cd is refused', () => {
+  const { root, cleanup } = repo();
+  try {
+    for (const command of [
+      'cd data && ls',
+      'pushd data && ls',
+      'cd data',
+      'cd src; cd ../data; ls',
+      'cd src || cd ../data',
+      'cd src\ncat ../data/x.xml',
+      'cd data/new-dir',
+      'cd $DIR && ls',
+      'cd - && ls',
+      'cd "$(pwd)" && ls',
+      'popd && ls',
+    ]) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+    }
+    for (const command of ['cd src && ls', '(cd src) && cat src/a.js', '(cd data/..) && ls', 'cd src && cat ../src/a.js', 'pushd src && popd && ls']) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+    // A subshell's cd does not carry past it: `x.xml` after it is read from the root, not data.
+    assert.equal(decision(decide(root, '(cd src) && cat a.js')), 'allow');
+    const plain = defaultConfig({ name: 'demo', shape: 'backend' });
+    const run = (command) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: plain, env: {} });
+    for (const command of ['cd $DIR && ls', 'cd - && ls', 'cd data && ls']) assert.equal(decision(run(command)), 'allow', `${command} with no list`);
   } finally {
     cleanup();
   }
@@ -83,4 +161,7 @@ test('deny » matchesDeny and denyDir read gitignore-style patterns', () => {
   assert.equal(denyDir('data', ['data/*.xml']), 'data/*.xml');
   assert.equal(denyDir('src', ['src/secrets/**']), null);
   assert.equal(denyDir('keys', ['*.pem']), null);
+  assert.equal(matchesDeny('data/b.xml', ['data/[^a].xml']), 'data/[^a].xml');
+  assert.equal(matchesDeny('data/b.xml', ['data/[!a].xml']), 'data/[!a].xml');
+  assert.equal(matchesDeny('data/a.xml', ['data/[^a].xml']), null);
 });

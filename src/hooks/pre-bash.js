@@ -1096,6 +1096,7 @@ function deniedPath(root, cfg, named) {
   const hookTop = real(path.resolve(root));
   const topAt = new Map();
   const seen = new Set();
+  let dirHit = null;
   const judge = (abs, top, isDir) => {
     const rel = path.relative(top, real(abs));
     if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
@@ -1127,11 +1128,13 @@ function deniedPath(root, cfg, named) {
       }
       for (const abs of candidates) {
         const hit = judge(abs, top, isDir);
-        if (hit) return hit;
+        // A path the command names is reported before the directory it runs in.
+        if (hit && !isDir) return hit;
+        if (hit && dirHit === null) dirHit = hit;
       }
     }
   }
-  return null;
+  return dirHit;
 }
 
 // ---- the hook ----
