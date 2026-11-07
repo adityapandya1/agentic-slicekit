@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { handle } from '../../src/hooks/pre-bash.js';
+import { handle, expandBraces } from '../../src/hooks/pre-bash.js';
 import { matchesDeny, denyDir } from '../../src/hooks/paths.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo, commit } from '../helpers/tmp-repo.js';
@@ -145,6 +145,50 @@ test('deny » cd is followed, its target and the working directory are judged, a
     const plain = defaultConfig({ name: 'demo', shape: 'backend' });
     const run = (command) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: root }, { root, cfg: plain, env: {} });
     for (const command of ['cd $DIR && ls', 'cd - && ls', 'cd data && ls']) assert.equal(decision(run(command)), 'allow', `${command} with no list`);
+  } finally {
+    cleanup();
+  }
+});
+
+// H-13: braces expand before quotes and backslashes are removed, so a quoted or escaped brace or
+// comma is text inside the expression, and an unclosed brace does not hide a later expression.
+test('deny » a quoted or escaped brace or comma inside a brace expression is text', () => {
+  const { root, cleanup } = repo();
+  try {
+    for (const command of [
+      "cat {data,'}'}/x.xml",
+      'cat {data,\\}}/x.xml',
+      "cat {'{',data}/x.xml",
+      'cat {data,"a,b"}/x.xml',
+      'cat \\{x {data,src}/x.xml',
+    ]) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+    }
+    // An unclosed `{` stays text and a later expression still expands, as Bash prints `{a {b`.
+    assert.deepEqual(expandBraces('{{a,b}'), ['{a', '{b']);
+    assert.deepEqual(expandBraces('{x,{a,b}'), ['{x,a', '{x,b']);
+    for (const command of ["cat {src,'data'x}/a.js", 'cat {src\\,data}/x.xml', "cat '{data,src}'/x.xml"]) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// H-15: a case pattern's `)` closes the pattern, not the subshell around it.
+test("deny » a case pattern's parenthesis does not end the subshell's cd", () => {
+  const { root, cleanup } = repo();
+  try {
+    for (const command of [
+      '(cd src; case a in a) cat ../data/x.xml;; esac)',
+      '(cd src; case a in (a) cat ../data/x.xml;; esac)',
+      '(cd src; case a in b) ls;; a) cat ../data/x.xml;; esac)',
+      '(cd src\ncase a in\n  a) cat ../data/x.xml ;;\nesac\n)',
+    ]) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+    }
+    // The subshell still ends at its own `)` after esac.
+    assert.equal(decision(decide(root, '(cd src; case a in a) ls;; esac); cat src/a.js')), 'allow');
   } finally {
     cleanup();
   }

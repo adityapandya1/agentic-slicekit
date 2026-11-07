@@ -73,16 +73,29 @@ function lex(command) {
   let expand = '';
   let pending = [];
   let tickOpen = false;
+  // `m` is one character per character of the word: `1` where it was quoted or escaped, `0` where
+  // the shell reads it as syntax (a brace expression's braces and commas count only there).
+  let mask = '';
+  // Open `case` commands: in each, whether the next `)` ends a pattern rather than a subshell.
+  const cases = [];
   const add = (text, quoted, expands = !quoted) => {
     word = (word ?? '') + text;
     if (!quoted) bare += text;
     if (expands) expand += text;
+    mask += (quoted || !expands ? '1' : '0').repeat(text.length);
   };
   const endWord = () => {
-    if (word !== null) cur.toks.push({ v: word, b: bare, x: expand });
+    if (word !== null) {
+      const plain = word === bare && !mask.includes('1');
+      if (plain && cur.toks.length === 0 && word === 'case') cases.push({ pattern: false, awaitIn: true });
+      else if (plain && cur.toks.length === 0 && word === 'esac' && cases.length) cases.pop();
+      else if (plain && word === 'in' && cases.at(-1)?.awaitIn) Object.assign(cases.at(-1), { awaitIn: false, pattern: true });
+      cur.toks.push({ v: word, b: bare, x: expand, m: mask });
+    }
     word = null;
     bare = '';
     expand = '';
+    mask = '';
   };
   const endSegment = () => {
     endWord();
@@ -167,9 +180,18 @@ function lex(command) {
         tickOpen = !tickOpen;
       }
       const ended = endSegment();
-      if (c === '(' || c === ')') {
+      const open = cases.at(-1);
+      if (open?.pattern && (c === '(' || c === ')')) {
+        // A case pattern's parentheses: `a)` and the optional `(a)`; no subshell starts or ends.
+        if (c === ')') open.pattern = false;
+      } else if (c === '(' || c === ')') {
         depth = c === '(' ? depth + 1 : Math.max(0, depth - 1);
         cur.depth = depth;
+      }
+      // `;;` (and `;&`, `;;&`) ends a case arm: the next `)` ends a pattern again.
+      if (c === ';' && open && (s[i + 1] === ';' || s[i + 1] === '&')) {
+        open.pattern = true;
+        i += s[i + 2] === '&' ? 2 : 1;
       }
       if (c === '|' && s[i + 1] === '|') i += 1;
       else if (c === '|') cur.stdin = ended;
@@ -958,14 +980,17 @@ function namedWords(toks, head) {
     if (t === head && !/[/\\]/.test(t.v)) continue;
     if (/[$`]/.test(t.x ?? '')) continue;
     let v = t.v;
+    let cut = 0;
     const op = /^\d*(<<<|>>|>\||>&|<&|&>|>|<)/.exec(v);
-    if (op && t.b.startsWith(op[0])) v = v.slice(op[0].length);
-    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(v)) v = v.slice(v.indexOf('=') + 1);
-    else if (/^-[^-]./.test(v)) v = v.slice(2);
+    if (op && t.b.startsWith(op[0])) cut = op[0].length;
+    else if (/^(--[^=]+|[A-Za-z_][A-Za-z0-9_]*)=/.test(v)) cut = v.indexOf('=') + 1;
+    else if (/^-[^-]./.test(v)) cut = 2;
     else if (v.startsWith('-')) continue;
+    v = v.slice(cut);
     if (v === '') continue;
+    const m = (t.m ?? '0'.repeat(t.v.length)).slice(cut);
     // An unquoted brace expression becomes each word it expands to; one too wide is refused.
-    const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v) : [v];
+    const variants = t.b.includes('{') && t.b.includes('}') ? expandBraces(v, m) : [v];
     if (variants === null) {
       out.push({ word: v, wide: true });
       continue;
@@ -988,65 +1013,73 @@ function namedWords(toks, head) {
 }
 
 // The words a Bash brace expression expands to: `{a,b}` lists (nested too) and `{1..3}` or `{a..c}`
-// sequences, left to right; a `{` with no top-level `,` or `..` stays literal. Null when the
-// expansion passes `cap` words, so the caller refuses rather than judges a part.
-export function expandBraces(word, cap = 1000) {
+// sequences, left to right; a `{` with no top-level `,` or `..` stays literal. `mask` marks each
+// character of `word` that was quoted or escaped (`1`): such a brace or comma is text, not syntax, as
+// Bash reads it (brace expansion runs before quotes are removed). Null when the expansion passes `cap`
+// words, so the caller refuses rather than judges a part.
+export function expandBraces(word, mask = '0'.repeat(word.length), cap = 1000) {
   const out = [];
-  const stack = [word];
+  const stack = [[word, mask]];
   while (stack.length) {
-    const w = stack.pop();
-    const found = firstBrace(w);
+    const [w, m] = stack.pop();
+    const found = firstBrace(w, m);
     if (!found) {
       out.push(w);
       if (out.length > cap) return null;
       continue;
     }
     const { start, end, parts } = found;
-    const pre = w.slice(0, start);
-    const post = w.slice(end + 1);
-    for (let k = parts.length - 1; k >= 0; k--) stack.push(pre + parts[k] + post);
+    for (let k = parts.length - 1; k >= 0; k--) {
+      stack.push([w.slice(0, start) + parts[k][0] + w.slice(end + 1), m.slice(0, start) + parts[k][1] + m.slice(end + 1)]);
+    }
     if (stack.length + out.length > cap) return null;
   }
   return out;
 }
 
-// -> {start, end, parts} for the first brace pair in w that expands, or null.
-function firstBrace(w) {
+// -> {start, end, parts: [[text, mask]]} for the first brace pair in w that expands, or null. Only
+// characters the mask leaves unquoted count as `{`, `,` and `}`; an unclosed `{` is skipped and a
+// later one tried.
+function firstBrace(w, m) {
+  const syntax = (j, c) => w[j] === c && m[j] !== '1';
   for (let i = 0; i < w.length; i++) {
-    if (w[i] !== '{') continue;
+    if (!syntax(i, '{')) continue;
     let depth = 0;
     const commas = [];
     let end = -1;
     for (let j = i; j < w.length; j++) {
-      if (w[j] === '{') depth += 1;
-      else if (w[j] === '}') {
+      if (syntax(j, '{')) depth += 1;
+      else if (syntax(j, '}')) {
         depth -= 1;
         if (depth === 0) {
           end = j;
           break;
         }
-      } else if (w[j] === ',' && depth === 1) commas.push(j);
+      } else if (syntax(j, ',') && depth === 1) commas.push(j);
     }
-    if (end === -1) return null;
-    const body = w.slice(i + 1, end);
+    if (end === -1) continue;
     if (commas.length) {
       const parts = [];
       let from = i + 1;
       for (const c of [...commas, end]) {
-        parts.push(w.slice(from, c));
+        parts.push([w.slice(from, c), m.slice(from, c)]);
         from = c + 1;
       }
       return { start: i, end, parts };
     }
-    const seq = /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])$/.exec(body);
+    const body = w.slice(i + 1, end);
+    const seq = m.slice(i + 1, end).includes('1') ? null : /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])$/.exec(body);
     if (seq) {
       const num = /^-?\d+$/.test(seq[1]) && /^-?\d+$/.test(seq[2]);
       if (num || (!/\d/.test(seq[1]) && !/\d/.test(seq[2]))) {
         const a = num ? Number(seq[1]) : seq[1].charCodeAt(0);
         const b = num ? Number(seq[2]) : seq[2].charCodeAt(0);
-        if (Math.abs(b - a) > 100000) return { start: i, end, parts: new Array(100001).fill('') };
+        if (Math.abs(b - a) > 100000) return { start: i, end, parts: new Array(100001).fill(['', '']) };
         const parts = [];
-        for (let n = a; a <= b ? n <= b : n >= b; n += a <= b ? 1 : -1) parts.push(num ? String(n) : String.fromCharCode(n));
+        for (let n = a; a <= b ? n <= b : n >= b; n += a <= b ? 1 : -1) {
+          const text = num ? String(n) : String.fromCharCode(n);
+          parts.push([text, '0'.repeat(text.length)]);
+        }
         return { start: i, end, parts };
       }
     }
