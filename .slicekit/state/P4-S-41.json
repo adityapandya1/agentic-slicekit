@@ -11,7 +11,8 @@
     "test/check/ci-body.test.js"
   ],
   "unfrozen": [
-    "test/sync.test.js"
+    "test/sync.test.js",
+    "test/workflow.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -50,6 +51,17 @@
         "unfreeze": "test/sync.test.js",
         "amendCommit": "5b6fa82688ca854c79c42a1d2646eea4621afbb8",
         "reason": "the body-section regex in the happy test lost its backslashes in a template literal and threw; the backslashes are doubled"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T23:22:17.337Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "d341cf46b076e825686d22137e1d80821655474c",
+        "reason": "four older tests asserted the sync job this slice removes; they now assert the new sync job, the evaluation test unchanged"
       }
     }
   ]
