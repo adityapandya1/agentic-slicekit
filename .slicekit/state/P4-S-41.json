@@ -1,0 +1,36 @@
+{
+  "slice": "P4/S-41",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "33550d0c80fd3e061b8e823c04367d491e947a8b",
+  "frozenTests": [
+    "test/sync.test.js",
+    "test/workflow.test.js",
+    "test/check/ci-title.test.js",
+    "test/check/ci-body.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-07T22:11:24.370Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "33550d0c80fd3e061b8e823c04367d491e947a8b",
+        "testExit": 1,
+        "tests": [
+          "test/sync.test.js",
+          "test/workflow.test.js",
+          "test/check/ci-title.test.js",
+          "test/check/ci-body.test.js"
+        ]
+      }
+    }
+  ]
+}
