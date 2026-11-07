@@ -910,7 +910,8 @@ function frozenWrite(root, cfg, writes) {
 // Every word of a simple command that may name a path, as {word, fromTop?}: the command and its
 // arguments, a redirection's target with the operator cut off, the value of `--opt=value` or
 // `NAME=value`, the value a short option carries attached (`-fFILE`), and the path of a
-// `<rev>:<path>` word, which git reads from the repository's top (`fromTop`). A word holding a
+// `<rev>:<path>` word (`fromTop` when git reads it from the repository's top); `glob` marks a word
+// the shell would expand. A word holding a
 // variable or a command substitution is not judged, nor the command's name when it holds no `/` (the
 // shell looks that up on PATH).
 function namedWords(toks, head) {
@@ -927,9 +928,17 @@ function namedWords(toks, head) {
     else if (/^-[^-]./.test(v)) v = v.slice(2);
     else if (v.startsWith('-')) continue;
     if (v === '') continue;
-    out.push({ word: v });
-    const rev = /^[^:]+:(.+)$/.exec(v);
-    if (rev && !/^[A-Za-z]:[\\/]/.test(v)) out.push({ word: rev[1].replace(/^\.\//, ''), fromTop: true });
+    // An unquoted `~` is the home directory; an unquoted glob character makes the word a glob.
+    if ((v === '~' || v.startsWith('~/')) && t.b.includes('~')) v = os.homedir() + v.slice(1);
+    const glob = GLOB.test(t.b);
+    out.push({ word: v, glob });
+    // `<rev>:<path>`, `:<path>` and `:<stage>:<path>` (the index): git reads the path from the
+    // repository's top, or from the shell's directory when it starts with `./` or `../`.
+    const rev = /^[^:]*:(?:[0-3]:)?(.+)$/.exec(v);
+    if (rev && !/^[A-Za-z]:[\\/]/.test(v)) {
+      const p = rev[1];
+      out.push({ word: p, glob, fromTop: !/^\.\.?\//.test(p) });
+    }
   }
   return out;
 }
@@ -984,7 +993,7 @@ function deniedPath(root, cfg, named) {
     if (pattern === null && fs.existsSync(abs) && fs.statSync(abs).isDirectory()) pattern = denyDir(r, patterns);
     return pattern === null ? null : { rel: r, pattern };
   };
-  for (const { dir, word, fromTop } of named) {
+  for (const { dir, word, fromTop, glob } of named) {
     const p = fromGitBash(word.replace(/\\/g, '/'));
     const tops = [hookTop];
     if (dir !== null) {
@@ -996,7 +1005,7 @@ function deniedPath(root, cfg, named) {
       const base = fromTop ? top : dir === null ? null : real(dir);
       if (base === null && !path.isAbsolute(p)) continue;
       const candidates = [path.resolve(base ?? top, p)];
-      if (GLOB.test(p)) candidates.push(...expandGlob(base ?? top, p));
+      if (glob && GLOB.test(p)) candidates.push(...expandGlob(base ?? top, p));
       for (const abs of candidates) {
         const hit = judge(abs, top);
         if (hit) return hit;

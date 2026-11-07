@@ -2,6 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
 import { handle } from '../../src/hooks/pre-bash.js';
 import { matchesDeny, denyDir } from '../../src/hooks/paths.js';
 import { defaultConfig } from '../../src/config.js';
@@ -36,6 +38,30 @@ test('deny » a glob, the denied directory, a rev:path word and an attached opti
     for (const command of ['cat s*/a.js', 'ls src', 'ls', 'git show HEAD:src/a.js', 'grep -rn foo src', 'node --test test/']) {
       assert.equal(decision(decide(root, command)), 'allow', command);
     }
+  } finally {
+    cleanup();
+  }
+});
+
+test('deny » the index form, a path git reads from the shell directory, a home path and a quoted glob', () => {
+  const { root, cleanup } = repo();
+  try {
+    const src = path.join(root, 'src');
+    const inSrc = (command) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: src }, { root, cfg, env: {} });
+    for (const command of ['git show :data/x.xml', 'git show :0:data/x.xml', 'cd src && git show HEAD:../data/x.xml']) {
+      assert.equal(decision(decide(root, command)), 'deny', command);
+    }
+    assert.equal(decision(inSrc('git show HEAD:data/x.xml')), 'deny');
+    const home = path.relative(os.homedir(), root);
+    if (home !== '' && !home.startsWith('..') && !path.isAbsolute(home)) {
+      const tilde = `~/${home.split(path.sep).join('/')}/data/x.xml`;
+      assert.equal(decision(decide(root, `cat ${tilde}`)), 'deny', tilde);
+      assert.equal(decision(decide(root, `cat '${tilde}'`)), 'allow', 'a quoted ~ is not the home directory');
+    }
+    for (const command of ["grep 'd*' src/a.js", 'grep "da?a" src/a.js']) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+    assert.equal(decision(decide(root, 'cat d*/x.xml')), 'deny');
   } finally {
     cleanup();
   }
