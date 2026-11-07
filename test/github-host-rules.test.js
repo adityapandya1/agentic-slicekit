@@ -87,7 +87,7 @@ test('applyBranchRules creates the slicekit ruleset, or folds the rules into the
     'GET repos/acme/demo/rulesets?includes_parents=false&per_page=100': [{ id: 9, name: 'protected-main', source_type: 'Repository' }],
     'POST repos/acme/demo/rulesets': { id: 10 },
   });
-  assert.deepEqual(made.host.applyBranchRules('main', { requiredChecks: ['gate'], refuseForcePush: true }), { id: 10, name: 'slicekit', created: true });
+  assert.deepEqual(made.host.applyBranchRules('main', { requiredChecks: ['gate'], refuseForcePush: true }), { id: 10, name: 'slicekit', created: true, removedChecks: [] });
   const post = made.calls.find((c) => c.args.includes('POST'));
   assert.deepEqual(JSON.parse(post.input), {
     name: 'slicekit',
@@ -111,7 +111,7 @@ test('applyBranchRules creates the slicekit ruleset, or folds the rules into the
     },
     'PUT repos/acme/demo/rulesets/11': { id: 11 },
   });
-  assert.deepEqual(there.host.applyBranchRules('main', { approvals: 1, requiredChecks: ['cmd-test'] }), { id: 11, name: 'slicekit', created: false });
+  assert.deepEqual(there.host.applyBranchRules('main', { approvals: 1, requiredChecks: ['cmd-test'] }), { id: 11, name: 'slicekit', created: false, removedChecks: [] });
   const put = JSON.parse(there.calls.find((c) => c.args.includes('PUT')).input);
   assert.deepEqual(put.rules.map((r) => r.type).sort(), ['pull_request', 'required_status_checks']);
   assert.deepEqual(put.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'gate' }, { context: 'cmd-test' }]);
@@ -134,4 +134,28 @@ test('the required checks are the pull request jobs the generated workflow write
   const matrix = { ...cfg, ci: { ...cfg.ci, matrix: true }, commands: { ...cfg.commands, lint: '' } };
   assert.deepEqual(requiredChecks(matrix), ['gate', 'cmd-test (ubuntu-latest)', 'cmd-test (windows-latest)', 'cmd-test (macos-latest)']);
   assert.deepEqual(workflowCheckNames('jobs:\n  obs-1:\n    name: \'Smoke: prod\'\n  sync:\n    runs-on: x\n'), ['Smoke: prod']);
+});
+
+test('applyBranchRules takes a check no job reports out of the slicekit ruleset, and writes nothing when nothing changes', () => {
+  const answers = (rules) => ({
+    'GET repos/acme/demo/rulesets?includes_parents=false&per_page=100': [{ id: 9, name: 'protected-main', source_type: 'Repository' }, { id: 11, name: 'slicekit', source_type: 'Repository' }],
+    'GET repos/acme/demo/rulesets/11': { id: 11, name: 'slicekit', conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } }, rules },
+    'PUT repos/acme/demo/rulesets/11': { id: 11 },
+  });
+  const stale = hostWith('https://github.com/acme/demo.git', answers([
+    { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: 'gate' }, { context: 'cmd-old' }] } },
+    { type: 'non_fast_forward' },
+  ]));
+  assert.deepEqual(stale.host.applyBranchRules('main', { kitChecks: ['gate'] }).removedChecks, ['cmd-old']);
+  const puts = stale.calls.filter((c) => c.args.includes('PUT'));
+  assert.equal(puts.length, 1);
+  assert.ok(puts.every((c) => c.args.includes('repos/acme/demo/rulesets/11')), 'only the slicekit ruleset is written');
+  assert.deepEqual(JSON.parse(puts[0].input).rules, [
+    { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: 'gate' }] } },
+    { type: 'non_fast_forward' },
+  ]);
+
+  const clean = hostWith('https://github.com/acme/demo.git', answers([{ type: 'non_fast_forward' }]));
+  assert.deepEqual(clean.host.applyBranchRules('main', { kitChecks: ['gate'] }).removedChecks, []);
+  assert.equal(clean.calls.filter((c) => c.args.includes('PUT') || c.args.includes('POST')).length, 0);
 });

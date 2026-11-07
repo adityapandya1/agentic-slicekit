@@ -71,9 +71,11 @@ jobs:
 {{gateExtraSteps}}
       - name: slicekit check
         run: {{cli}} check --ci
-        # The host-rules rule reads the default branch's rulesets and CODEOWNERS (REQ-3.14).
+        # The host-rules rule reads the default branch's rulesets and CODEOWNERS (REQ-3.14). gh reads
+        # GH_TOKEN on github.com and GH_ENTERPRISE_TOKEN on a GitHub Enterprise Server host (D-70).
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_ENTERPRISE_TOKEN: ${{ github.token }}
       - name: The workflow matches the generator
         run: {{cli}} workflow --check
       - name: Upload the graph

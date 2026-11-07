@@ -30,7 +30,7 @@ names no host, such as a local path, is a `GitHostError` before any call.
 |---|---|
 | `readBranchRules(branch)` | `GET repos/{owner}/{repo}/rules/branches/{branch}` (rulesets only, D-84), folded into the strictest value of each rule: `{pullRequest, approvals, codeOwnerReview, requiredChecks, refuseForcePush}`; and `GET repos/{owner}/{repo}/branches/{branch}`, whose `protection.enabled` gives `classic` |
 | `readCodeowners()` | `GET repos/{owner}/{repo}/contents/{path}` for `.github/CODEOWNERS`, `CODEOWNERS` and `docs/CODEOWNERS`, in that order; the first present is `{path, text}`, none is null |
-| `applyBranchRules(branch, rules)` | `GET repos/{owner}/{repo}/rulesets`; then `POST repos/{owner}/{repo}/rulesets` for a new active branch ruleset named `slicekit` on `refs/heads/<branch>`, or, when one named `slicekit` exists, `PUT repos/{owner}/{repo}/rulesets/{id}` with the rules folded into its own and its bypass list kept |
+| `applyBranchRules(branch, rules)` | `GET repos/{owner}/{repo}/rulesets`; then `POST repos/{owner}/{repo}/rulesets` for a new active branch ruleset named `slicekit` on `refs/heads/<branch>`, or, when one named `slicekit` exists, `PUT repos/{owner}/{repo}/rulesets/{id}` with the rules folded into its own, each required check not in `rules.kitChecks` taken out, and its bypass list kept; nothing is written when nothing changes. Returns the checks it took out as `removedChecks` |
 
 `slicekit init --protect` is the one caller of `applyBranchRules`, which a test asserts. The fixture
 reads `branch-rules-<branch>.json` (missing: the rules cannot be read), `branch-<branch>.json` and `codeowners.json`, refuses the read

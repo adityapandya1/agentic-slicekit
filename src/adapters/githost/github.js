@@ -14,6 +14,7 @@ import {
   mapBranchRules,
   mergeRulesetRules,
   parseRemoteUrl,
+  pruneRulesetChecks,
   RULESET_NAME,
   rulesetBody,
   rulesetRules,
@@ -125,24 +126,30 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       return null;
     },
     // Sets `rules` (rulesetRules' input) on `branch` as the one repository ruleset named slicekit:
-    // created, or, when the repository has one, updated with the rules folded in. The only host write
-    // of a rule; `slicekit init --protect` is its one caller (REQ-3.14).
+    // created, or, when the repository has one, updated with the rules folded in. With
+    // `rules.kitChecks`, a required check of the slicekit ruleset that is not in that list is taken
+    // out; no other ruleset is touched. Writes nothing when nothing changes. Returns
+    // { id, name, created, removedChecks }. The only host write of a rule; `slicekit init --protect`
+    // is its one caller (REQ-3.14).
     applyBranchRules(branch, rules) {
       assertBranch(branch);
       const add = rulesetRules(rules);
       const list = api(`${repoPath()}/rulesets?includes_parents=false&per_page=100`);
       const mine = (Array.isArray(list) ? list : []).find((r) => r?.name === RULESET_NAME && r?.source_type !== 'Organization');
       if (!mine) {
+        if (add.length === 0) return { id: null, name: RULESET_NAME, created: false, removedChecks: [] };
         const made = api(`${repoPath()}/rulesets`, { method: 'POST', body: rulesetBody(branch, add) });
-        return { id: made?.id ?? null, name: RULESET_NAME, created: true };
+        return { id: made?.id ?? null, name: RULESET_NAME, created: true, removedChecks: [] };
       }
       if (!Number.isInteger(mine.id)) throw new GitHostError('gh api printed a ruleset with no id');
       const full = api(`${repoPath()}/rulesets/${mine.id}`);
+      const { rules: pruned, removed } = pruneRulesetChecks(mergeRulesetRules(full?.rules, add), rules.kitChecks);
+      if (add.length === 0 && removed.length === 0) return { id: mine.id, name: RULESET_NAME, created: false, removedChecks: [] };
       const include = [...new Set([...(full?.conditions?.ref_name?.include ?? []), `refs/heads/${branch}`])];
-      const body = { ...rulesetBody(branch, mergeRulesetRules(full?.rules, add)), conditions: { ref_name: { include, exclude: full?.conditions?.ref_name?.exclude ?? [] } } };
+      const body = { ...rulesetBody(branch, pruned), conditions: { ref_name: { include, exclude: full?.conditions?.ref_name?.exclude ?? [] } } };
       if (Array.isArray(full?.bypass_actors)) body.bypass_actors = full.bypass_actors;
       api(`${repoPath()}/rulesets/${mine.id}`, { method: 'PUT', body });
-      return { id: mine.id, name: RULESET_NAME, created: false };
+      return { id: mine.id, name: RULESET_NAME, created: false, removedChecks: removed };
     },
     getPullRequest(n) {
       assertPrNumber(n);

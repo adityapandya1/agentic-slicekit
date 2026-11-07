@@ -270,3 +270,26 @@ export function parseRemoteUrl(url) {
   if (!/^[A-Za-z0-9.-]+(?::\d+)?$/.test(host)) return null;
   return { host: host.toLowerCase(), owner: parts[0], repo: parts[1] };
 }
+
+// The slicekit ruleset's rules with every required check not in `kitChecks` taken out (03 REQ-3.14):
+// a check the generated workflow no longer writes would hold every pull request waiting. A
+// required_status_checks rule left with no check is dropped. Returns { rules, removed }.
+export function pruneRulesetChecks(rules, kitChecks) {
+  if (!Array.isArray(kitChecks)) return { rules, removed: [] };
+  const keep = new Set(kitChecks);
+  const removed = [];
+  const out = [];
+  for (const r of rules ?? []) {
+    if (r.type !== 'required_status_checks') {
+      out.push(r);
+      continue;
+    }
+    const checks = (r.parameters?.required_status_checks ?? []).filter((c) => {
+      if (keep.has(c.context)) return true;
+      removed.push(c.context);
+      return false;
+    });
+    if (checks.length > 0) out.push({ ...r, parameters: { ...r.parameters, required_status_checks: checks } });
+  }
+  return { rules: out, removed };
+}

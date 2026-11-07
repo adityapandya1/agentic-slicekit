@@ -18,6 +18,7 @@ import {
   reduceRuns,
   RULESET_NAME,
   rulesetRules,
+  pruneRulesetChecks,
 } from './gh-json.js';
 
 // The test seam for C-1 (05 REQ-5.2): a directory of gh-shaped JSON files.
@@ -104,17 +105,24 @@ export function fixtureHost(dir) {
       if (typeof got?.path !== 'string' || typeof got?.text !== 'string') throw new GitHostError('git host fixture codeowners.json: needs {path, text}');
       return { path: got.path, text: got.text };
     },
+    // As the GitHub host: the rules of branch-rules-<branch>.json whose ruleset_id is "slicekit" are
+    // the slicekit ruleset; only they lose a check not in rules.kitChecks. Nothing changed, nothing written.
     applyBranchRules(branch, rules) {
       assertBranch(branch);
       refuse(dir, 'ruleset-apply-error.txt', 'gh api');
-      fs.appendFileSync(path.join(dir, 'ruleset-calls.jsonl'), `${JSON.stringify({ branch, rules })}
-`);
       const file = branchFile(dir, 'branch-rules', branch);
       const now = readJson(file) ?? [];
+      const mine = now.filter((r) => r?.ruleset_id === RULESET_NAME);
+      const others = now.filter((r) => r?.ruleset_id !== RULESET_NAME);
+      const { rules: pruned, removed } = pruneRulesetChecks(mine, rules.kitChecks);
       const added = rulesetRules(rules).map((r) => ({ ...r, ruleset_source_type: 'Repository', ruleset_source: 'fixture', ruleset_id: RULESET_NAME }));
-      fs.writeFileSync(file, `${JSON.stringify([...now, ...added], null, 2)}
+      if (added.length === 0 && removed.length === 0) return { id: null, name: RULESET_NAME, created: false, removedChecks: [] };
+      const { kitChecks, ...set } = rules;
+      fs.appendFileSync(path.join(dir, 'ruleset-calls.jsonl'), `${JSON.stringify({ branch, rules: set, ...(removed.length > 0 ? { removedChecks: removed } : {}) })}
 `);
-      return { id: null, name: RULESET_NAME, created: true };
+      fs.writeFileSync(file, `${JSON.stringify([...others, ...pruned, ...added], null, 2)}
+`);
+      return { id: null, name: RULESET_NAME, created: mine.length === 0, removedChecks: removed };
     },
     getPullRequest(n) {
       assertPrNumber(n);
