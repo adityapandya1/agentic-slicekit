@@ -3,6 +3,7 @@
 // [sync] pull request and starts the workflow on its branch with workflow_dispatch (D-78, D-80). The YAML is
 // generated as text; every free-text value goes through yamlScalar so a quote, colon or hash in a
 // team's command cannot change the document's structure.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,17 +66,32 @@ export function javaBuildTool(root, commands) {
 }
 
 // setup-java fails a job whose cache matches no file, so the cache is set only when the checkout holds
-// a file the tool's cache keys on, at any depth: pom.xml for Maven; a Gradle build, settings or wrapper
-// file, versions.properties or gradle/*.versions.toml for Gradle (the action's own patterns).
+// a file the tool's cache keys on: pom.xml at any depth for Maven; for Gradle a build, settings or
+// wrapper file or versions.properties at any depth, or a *.versions.toml in the gradle folder directly
+// under the checkout root (the action's pattern gradle/*.versions.toml is root-only). In a git
+// repository only the files git tracks or would add count (git ls-files --cached --others
+// --exclude-standard), so a gitignored file the CI checkout lacks turns no cache on; a file not yet
+// committed counts, as init runs before the first commit. Outside a git repository, or when git
+// fails, the folder is walked.
 const CACHE_SKIP = new Set(['.git', 'node_modules', '.worktrees']);
+// name is the file's basename, dir its parent folder relative to root with / separators ('' at the root).
 const CACHE_FILE = {
   maven: (name) => name === 'pom.xml',
   gradle: (name, dir) => /\.gradle/.test(name) || name === 'gradle-wrapper.properties' || name === 'versions.properties'
-    || (path.basename(dir) === 'gradle' && name.endsWith('.versions.toml')),
+    || (dir === 'gradle' && name.endsWith('.versions.toml')),
 };
+function trackedFiles(root) {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+    return out.split('\0').filter(Boolean);
+  } catch { return null; }
+}
+const parentDir = (p) => { const d = path.posix.dirname(p); return d === '.' ? '' : d; };
 export function hasCacheFile(root, tool) {
   const match = CACHE_FILE[tool];
   if (!root || !match) return false;
+  const tracked = trackedFiles(root);
+  if (tracked) return tracked.some((p) => match(path.posix.basename(p), parentDir(p)));
   const dirs = [root];
   while (dirs.length > 0) {
     const dir = dirs.pop();
@@ -83,7 +99,7 @@ export function hasCacheFile(root, tool) {
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
     for (const e of entries) {
       if (e.isDirectory()) { if (!CACHE_SKIP.has(e.name)) dirs.push(path.join(dir, e.name)); }
-      else if (match(e.name, dir)) return true;
+      else if (match(e.name, path.relative(root, dir).split(path.sep).join('/'))) return true;
     }
   }
   return false;
