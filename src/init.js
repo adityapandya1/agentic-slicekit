@@ -90,7 +90,7 @@ function reassertUnignores(root, file) {
     appended = false;
   }
   const lines = [...new Set(still.map((rel) => ignoringLine(root, rel)).filter(Boolean))];
-  const note = `${still.join(' and ')} still ignored by git (${lines.join(', ')}); a later un-ignore cannot re-include a path under an excluded folder, so init does not append its un-ignores again`;
+  const note = `${still.join(' and ')} still ignored by git (${lines.join(', ')}); the un-ignores at the end of .gitignore cannot override that rule, so init does not append them again`;
   return { appended, note };
 }
 
