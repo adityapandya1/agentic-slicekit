@@ -13,13 +13,17 @@
 // - when .slicekit/journal-heads.log changed, the branch must be a sync branch (`sync/<short sha>`),
 //   the file at the base must be a byte prefix of the file at the tip, and each line it gains must equal
 //   the line headsLines computes for that line's merge commit from git and C-1 getRun (D-89). A line
-//   that differs is a finding at its line number.
+//   that differs is a finding at its line number. Each line is recomputed against the heads file at the
+//   base plus the lines added before it, as the sync job computed it against the file at its merge;
+// - on a sync branch whose short sha names a commit of this clone, the file must gain a line for each
+//   journal file headsFiles owes a line at that merge, whether or not the file changed; one finding per
+//   line it lacks (REQ-3.8).
 // Outside CI no signature or run is read.
 import path from 'node:path';
 import { getHost } from '../../adapters/githost/index.js';
 import { GitHostError } from '../../adapters/githost/errors.js';
-import { GitError } from '../../git.js';
-import { appendOnlyProblems, headsAt, headsLines, journalCommits, mergeBaseWith, parseHeadsLine, SIGNED_MESSAGE, verifyJournal } from '../../journal.js';
+import { GitError, resolveCommit } from '../../git.js';
+import { appendOnlyProblems, headsAt, headsFiles, headsLines, journalCommits, mergeBaseWith, parseHeadsLine, SIGNED_MESSAGE, verifyJournal } from '../../journal.js';
 import { kitPaths } from '../../paths.js';
 import { SYNC_BRANCH, branchTip } from '../ci-event.js';
 
@@ -67,9 +71,11 @@ function signedProblems(ctx, theHost, base, tip) {
 function headsProblems(ctx, theHost, mb, at) {
   const { root, cfg } = ctx;
   const { rel, was, now } = headsAt(root, cfg, mb.base, at.tip);
-  if (was.equals(now)) return [];
+  const sync = SYNC_BRANCH.test(at.branch);
+  const syncMerge = sync ? resolveCommit(root, at.branch.slice('sync/'.length)) : null;
+  if (was.equals(now)) return syncMerge === null ? [] : omitted(root, cfg, rel, syncMerge, was.toString('utf8'));
   const at0 = (message) => [{ file: rel, line: 0, message }];
-  if (!SYNC_BRANCH.test(at.branch)) return at0(`${rel} changed on ${at.branch}; only a sync pull request (a sync/<short sha> branch) may change it`);
+  if (!sync) return at0(`${rel} changed on ${at.branch}; only a sync pull request (a sync/<short sha> branch) may change it`);
   if (now.length < was.length || !now.subarray(0, was.length).equals(was)) return at0(`${rel} is not append-only against ${mb.ref}`);
   const before = was.toString('utf8');
   const first = (before.match(/\n/g)?.length ?? 0) + (before !== '' && !before.endsWith('\n') ? 1 : 0) + 1;
@@ -86,7 +92,7 @@ function headsProblems(ctx, theHost, mb, at) {
     const p = parseHeadsLine(text);
     if (p === null || (torn && i === lines.length - 1)) return differs('a line that does not parse');
     const key = `${p.merge} ${p.run}`;
-    if (!expected.has(key)) expected.set(key, recompute(root, cfg, theHost, p));
+    if (!expected.has(key)) expected.set(key, recompute(root, cfg, theHost, p, before + lines.slice(0, i).map((l) => `${l}\n`).join('')));
     const want = expected.get(key);
     if (typeof want === 'string') return differs(want);
     const j = used.get(key) ?? 0;
@@ -98,11 +104,25 @@ function headsProblems(ctx, theHost, mb, at) {
     const j = used.get(key) ?? 0;
     for (const missing of want.slice(j)) out.push({ file: rel, line: 0, message: `${rel} lacks the line CI computes: ${missing}` });
   }
+  if (syncMerge !== null && ![...expected.keys()].some((key) => key.startsWith(`${syncMerge} `))) out.push(...omitted(root, cfg, rel, syncMerge, before));
   return out;
 }
 
+// One finding per journal file the sync pull request for `merge` owes a heads line and does not add one
+// for, computed against the heads file at the base (`recorded`); the run is not read, since no line names it.
+function omitted(root, cfg, rel, merge, recorded) {
+  let owed;
+  try {
+    owed = headsFiles(root, cfg, merge, { recorded });
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    return [];
+  }
+  return owed.map(({ file, hash }) => ({ file: rel, line: 0, message: `${rel} lacks a line for ${file} hash=${hash} at merge ${short(merge)}; the sync pull request adds one per journal file the merge changed` }));
+}
+
 // The lines headsLines computes for p's merge commit and run, or a string saying why there are none.
-function recompute(root, cfg, theHost, p) {
+function recompute(root, cfg, theHost, p, recorded) {
   let r;
   try {
     r = theHost().getRun(p.run);
@@ -112,7 +132,7 @@ function recompute(root, cfg, theHost, p) {
   }
   if (r.headSha !== p.merge) return `none (run ${p.run} ran on ${short(String(r.headSha))}, not ${short(p.merge)})`;
   try {
-    return headsLines(root, cfg, p.merge, { run: p.run, workflow: r.workflow, actor: r.actor });
+    return headsLines(root, cfg, p.merge, { run: p.run, workflow: r.workflow, actor: r.actor }, { recorded });
   } catch (e) {
     if (!(e instanceof GitError)) throw e;
     return `none (merge ${short(p.merge)} is not a commit of this clone)`;

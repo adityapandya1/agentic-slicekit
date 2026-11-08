@@ -73,7 +73,8 @@ function show(root, args, io) {
 }
 
 // `slicekit journal heads <merge sha>` (REQ-3.8, D-71): the sync job's step. Appends to
-// `.slicekit/journal-heads.log` one line per journal file the merge commit added or changed: the file,
+// `.slicekit/journal-heads.log` one line per journal file headsFiles owes a line at the merge commit
+// (its last hash differs from what the heads file at the merge records or implies): the file,
 // its last hash, the merge commit, and the run id, workflow and actor from the CI run's environment
 // (GITHUB_RUN_ID, GITHUB_WORKFLOW, GITHUB_TRIGGERING_ACTOR else GITHUB_ACTOR). `check --ci` recomputes
 // each line from git and the host's record of that run (D-89). Exits 2 outside a CI run.

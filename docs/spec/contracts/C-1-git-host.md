@@ -43,7 +43,7 @@ pull requests it supersedes through `closePullRequest`. No operation changes the
 
 Under `slicekit check --ci`, the journal rule calls `getCommit` for each commit of the pull request
 that changes a file under `.slicekit/journal/`, and `getRun` for the run each new line of <!-- slicekit:example -->
-`.slicekit/journal-heads.log` names, to recompute that line (03 REQ-3.8, D-71, D-89). Neither is called <!-- slicekit:example -->
+`.slicekit/journal-heads.log` names, to recompute that line (03 REQ-3.8, D-71, D-89). The check that a sync pull request adds every line its merge owes reads git only and calls neither. Neither is called <!-- slicekit:example -->
 outside CI. The kit manages no keys: the host verifies a signature against the keys on the signer's
 account.
 

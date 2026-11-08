@@ -383,29 +383,57 @@ function bytesAt(root, rev, rel) {
   }
 }
 
-// The lines the sync job adds to the journal-heads file for merge commit `merge` (REQ-3.8): one per
-// journal file the merge added or changed against its first parent (the default branch before the
-// merge), sorted by file, each with that file's last hash at the merge and the run's id, workflow and
-// actor. The sync job writes with it (`slicekit journal heads`, values from the run's environment), and
-// `check --ci` recomputes with it (values from C-1 getRun), so the two cannot drift. Throws GitError
-// when `merge` is not a commit of this clone.
-export function headsLines(root, cfg, merge, { run, workflow, actor }) {
+// The journal files a heads line is owed for at merge commit `merge` (REQ-3.8), sorted by file, each
+// as {file, hash} with its last hash at the merge ('-' when it has none). A file is owed a line when its
+// last hash at the merge differs from the last hash the heads log `recorded` gives for it. A file the log
+// does not name is owed one when its last hash differs from its last hash at the newest merge the log
+// names (absent there counts as different), or, while the log names no merge yet, at the merge's first
+// parent (every file, for a root commit). So a push of several commits (a rebase merge) and a merge whose
+// sync pull request was superseded before it merged both get their lines from the next sync. `recorded`
+// is the heads log text the lines will be appended to; it defaults to the log at the merge commit.
+// Computed from git alone. Throws GitError when `merge` is not a commit of this clone.
+export function headsFiles(root, cfg, merge, { recorded } = {}) {
   const sha = git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${assertRef(merge)}^{commit}`]);
   const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
-  const parent = gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
-  const listed = parent === ''
-    ? git(root, ['ls-tree', '-r', '--name-only', sha, '--', `${relDir}/`])
-    : git(root, ['diff', '--relative', '--name-only', '--no-renames', '--diff-filter=AM', parent, sha, '--', `${relDir}/`]);
-  const files = (listed === '' ? [] : listed.split('\n'))
+  const log = recorded ?? (bytesAt(root, sha, toPosix(path.relative(root, headsPath(root, cfg)))) ?? Buffer.alloc(0)).toString('utf8');
+  const named = new Map();
+  let lastMerge = null;
+  for (const text of log.split('\n')) {
+    const p = parseHeadsLine(text);
+    if (p === null) continue;
+    named.set(p.file, p.hash);
+    lastMerge = p.merge;
+  }
+  const base = lastMerge !== null
+    ? gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${lastMerge}^{commit}`], '')
+    : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
+  const inDir = (listed) => (listed === '' ? [] : listed.split('\n'))
     .map((f) => f.replace(/\r$/, ''))
-    .filter((f) => f.startsWith(`${relDir}/`) && f.endsWith('.log') && !f.slice(relDir.length + 1).includes('/'))
-    .sort();
-  return files.map((file) => {
-    const text = (bytesAt(root, sha, file) ?? Buffer.alloc(0)).toString('utf8');
+    .filter((f) => f.startsWith(`${relDir}/`) && f.endsWith('.log') && !f.slice(relDir.length + 1).includes('/'));
+  const lastHashAt = (rev, file) => {
+    const bytes = bytesAt(root, rev, file);
+    if (bytes === null) return null;
+    const text = bytes.toString('utf8');
     const last = text.endsWith('\n') ? lastLine(text) : null;
-    const hash = (last === null ? null : parseLine(last)?.hash) ?? '-';
-    return headsLine({ file, hash, merge: sha, run, workflow, actor });
-  });
+    return (last === null ? null : parseLine(last)?.hash) ?? '-';
+  };
+  const out = [];
+  for (const file of inDir(git(root, ['ls-tree', '-r', '--name-only', sha, '--', `${relDir}/`])).sort()) {
+    const hash = lastHashAt(sha, file);
+    const was = named.has(file) ? named.get(file) : base === '' ? null : lastHashAt(base, file);
+    if (hash !== was) out.push({ file, hash });
+  }
+  return out;
+}
+
+// The lines the sync job adds to the journal-heads file for merge commit `merge` (REQ-3.8): one per
+// file headsFiles names, with the run's id, workflow and actor. The sync job writes with it (`slicekit
+// journal heads`, values from the run's environment, against the log at the merge), and `check --ci`
+// recomputes with it (values from C-1 getRun, against the log at the merge base), so the two cannot
+// drift. Throws GitError when `merge` is not a commit of this clone.
+export function headsLines(root, cfg, merge, { run, workflow, actor }, { recorded } = {}) {
+  const sha = git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${assertRef(merge)}^{commit}`]);
+  return headsFiles(root, cfg, sha, { recorded }).map(({ file, hash }) => headsLine({ file, hash, merge: sha, run, workflow, actor }));
 }
 
 // Appends lines to the journal-heads file and returns them. The file is written only here.
