@@ -865,3 +865,176 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
     cleanup();
   }
 });
+
+// P4/S-43, REQ-3.11, D-67, D-69, D-85: Java builds and the team's runners.
+//
+// Interface these tests fix: renderWorkflow(cfg, pins, { root }) reads the repository at `root` for
+// pom.xml, build.gradle and build.gradle.kts at its root; workflowState(root, cfg) passes its root.
+// Without a root only the declared commands decide. The JDK step is actions/setup-java pinned by SHA
+// from pins.json, with `java-version` from ci.java (default 25) and `cache: maven` or `cache: gradle`.
+
+const commandJobIds = (yml) => jobIds(yml).filter((id) => id.startsWith('cmd-'));
+
+function withRepoFiles(files, fn) {
+  const repo = makeRepo({ files });
+  try {
+    return fn(repo.root);
+  } finally {
+    repo.cleanup();
+  }
+}
+
+// The setup-java step of one job: pinned by the pins.json SHA, the JDK version and the cache, placed
+// after checkout and before the job's team command.
+function assertJdkStep(block, { java, cache }, label) {
+  const pins = loadPins();
+  const pin = pins['actions/setup-java'];
+  assert.ok(pin, 'pins.json pins actions/setup-java');
+  assert.match(pin.sha, HEX40);
+  assert.match(pin.tag, /^v\d+\.\d+\.\d+$/);
+  const uses = `      - uses: actions/setup-java@${pin.sha} # ${pin.tag}\n`;
+  const at = block.indexOf(uses);
+  assert.notEqual(at, -1, `${label}: setup-java pinned by SHA\n${block}`);
+  const next = block.indexOf('\n      - ', at + uses.length - 1);
+  const step = block.slice(at, next === -1 ? block.length : next + 1);
+  assert.match(step, new RegExp(`\\n {10}java-version: '?${java}'?\\n`), `${label}: java-version ${java}\n${step}`);
+  assert.match(step, new RegExp(`\\n {10}cache: ${cache}\\n`), `${label}: cache ${cache}\n${step}`);
+  assert.equal((block.match(/actions\/setup-java@/g) || []).length, 1, `${label}: one JDK step`);
+  assert.ok(block.indexOf('actions/checkout@') < at, `${label}: after checkout`);
+  assert.ok(at < block.lastIndexOf('        run: '), `${label}: before the team command`);
+}
+
+function assertNoJdkOutsideCommandJobs(yml) {
+  for (const id of jobIds(yml).filter((j) => !j.startsWith('cmd-'))) {
+    assert.ok(!jobBlock(yml, id).includes('setup-java'), `${id} runs no team command and sets up no JDK`);
+  }
+}
+
+test("a Maven repository's command jobs set up a JDK with the Maven cache", () => {
+  // pom.xml at the root: Maven.
+  withRepoFiles({ 'pom.xml': '<project/>\n' }, (root) => {
+    const cfg = exampleConfig();
+    cfg.commands = { test: 'mvn -B verify', lint: 'npm run lint', build: '', e2e: '' };
+    const yml = renderWorkflow(cfg, loadPins(), { root });
+    assert.deepEqual(commandJobIds(yml), ['cmd-test', 'cmd-lint']);
+    for (const id of commandJobIds(yml)) assertJdkStep(jobBlock(yml, id), { java: 25, cache: 'maven' }, id);
+    assertNoJdkOutsideCommandJobs(yml);
+
+    // ci.java overrides the default 25 (D-85).
+    cfg.ci.java = 21;
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 21, cache: 'maven' }, 'ci.java 21');
+  });
+
+  // No build file, a command calling mvn: still a Java repository, with the Maven cache.
+  withRepoFiles({}, (root) => {
+    const cfg = exampleConfig();
+    cfg.commands = { test: 'mvn -B verify', lint: '', build: '', e2e: '' };
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'maven' }, 'mvn command only');
+  });
+
+  // The scenario: init in a repository with pom.xml and `mvn -B verify` writes a workflow whose test
+  // job sets up the JDK with the Maven cache, and `workflow --check` passes on it.
+  withRepoFiles({ 'pom.xml': '<project/>\n' }, (root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js', commands: { test: 'mvn -B verify' } });
+    const written = fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8');
+    assertJdkStep(jobBlock(written, 'cmd-test'), { java: 25, cache: 'maven' }, 'init');
+    const check = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(check.code, 0, check.stderr);
+  });
+});
+
+test("a Gradle repository's command jobs set up a JDK with the Gradle cache", () => {
+  for (const file of ['build.gradle', 'build.gradle.kts']) {
+    withRepoFiles({ [file]: '// gradle\n' }, (root) => {
+      const cfg = exampleConfig();
+      cfg.commands = { test: './gradlew test', lint: './gradlew spotlessCheck', build: 'npm run build', e2e: '' };
+      cfg.ci.java = '21';
+      const yml = renderWorkflow(cfg, loadPins(), { root });
+      assert.deepEqual(commandJobIds(yml), ['cmd-test', 'cmd-lint', 'cmd-build']);
+      for (const id of commandJobIds(yml)) assertJdkStep(jobBlock(yml, id), { java: 21, cache: 'gradle' }, `${file} ${id}`);
+      assertNoJdkOutsideCommandJobs(yml);
+    });
+  }
+
+  // Both build files present: the tool the declared commands call decides (D-69).
+  withRepoFiles({ 'pom.xml': '<project/>\n', 'build.gradle': '// gradle\n' }, (root) => {
+    const cfg = exampleConfig();
+    cfg.commands = { test: 'gradle test', lint: '', build: '', e2e: '' };
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'gradle' }, 'both files, gradle command');
+    cfg.commands = { test: 'mvn -B verify', lint: '', build: '', e2e: '' };
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'maven' }, 'both files, mvn command');
+  });
+
+  // Neither build file, a command calling ./gradlew: Gradle.
+  withRepoFiles({}, (root) => {
+    const cfg = exampleConfig();
+    cfg.commands = { test: './gradlew check', lint: '', build: '', e2e: '' };
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'gradle' }, 'gradlew command only');
+  });
+
+  // workflow --check accepts the generated Gradle workflow.
+  withRepoFiles({ 'build.gradle.kts': '// gradle\n' }, (root) => {
+    init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js', commands: { test: './gradlew test' } });
+    assertJdkStep(jobBlock(fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8'), 'cmd-test'), { java: 25, cache: 'gradle' }, 'init');
+    const check = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(check.code, 0, check.stderr);
+  });
+});
+
+test('ci.runsOn names the runner of every job', () => {
+  const runsOnLines = (yml) => yml.split('\n').filter((l) => /^ {4}runs-on: /.test(l));
+
+  // A string: one label.
+  const one = exampleConfig();
+  one.ci.runsOn = 'payments-runner';
+  const ymlOne = renderWorkflow(one, loadPins());
+  for (const id of jobIds(ymlOne)) assert.ok(jobBlock(ymlOne, id).includes('    runs-on: payments-runner\n'), id);
+  assert.equal(runsOnLines(ymlOne).length, jobIds(ymlOne).length, 'one runs-on per job');
+  assert.ok(!ymlOne.includes('ubuntu-latest'), 'no job left on ubuntu-latest');
+
+  // A list: the labels a self-hosted runner carries, every one required.
+  const many = exampleConfig();
+  many.ci.runsOn = ['self-hosted', 'linux', 'x64'];
+  const ymlMany = renderWorkflow(many, loadPins());
+  for (const id of jobIds(ymlMany)) assert.ok(jobBlock(ymlMany, id).includes('    runs-on: [self-hosted, linux, x64]\n'), id);
+  assert.ok(!ymlMany.includes('ubuntu-latest'));
+
+  // The three-system test matrix is unchanged: cmd-test keeps its operating systems, every other job
+  // runs on ci.runsOn (D-67).
+  const matrix = exampleConfig();
+  matrix.ci.matrix = true;
+  matrix.ci.runsOn = ['self-hosted', 'linux'];
+  const ymlMatrix = renderWorkflow(matrix, loadPins());
+  const t = jobBlock(ymlMatrix, 'cmd-test');
+  assert.ok(t.includes('os: [ubuntu-latest, windows-latest, macos-latest]'), t);
+  assert.ok(t.includes('    runs-on: ${{ matrix.os }}\n'), t);
+  for (const id of jobIds(ymlMatrix).filter((j) => j !== 'cmd-test')) {
+    assert.ok(jobBlock(ymlMatrix, id).includes('    runs-on: [self-hosted, linux]\n'), id);
+  }
+
+  // Default: ubuntu-latest, as before.
+  const plain = renderWorkflow(exampleConfig(), loadPins());
+  for (const id of jobIds(plain)) assert.ok(jobBlock(plain, id).includes('    runs-on: ubuntu-latest\n'), id);
+});
+
+test('a repository with no Java build renders as before', () => {
+  // A Node repository: package.json, no Java build file, no command calling mvn, gradle or ./gradlew.
+  withRepoFiles({ 'package.json': '{}\n', 'src/index.js': '\n' }, (root) => {
+    const golden = fs.readFileSync(GOLDEN, 'utf8');
+    const cfg = exampleConfig();
+    assert.equal(renderWorkflow(cfg, loadPins(), { root }), golden, 'with a root');
+    assert.equal(renderWorkflow(cfg, loadPins()), golden, 'without a root');
+    cfg.ci.runsOn = 'ubuntu-latest';
+    assert.equal(renderWorkflow(cfg, loadPins(), { root }), golden, 'ci.runsOn ubuntu-latest is the default');
+    cfg.ci.java = 21;
+    assert.equal(renderWorkflow(cfg, loadPins(), { root }), golden, 'ci.java alone does not make a Java repository');
+    // A word that only contains a tool name is not a call to it.
+    cfg.commands = { ...cfg.commands, lint: 'npm run lint:gradle-free && node mvnw-docs.js' };
+    assert.ok(!renderWorkflow(cfg, loadPins(), { root }).includes('setup-java'));
+  });
+  // The kit's own workflow: no Java build, unchanged by this slice.
+  const kitRoot = fileURLToPath(new URL('..', import.meta.url));
+  const own = renderWorkflow(loadConfig(kitRoot), loadPins(), { root: kitRoot });
+  assert.ok(!own.includes('setup-java'));
+  assert.equal(fs.readFileSync(path.join(kitRoot, WORKFLOW_PATH), 'utf8'), own);
+});

@@ -226,3 +226,26 @@ test('agents.denyPaths that is not a list of strings is refused', () => {
   assert.deepEqual(validateConfig({ ...cfg, agents: 'data/**' }), ['agents: must be an object']);
   assert.deepEqual(validateConfig({ ...cfg, agents: ['data/**'] }), ['agents: must be an object']);
 });
+
+// P4/S-43, REQ-3.11, D-67, D-85: ci.runsOn is a runner label or a list of them (absent is
+// ubuntu-latest); ci.java is a JDK version (absent is 25).
+test('ci.runsOn or ci.java of the wrong type is refused', () => {
+  const cfg = base();
+  const withCi = (ci) => validateConfig({ ...cfg, ci: { ...cfg.ci, ...ci } });
+  assert.deepEqual(validateConfig(cfg), [], 'both absent is valid');
+  for (const ok of ['ubuntu-latest', 'self-hosted', ['self-hosted'], ['self-hosted', 'linux', 'x64']]) {
+    assert.deepEqual(withCi({ runsOn: ok }), [], JSON.stringify(ok));
+  }
+  for (const ok of [25, 21, 17, '21', '17.0.2']) assert.deepEqual(withCi({ java: ok }), [], JSON.stringify(ok));
+
+  for (const bad of [3, true, null, '', ' ', [], [''], ['self-hosted', 2], { label: 'x' }]) {
+    const errors = withCi({ runsOn: bad });
+    assert.ok(errors.length > 0, `runsOn ${JSON.stringify(bad)} refused`);
+    assert.ok(errors.every((e) => e.startsWith('ci.runsOn: ')), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
+  }
+  for (const bad of [true, null, '', 'latest', 0, -1, 1.5, [25], { v: 25 }]) {
+    const errors = withCi({ java: bad });
+    assert.ok(errors.length > 0, `java ${JSON.stringify(bad)} refused`);
+    assert.ok(errors.every((e) => e.startsWith('ci.java: ')), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
+  }
+});
