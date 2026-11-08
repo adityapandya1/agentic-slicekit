@@ -55,10 +55,19 @@ export function runsOnValue(runsOn) {
 // file present; with both or neither, the tool the first command calling one names (Maven when none does).
 export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
-// A quote may open or close the call, as in sh -c "gradle test".
-const TOOL_CALL = /(?:^|[\s;&|("'])(mvn|gradle|\.\/gradlew)(?=$|[\s;&|)"'])/;
+// The tool counts only where a shell runs it: at the start of the command, after ; & | or (, or as
+// the first word of a quoted `-c` script (sh -c "gradle test"); a mention such as echo "mvn test" or
+// rg 'gradle' docs is an argument, not a call.
+const TOOL_CALL = /(?:^\s*|[;&|(]\s*|(?:^|\s)-c\s+["']\s*)(mvn|gradle|\.\/gradlew)(?=$|[\s;&|)"'])/;
+// A root build file counts only when the CI checkout holds it too: in a git repository, a file git
+// tracks or would add (a gitignored pom.xml is absent from the checkout, as for the cache below).
+function hasBuildFile(root, file, tracked) {
+  if (!fs.existsSync(path.join(root, file))) return false;
+  return tracked === null || tracked.includes(file);
+}
 export function javaBuildTool(root, commands) {
-  const fromFiles = new Set(root ? Object.entries(BUILD_FILES).filter(([f]) => fs.existsSync(path.join(root, f))).map(([, t]) => t) : []);
+  const tracked = root ? trackedFiles(root) : null;
+  const fromFiles = new Set(root ? Object.entries(BUILD_FILES).filter(([f]) => hasBuildFile(root, f, tracked)).map(([, t]) => t) : []);
   if (fromFiles.size === 1) return [...fromFiles][0];
   const call = commands.map((c) => TOOL_CALL.exec(c)).find(Boolean);
   if (call) return call[1] === 'mvn' ? 'maven' : 'gradle';

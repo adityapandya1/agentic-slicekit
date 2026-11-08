@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { hasCacheFile } from '../src/workflow.js';
+import { hasCacheFile, javaBuildTool } from '../src/workflow.js';
 
 function fixture(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-java-cache-'));
@@ -38,4 +38,19 @@ test('a gitignored pom.xml in a git repository gives no Maven cache', () => {
 
 test('a tracked nested pom.xml in a git repository gives the Maven cache', () => {
   assert.equal(hasCacheFile(repo({ 'svc/pom.xml': '<project/>' }, ['svc/pom.xml']), 'maven'), true);
+});
+
+// Codex on #135: a command that only mentions a tool is not a Java repository; a gitignored root build
+// file is absent from the CI checkout, so it marks no Java repository either.
+test('a tool mentioned in an argument is not a call', () => {
+  assert.equal(javaBuildTool(null, ['echo "mvn test"']), null);
+  assert.equal(javaBuildTool(null, ["rg 'gradle' docs"]), null);
+  assert.equal(javaBuildTool(null, ['npm run lint && ./gradlew check']), 'gradle');
+  assert.equal(javaBuildTool(null, ['  mvn -B verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['bash -c "gradle test"']), 'gradle');
+});
+
+test('a gitignored root build file does not make a Java repository', () => {
+  const dir = repo({ '.gitignore': 'pom.xml\n', 'pom.xml': '<project/>\n' }, ['.gitignore']);
+  assert.equal(javaBuildTool(dir, ['npm test']), null);
 });
