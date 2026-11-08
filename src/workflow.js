@@ -55,10 +55,38 @@ export function runsOnValue(runsOn) {
 // file present; with both or neither, the tool the first command calling one names (Maven when none does).
 export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
-// The tool counts only where a shell runs it: at the start of the command, after ; & | or (, or as
-// the first word of a quoted `-c` script (sh -c "gradle test"); a mention such as echo "mvn test" or
-// rg 'gradle' docs is an argument, not a call.
-const TOOL_CALL = /(?:^\s*|[;&|(]\s*|(?:^|\s)-c\s+["']\s*)(mvn|gradle|\.\/gradlew)(?=$|[\s;&|)"'])/;
+// The tool counts only where a shell runs it: as the first word of a simple command. The command is
+// split at line breaks and at ; & | ( ); in each part, NAME=value assignments and the wrapper words
+// below (with the flags after them) are skipped; a shell started with a flag holding c (sh -c,
+// bash -lc) has its script read the same way. A mention such as echo "mvn test" or rg 'gradle' docs
+// is an argument, not a call.
+const JAVA_TOOLS = { mvn: 'maven', gradle: 'gradle', './gradlew': 'gradle' };
+const WRAPPERS = new Set(['env', 'time', 'nice', 'nohup', 'exec', 'command', 'sudo', 'xvfb-run']);
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
+const unquote = (word) => word.replace(/^["']+|["']+$/g, '');
+function toolCalled(command) {
+  for (const part of String(command).split(/[\n;&|()]+/)) {
+    const words = part.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < words.length) {
+      const word = unquote(words[i]);
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) { i += 1; continue; }
+      if (WRAPPERS.has(word)) { i += 1; while (i < words.length && words[i].startsWith('-')) i += 1; continue; }
+      break;
+    }
+    if (i >= words.length) continue;
+    const first = unquote(words[i]);
+    if (JAVA_TOOLS[first]) return JAVA_TOOLS[first];
+    if (SHELLS.has(first)) {
+      const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
+      if (flag !== -1) {
+        const inner = toolCalled(unquote(words.slice(flag + 1).join(' ')));
+        if (inner) return inner;
+      }
+    }
+  }
+  return null;
+}
 // A root build file counts only when the CI checkout holds it too: in a git repository, a file git
 // tracks or would add (a gitignored pom.xml is absent from the checkout, as for the cache below).
 function hasBuildFile(root, file, tracked) {
@@ -69,8 +97,8 @@ export function javaBuildTool(root, commands) {
   const tracked = root ? trackedFiles(root) : null;
   const fromFiles = new Set(root ? Object.entries(BUILD_FILES).filter(([f]) => hasBuildFile(root, f, tracked)).map(([, t]) => t) : []);
   if (fromFiles.size === 1) return [...fromFiles][0];
-  const call = commands.map((c) => TOOL_CALL.exec(c)).find(Boolean);
-  if (call) return call[1] === 'mvn' ? 'maven' : 'gradle';
+  const call = commands.map(toolCalled).find(Boolean);
+  if (call) return call;
   return fromFiles.size > 0 ? 'maven' : null;
 }
 

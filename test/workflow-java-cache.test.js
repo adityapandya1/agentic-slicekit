@@ -54,3 +54,17 @@ test('a gitignored root build file does not make a Java repository', () => {
   const dir = repo({ '.gitignore': 'pom.xml\n', 'pom.xml': '<project/>\n' }, ['.gitignore']);
   assert.equal(javaBuildTool(dir, ['npm test']), null);
 });
+
+// Review H-7 on #135: a call on a later line, after NAME=value, after a wrapper, or in a shell started
+// with combined flags is still a call.
+test('a call after a line break, an assignment, a wrapper or combined shell flags still counts', () => {
+  assert.equal(javaBuildTool(null, ['npm ci\nmvn -B verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['MAVEN_OPTS=-Xmx1g mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['env CI=1 ./gradlew build']), 'gradle');
+  assert.equal(javaBuildTool(null, ['time mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['xvfb-run -a ./gradlew test']), 'gradle');
+  assert.equal(javaBuildTool(null, ['bash -lc "gradle test"']), 'gradle');
+  assert.equal(javaBuildTool(null, ["sh -ec 'mvn verify'"]), 'maven');
+  assert.equal(javaBuildTool(null, ['cd svc && mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['echo mvn']), null);
+});
