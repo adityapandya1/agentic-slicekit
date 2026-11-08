@@ -49,7 +49,7 @@ file was amended after the freeze (D-10); deny creation of a new file under the 
 slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
 an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
 directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI;
-deny an edit to `.slicekit/journal-heads.log` by anything other than the CLI; and deny an edit to a <!-- slicekit:pending P4/S-42 -->
+deny an edit to `.slicekit/journal-heads.log` by anything other than the CLI; and deny an edit to a
 path the config lists in `agents.denyPaths` (REQ-3.13).
 
 Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
@@ -161,7 +161,7 @@ The sync pull request (REQ-3.11) SHALL add one line per changed journal file to
 workflow and actor as the host reports them; the actor is the account that started the run, which a re-run keeps. The kit manages no keys.
 
 Every value in that file comes from git and the host, so in CI `slicekit check` SHALL recompute it
-rather than trust its writer (D-89): the file at the default branch is a byte prefix of the file at <!-- slicekit:pending P4/S-42 -->
+rather than trust its writer (D-89): the file at the default branch is a byte prefix of the file at
 the pull request's head; only a pull request from a sync branch (REQ-3.11) changes it; and each line
 it adds equals the line CI computes for that merge commit from git and C-1 `getRun`. A line that
 differs fails check, naming it.
@@ -225,7 +225,7 @@ blockers and, if required, the latest independent verdict on it has none either 
 verdict given on an earlier head counts when every later commit touches only the kit's own
 bookkeeping (D-35). A pull request opened by an actor in `ci.botActors` is exempt from the title
 and body rules (D-37). On merge to the default branch it SHALL run
-`slicekit status --sync --write` and, when the state, `BUILD.md` or `.slicekit/journal-heads.log` <!-- slicekit:pending P4/S-42 -->
+`slicekit status --sync --write` and, when the state, `BUILD.md` or `.slicekit/journal-heads.log`
 (REQ-3.8) changed, push the change to a branch `sync/<short sha of the merge commit>` and open a
 pull request titled `[sync] state after <short sha>` for it through C-1, with a Done when, Proof and
 Decisions body. A human
