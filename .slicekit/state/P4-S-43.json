@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-43",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 135,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
-    "headSha": "70a929662cb162433b02c086072fadba02fc174d"
+    "headSha": "b653beacf340cc3d24973a8f2ced22a6fb5e5f0c"
   },
   "redCommit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
   "frozenTests": [
@@ -362,6 +362,22 @@
           "path": ".slicekit/reviews/P4-S-43i-r7.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T17:27:09.510Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "b653beacf340cc3d24973a8f2ced22a6fb5e5f0c",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
         }
       }
     }
