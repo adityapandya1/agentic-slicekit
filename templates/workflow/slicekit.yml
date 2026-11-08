@@ -25,7 +25,7 @@ defaults:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    runs-on: {{runsOn}}
     timeout-minutes: {{timeoutMinutes}}
     permissions:
       actions: read
@@ -101,7 +101,7 @@ jobs:
   checks:
     if: ${{ always() }}
     needs: [{{readyNeeds}}]
-    runs-on: ubuntu-latest
+    runs-on: {{runsOn}}
     timeout-minutes: 10
     steps:
       - name: Every job a merge waits on passed
@@ -112,7 +112,7 @@ jobs:
   ready-label:
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     needs: [checks]
-    runs-on: ubuntu-latest
+    runs-on: {{runsOn}}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -140,7 +140,7 @@ jobs:
   # checks run. sync open pushes only the sync branch; nothing here commits or pushes.
   sync:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: {{runsOn}}
     timeout-minutes: 10
     permissions:
       actions: write

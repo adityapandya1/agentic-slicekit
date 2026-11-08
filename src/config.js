@@ -116,6 +116,18 @@ function ciErrors(ci) {
   const t = ci.timeoutMinutes;
   if (t !== undefined && !(Number.isInteger(t) && t >= 1 && t <= 360)) errors.push('ci.timeoutMinutes: must be an integer from 1 to 360');
   errors.push(...shardErrors(ci.shards));
+  // D-67: one runner label or the list of labels a self-hosted runner carries; absent is ubuntu-latest.
+  const r = ci.runsOn;
+  if (r !== undefined) {
+    const labels = Array.isArray(r) ? r : [r];
+    if (labels.length === 0 || !labels.every(nonEmpty)) errors.push('ci.runsOn: must be a runner label or a non-empty list of runner labels');
+    else labels.forEach((l) => errors.push(...workflowTextErrors('ci.runsOn', l)));
+  }
+  // D-85: the JDK a Java repository's command jobs set up; absent is 25.
+  const j = ci.java;
+  if (j !== undefined && !((Number.isInteger(j) && j >= 1) || (typeof j === 'string' && /^\d+(?:\.\d+)*$/.test(j)))) {
+    errors.push('ci.java: must be a JDK version, such as 25 or "21"');
+  }
   if (!Array.isArray(ci.observabilitySteps)) return [...errors, 'ci.observabilitySteps: must be an array'];
   ci.observabilitySteps.forEach((step, i) => {
     const at = `ci.observabilitySteps[${i}]`;
