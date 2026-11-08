@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-43",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 135,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
-    "headSha": "9692a0b27215ab45f097d7b06164b53f5db72e45"
+    "headSha": "2d5462aeedc8f7cc84e900ec5e062ff853aea262"
   },
   "redCommit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
   "frozenTests": [
@@ -232,6 +232,22 @@
         "unfreeze": "test/workflow.test.js",
         "amendCommit": "866bece9f991fb7b395257449f3adeeafe6cf98a",
         "reason": "setup-java fails a job whose cache matches no file; command-only Java cases expect no cache (Codex on #135)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:34:48.197Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "2d5462aeedc8f7cc84e900ec5e062ff853aea262",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
       }
     }
   ]
