@@ -711,3 +711,199 @@ test('the journal rule under --ci reports a missing base; locally it stays silen
     r.cleanup();
   }
 });
+
+// ---- P4/S-42: the journal is tied to signed commits (REQ-3.8, D-71, D-89) ----
+
+// The C-1 fixture files these tests write, each what `gh api` prints for that call:
+//   commit-<sha>.json  repos/{o}/{r}/commits/<sha>    (getCommit: commit.verification.verified, the signer)
+//   run-<id>.json      repos/{o}/{r}/actions/runs/<id> (getRun: name, head_sha, actor, conclusion)
+const HEADS = '.slicekit/journal-heads.log';
+const RUN = { id: '987654321', workflow: 'kitflow', actor: 'octocat' };
+const SIGNED_MSG = 'journal commits must be signed';
+
+function hostDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
+}
+const writeJson = (dir, name, value) => fs.writeFileSync(path.join(dir, name), `${JSON.stringify(value, null, 2)}\n`);
+
+function commitFixture(dir, sha, verified) {
+  writeJson(dir, `commit-${sha}.json`, {
+    sha,
+    commit: {
+      message: 'm',
+      verification: verified
+        ? { verified: true, reason: 'valid', signature: '-----BEGIN PGP SIGNATURE-----\nx\n-----END PGP SIGNATURE-----', payload: 'p' }
+        : { verified: false, reason: 'unsigned', signature: null, payload: null },
+    },
+    author: { login: 'octocat' },
+    committer: { login: 'octocat' },
+  });
+}
+
+function runFixture(dir, headSha) {
+  writeJson(dir, `run-${RUN.id}.json`, {
+    id: Number(RUN.id),
+    name: RUN.workflow,
+    path: '.github/workflows/slicekit.yml',
+    event: 'push',
+    head_branch: 'main',
+    head_sha: headSha,
+    status: 'in_progress',
+    conclusion: null,
+    actor: { login: RUN.actor },
+    triggering_actor: { login: RUN.actor },
+  });
+}
+
+// The environment of `check --ci` on a pull request from `branch` titled `title`, whose head is HEAD.
+function prEnv(root, dir, { branch, title }) {
+  const event = path.join(dir, 'event.json');
+  writeJson(dir, 'event.json', {
+    pull_request: {
+      number: 7,
+      title,
+      body: '',
+      head: { ref: branch, sha: git(root, ['rev-parse', 'HEAD']) },
+      user: { login: 'octocat' },
+      labels: [],
+    },
+  });
+  return {
+    SLICEKIT_GITHOST_FIXTURE: dir,
+    GITHUB_EVENT_PATH: event,
+    GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_HEAD_REF: branch,
+    GITHUB_BASE_REF: 'main',
+  };
+}
+
+const ruleCi = (root, env) => journalRule.run(buildContext(root, cfg, { ci: true, env }));
+
+// committedJournal() plus, on slice/x, one commit that appends to the journal and one that does not.
+function sliceWithJournalCommit() {
+  const r = committedJournal();
+  appendJournal(r.root, FIELDS);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'journal on the slice']);
+  const journalSha = git(r.root, ['rev-parse', 'HEAD']);
+  fs.writeFileSync(path.join(r.root, 'README.md'), 'not the journal\n');
+  git(r.root, ['add', 'README.md']);
+  git(r.root, ['commit', '--quiet', '-m', 'readme']);
+  const otherSha = git(r.root, ['rev-parse', 'HEAD']);
+  return { ...r, journalSha, otherSha };
+}
+
+// The environment the sync job's step runs in: the CI run's own variables, no pull request.
+function runEnv(mergeSha) {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if (['GITHUB_EVENT_PATH', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'SLICEKIT_PR_TITLE', 'SLICEKIT_PR_BODY', 'SLICEKIT_GITHOST_FIXTURE'].includes(k.toUpperCase())) delete env[k];
+  }
+  return { ...env, GITHUB_RUN_ID: RUN.id, GITHUB_WORKFLOW: RUN.workflow, GITHUB_ACTOR: RUN.actor, GITHUB_TRIGGERING_ACTOR: RUN.actor, GITHUB_SHA: mergeSha };
+}
+
+// main with a slice merged by a merge commit M that changed one journal file; the sync job's
+// `journal heads M` has written the heads log, and the result is committed on branch(M).
+function mergedWithHeads(branch) {
+  const r = makeRepo({ commits: 1 });
+  withConfig(r.root);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'config']);
+  git(r.root, ['checkout', '--quiet', '-b', 'slice/a']);
+  appendJournal(r.root, FIELDS);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'a']);
+  git(r.root, ['checkout', '--quiet', 'main']);
+  git(r.root, ['merge', '--quiet', '--no-ff', '-m', 'merge a', 'slice/a']);
+  const merge = git(r.root, ['rev-parse', 'HEAD']);
+  const out = runCli(['journal', 'heads', merge], { cwd: r.root, env: runEnv(merge) });
+  assert.equal(out.code, 0, out.stderr + out.stdout);
+  assert.ok(fs.existsSync(path.join(r.root, HEADS)), 'journal heads wrote the heads log');
+  git(r.root, ['checkout', '--quiet', '-b', branch(merge)]);
+  git(r.root, ['add', '-A']);
+  git(r.root, ['commit', '--quiet', '-m', 'heads']);
+  return { ...r, merge };
+}
+
+// REQ-3.8, D-71
+test('an unsigned commit that changes a journal file fails the rule in CI', () => {
+  const r = sliceWithJournalCommit();
+  const dir = hostDir();
+  try {
+    commitFixture(dir, r.journalSha, false);
+    const found = ruleCi(r.root, prEnv(r.root, dir, { branch: 'slice/x', title: 'P1/S-07 x' }));
+    const signed = found.filter((f) => f.message.includes(SIGNED_MSG));
+    assert.equal(signed.length, 1, JSON.stringify(found));
+    assert.ok(signed[0].message.includes(r.journalSha.slice(0, 7)), signed[0].message);
+    assert.ok(!found.some((f) => f.message.includes(r.otherSha.slice(0, 7))), 'a commit that leaves the journal alone is not named');
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// REQ-3.8, D-71
+test('a signed commit that changes a journal file passes', () => {
+  const r = sliceWithJournalCommit();
+  const dir = hostDir();
+  try {
+    commitFixture(dir, r.journalSha, true);
+    assert.deepEqual(ruleCi(r.root, prEnv(r.root, dir, { branch: 'slice/x', title: 'P1/S-07 x' })), []);
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// REQ-3.8: outside CI the rule checks what it checked before this slice, and nothing more.
+test('outside CI the rule does not read signatures', () => {
+  const r = sliceWithJournalCommit();
+  const dir = hostDir();
+  try {
+    commitFixture(dir, r.journalSha, false);
+    fs.writeFileSync(path.join(r.root, HEADS), 'written by hand\n');
+    git(r.root, ['add', '-A']);
+    git(r.root, ['commit', '--quiet', '-m', 'heads by hand']);
+    assert.deepEqual(journalRule.run(buildContext(r.root, cfg, { env: { SLICEKIT_GITHOST_FIXTURE: dir } })), []);
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// REQ-3.8, D-89
+test('a journal-heads line that differs from the recomputed line fails in CI', () => {
+  const r = mergedWithHeads((m) => `sync/${m.slice(0, 7)}`);
+  const dir = hostDir();
+  try {
+    runFixture(dir, r.merge);
+    const pr = { branch: `sync/${r.merge.slice(0, 7)}`, title: `[sync] state after ${r.merge.slice(0, 7)}` };
+    // The line the sync job wrote is the line CI computes.
+    assert.deepEqual(ruleCi(r.root, prEnv(r.root, dir, pr)), []);
+    const file = path.join(r.root, HEADS);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(text.includes(RUN.actor), text);
+    fs.writeFileSync(file, text.replace(RUN.actor, 'mallory'));
+    git(r.root, ['add', '-A']);
+    git(r.root, ['commit', '--quiet', '-m', 'edited heads']);
+    const found = ruleCi(r.root, prEnv(r.root, dir, pr));
+    assert.ok(found.some((f) => f.file === HEADS && f.line === 1), JSON.stringify(found));
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// REQ-3.8, D-89
+test('a journal-heads change from a pull request that is not a sync pull request fails in CI', () => {
+  const r = mergedWithHeads(() => 'slice/heads');
+  const dir = hostDir();
+  try {
+    runFixture(dir, r.merge);
+    const found = ruleCi(r.root, prEnv(r.root, dir, { branch: 'slice/heads', title: 'P1/S-07 heads' }));
+    assert.ok(found.some((f) => f.file === HEADS && /sync/i.test(f.message)), JSON.stringify(found));
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
