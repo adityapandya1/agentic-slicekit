@@ -73,6 +73,8 @@ function headsProblems(ctx, theHost, mb, at) {
   const { rel, was, now } = headsAt(root, cfg, mb.base, at.tip);
   const sync = SYNC_BRANCH.test(at.branch);
   const syncMerge = sync ? resolveCommit(root, at.branch.slice('sync/'.length)) : null;
+  // A sync branch whose merge this checkout cannot resolve fails closed: no omitted-line check could run.
+  if (sync && syncMerge === null) return [{ file: rel, line: 0, message: `${at.branch} names a merge this checkout cannot resolve; a sync pull request records a commit of ${mb.ref}` }];
   if (was.equals(now)) return syncMerge === null ? [] : omitted(root, cfg, rel, syncMerge, was.toString('utf8'));
   const at0 = (message) => [{ file: rel, line: 0, message }];
   if (!sync) return at0(`${rel} changed on ${at.branch}; only a sync pull request (a sync/<short sha> branch) may change it`);

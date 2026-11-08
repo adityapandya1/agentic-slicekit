@@ -160,6 +160,27 @@ test('a sync pull request that adds no heads line for a merge that changed a jou
   }
 });
 
+// REQ-3.8 (Codex P2 on #128): a sync branch whose merge does not resolve fails closed.
+test('a sync pull request whose branch names a merge the checkout cannot resolve fails in CI', () => {
+  const r = repo();
+  const dir = hostDir();
+  try {
+    mergeOf(r.root, 'slice/a', ['slice/a']);
+    const branch = 'sync/deadbee';
+    git(r.root, ['checkout', '--quiet', '-b', branch]);
+    fs.writeFileSync(path.join(r.root, 'STATE.md'), 'state\n');
+    git(r.root, ['add', '-A']);
+    git(r.root, ['commit', '--quiet', '-m', 'state only']);
+    const found = ruleCi(r.root, prEnv(r.root, dir, { branch, title: '[sync] state after deadbee' }));
+    const bad = found.filter((f) => f.file === HEADS && f.message.includes('cannot resolve'));
+    assert.equal(bad.length, 1, JSON.stringify(found));
+    assert.ok(bad[0].message.includes(branch), bad[0].message);
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---- the actor across a re-run (H-5) ----
 
 function runEnv(merge, { actor, triggering }) {
