@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, shardErrors } from './config.js';
+import { DEFAULT_RUNS_ON, DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, MATRIX_OS, shardErrors, shardRunnerErrors } from './config.js';
 import { readText } from './fs.js';
 import { substitute } from './render/entry.js';
 
@@ -18,7 +18,6 @@ export const WORKFLOW_DRIFT = `${WORKFLOW_PATH} differs from the generator; run 
 
 const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact', cache: 'actions/cache', setupJava: 'actions/setup-java' };
 const COMMAND_ORDER = ['test', 'lint', 'build', 'e2e'];
-const MATRIX_OS = ['ubuntu-latest', 'windows-latest', 'macos-latest'];
 const SHA = /^[0-9a-f]{40}$/;
 const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
@@ -40,7 +39,6 @@ const NO_DEPENDENCIES = [
 ];
 
 // D-67: the runner of every job, ci.runsOn (a label or a list of labels), default ubuntu-latest.
-const DEFAULT_RUNS_ON = 'ubuntu-latest';
 // A label inside a flow sequence: quoted when a comma or bracket would end it.
 const flowItem = (label) => {
   const out = yamlScalar(label);
@@ -206,13 +204,14 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 360) throw new Error('ci.timeoutMinutes: must be an integer from 1 to 360');
   const shardProblems = shardErrors(cfg.ci?.shards);
   if (shardProblems.length > 0) throw new Error(shardProblems.join('; '));
-  const testSystems = matrix ? MATRIX_OS : [runsOnValue(cfg.ci?.runsOn)];
-  const shards = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
-  for (const os of Object.keys(shards ?? {})) {
-    if (!testSystems.includes(os)) throw new Error(`ci.shards.${os}: the test job runs only on ${testSystems.join(', ')}`);
-  }
-  const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
+  const runnerProblems = shardRunnerErrors(cfg.ci);
+  if (runnerProblems.length > 0) throw new Error(runnerProblems.join('; '));
   const runsOn = runsOnValue(cfg.ci?.runsOn);
+  const testSystems = matrix ? MATRIX_OS : [runsOn];
+  // Without the matrix the one shard key names a label of the runner; the job is keyed by its rendered runs-on.
+  const given = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
+  const shards = given && (matrix ? given : { [runsOn]: Object.values(given)[0] });
+  const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
   const jdk = setupJavaSteps(v, cfg.ci?.java ?? DEFAULT_JAVA, javaBuildTool(root, commands.map((c) => cfg.commands[c])));
   const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];

@@ -104,6 +104,30 @@ export function shardErrors(shards) {
     .map(([os]) => `ci.shards.${os}: must be a positive integer`);
 }
 
+// The systems the test job runs on with ci.matrix, and the runner of every job without ci.runsOn (D-67).
+export const MATRIX_OS = ['ubuntu-latest', 'windows-latest', 'macos-latest'];
+export const DEFAULT_RUNS_ON = 'ubuntu-latest';
+
+// D-49, D-67: a ci.shards key names a system the test job runs on. With ci.matrix that is one of
+// MATRIX_OS; without it the test job runs on the one runner ci.runsOn names, keyed by one of its
+// labels. Exported so the workflow generator refuses the same keys validateConfig refuses.
+export function shardRunnerErrors(ci) {
+  const keys = isObject(ci?.shards) ? Object.keys(ci.shards) : [];
+  if (keys.length === 0) return [];
+  if (ci.matrix === true) {
+    return keys.filter((k) => !MATRIX_OS.includes(k)).map((k) => `ci.shards.${k}: the test job runs only on ${MATRIX_OS.join(', ')}`);
+  }
+  const r = ci.runsOn;
+  const labels = r === undefined ? [DEFAULT_RUNS_ON] : Array.isArray(r) ? r : [r];
+  const errors = keys
+    .filter((k) => !labels.includes(k))
+    .map((k) => `ci.shards.${k}: the test job runs only on the runner labelled ${labels.join(', ')}`);
+  if (errors.length === 0 && keys.length > 1) {
+    errors.push(`ci.shards: ${keys.join(', ')} are labels of the one runner the test job runs on; name one of them`);
+  }
+  return errors;
+}
+
 // ci.matrix is optional (absent reads as false), ci.botActors and ci.timeoutMinutes too (absent
 // reads as the default); each observability step renders as one CI job (REQ-3.11).
 function ciErrors(ci) {
@@ -115,6 +139,7 @@ function ciErrors(ci) {
   }
   const t = ci.timeoutMinutes;
   if (t !== undefined && !(Number.isInteger(t) && t >= 1 && t <= 360)) errors.push('ci.timeoutMinutes: must be an integer from 1 to 360');
+  const beforeRunners = errors.length;
   errors.push(...shardErrors(ci.shards));
   // D-67: one runner label or the list of labels a self-hosted runner carries; absent is ubuntu-latest.
   const r = ci.runsOn;
@@ -123,6 +148,8 @@ function ciErrors(ci) {
     if (labels.length === 0 || !labels.every(nonEmpty)) errors.push('ci.runsOn: must be a runner label or a non-empty list of runner labels');
     else labels.forEach((l) => errors.push(...workflowTextErrors('ci.runsOn', l)));
   }
+  // Keys are matched to the runner only once the counts and ci.runsOn are well formed.
+  if (errors.length === beforeRunners) errors.push(...shardRunnerErrors(ci));
   // D-85: the JDK a Java repository's command jobs set up; absent is 25.
   const j = ci.java;
   if (j !== undefined && !((Number.isInteger(j) && j >= 1) || (typeof j === 'string' && /^\d+(?:\.\d+)*$/.test(j)))) {
