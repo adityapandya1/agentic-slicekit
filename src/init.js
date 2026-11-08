@@ -25,6 +25,8 @@ const IGNORE_RULES = [
   { rule: '.slicekit/local.json', forms: new Set(['.slicekit/local.json', '/.slicekit/local.json']) },
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
+  // The sync pull request commits the heads log (REQ-3.8); a `*.log` rule would make `git add` refuse it.
+  { rule: '!.slicekit/journal-heads.log', forms: new Set(['!.slicekit/journal-heads.log', '!/.slicekit/journal-heads.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
   // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
   { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
