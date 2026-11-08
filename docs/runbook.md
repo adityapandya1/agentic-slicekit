@@ -14,6 +14,15 @@ With `tracker.kind` set to `jira`, declined should-haves go to Jira Cloud instea
 
 In a fork, run `gh repo set-default` so issues (and pull requests) go to the right repository.
 
+## The generated workflow's runners
+
+Every job of the generated workflow runs on `ci.runsOn` from config: one runner label, or the list of labels a self-hosted runner carries; absent is `ubuntu-latest` (D-67). The kit's own test matrix on three operating systems is unchanged.
+
+In a Java repository (`pom.xml`, `build.gradle` or `build.gradle.kts` at the root, or a declared command calling `mvn`, `gradle` or `./gradlew`) each team command job sets up a JDK of `ci.java` (default 25) through `actions/setup-java` with the Maven or Gradle cache (D-69, D-85). The kit adds no container step (D-86):
+
+- Tests that use Testcontainers need Docker on the runner. GitHub-hosted Linux runners have it; a self-hosted runner must have Docker installed and reachable by the runner's user.
+- On a GitHub Enterprise Server host the workflow's actions are pinned by SHA (`templates/workflow/pins.json`). The host reaches them through GitHub Connect, or an administrator mirrors each action into the host at the pinned SHA. A job that cannot resolve an action fails at its first step naming that action.
+
 ## Known failure modes and the first thing to check
 
 - The full test suite runs out of memory on a developer machine: run the targeted test files and let CI run the full suite (D-43).

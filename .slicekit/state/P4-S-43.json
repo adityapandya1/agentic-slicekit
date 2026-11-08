@@ -1,0 +1,487 @@
+{
+  "slice": "P4/S-43",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 135,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+    "headSha": "5448f1cc71e83fcfc79c8b3ca49d4ec347d1ba9f"
+  },
+  "redCommit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
+  "frozenTests": [
+    "test/workflow.test.js",
+    "test/config.test.js"
+  ],
+  "unfrozen": [
+    "test/workflow.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P4-S-43-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "88a9c164d9365979254db554f1ad246d94a2cb01"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P4-S-43-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "6a0c5d865aee131cf55ecc080ee3ae3201129dd7"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P4-S-43i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "6a0c5d865aee131cf55ecc080ee3ae3201129dd7"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-43i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "f2c569aadfff1ac7e86af6d7c68c8f5414e793a5"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P4-S-43i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2d5462aeedc8f7cc84e900ec5e062ff853aea262"
+    },
+    {
+      "round": 6,
+      "path": ".slicekit/reviews/P4-S-43i-r6.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "7cc67daeeffdbf9973c70f1e4c759b7db18d9f4c"
+    },
+    {
+      "round": 7,
+      "path": ".slicekit/reviews/P4-S-43i-r7.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "70a929662cb162433b02c086072fadba02fc174d"
+    },
+    {
+      "round": 8,
+      "path": ".slicekit/reviews/P4-S-43i-r8.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "b653beacf340cc3d24973a8f2ced22a6fb5e5f0c"
+    },
+    {
+      "round": 9,
+      "path": ".slicekit/reviews/P4-S-43i-r9.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "5448f1cc71e83fcfc79c8b3ca49d4ec347d1ba9f"
+    }
+  ],
+  "ci": {
+    "sha": "b07de298d487a79cbf2d84c3d40a66cc84879941",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42507450563"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-08T15:33:41.141Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
+        "testExit": 1,
+        "tests": [
+          "test/workflow.test.js",
+          "test/config.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-08T15:33:41.908Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-08T15:38:29.265Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "88a9c164d9365979254db554f1ad246d94a2cb01",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T15:40:15.314Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P4-S-43-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T15:43:36.655Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "6a0c5d865aee131cf55ecc080ee3ae3201129dd7",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T15:45:18.105Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P4-S-43-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T15:55:24.597Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "27df1ee7efd82459323292592cee18b4c306c45a",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42496413391"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-08T16:00:01.378Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P4-S-43i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:10:45.000Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "f2c569aadfff1ac7e86af6d7c68c8f5414e793a5",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T16:13:34.367Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-43i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T16:24:29.207Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "8bca5396d0e29b6c4d37316b0d8d9a5f5e2f4d79",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42498807234"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-08T16:24:31.438Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:33:03.834Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "9692a0b27215ab45f097d7b06164b53f5db72e45",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "building",
+      "at": "2026-11-08T16:33:13.254Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "866bece9f991fb7b395257449f3adeeafe6cf98a",
+        "reason": "setup-java fails a job whose cache matches no file; command-only Java cases expect no cache (Codex on #135)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:34:48.197Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "2d5462aeedc8f7cc84e900ec5e062ff853aea262",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T16:38:33.966Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P4-S-43i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:52:28.189Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "7cc67daeeffdbf9973c70f1e4c759b7db18d9f4c",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T16:54:42.088Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 6,
+          "path": ".slicekit/reviews/P4-S-43i-r6.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T17:07:31.576Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "400b5458112769ae9500ebf3408e886d0ee3aeeb",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42502280943"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-08T17:07:34.300Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-08T17:21:55.625Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "70a929662cb162433b02c086072fadba02fc174d",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T17:25:14.709Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 7,
+          "path": ".slicekit/reviews/P4-S-43i-r7.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T17:27:09.510Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "b653beacf340cc3d24973a8f2ced22a6fb5e5f0c",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T17:37:43.827Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 8,
+          "path": ".slicekit/reviews/P4-S-43i-r8.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T17:38:34.380Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "2ccc7f04c5dcf4275499a8dc18d16f327c44d491",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42505916863"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-08T17:38:38.687Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-08T17:44:32.745Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "5448f1cc71e83fcfc79c8b3ca49d4ec347d1ba9f",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T17:56:24.123Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 9,
+          "path": ".slicekit/reviews/P4-S-43i-r9.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T17:57:29.909Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "b07de298d487a79cbf2d84c3d40a66cc84879941",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42507450563"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-08T17:57:35.161Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -3,10 +3,11 @@
 // [sync] pull request and starts the workflow on its branch with workflow_dispatch (D-78, D-80). The YAML is
 // generated as text; every free-text value goes through yamlScalar so a quote, colon or hash in a
 // team's command cannot change the document's structure.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, shardErrors } from './config.js';
+import { DEFAULT_RUNS_ON, DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, MATRIX_OS, shardErrors, shardRunnerErrors } from './config.js';
 import { readText } from './fs.js';
 import { substitute } from './render/entry.js';
 
@@ -16,15 +17,14 @@ export const PINS_PATH = fileURLToPath(new URL('../templates/workflow/pins.json'
 export const WORKFLOW_PATH = '.github/workflows/slicekit.yml';
 export const WORKFLOW_DRIFT = `${WORKFLOW_PATH} differs from the generator; run slicekit workflow --write to regenerate it`;
 
-const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact', cache: 'actions/cache' };
+const ACTIONS = { checkout: 'actions/checkout', setupNode: 'actions/setup-node', uploadArtifact: 'actions/upload-artifact', cache: 'actions/cache', setupJava: 'actions/setup-java' };
 const COMMAND_ORDER = ['test', 'lint', 'build', 'e2e'];
-const MATRIX_OS = ['ubuntu-latest', 'windows-latest', 'macos-latest'];
 const SHA = /^[0-9a-f]{40}$/;
 const TAG = /^v\d+\.\d+\.\d+$/;
 const BLOCK_KEYS = ['gateExtraSteps', 'commandJobs', 'observabilityJobs'];
 // Filled as written: values the kit computes or validates to a safe shape.
 const VALUE_KEYS = [
-  'checksOk', 'defaultBranchItem', 'readyNeeds', 'timeoutMinutes',
+  'checksOk', 'defaultBranchItem', 'readyNeeds', 'runsOn', 'timeoutMinutes',
   ...Object.keys(ACTIONS).flatMap((k) => [`${k}Sha`, `${k}Tag`]),
 ];
 // The team's own text: a mapping value holding one is filled, then quoted as a whole.
@@ -38,6 +38,122 @@ const NO_DEPENDENCIES = [
   '        run: |',
   `          node -e "const p = require('./package.json'); const bad = [${DEPENDENCY_FIELDS.map((f) => `'${f}'`).join(', ')}].flatMap((f) => { const v = p[f]; const n = v === true ? ['true'] : Array.isArray(v) ? v : Object.keys(v || {}); return n.length ? [f + ': ' + n.join(', ')] : []; }); if (bad.length) { console.error('package.json has runtime dependencies: ' + bad.join('; ')); process.exit(1) }"`,
 ];
+
+// D-67: the runner of every job, ci.runsOn (a label or a list of labels), default ubuntu-latest.
+// A label inside a flow sequence: quoted when a comma or bracket would end it.
+const flowItem = (label) => {
+  const out = yamlScalar(label);
+  return out.startsWith("'") || !/[,[\]]/.test(out) ? out : `'${label.replace(/'/g, "''")}'`;
+};
+export function runsOnValue(runsOn) {
+  if (runsOn === undefined) return DEFAULT_RUNS_ON;
+  return Array.isArray(runsOn) ? `[${runsOn.map(flowItem).join(', ')}]` : yamlScalar(runsOn);
+}
+
+// D-69, D-85: a repository is a Java repository when it holds a Maven or Gradle build file at its root
+// or a declared command calls mvn, gradle or ./gradlew. The cache is the build tool of the one build
+// file present; with both or neither, the tool the first command calling one names (Maven when none does).
+export const DEFAULT_JAVA = 25;
+const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
+// The tool counts only where a shell runs it: as the first word of a simple command. The command is
+// split at line breaks and at ; & | ( ); in each part, NAME=value assignments and the wrapper words
+// below (with the flags after them) and shell keywords such as then or do are skipped; a shell started with a flag holding c (sh -c,
+// bash -lc) has its script read the same way. A mention such as echo "mvn test" or rg 'gradle' docs
+// is an argument, not a call.
+const JAVA_TOOLS = { mvn: 'maven', gradle: 'gradle', './gradlew': 'gradle' };
+const WRAPPERS = new Set(['env', 'time', 'nice', 'nohup', 'exec', 'command', 'sudo', 'xvfb-run']);
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
+// Shell keywords that open a command position: if ...; then mvn verify; fi.
+const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{']);
+const unquote = (word) => word.replace(/^["']+|["']+$/g, '');
+function toolCalled(command) {
+  for (const part of String(command).split(/[\n;&|()]+/)) {
+    const words = part.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < words.length) {
+      const word = unquote(words[i]);
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || KEYWORDS.has(word)) { i += 1; continue; }
+      if (WRAPPERS.has(word)) { i += 1; while (i < words.length && words[i].startsWith('-')) i += 1; continue; }
+      break;
+    }
+    if (i >= words.length) continue;
+    const first = unquote(words[i]);
+    if (JAVA_TOOLS[first]) return JAVA_TOOLS[first];
+    if (SHELLS.has(first)) {
+      const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
+      if (flag !== -1) {
+        const inner = toolCalled(unquote(words.slice(flag + 1).join(' ')));
+        if (inner) return inner;
+      }
+    }
+  }
+  return null;
+}
+// A root build file counts only when the CI checkout holds it too: in a git repository, a file git
+// tracks or would add (a gitignored pom.xml is absent from the checkout, as for the cache below).
+function hasBuildFile(root, file, tracked) {
+  if (!fs.existsSync(path.join(root, file))) return false;
+  return tracked === null || tracked.includes(file);
+}
+export function javaBuildTool(root, commands) {
+  const tracked = root ? trackedFiles(root) : null;
+  const fromFiles = new Set(root ? Object.entries(BUILD_FILES).filter(([f]) => hasBuildFile(root, f, tracked)).map(([, t]) => t) : []);
+  if (fromFiles.size === 1) return [...fromFiles][0];
+  const call = commands.map(toolCalled).find(Boolean);
+  if (call) return call;
+  return fromFiles.size > 0 ? 'maven' : null;
+}
+
+// setup-java fails a job whose cache matches no file, so the cache is set only when the checkout holds
+// a file the tool's cache keys on: pom.xml at any depth for Maven; for Gradle a build, settings or
+// wrapper file or versions.properties at any depth, or a *.versions.toml in the gradle folder directly
+// under the checkout root (the action's pattern gradle/*.versions.toml is root-only). In a git
+// repository only the files git tracks or would add count (git ls-files --cached --others
+// --exclude-standard), so a gitignored file the CI checkout lacks turns no cache on; a file not yet
+// committed counts, as init runs before the first commit. Outside a git repository, or when git
+// fails, the folder is walked.
+const CACHE_SKIP = new Set(['.git', 'node_modules', '.worktrees']);
+// name is the file's basename, dir its parent folder relative to root with / separators ('' at the root).
+const CACHE_FILE = {
+  maven: (name) => name === 'pom.xml',
+  gradle: (name, dir) => /\.gradle/.test(name) || name === 'gradle-wrapper.properties' || name === 'versions.properties'
+    || (dir === 'gradle' && name.endsWith('.versions.toml')),
+};
+function trackedFiles(root) {
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+    return out.split('\0').filter(Boolean);
+  } catch { return null; }
+}
+const parentDir = (p) => { const d = path.posix.dirname(p); return d === '.' ? '' : d; };
+export function hasCacheFile(root, tool) {
+  const match = CACHE_FILE[tool];
+  if (!root || !match) return false;
+  const tracked = trackedFiles(root);
+  if (tracked) return tracked.some((p) => match(path.posix.basename(p), parentDir(p)));
+  const dirs = [root];
+  while (dirs.length > 0) {
+    const dir = dirs.pop();
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDirectory()) { if (!CACHE_SKIP.has(e.name)) dirs.push(path.join(dir, e.name)); }
+      else if (match(e.name, path.relative(root, dir).split(path.sep).join('/'))) return true;
+    }
+  }
+  return false;
+}
+
+function setupJavaSteps(v, java, tool, root) {
+  if (!tool) return [];
+  return [
+    `      - uses: actions/setup-java@${v.setupJavaSha} # ${v.setupJavaTag}`,
+    '        with:',
+    '          distribution: temurin',
+    `          java-version: ${yamlScalar(String(java))}`,
+    ...(hasCacheFile(root, tool) ? [`          cache: ${tool}`] : []),
+  ];
+}
 
 export function loadPins() {
   return JSON.parse(fs.readFileSync(PINS_PATH, 'utf8'));
@@ -114,7 +230,7 @@ const COMMAND_IF = '    if: ${{ !cancelled() && !(' + BOOKKEEPING + ') }}';
 
 // One job per declared team command, run on `systems`. `shards` (the test command only, D-49) maps a
 // system to its shard count; each shard sets SLICEKIT_SHARD to <k>/<n>, 1/1 on a system not split.
-function commandJob(name, command, v, systems, timeout, shards) {
+function commandJob(name, command, v, systems, timeout, shards, jdk) {
   const strategy = ['    strategy:', '      fail-fast: false', '      matrix:'];
   let head;
   let env = [];
@@ -131,7 +247,7 @@ function commandJob(name, command, v, systems, timeout, shards) {
     head = [`    runs-on: ${systems[0]}`];
   }
   const [stepName, ...rest] = runStep(name, command);
-  return ['', `  cmd-${name}:`, '    needs: [gate]', COMMAND_IF, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), stepName, ...env, ...rest];
+  return ['', `  cmd-${name}:`, '    needs: [gate]', COMMAND_IF, ...head, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...jdk, stepName, ...env, ...rest];
 }
 
 // SLICEKIT_CHECKS_OK for the checks job, which ready-label reads through its result: the gate and every observability job succeeded, and each team
@@ -149,8 +265,8 @@ function checksOk(commands, steps) {
   return '${{ ' + parts.join(' && ') + ' }}';
 }
 
-function observabilityJob(n, step, v, timeout) {
-  return ['', `  obs-${n}:`, `    name: ${yamlScalar(step.name, 4)}`, '    runs-on: ubuntu-latest', `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...runStep(step.name, step.run, step.env)];
+function observabilityJob(n, step, v, timeout, runsOn) {
+  return ['', `  obs-${n}:`, `    name: ${yamlScalar(step.name, 4)}`, `    runs-on: ${runsOn}`, `    timeout-minutes: ${timeout}`, '    steps:', ...setupSteps(v), ...runStep(step.name, step.run, step.env)];
 }
 
 // One pass over the value, so text inside cli is never itself read as a placeholder.
@@ -161,7 +277,7 @@ function fillFreeText(line, vars) {
   return m[1] + yamlScalar(substitute(m[2], vars, FREE_TEXT_KEYS));
 }
 
-export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8') } = {}) {
+export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8'), root = null } = {}) {
   if (/[\r\n]/.test(cfg.cli)) throw new Error('cli: must be one line to render the workflow');
   const v = checkPins(pins);
   const matrix = cfg.ci?.matrix === true;
@@ -169,12 +285,15 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 360) throw new Error('ci.timeoutMinutes: must be an integer from 1 to 360');
   const shardProblems = shardErrors(cfg.ci?.shards);
   if (shardProblems.length > 0) throw new Error(shardProblems.join('; '));
-  const testSystems = matrix ? MATRIX_OS : ['ubuntu-latest'];
-  const shards = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
-  for (const os of Object.keys(shards ?? {})) {
-    if (!testSystems.includes(os)) throw new Error(`ci.shards.${os}: the test job runs only on ${testSystems.join(', ')}`);
-  }
+  const runnerProblems = shardRunnerErrors(cfg.ci);
+  if (runnerProblems.length > 0) throw new Error(runnerProblems.join('; '));
+  const runsOn = runsOnValue(cfg.ci?.runsOn);
+  const testSystems = matrix ? MATRIX_OS : [runsOn];
+  // Without the matrix the one shard key names a label of the runner; the job is keyed by its rendered runs-on.
+  const given = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
+  const shards = given && (matrix ? given : { [runsOn]: Object.values(given)[0] });
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
+  const jdk = setupJavaSteps(v, cfg.ci?.java ?? DEFAULT_JAVA, javaBuildTool(root, commands.map((c) => cfg.commands[c])), root);
   const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
   if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
@@ -182,16 +301,17 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
     gateExtraSteps: matrix ? NO_DEPENDENCIES : [],
     commandJobs: commands.flatMap((name) =>
       name === 'test'
-        ? commandJob(name, cfg.commands[name], v, testSystems, timeout, shards)
-        : commandJob(name, cfg.commands[name], v, ['ubuntu-latest'], timeout, null),
+        ? commandJob(name, cfg.commands[name], v, testSystems, timeout, shards, jdk)
+        : commandJob(name, cfg.commands[name], v, [runsOn], timeout, null, jdk),
     ),
-    observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v, timeout)),
+    observabilityJobs: steps.flatMap((step, i) => observabilityJob(i + 1, step, v, timeout, runsOn)),
   };
   const vars = {
     ...v,
     checksOk: checksOk(commands, steps),
     defaultBranchItem: yamlScalar(cfg.defaultBranch),
     readyNeeds: ['gate', ...commands.map((c) => `cmd-${c}`), ...steps.map((_s, i) => `obs-${i + 1}`)].join(', '),
+    runsOn,
     timeoutMinutes: String(timeout),
   };
   const free = { cli: cfg.cli, defaultBranch: cfg.defaultBranch };
@@ -209,7 +329,7 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
 
 // The rendered workflow and the repository's copy of it (null when absent), line endings normalised.
 export function workflowState(root, cfg, pins = loadPins()) {
-  const expected = renderWorkflow(cfg, pins);
+  const expected = renderWorkflow(cfg, pins, { root });
   const file = path.join(root, WORKFLOW_PATH);
   const current = fs.existsSync(file) ? readText(file) : null;
   return { file, expected, current };
