@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-42",
-  "state": "ready",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 128,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/128",
-    "headSha": "6590afa43abc672f84cd5f86f230b288f5c7a00a"
+    "headSha": "c9d09559b61a74ec30525d6c19e45ac0bc2014ab"
   },
   "redCommit": "323027efa005ea3139b46185e3b014d330450384",
   "frozenTests": [
@@ -43,11 +43,7 @@
       "headSha": "6590afa43abc672f84cd5f86f230b288f5c7a00a"
     }
   ],
-  "ci": {
-    "sha": "dd02bf1aba2446af6901c4f2a7b5713eaba33e73",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42465711448"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -208,6 +204,22 @@
       "at": "2026-11-08T09:16:39.299Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-08T09:27:18.804Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 128,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/128",
+          "headSha": "c9d09559b61a74ec30525d6c19e45ac0bc2014ab",
+          "title": "[P4/S-42] The journal is tied to signed commits"
+        }
+      }
     }
   ]
 }
