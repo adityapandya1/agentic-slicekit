@@ -54,7 +54,8 @@ export function runsOnValue(runsOn) {
 // file present; with both or neither, the tool the first command calling one names (Maven when none does).
 export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
-const TOOL_CALL = /(?:^|[\s;&|(])(mvn|gradle|\.\/gradlew)(?=$|[\s;&|)])/;
+// A quote may open or close the call, as in sh -c "gradle test".
+const TOOL_CALL = /(?:^|[\s;&|("'])(mvn|gradle|\.\/gradlew)(?=$|[\s;&|)"'])/;
 export function javaBuildTool(root, commands) {
   const fromFiles = new Set(root ? Object.entries(BUILD_FILES).filter(([f]) => fs.existsSync(path.join(root, f))).map(([, t]) => t) : []);
   if (fromFiles.size === 1) return [...fromFiles][0];

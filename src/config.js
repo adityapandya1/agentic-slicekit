@@ -146,7 +146,11 @@ function ciErrors(ci) {
   if (r !== undefined) {
     const labels = Array.isArray(r) ? r : [r];
     if (labels.length === 0 || !labels.every(nonEmpty)) errors.push('ci.runsOn: must be a runner label or a non-empty list of runner labels');
-    else labels.forEach((l) => errors.push(...workflowTextErrors('ci.runsOn', l)));
+    else {
+      labels.forEach((l) => errors.push(...workflowTextErrors('ci.runsOn', l)));
+      // A line break inside a label ends the runs-on: value and breaks the workflow's YAML.
+      if (labels.some((l) => /[\r\n]/.test(l))) errors.push('ci.runsOn: a runner label cannot contain a line break');
+    }
   }
   // Keys are matched to the runner only once the counts and ci.runsOn are well formed.
   if (errors.length === beforeRunners) errors.push(...shardRunnerErrors(ci));
