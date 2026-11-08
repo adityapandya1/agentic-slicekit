@@ -57,10 +57,10 @@ test('getCommit reads the host verification of a commit from the origin host', (
   assert.throws(() => hostWith(() => ({})).host.getCommit('--all'));
 });
 
-test('getRun reads the name, head sha, triggering actor and conclusion of a run from the origin host', () => {
+test('getRun reads the name, head sha, actor and conclusion of a run from the origin host; a re-run keeps the actor', () => {
   const head = 'abc1234def5678abc1234def5678abc1234def56';
   const { host, calls } = hostWith(() => ({ id: 987654321, name: 'kitflow', head_sha: head, actor: { login: 'someone' }, triggering_actor: { login: 'octocat' }, conclusion: null }));
-  assert.deepEqual(host.getRun('987654321'), { workflow: 'kitflow', headSha: head, actor: 'octocat', conclusion: null });
+  assert.deepEqual(host.getRun('987654321'), { workflow: 'kitflow', headSha: head, actor: 'someone', conclusion: null });
   assert.deepEqual(ghCalls(calls), [['api', '--hostname', 'ghe.example.com', 'repos/acme/demo/actions/runs/987654321']]);
 
   const noTrigger = hostWith(() => ({ name: 'kitflow', head_sha: head, actor: { login: 'someone' }, conclusion: 'success' }));

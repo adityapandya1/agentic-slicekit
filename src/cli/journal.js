@@ -76,8 +76,9 @@ function show(root, args, io) {
 // `.slicekit/journal-heads.log` one line per journal file headsFiles owes a line at the merge commit
 // (its last hash differs from what the heads file at the merge records or implies): the file,
 // its last hash, the merge commit, and the run id, workflow and actor from the CI run's environment
-// (GITHUB_RUN_ID, GITHUB_WORKFLOW, GITHUB_TRIGGERING_ACTOR else GITHUB_ACTOR). `check --ci` recomputes
-// each line from git and the host's record of that run (D-89). Exits 2 outside a CI run.
+// (GITHUB_RUN_ID, GITHUB_WORKFLOW, GITHUB_ACTOR). The actor is the one who started the run, which a
+// re-run keeps; GITHUB_TRIGGERING_ACTOR names whoever re-ran it and is not read. `check --ci` recomputes
+// each line from git and the host's record of that run, its `actor` field (D-89). Exits 2 outside a CI run.
 function heads(root, args, io) {
   let positionals;
   try {
@@ -93,7 +94,7 @@ function heads(root, args, io) {
   const env = io.env ?? process.env;
   const run = env.GITHUB_RUN_ID;
   const workflow = env.GITHUB_WORKFLOW;
-  const actor = env.GITHUB_TRIGGERING_ACTOR || env.GITHUB_ACTOR;
+  const actor = env.GITHUB_ACTOR;
   if (!run || !workflow || !actor) {
     io.stderr('slicekit: journal heads runs in a CI run: GITHUB_RUN_ID, GITHUB_WORKFLOW and GITHUB_ACTOR must be set\n');
     return 2;

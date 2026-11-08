@@ -387,9 +387,12 @@ function bytesAt(root, rev, rel) {
 // as {file, hash} with its last hash at the merge ('-' when it has none). A file is owed a line when its
 // last hash at the merge differs from the last hash the heads log `recorded` gives for it. A file the log
 // does not name is owed one when its last hash differs from its last hash at the newest merge the log
-// names (absent there counts as different), or, while the log names no merge yet, at the merge's first
-// parent (every file, for a root commit). So a push of several commits (a rebase merge) and a merge whose
-// sync pull request was superseded before it merged both get their lines from the next sync. `recorded`
+// names (absent there counts as different). While the log names no merge yet, a merge commit with two
+// or more parents compares against its first parent, the default branch before the merge; any other
+// commit (a fast-forward, rebase or squash push, or a root commit) owes a line for every journal file it
+// holds, because git alone cannot say where its push began and check --ci must compute the same set.
+// So a push of several commits and a merge whose sync pull request was superseded before it merged both
+// get their lines from the next sync. `recorded`
 // is the heads log text the lines will be appended to; it defaults to the log at the merge commit.
 // Computed from git alone. Throws GitError when `merge` is not a commit of this clone.
 export function headsFiles(root, cfg, merge, { recorded } = {}) {
@@ -406,7 +409,9 @@ export function headsFiles(root, cfg, merge, { recorded } = {}) {
   }
   const base = lastMerge !== null
     ? gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${lastMerge}^{commit}`], '')
-    : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
+    : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^2`], '') === ''
+      ? ''
+      : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
   const inDir = (listed) => (listed === '' ? [] : listed.split('\n'))
     .map((f) => f.replace(/\r$/, ''))
     .filter((f) => f.startsWith(`${relDir}/`) && f.endsWith('.log') && !f.slice(relDir.length + 1).includes('/'));

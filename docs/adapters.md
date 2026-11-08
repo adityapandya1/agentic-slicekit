@@ -39,7 +39,8 @@ in CI the read is refused and the host-rules rule prints a note. The fixture rea
 `getCommit(sha)` is `GET repos/{owner}/{repo}/commits/{sha}`; it returns `{verified, signer}`, where `verified` is
 the host's `commit.verification.verified` and `signer` the committer's login when verified, else null.
 `getRun(id)` is `GET repos/{owner}/{repo}/actions/runs/{id}`; it returns `{workflow, headSha, actor, conclusion}`
-from the run's `name`, `head_sha`, `triggering_actor` (else `actor`) and `conclusion`. The journal rule calls both
+from the run's `name`, `head_sha`, `actor` and `conclusion`. `actor` is who started the run and a re-run keeps it;
+`triggering_actor` names whoever re-ran it and is not read. The journal rule calls both
 under `check --ci` only (03 REQ-3.8, D-71, D-89). The fixture reads `commit-<sha>.json` and `run-<id>.json`,
 each what `gh api` prints for that call; a missing file is a commit or run the host does not have.
 

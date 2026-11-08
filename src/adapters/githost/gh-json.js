@@ -354,14 +354,14 @@ export function mapCommit(raw) {
 
 // getRun's answer from what `gh api repos/{o}/{r}/actions/runs/<id>` prints:
 // { workflow, headSha, actor, conclusion }. `workflow` is the run's name (the workflow's `name:`, which
-// GITHUB_WORKFLOW carries), `actor` the triggering actor (GITHUB_TRIGGERING_ACTOR), else the actor,
-// `conclusion` null while the run is in progress. Returns null for an answer without a name or head sha.
+// GITHUB_WORKFLOW carries), `actor` the actor who started the run (GITHUB_ACTOR), never the
+// triggering actor, which a re-run changes, `conclusion` null while the run is in progress. Returns null for an answer without a name or head sha.
 export function mapRun(raw) {
   if (raw === null || typeof raw !== 'object' || typeof raw.name !== 'string' || typeof raw.head_sha !== 'string') return null;
   return {
     workflow: raw.name,
     headSha: raw.head_sha,
-    actor: login(raw.triggering_actor) ?? login(raw.actor),
+    actor: login(raw.actor),
     conclusion: typeof raw.conclusion === 'string' ? raw.conclusion : null,
   };
 }

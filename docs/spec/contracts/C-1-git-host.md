@@ -27,7 +27,7 @@ second file, not a second kit.
 | `listOpenPullRequests` | — | every open pull request of this repository (never a fork's): number, url, title, head, base |
 | `closePullRequest` | number, comment | — (closes it with that comment; the sync job closes the `[sync]` pull requests a newer one supersedes, 03 REQ-3.11) |
 | `readWorkflowPermissions` | — | whether GitHub Actions may create pull requests, and the default token permissions, or none when the host does not say (03 REQ-3.11, REQ-3.14) |
-| `getRun` | run id | workflow name, head sha, triggering actor, conclusion (03 REQ-3.8, D-89) |
+| `getRun` | run id | workflow name, head sha, actor (the account that started the run; a re-run keeps it), conclusion (03 REQ-3.8, D-89) |
 | `readBranchRules` | branch | the repository rulesets that apply: pull request required, approvals, code-owner review, required checks, force push (D-84) |
 | `readCodeowners` | — | the CODEOWNERS file's path and content, or none |
 | `applyBranchRules` | branch, rules | the rules set (called only by `slicekit init --protect`, 03 REQ-3.14) |
