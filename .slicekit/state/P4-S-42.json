@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-42",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "323027efa005ea3139b46185e3b014d330450384",
@@ -27,6 +27,13 @@
           "test/workflow.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-08T08:04:05.280Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
