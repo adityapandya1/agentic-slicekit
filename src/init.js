@@ -26,6 +26,8 @@ const IGNORE_RULES = [
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
+  // The heads log (REQ-3.8, D-89) is committed by the sync job; a `*.log` rule would make its `git add` refuse it.
+  { rule: '!.slicekit/journal-heads.log', forms: new Set(['!.slicekit/journal-heads.log', '!/.slicekit/journal-heads.log']) },
   // Slice worktrees (REQ-2.6 step 1) live under the root and are never part of the checkout.
   { rule: '.worktrees/', forms: new Set(['.worktrees/', '/.worktrees/', '.worktrees', '/.worktrees']) },
   // The README's path is an npm install (S-28): what it installs is never part of the project. A file
@@ -33,6 +35,31 @@ const IGNORE_RULES = [
   // `!node_modules/local-pkg/` would cancel it (P2/S-28 review H-1).
   { rule: 'node_modules/', forms: new Set(['node_modules/', '/node_modules/', 'node_modules', '/node_modules']), mentions: 'node_modules' },
 ];
+// The rules that keep journal files and the heads log committed, re-appended in this order when git
+// still ignores either path after init: a present rule counts only when a later rule does not override it.
+const UNIGNORE_RULES = ['!.slicekit/journal/', '!.slicekit/journal/*.log', '.slicekit/journal/*.lock', '!.slicekit/journal-heads.log'];
+const UNIGNORE_PROBES = ['.slicekit/journal-heads.log', '.slicekit/journal/main--00000000.log'];
+
+function ignoredByGit(root, rel) {
+  try {
+    git(root, ['check-ignore', '--quiet', '--no-index', rel]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Returns true when it appended the un-ignores again.
+function reassertUnignores(root, file) {
+  if (!isRepo(root) || !exists(file)) return false;
+  if (!UNIGNORE_PROBES.some((rel) => ignoredByGit(root, rel))) return false;
+  const raw = fs.readFileSync(file, 'utf8');
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const sep = raw === '' || raw.endsWith('\n') ? '' : eol;
+  fs.appendFileSync(file, `${sep}${UNIGNORE_RULES.map((rule) => `${rule}${eol}`).join('')}`);
+  return true;
+}
+
 // Hooks checked out with CRLF break sh (REQ-3.9).
 // Intake snapshots (S-10) are stored byte for byte, so git must not convert their line endings. The
 // pattern comes from kitPaths as S-10 builds it, so `./docs` and `docs` write the same line.
@@ -308,7 +335,8 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultB
       lists.created.push(rel(abs));
     }
   }
-  lists[ensureLines(paths.gitignore, IGNORE_RULES)].push(rel(paths.gitignore));
+  const ignoreState = ensureLines(paths.gitignore, IGNORE_RULES);
+  lists[reassertUnignores(root, paths.gitignore) && ignoreState === 'skipped' ? 'updated' : ignoreState].push(rel(paths.gitignore));
   const attributes = path.join(root, '.gitattributes');
   lists[ensureLines(attributes, attributeRules(root, cfg))].push(rel(attributes));
 

@@ -201,8 +201,8 @@ test('cli: --docs is normalised to forward slashes without a trailing slash', ()
 });
 
 test('writes gitignore rule once', () => {
-  const JOURNAL = '!.slicekit/journal/\n!.slicekit/journal/*.log\n.slicekit/journal/*.lock\n.worktrees/\n';
-  const ROOTED = '!/.slicekit/journal/\n!/.slicekit/journal/*.log\n/.slicekit/journal/*.lock\n/.worktrees\n';
+  const JOURNAL = '!.slicekit/journal/\n!.slicekit/journal/*.log\n.slicekit/journal/*.lock\n!.slicekit/journal-heads.log\n.worktrees/\n';
+  const ROOTED = '!/.slicekit/journal/\n!/.slicekit/journal/*.log\n/.slicekit/journal/*.lock\n!/.slicekit/journal-heads.log\n/.worktrees\n';
   const rules = `.slicekit/graph/\n.slicekit/.subagent-*\n.slicekit/local.json\n${JOURNAL}`;
   withRepo((root) => {
     const opts = { name: 'demo', shape: 'backend' };
@@ -560,13 +560,13 @@ test('init marks the intake snapshots -text under the docs root', () => {
 test('init keeps a CRLF ignore or attributes file CRLF', () => {
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n.slicekit/local.json\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\n';
+    const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n.slicekit/local.json\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n!.slicekit/journal-heads.log\r\n.worktrees/\r\n';
     assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
     assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\ndocs/intake/** -text\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
-    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n.slicekit/local.json\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n.worktrees/\r\nnode_modules/\r\n');
+    assert.equal(read(root, '.gitignore'), 'a\r\nb\r\n.slicekit/graph/\r\n.slicekit/.subagent-*\r\n.slicekit/local.json\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n!.slicekit/journal-heads.log\r\n.worktrees/\r\nnode_modules/\r\n');
   }, { files: { '.gitignore': 'a\r\nb' } });
 });
 
