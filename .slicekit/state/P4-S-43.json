@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-43",
-  "state": "ready",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 135,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
-    "headSha": "f2c569aadfff1ac7e86af6d7c68c8f5414e793a5"
+    "headSha": "9692a0b27215ab45f097d7b06164b53f5db72e45"
   },
   "redCommit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
   "frozenTests": [
@@ -43,11 +43,7 @@
       "headSha": "f2c569aadfff1ac7e86af6d7c68c8f5414e793a5"
     }
   ],
-  "ci": {
-    "sha": "8bca5396d0e29b6c4d37316b0d8d9a5f5e2f4d79",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42498807234"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -208,6 +204,22 @@
       "at": "2026-11-08T16:24:31.438Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "draft-pr",
+      "at": "2026-11-08T16:33:03.834Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 135,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/135",
+          "headSha": "9692a0b27215ab45f097d7b06164b53f5db72e45",
+          "title": "[P4/S-43] Java builds and the team's runners in the workflow"
+        }
+      }
     }
   ]
 }
