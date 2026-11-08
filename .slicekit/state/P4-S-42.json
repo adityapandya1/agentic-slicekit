@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-42",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 128,
@@ -34,6 +34,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "4015e7b421791769f64a684c85ade814d047830d"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-42i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "6590afa43abc672f84cd5f86f230b288f5c7a00a"
     }
   ],
   "ci": null,
@@ -161,6 +168,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/128",
           "headSha": "6590afa43abc672f84cd5f86f230b288f5c7a00a",
           "title": "[P4/S-42] The journal is tied to signed commits"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T09:05:45.212Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-42i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
