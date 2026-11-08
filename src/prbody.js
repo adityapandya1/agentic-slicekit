@@ -3,7 +3,7 @@
 // A section is `**<name>:**` at the start of a line (indent allowed); its text is what follows the
 // colon on that line, or the next non-blank line when that is not itself a required section or a
 // heading. Anything inside a fenced code block (CommonMark fences) or an HTML comment is never a
-// section or a heading, and a comment is never section text. A `[spec] ` / `[plan] ` title needs
+// section or a heading, and a comment is never section text. A `[spec] ` / `[plan] ` / `[sync] ` title needs
 // only the first three sections and no slice heading; a title with no slice id leaves the heading to
 // ci-title. The configured filler list (style.banned) is matched over the body, one finding per
 // phrase (REQ-3.10).

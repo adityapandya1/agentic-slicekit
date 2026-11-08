@@ -1,4 +1,11 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { GitHostNotFound } from '../adapters/githost/errors.js';
+import { SLICEKIT_WORKFLOW } from '../adapters/githost/gh-json.js';
+import { SYNC_BRANCH, SYNC_TITLE } from '../check/ci-event.js';
+import { GitError, currentBranch, git, switchBranch } from '../git.js';
+import { kitPaths } from '../paths.js';
+import { prBodyProblems } from '../prbody.js';
 import { listSlices, setState } from './index.js';
 import { isDate } from '../evidence.js';
 import { HOST_MERGE_FROM } from './transitions.js';
@@ -61,4 +68,175 @@ export function syncFromHost(root, cfg, host) {
     throw e;
   }
   return { changes, warnings };
+}
+
+// `slicekit sync open` (03 REQ-3.11, D-78, D-80): after status --sync --write on the default branch's
+// merge commit, the state change goes up for review instead of onto the default branch. The paths it
+// may carry are the state directory, BUILD.md and the journal heads log; nothing else is staged. When
+// none of them changed it opens nothing. Otherwise it commits them on `sync/<short sha>` (a new branch
+// from the merge commit), pushes that branch alone, opens `[sync] state after <short sha>` into the
+// default branch through C-1, and starts the kit's workflow on the branch with workflow_dispatch, since
+// a pull request opened with the workflow's own token starts no run. An open pull request for that
+// branch means a run already did this: nothing is opened a second time. The commit is made with
+// ALLOW_PROTECTED_COMMIT removed from its environment, so the git hooks guard it as any other.
+// Returns { outcome: 'unchanged' } | { outcome: 'open', branch, number, url } |
+// { outcome: 'opened', branch, number, url, files } | { outcome: 'newer', branch, number, url, head } (a
+// sync pull request cut from a later merge is open; nothing pushed or opened), each with `closed`, the
+// older [sync] pull requests it closed as superseded. Throws SyncOpenError, GitError or GitHostError.
+export class SyncOpenError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SyncOpenError';
+  }
+}
+
+export const SYNC_BRANCH_PREFIX = 'sync/';
+export const syncTitle = (short) => `[sync] state after ${short}`;
+
+const posix = (p) => p.split(path.sep).join('/');
+
+// The paths a sync commit may carry, relative to the repository root.
+export function syncPaths(root, cfg) {
+  const p = kitPaths(root, cfg);
+  return [p.build, p.state, path.join(p.kit, 'journal-heads.log')].map((f) => posix(path.relative(root, f)));
+}
+
+// git with ALLOW_PROTECTED_COMMIT taken out of the environment (REQ-3.11: the sync never sets it).
+function gitGuarded(root, args) {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) if (k.toUpperCase() === 'ALLOW_PROTECTED_COMMIT') delete env[k];
+  try {
+    return execFileSync('git', args, { cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    throw new GitError(args, String(e.stderr ?? e.message).trim());
+  }
+}
+
+// The files under `paths` that differ from HEAD, untracked ones included, as POSIX paths.
+function changedUnder(root, paths) {
+  const out = gitGuarded(root, ['--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all', '--', ...paths]);
+  return out
+    .split('\0')
+    .filter((e) => e.length > 3)
+    .map((e) => e.slice(3))
+    .sort();
+}
+
+export function syncBody(short, defaultBranch, files) {
+  const list = files.map((f) => `\`${f}\``).join(', ');
+  return [
+    `**Done when:** the slice state that \`slicekit status --sync --write\` recorded after ${short} is on ${defaultBranch}: ${list}`,
+    `**Proof:** \`slicekit status --sync --write\` on ${short} changed ${files.length} file${files.length === 1 ? '' : 's'}; the checks run on this branch through workflow_dispatch`,
+    '**Decisions:** none',
+    '',
+  ].join('\n');
+}
+
+// Pushes the sync branch, and only a `sync/<short sha>` branch, with a lease on what origin holds
+// for it now: none, or the commit a run that stopped before its pull request left there. A re-run
+// makes a new commit (its committer time differs), so a plain push would be refused; the lease
+// replaces only the ref read a moment before and never touches any other branch.
+function pushSyncBranch(root, cfg, branch) {
+  if (!SYNC_BRANCH.test(branch) || branch === cfg.defaultBranch || (cfg.protectedBranches ?? []).includes(branch)) {
+    throw new SyncOpenError(`sync open pushes only a sync/<short sha> branch, not ${branch}`);
+  }
+  const ref = `refs/heads/${branch}`;
+  const listed = gitGuarded(root, ['ls-remote', '--heads', 'origin', ref]).trim();
+  const held = listed.split('\n').map((l) => l.split(/\s+/)).find(([, name]) => name === ref)?.[0] ?? '';
+  gitGuarded(root, ['push', '-q', `--force-with-lease=${ref}:${held}`, 'origin', `HEAD:${ref}`]);
+}
+
+// The commit a sync branch was cut from, the merge commit its name carries (`sync/<short sha>`), or null
+// when the clone does not hold it.
+function syncBase(root, branch) {
+  const sha = branch.slice(SYNC_BRANCH_PREFIX.length);
+  try {
+    return gitGuarded(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^{commit}`]).trim() || null;
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
+const isAncestor = (root, a, b) => {
+  try {
+    gitGuarded(root, ['merge-base', '--is-ancestor', a, b]);
+    return true;
+  } catch (e) {
+    if (e instanceof GitError) return false;
+    throw e;
+  }
+};
+
+// The other open `[sync]` pull requests on a `sync/<short sha>` branch into the default branch, sorted
+// by where their branch was cut relative to this run's merge commit `head`: `older` when their commit
+// is an ancestor of head (this run's state carries theirs), `newer` when head is an ancestor of theirs
+// (theirs carries this run's). One whose commit the clone does not hold, or that is neither, is left.
+function otherSyncPullRequests(root, cfg, host, head, branch) {
+  const older = [];
+  const newer = [];
+  for (const pr of host.listOpenPullRequests()) {
+    if (pr.head === branch) continue;
+    if (!SYNC_BRANCH.test(pr.head) || !SYNC_TITLE.test(pr.title) || (pr.base !== null && pr.base !== cfg.defaultBranch)) continue;
+    const base = syncBase(root, pr.head);
+    if (base === null || base === head) continue;
+    if (isAncestor(root, base, head)) older.push(pr);
+    else if (isAncestor(root, head, base)) newer.push(pr);
+  }
+  return { older, newer };
+}
+
+// Closes each older sync pull request with a comment naming the one that supersedes it: the sync state
+// is cumulative from the default branch's tip, so a sync pull request cut from a later merge carries
+// every change an earlier one did. Returns the numbers closed.
+function closeSuperseded(host, cfg, older, keep) {
+  for (const pr of older) {
+    host.closePullRequest(pr.number, `Superseded by #${keep.number} (${keep.url}): the sync state is cumulative from ${cfg.defaultBranch}'s tip, so #${keep.number} carries every change this pull request did.`);
+  }
+  return older.map((pr) => pr.number);
+}
+
+export function openSyncPullRequest(root, cfg, host) {
+  const start = currentBranch(root);
+  if (start !== cfg.defaultBranch) {
+    throw new SyncOpenError(`sync open runs on ${cfg.defaultBranch}, at the merge commit; HEAD is ${start === null ? 'detached' : `on ${start}`}`);
+  }
+  const files = changedUnder(root, syncPaths(root, cfg));
+  if (files.length === 0) return { outcome: 'unchanged' };
+  const short = git(root, ['rev-parse', '--short', 'HEAD']);
+  const branch = `${SYNC_BRANCH_PREFIX}${short}`;
+  const head = git(root, ['rev-parse', 'HEAD']);
+  const others = otherSyncPullRequests(root, cfg, host, head, branch);
+  // A sync pull request cut from a later merge already carries this state (a re-run of an older
+  // merge's job): opening this one would only open a stale one.
+  const newest = others.newer.at(-1);
+  if (newest) return { outcome: 'newer', branch, number: newest.number, url: newest.url, head: newest.head, closed: [] };
+  const open = host.pullRequestForBranch(branch, { base: cfg.defaultBranch });
+  if (open) {
+    // A re-run of the job: the pull request is there, but the first run may have stopped before its
+    // dispatch, so start the workflow on the branch again; a second run of the checks is harmless.
+    const closed = closeSuperseded(host, cfg, others.older, { number: open.number, url: open.url });
+    host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
+    return { outcome: 'open', branch, number: open.number, url: open.url, closed };
+  }
+
+  const title = syncTitle(short);
+  const body = syncBody(short, cfg.defaultBranch, files);
+  const problems = prBodyProblems(title, body, cfg);
+  if (problems.length > 0) throw new SyncOpenError(problems.join('\n'));
+
+  switchBranch(root, branch, { create: true });
+  try {
+    gitGuarded(root, ['--literal-pathspecs', 'add', '-A', '--', ...files]);
+    gitGuarded(root, ['--literal-pathspecs', 'commit', '-q', '-m', `chore(slicekit): sync state after ${short}`, '--', ...files]);
+    pushSyncBranch(root, cfg, branch);
+  } finally {
+    // Back to where it started; the change lives on the sync branch.
+    git(root, ['switch', '-q', start]);
+  }
+  const made = host.openPullRequest({ branch, base: cfg.defaultBranch, title, body, draft: false });
+  // Closed only once the new one is open, so a failed open leaves the older one standing.
+  const closed = closeSuperseded(host, cfg, others.older, { number: made.number, url: made.url });
+  host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
+  return { outcome: 'opened', branch, number: made.number, url: made.url, files, closed };
 }

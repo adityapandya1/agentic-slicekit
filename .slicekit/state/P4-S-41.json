@@ -1,0 +1,266 @@
+{
+  "slice": "P4/S-41",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 125,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/125",
+    "headSha": "024ea960a4430187bf88c35340ebdc218176e88c"
+  },
+  "redCommit": "33550d0c80fd3e061b8e823c04367d491e947a8b",
+  "frozenTests": [
+    "test/sync.test.js",
+    "test/workflow.test.js",
+    "test/check/ci-title.test.js",
+    "test/check/ci-body.test.js"
+  ],
+  "unfrozen": [
+    "test/sync.test.js",
+    "test/workflow.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P4-S-41-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "8162aa2230fdd46df8879d41e83c495c07e62426"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P4-S-41-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "cc60805cff9568ba15bcc2b00d79fa16c5dd4434"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P4-S-41i-r3.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "cc60805cff9568ba15bcc2b00d79fa16c5dd4434"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-41i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "1a748069222334aa6ce4edf58d52b3978f6c4be1"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P4-S-41i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "024ea960a4430187bf88c35340ebdc218176e88c"
+    }
+  ],
+  "ci": {
+    "sha": "71c5ee48157e5d609042b1f425293582d956f6e3",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42431509066"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-07T22:11:24.370Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "33550d0c80fd3e061b8e823c04367d491e947a8b",
+        "testExit": 1,
+        "tests": [
+          "test/sync.test.js",
+          "test/workflow.test.js",
+          "test/check/ci-title.test.js",
+          "test/check/ci-body.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-07T22:11:24.971Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T23:22:09.741Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/sync.test.js",
+        "amendCommit": "5b6fa82688ca854c79c42a1d2646eea4621afbb8",
+        "reason": "the body-section regex in the happy test lost its backslashes in a template literal and threw; the backslashes are doubled"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-07T23:22:17.337Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "d341cf46b076e825686d22137e1d80821655474c",
+        "reason": "four older tests asserted the sync job this slice removes; they now assert the new sync job, the evaluation test unchanged"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-07T23:33:17.831Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 125,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/125",
+          "headSha": "8162aa2230fdd46df8879d41e83c495c07e62426",
+          "title": "[P4/S-41] The sync job opens a pull request"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-07T23:36:17.652Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P4-S-41-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-07T23:40:08.056Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 125,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/125",
+          "headSha": "cc60805cff9568ba15bcc2b00d79fa16c5dd4434",
+          "title": "[P4/S-41] The sync job opens a pull request"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-07T23:43:13.154Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P4-S-41-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-07T23:59:07.371Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P4-S-41i-r3.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T00:13:38.971Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 125,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/125",
+          "headSha": "1a748069222334aa6ce4edf58d52b3978f6c4be1",
+          "title": "[P4/S-41] The sync job opens a pull request"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T00:28:19.474Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-41i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T00:35:55.178Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 125,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/125",
+          "headSha": "024ea960a4430187bf88c35340ebdc218176e88c",
+          "title": "[P4/S-41] The sync job opens a pull request"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T00:49:17.249Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P4-S-41i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-08T00:50:21.677Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "71c5ee48157e5d609042b1f425293582d956f6e3",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/42431509066"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-08T00:50:24.121Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

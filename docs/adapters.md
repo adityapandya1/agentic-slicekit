@@ -15,10 +15,26 @@ or agent tool is a new implementation of an existing contract, not a change to t
 `src/adapters/githost/index.js` exports `getHost(cfg, env, root)`, the only door to a git host. It
 picks the implementation from `cfg.gitHost.kind`. Today `github.js` implements `openPullRequest`,
 `updatePullRequestBody`, `markReady`, `markDraft`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
-`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `readBranchRules`, `readCodeowners` and
+`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `dispatchWorkflow`, `listOpenPullRequests`, `closePullRequest`, `readWorkflowPermissions`, `readBranchRules`, `readCodeowners` and
 `applyBranchRules`; `renderWorkflow` is `src/workflow.js`.
 Setting `SLICEKIT_GITHOST_FIXTURE` to a directory replaces the host with `fixture.js`, which reads
 answers from that directory, so tests never reach the network.
+
+`dispatchWorkflow(file, ref)` runs `gh workflow run <file> --ref=<ref>`; the sync job calls it once its
+`[sync]` pull request is open, because a pull request opened with the workflow's own token starts no
+workflow (D-80). The fixture records each call as `{op: 'dispatchWorkflow', file, ref}` in
+`pr-calls.jsonl` and refuses while `dispatch-error.txt` exists.
+
+`listOpenPullRequests()` runs `gh pr list --state open --limit 200 --json number,url,title,isCrossRepository,baseRefName,headRefName`
+and drops a fork's; `closePullRequest(n, comment)` runs `gh pr close <n> --comment=<comment>`. The fixture lists
+the `pr-<n>.json` files whose state is `OPEN`, and a close sets that file's state to `CLOSED`, records
+`{op: 'closePullRequest', number, comment}` in `pr-calls.jsonl` and refuses while `pr-close-error.txt` exists.
+
+`readWorkflowPermissions()` is `GET repos/{owner}/{repo}/actions/permissions/workflow`, whose
+`can_approve_pull_request_reviews` is the setting "Allow GitHub Actions to create and approve pull requests" the
+sync job's `gh pr create` needs. Reading it needs administration read, which the workflow's own token lacks, so
+in CI the read is refused and the host-rules rule prints a note. The fixture reads `workflow-permissions.json`
+(missing: the setting is not known, `null`) and refuses while `workflow-permissions-error.txt` exists.
 
 The three rule operations (03 REQ-3.14) go through `gh api`. `gh api` does not take the host from the
 remote, so `github.js` reads `git remote get-url origin`, takes the host, owner and repository from it

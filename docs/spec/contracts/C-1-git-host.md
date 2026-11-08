@@ -24,6 +24,9 @@ second file, not a second kit.
 | `renderWorkflow` | config | the CI file content for this host |
 | `getCommit` | sha | signature verified (yes or no), signer |
 | `dispatchWorkflow` | workflow file, ref | — (starts the workflow on that ref, 03 REQ-3.11) |
+| `listOpenPullRequests` | — | every open pull request of this repository (never a fork's): number, url, title, head, base |
+| `closePullRequest` | number, comment | — (closes it with that comment; the sync job closes the `[sync]` pull requests a newer one supersedes, 03 REQ-3.11) |
+| `readWorkflowPermissions` | — | whether GitHub Actions may create pull requests, and the default token permissions, or none when the host does not say (03 REQ-3.11, REQ-3.14) |
 | `getRun` | run id | workflow file, head sha, triggering actor, conclusion (03 REQ-3.8) |
 | `readBranchRules` | branch | the repository rulesets that apply: pull request required, approvals, code-owner review, required checks, force push (D-84) |
 | `readCodeowners` | — | the CODEOWNERS file's path and content, or none |
@@ -33,6 +36,9 @@ A consumer that knows the last synced commit derives the date with `git show -s 
 
 Every operation SHALL be stubbable for tests (05 REQ-5.2) by an environment variable naming a
 fixture directory. No operation SHALL merge a pull request; a human merges. The sync job opens its
-pull request through `openPullRequest` (03 REQ-3.11, D-78).
+pull request through `openPullRequest` (03 REQ-3.11, D-78), then starts the workflow on its branch
+through `dispatchWorkflow`, so the required checks run on that head (D-80), and closes the older `[sync]`
+pull requests it supersedes through `closePullRequest`. No operation changes the Actions setting
+`readWorkflowPermissions` reads; a human does.
 
 Cites: D-09, D-67, D-70, D-71, D-77, D-78, D-80, D-84.
