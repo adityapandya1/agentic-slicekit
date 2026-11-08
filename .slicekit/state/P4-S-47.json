@@ -1,6 +1,6 @@
 {
   "slice": "P4/S-47",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 133,
@@ -33,6 +33,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "9e396cec3e6fbbaf114d0dc609780c4c58dceae7"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P4-S-47i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2850851b1bd0d970fd8941b51af9886f9a5a291b"
     }
   ],
   "ci": null,
@@ -159,6 +166,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/133",
           "headSha": "2850851b1bd0d970fd8941b51af9886f9a5a291b",
           "title": "[P4/S-47] Init un-ignores the journal heads log"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-08T13:05:31.761Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P4-S-47i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
