@@ -615,16 +615,25 @@ test('a re-run after a failure between the push and the pull request pushes its 
   });
 });
 
+// An open [sync] pull request in the git host fixture.
+const syncPr = (number, head, title, base = 'main') => ({ number, url: `https://example.test/pull/${number}`, state: 'OPEN', isDraft: false, isCrossRepository: false, headRefName: head, baseRefName: base, title, body: 'x', headRefOid: null, labels: [] });
+const writePrs = (fixture, prs) => {
+  for (const p of prs) fs.writeFileSync(path.join(fixture, `pr-${p.number}.json`), `${JSON.stringify(p, null, 2)}\n`);
+};
+const prState = (fixture, n) => JSON.parse(fs.readFileSync(path.join(fixture, `pr-${n}.json`), 'utf8')).state;
+
 test('sync open closes the older [sync] pull requests it supersedes, and no other', async () => {
   await withSyncRepo(async ({ root, fixture }) => {
-    const pr = (number, head, title, base = 'main') => ({ number, url: `https://example.test/pull/${number}`, state: 'OPEN', isDraft: false, isCrossRepository: false, headRefName: head, baseRefName: base, title, body: 'x', headRefOid: null, labels: [] });
-    const older = [
-      pr(1, 'sync/deadbee', '[sync] state after deadbee'),
-      pr(2, 'feature/x', '[sync] state after feature'),
-      pr(3, 'sync/abcdef1', 'not a sync title'),
-      pr(4, 'sync/0123456', '[sync] state after 0123456', 'release'),
-    ];
-    for (const p of older) fs.writeFileSync(path.join(fixture, `pr-${p.number}.json`), `${JSON.stringify(p, null, 2)}\n`);
+    // An earlier merge, whose sync pull request is open; this run is on the merge after it.
+    const earlier = gitIn(root, ['rev-parse', '--short', 'HEAD']);
+    gitIn(root, ['commit', '-q', '--allow-empty', '-m', 'a later merge'], { allowProtected: true });
+    writePrs(fixture, [
+      syncPr(1, `sync/${earlier}`, `[sync] state after ${earlier}`),
+      syncPr(2, 'feature/x', '[sync] state after feature'),
+      syncPr(3, `sync/${earlier}`, 'not a sync title'),
+      syncPr(4, `sync/${earlier}`, `[sync] state after ${earlier}`, 'release'),
+      syncPr(5, 'sync/deadbee', '[sync] state after deadbee'),
+    ]);
     await syncState(root, fixture);
     const r = await syncCli(root, fixture, ['sync', 'open']);
     assert.equal(r.code, 0, r.stderr);
@@ -634,7 +643,24 @@ test('sync open closes the older [sync] pull requests it supersedes, and no othe
     assert.equal(close.number, 1);
     assert.match(close.comment, /^Superseded by #15 \(https:\/\/example\.test\/pull\/15\)/);
     assert.match(r.stdout, /closed #1: superseded by #15/);
-    const state = (n) => JSON.parse(fs.readFileSync(path.join(fixture, `pr-${n}.json`), 'utf8')).state;
-    assert.deepEqual([1, 2, 3, 4].map(state), ['CLOSED', 'OPEN', 'OPEN', 'OPEN']);
+    // Another head, title or base, or a commit the clone does not hold (deadbee): left open.
+    assert.deepEqual([1, 2, 3, 4, 5].map((n) => prState(fixture, n)), ['CLOSED', 'OPEN', 'OPEN', 'OPEN', 'OPEN']);
+  });
+});
+
+test('a re-run of an older merge opens nothing when a newer sync pull request is open, and closes it not', async () => {
+  await withSyncRepo(async ({ root, remote, fixture }) => {
+    // A later merge exists, and its sync pull request is open; this run is the older merge's re-run.
+    gitIn(root, ['commit', '-q', '--allow-empty', '-m', 'a later merge'], { allowProtected: true });
+    const later = gitIn(root, ['rev-parse', '--short', 'HEAD']);
+    gitIn(root, ['reset', '-q', '--hard', 'HEAD^']);
+    writePrs(fixture, [syncPr(1, `sync/${later}`, `[sync] state after ${later}`)]);
+    await syncState(root, fixture);
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, new RegExp(`#1 \\S+ on sync/${later}, cut from a later merge, already carries this state; nothing to open`));
+    assert.deepEqual(syncCalls(fixture), []);
+    assert.equal(prState(fixture, 1), 'OPEN');
+    assert.deepEqual(remoteBranches(remote), ['main']);
   });
 });

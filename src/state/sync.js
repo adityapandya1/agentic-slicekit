@@ -80,8 +80,9 @@ export function syncFromHost(root, cfg, host) {
 // branch means a run already did this: nothing is opened a second time. The commit is made with
 // ALLOW_PROTECTED_COMMIT removed from its environment, so the git hooks guard it as any other.
 // Returns { outcome: 'unchanged' } | { outcome: 'open', branch, number, url } |
-// { outcome: 'opened', branch, number, url, files }, each with `closed`, the older [sync] pull requests
-// it closed as superseded. Throws SyncOpenError, GitError or GitHostError.
+// { outcome: 'opened', branch, number, url, files } | { outcome: 'newer', branch, number, url, head } (a
+// sync pull request cut from a later merge is open; nothing pushed or opened), each with `closed`, the
+// older [sync] pull requests it closed as superseded. Throws SyncOpenError, GitError or GitHostError.
 export class SyncOpenError extends Error {
   constructor(message) {
     super(message);
@@ -145,19 +146,54 @@ function pushSyncBranch(root, cfg, branch) {
   gitGuarded(root, ['push', '-q', `--force-with-lease=${ref}:${held}`, 'origin', `HEAD:${ref}`]);
 }
 
-// Closes every other open `[sync]` pull request on a `sync/<short sha>` branch into the default
-// branch, with a comment naming the one that supersedes it. The sync state is cumulative from the
-// default branch's tip, so the newest sync pull request carries every change an older one did.
-// Returns the numbers closed.
-function closeSuperseded(host, cfg, keep) {
-  const closed = [];
-  for (const pr of host.listOpenPullRequests()) {
-    if (pr.number === keep.number || pr.head === keep.branch) continue;
-    if (!SYNC_BRANCH.test(pr.head) || !SYNC_TITLE.test(pr.title) || (pr.base !== null && pr.base !== cfg.defaultBranch)) continue;
-    host.closePullRequest(pr.number, `Superseded by #${keep.number} (${keep.url}): the sync state is cumulative from ${cfg.defaultBranch}'s tip, so #${keep.number} carries every change this pull request did.`);
-    closed.push(pr.number);
+// The commit a sync branch was cut from, the merge commit its name carries (`sync/<short sha>`), or null
+// when the clone does not hold it.
+function syncBase(root, branch) {
+  const sha = branch.slice(SYNC_BRANCH_PREFIX.length);
+  try {
+    return gitGuarded(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^{commit}`]).trim() || null;
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
   }
-  return closed;
+}
+
+const isAncestor = (root, a, b) => {
+  try {
+    gitGuarded(root, ['merge-base', '--is-ancestor', a, b]);
+    return true;
+  } catch (e) {
+    if (e instanceof GitError) return false;
+    throw e;
+  }
+};
+
+// The other open `[sync]` pull requests on a `sync/<short sha>` branch into the default branch, sorted
+// by where their branch was cut relative to this run's merge commit `head`: `older` when their commit
+// is an ancestor of head (this run's state carries theirs), `newer` when head is an ancestor of theirs
+// (theirs carries this run's). One whose commit the clone does not hold, or that is neither, is left.
+function otherSyncPullRequests(root, cfg, host, head, branch) {
+  const older = [];
+  const newer = [];
+  for (const pr of host.listOpenPullRequests()) {
+    if (pr.head === branch) continue;
+    if (!SYNC_BRANCH.test(pr.head) || !SYNC_TITLE.test(pr.title) || (pr.base !== null && pr.base !== cfg.defaultBranch)) continue;
+    const base = syncBase(root, pr.head);
+    if (base === null || base === head) continue;
+    if (isAncestor(root, base, head)) older.push(pr);
+    else if (isAncestor(root, head, base)) newer.push(pr);
+  }
+  return { older, newer };
+}
+
+// Closes each older sync pull request with a comment naming the one that supersedes it: the sync state
+// is cumulative from the default branch's tip, so a sync pull request cut from a later merge carries
+// every change an earlier one did. Returns the numbers closed.
+function closeSuperseded(host, cfg, older, keep) {
+  for (const pr of older) {
+    host.closePullRequest(pr.number, `Superseded by #${keep.number} (${keep.url}): the sync state is cumulative from ${cfg.defaultBranch}'s tip, so #${keep.number} carries every change this pull request did.`);
+  }
+  return older.map((pr) => pr.number);
 }
 
 export function openSyncPullRequest(root, cfg, host) {
@@ -169,11 +205,17 @@ export function openSyncPullRequest(root, cfg, host) {
   if (files.length === 0) return { outcome: 'unchanged' };
   const short = git(root, ['rev-parse', '--short', 'HEAD']);
   const branch = `${SYNC_BRANCH_PREFIX}${short}`;
+  const head = git(root, ['rev-parse', 'HEAD']);
+  const others = otherSyncPullRequests(root, cfg, host, head, branch);
+  // A sync pull request cut from a later merge already carries this state (a re-run of an older
+  // merge's job): opening this one would only open a stale one.
+  const newest = others.newer.at(-1);
+  if (newest) return { outcome: 'newer', branch, number: newest.number, url: newest.url, head: newest.head, closed: [] };
   const open = host.pullRequestForBranch(branch, { base: cfg.defaultBranch });
   if (open) {
     // A re-run of the job: the pull request is there, but the first run may have stopped before its
     // dispatch, so start the workflow on the branch again; a second run of the checks is harmless.
-    const closed = closeSuperseded(host, cfg, { number: open.number, url: open.url, branch });
+    const closed = closeSuperseded(host, cfg, others.older, { number: open.number, url: open.url });
     host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
     return { outcome: 'open', branch, number: open.number, url: open.url, closed };
   }
@@ -194,7 +236,7 @@ export function openSyncPullRequest(root, cfg, host) {
   }
   const made = host.openPullRequest({ branch, base: cfg.defaultBranch, title, body, draft: false });
   // Closed only once the new one is open, so a failed open leaves the older one standing.
-  const closed = closeSuperseded(host, cfg, { number: made.number, url: made.url, branch });
+  const closed = closeSuperseded(host, cfg, others.older, { number: made.number, url: made.url });
   host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
   return { outcome: 'opened', branch, number: made.number, url: made.url, files, closed };
 }

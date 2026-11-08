@@ -37,6 +37,7 @@ async function run(args, io) {
     const host = getHost(cfg, io.env ?? process.env, root);
     const r = openSyncPullRequest(root, cfg, host);
     if (r.outcome === 'unchanged') io.stdout('sync: no state change; nothing to open\n');
+    else if (r.outcome === 'newer') io.stdout(`sync: #${r.number} ${r.url} on ${r.head}, cut from a later merge, already carries this state; nothing to open\n`);
     else if (r.outcome === 'open') io.stdout(`sync: #${r.number} ${r.url} is already open for ${r.branch}\ndispatched ${SLICEKIT_WORKFLOW.file} on ${r.branch}\n`);
     else io.stdout(`#${r.number} ${r.url}\ndispatched ${SLICEKIT_WORKFLOW.file} on ${r.branch}\n`);
     for (const n of r.closed ?? []) io.stdout(`closed #${n}: superseded by #${r.number}\n`);
