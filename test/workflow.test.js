@@ -898,7 +898,9 @@ function assertJdkStep(block, { java, cache }, label) {
   const next = block.indexOf('\n      - ', at + uses.length - 1);
   const step = block.slice(at, next === -1 ? block.length : next + 1);
   assert.match(step, new RegExp(`\\n {10}java-version: '?${java}'?\\n`), `${label}: java-version ${java}\n${step}`);
-  assert.match(step, new RegExp(`\\n {10}cache: ${cache}\\n`), `${label}: cache ${cache}\n${step}`);
+  // cache: null means a JDK step with no cache line: setup-java fails a cache that matches no file.
+  if (cache === null) assert.doesNotMatch(step, /\n {10}cache: /, `${label}: no cache\n${step}`);
+  else assert.match(step, new RegExp(`\\n {10}cache: ${cache}\\n`), `${label}: cache ${cache}\n${step}`);
   assert.equal((block.match(/actions\/setup-java@/g) || []).length, 1, `${label}: one JDK step`);
   assert.ok(block.indexOf('actions/checkout@') < at, `${label}: after checkout`);
   assert.ok(at < block.lastIndexOf('        run: '), `${label}: before the team command`);
@@ -925,11 +927,11 @@ test("a Maven repository's command jobs set up a JDK with the Maven cache", () =
     assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 21, cache: 'maven' }, 'ci.java 21');
   });
 
-  // No build file, a command calling mvn: still a Java repository, with the Maven cache.
+  // No build file, a command calling mvn: still a Java repository; with no pom.xml to key on, no cache.
   withRepoFiles({}, (root) => {
     const cfg = exampleConfig();
     cfg.commands = { test: 'mvn -B verify', lint: '', build: '', e2e: '' };
-    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'maven' }, 'mvn command only');
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: null }, 'mvn command only');
   });
 
   // The scenario: init in a repository with pom.xml and `mvn -B verify` writes a workflow whose test
@@ -965,11 +967,16 @@ test("a Gradle repository's command jobs set up a JDK with the Gradle cache", ()
     assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'maven' }, 'both files, mvn command');
   });
 
-  // Neither build file, a command calling ./gradlew: Gradle.
+  // Neither build file, a command calling ./gradlew: Gradle, with no cache; a wrapper file deeper down keys it.
   withRepoFiles({}, (root) => {
     const cfg = exampleConfig();
     cfg.commands = { test: './gradlew check', lint: '', build: '', e2e: '' };
-    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'gradle' }, 'gradlew command only');
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: null }, 'gradlew command only');
+  });
+  withRepoFiles({ 'gradle/wrapper/gradle-wrapper.properties': 'distributionUrl=x\n' }, (root) => {
+    const cfg = exampleConfig();
+    cfg.commands = { test: './gradlew check', lint: '', build: '', e2e: '' };
+    assertJdkStep(jobBlock(renderWorkflow(cfg, loadPins(), { root }), 'cmd-test'), { java: 25, cache: 'gradle' }, 'gradlew with a wrapper file');
   });
 
   // workflow --check accepts the generated Gradle workflow.

@@ -89,14 +89,14 @@ export function hasCacheFile(root, tool) {
   return false;
 }
 
-function setupJavaSteps(v, java, tool) {
+function setupJavaSteps(v, java, tool, root) {
   if (!tool) return [];
   return [
     `      - uses: actions/setup-java@${v.setupJavaSha} # ${v.setupJavaTag}`,
     '        with:',
     '          distribution: temurin',
     `          java-version: ${yamlScalar(String(java))}`,
-    `          cache: ${tool}`,
+    ...(hasCacheFile(root, tool) ? [`          cache: ${tool}`] : []),
   ];
 }
 
@@ -238,7 +238,7 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   const given = cfg.ci?.shards && Object.keys(cfg.ci.shards).length > 0 ? cfg.ci.shards : null;
   const shards = given && (matrix ? given : { [runsOn]: Object.values(given)[0] });
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
-  const jdk = setupJavaSteps(v, cfg.ci?.java ?? DEFAULT_JAVA, javaBuildTool(root, commands.map((c) => cfg.commands[c])));
+  const jdk = setupJavaSteps(v, cfg.ci?.java ?? DEFAULT_JAVA, javaBuildTool(root, commands.map((c) => cfg.commands[c])), root);
   const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
   if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
