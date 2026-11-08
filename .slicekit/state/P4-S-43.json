@@ -1,0 +1,32 @@
+{
+  "slice": "P4/S-43",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
+  "frozenTests": [
+    "test/workflow.test.js",
+    "test/config.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-08T15:33:41.141Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "4fa9c3091344d75117b0afed763c24d9fc89f2e4",
+        "testExit": 1,
+        "tests": [
+          "test/workflow.test.js",
+          "test/config.test.js"
+        ]
+      }
+    }
+  ]
+}
