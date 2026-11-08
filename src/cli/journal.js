@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.js';
-import { appendOnlyProblems, journalBranch, journalFile, verifyJournal } from '../journal.js';
+import { GitError } from '../git.js';
+import { appendHeads, appendOnlyProblems, headsLines, journalBranch, journalFile, verifyJournal } from '../journal.js';
 
-const USAGE = 'journal verify [--against <ref>] | journal show [-n 10] [--branch <b>]';
+const USAGE = 'journal verify [--against <ref>] | journal show [-n 10] [--branch <b>] | journal heads <merge sha>';
 const NO_ENTRIES = 'journal: no entries\n';
 
 // The config when there is one; otherwise the defaults the journal needs (docsRoot, defaultBranch).
@@ -71,10 +72,51 @@ function show(root, args, io) {
   return 0;
 }
 
+// `slicekit journal heads <merge sha>` (REQ-3.8, D-71): the sync job's step. Appends to
+// `.slicekit/journal-heads.log` one line per journal file headsFiles owes a line at the merge commit
+// (its last hash differs from what the heads file at the merge records or implies): the file,
+// its last hash, the merge commit, and the run id, workflow and actor from the CI run's environment
+// (GITHUB_RUN_ID, GITHUB_WORKFLOW, GITHUB_ACTOR). The actor is the one who started the run, which a
+// re-run keeps; GITHUB_TRIGGERING_ACTOR names whoever re-ran it and is not read. `check --ci` recomputes
+// each line from git and the host's record of that run, its `actor` field (D-89). Exits 2 outside a CI run.
+function heads(root, args, io) {
+  let positionals;
+  try {
+    ({ positionals } = parseArgs({ args, options: {}, allowPositionals: true }));
+  } catch (e) {
+    io.stderr(`slicekit: ${e.message}\nusage: slicekit ${USAGE}\n`);
+    return 2;
+  }
+  if (positionals.length !== 1 || !/^[0-9a-f]{7,40}$/.test(positionals[0])) {
+    io.stderr(`slicekit: journal heads takes one merge commit sha\nusage: slicekit ${USAGE}\n`);
+    return 2;
+  }
+  const env = io.env ?? process.env;
+  const run = env.GITHUB_RUN_ID;
+  const workflow = env.GITHUB_WORKFLOW;
+  const actor = env.GITHUB_ACTOR;
+  if (!run || !workflow || !actor) {
+    io.stderr('slicekit: journal heads runs in a CI run: GITHUB_RUN_ID, GITHUB_WORKFLOW and GITHUB_ACTOR must be set\n');
+    return 2;
+  }
+  const cfg = configOf(root);
+  let lines;
+  try {
+    lines = appendHeads(root, cfg, headsLines(root, cfg, positionals[0], { run, workflow, actor }));
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    io.stderr(`slicekit: ${positionals[0]} is not a commit of this clone: ${e.message}\n`);
+    return 1;
+  }
+  io.stdout(`journal heads: ${lines.length} line${lines.length === 1 ? '' : 's'} for ${positionals[0].slice(0, 7)}\n`);
+  return 0;
+}
+
 async function run(args, io) {
   const [sub, ...rest] = args;
   if (sub === 'verify') return verify(io.cwd, rest, io);
   if (sub === 'show') return show(io.cwd, rest, io);
+  if (sub === 'heads') return heads(io.cwd, rest, io);
   io.stderr(`usage: slicekit ${USAGE}\n`);
   return 2;
 }

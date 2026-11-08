@@ -12,6 +12,9 @@ import {
   assertComment,
   mapOpenPullRequests,
   mapWorkflowPermissions,
+  mapCommit,
+  mapRun,
+  assertRunId,
   OPEN_PR_FIELDS,
   BRANCH_PR_FIELDS,
   CODEOWNERS_PATHS,
@@ -123,6 +126,25 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
     readWorkflowPermissions() {
       const got = mapWorkflowPermissions(api(`${repoPath()}/actions/permissions/workflow`));
       if (got === null) throw new GitHostError('the Actions workflow permissions answer has no can_approve_pull_request_reviews');
+      return got;
+    },
+    // Whether the host verified the signature of commit `sha` (03 REQ-3.8, D-71): { verified, signer }
+    // from `GET repos/{owner}/{repo}/commits/{sha}`. The journal rule calls it under --ci for each
+    // commit of the pull request that changes a journal file. The kit manages no keys; the host checks
+    // the signature against the keys on the signer's account.
+    getCommit(sha) {
+      assertSha(sha);
+      const got = mapCommit(api(`${repoPath()}/commits/${sha}`));
+      if (got === null) throw new GitHostError(`gh api printed commit ${sha} with no verification`);
+      return got;
+    },
+    // The CI run `id` as the host reports it (03 REQ-3.8, D-89): { workflow, headSha, actor, conclusion }
+    // from `GET repos/{owner}/{repo}/actions/runs/{id}`. The journal rule recomputes each line the
+    // journal-heads file gains from it.
+    getRun(id) {
+      const run = assertRunId(id);
+      const got = mapRun(api(`${repoPath()}/actions/runs/${run}`));
+      if (got === null) throw new GitHostError(`gh api printed run ${run} with no name or head sha`);
       return got;
     },
     readCodeowners() {

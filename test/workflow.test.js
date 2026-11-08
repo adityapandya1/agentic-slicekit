@@ -3,13 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
 import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
 import { makeRepo } from './helpers/tmp-repo.js';
-import { runCli } from './helpers/run-cli.js';
+import { CI_PULL_REQUEST, runCli } from './helpers/run-cli.js';
+import { appendJournal, journalFile, parseLine } from '../src/journal.js';
 
 const GOLDEN = fileURLToPath(new URL('./fixtures/golden/workflow/backend.yml', import.meta.url));
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -802,4 +803,65 @@ test('the sync job never pushes to the default branch or sets ALLOW_PROTECTED_CO
   // The workflow accepts workflow_dispatch, so the sync branch's checks can be started on it.
   const on = yml.slice(yml.indexOf('\non:\n'), yml.indexOf('\npermissions:\n'));
   assert.match(on, /^ {2}workflow_dispatch:/m, on);
+});
+
+// ---- P4/S-42: the sync pull request records each journal's last hash (REQ-3.8, D-71, D-89) ----
+
+const S42_RUN = { id: '987654321', workflow: 'kitflow', actor: 'octocat' };
+const s42git = (root, args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const S42_FIELDS = { actor: 'ada', slice: 'P1/S-07', stage: 'build', commits: [], verdicts: [], decisions: [] };
+
+// The environment the sync job's step runs in: the CI run's own variables, no pull request.
+function s42RunEnv(mergeSha) {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if ([...CI_PULL_REQUEST, 'SLICEKIT_GITHOST_FIXTURE'].includes(k.toUpperCase())) delete env[k];
+  }
+  return { ...env, GITHUB_RUN_ID: S42_RUN.id, GITHUB_WORKFLOW: S42_RUN.workflow, GITHUB_ACTOR: S42_RUN.actor, GITHUB_TRIGGERING_ACTOR: S42_RUN.actor, GITHUB_SHA: mergeSha };
+}
+
+// REQ-3.8
+test('the sync job writes a journal-heads line per changed journal file', () => {
+  // The job runs `journal heads <merge sha>` after the state sync and before sync open commits.
+  const cfg = exampleConfig();
+  const sync = jobBlock(renderWorkflow(cfg, loadPins()), 'sync');
+  const heads = new RegExp(`run: ${cfg.cli.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')} journal heads (\\$\\{\\{ github\\.sha \\}\\}|"?\\$\\{?GITHUB_SHA\\}?"?)\\n`).exec(sync);
+  assert.ok(heads, sync);
+  assert.ok(sync.indexOf(`run: ${cfg.cli} status --sync --write\n`) < heads.index, 'after the state sync');
+  assert.ok(heads.index < sync.indexOf(`run: ${cfg.cli} sync open\n`), 'before sync open');
+
+  // A merge that changed two journal files and left a third alone: one line for each changed file.
+  const { root, cleanup } = makeRepo({ commits: 1 });
+  try {
+    const conf = path.join(root, '.slicekit', 'config.json');
+    fs.mkdirSync(path.dirname(conf), { recursive: true });
+    fs.writeFileSync(conf, JSON.stringify(defaultConfig({ name: 'demo', shape: 'backend' })));
+    appendJournal(root, S42_FIELDS);
+    s42git(root, ['add', '-A']);
+    s42git(root, ['commit', '--quiet', '-m', 'journal on main']);
+    s42git(root, ['checkout', '--quiet', '-b', 'slice/a']);
+    appendJournal(root, S42_FIELDS);
+    appendJournal(root, S42_FIELDS, { branch: 'slice/b' });
+    appendJournal(root, { ...S42_FIELDS, stage: 'review' }, { branch: 'slice/b' });
+    s42git(root, ['add', '-A']);
+    s42git(root, ['commit', '--quiet', '-m', 'a']);
+    s42git(root, ['checkout', '--quiet', 'main']);
+    s42git(root, ['merge', '--quiet', '--no-ff', '-m', 'merge a', 'slice/a']);
+    const merge = s42git(root, ['rev-parse', 'HEAD']);
+
+    const out = runCli(['journal', 'heads', merge], { cwd: root, env: s42RunEnv(merge) });
+    assert.equal(out.code, 0, out.stderr + out.stdout);
+    const lines = fs.readFileSync(path.join(root, '.slicekit', 'journal-heads.log'), 'utf8').trimEnd().split('\n');
+    assert.equal(lines.length, 2, lines.join('\n'));
+    const rel = (branch) => path.relative(root, journalFile(root, branch)).split(path.sep).join('/');
+    const lastHash = (branch) => parseLine(fs.readFileSync(journalFile(root, branch), 'utf8').trimEnd().split('\n').at(-1)).hash;
+    for (const branch of ['slice/a', 'slice/b']) {
+      const line = lines.find((l) => l.includes(rel(branch)));
+      assert.ok(line, `${rel(branch)} in ${lines.join('\n')}`);
+      for (const part of [lastHash(branch), merge.slice(0, 7), S42_RUN.id, S42_RUN.workflow, S42_RUN.actor]) assert.ok(line.includes(part), `${part} in ${line}`);
+    }
+    assert.ok(!lines.some((l) => l.includes(rel('main'))), 'a journal file the merge did not change has no line');
+  } finally {
+    cleanup();
+  }
 });

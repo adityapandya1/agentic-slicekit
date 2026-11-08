@@ -15,7 +15,7 @@ or agent tool is a new implementation of an existing contract, not a change to t
 `src/adapters/githost/index.js` exports `getHost(cfg, env, root)`, the only door to a git host. It
 picks the implementation from `cfg.gitHost.kind`. Today `github.js` implements `openPullRequest`,
 `updatePullRequestBody`, `markReady`, `markDraft`, `pullRequestForBranch`, `getPullRequest`, `listMergedSince`,
-`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `dispatchWorkflow`, `listOpenPullRequests`, `closePullRequest`, `readWorkflowPermissions`, `readBranchRules`, `readCodeowners` and
+`ciStatus`, `setLabel` (which adds or removes), `ensureLabel`, `dispatchWorkflow`, `listOpenPullRequests`, `closePullRequest`, `readWorkflowPermissions`, `getCommit`, `getRun`, `readBranchRules`, `readCodeowners` and
 `applyBranchRules`; `renderWorkflow` is `src/workflow.js`.
 Setting `SLICEKIT_GITHOST_FIXTURE` to a directory replaces the host with `fixture.js`, which reads
 answers from that directory, so tests never reach the network.
@@ -35,6 +35,14 @@ the `pr-<n>.json` files whose state is `OPEN`, and a close sets that file's stat
 sync job's `gh pr create` needs. Reading it needs administration read, which the workflow's own token lacks, so
 in CI the read is refused and the host-rules rule prints a note. The fixture reads `workflow-permissions.json`
 (missing: the setting is not known, `null`) and refuses while `workflow-permissions-error.txt` exists.
+
+`getCommit(sha)` is `GET repos/{owner}/{repo}/commits/{sha}`; it returns `{verified, signer}`, where `verified` is
+the host's `commit.verification.verified` and `signer` the committer's login when verified, else null.
+`getRun(id)` is `GET repos/{owner}/{repo}/actions/runs/{id}`; it returns `{workflow, headSha, actor, conclusion}`
+from the run's `name`, `head_sha`, `actor` and `conclusion`. `actor` is who started the run and a re-run keeps it;
+`triggering_actor` names whoever re-ran it and is not read. The journal rule calls both
+under `check --ci` only (03 REQ-3.8, D-71, D-89). The fixture reads `commit-<sha>.json` and `run-<id>.json`,
+each what `gh api` prints for that call; a missing file is a commit or run the host does not have.
 
 The three rule operations (03 REQ-3.14) go through `gh api`. `gh api` does not take the host from the
 remote, so `github.js` reads `git remote get-url origin`, takes the host, owner and repository from it

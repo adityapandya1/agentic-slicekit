@@ -158,7 +158,7 @@ is the commit that carries it (D-71): in CI, `slicekit check` SHALL fail when a 
 request that changes a journal file is not signed and verified by the git host (C-1 `getCommit`).
 The sync pull request (REQ-3.11) SHALL add one line per changed journal file to
 `.slicekit/journal-heads.log`: the file, its last hash, the merge commit, and the CI run's id, <!-- slicekit:example -->
-workflow and triggering actor as the host reports them. The kit manages no keys.
+workflow and actor as the host reports them; the actor is the account that started the run, which a re-run keeps. The kit manages no keys.
 
 Every value in that file comes from git and the host, so in CI `slicekit check` SHALL recompute it
 rather than trust its writer (D-89): the file at the default branch is a byte prefix of the file at <!-- slicekit:pending P4/S-42 -->
