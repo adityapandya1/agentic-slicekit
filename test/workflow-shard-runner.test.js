@@ -1,5 +1,4 @@
-// P4/S-43 review round 3: H-3 (a tool called inside quotes), H-4 (shardRunnerErrors) and the Codex
-// finding on pull request 135 (a runner label with a line break).
+// REQ-3.11: runner labels and Java detection in the generated workflow (P4/S-43 round 3: H-3, H-4, Codex multiline runner labels).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultConfig, shardRunnerErrors, validateConfig } from '../src/config.js';
