@@ -331,3 +331,37 @@ export function mapWorkflowPermissions(raw) {
     defaultPermissions: typeof raw.default_workflow_permissions === 'string' ? raw.default_workflow_permissions : null,
   };
 }
+
+// A run id as the host numbers it: a positive whole number, given as a number or its digits.
+export function assertRunId(id) {
+  const s = String(id ?? '');
+  if (!/^[1-9][0-9]{0,19}$/.test(s)) throw new Error(`run id must be a positive whole number, got '${id}'`);
+  return s;
+}
+
+const login = (u) => (typeof u?.login === 'string' && u.login !== '' ? u.login : null);
+
+// getCommit's answer from what `gh api repos/{o}/{r}/commits/<sha>` prints: { verified, signer }.
+// `verified` is the host's own `commit.verification.verified`, true only when the host checked the
+// signature against a key on the signer's account (03 REQ-3.8, D-71). `signer` is the committer's
+// login when verified (the account the key belongs to), else null. Returns null for an answer without
+// a verification block, which the caller reports as not read.
+export function mapCommit(raw) {
+  const v = raw?.commit?.verification;
+  if (v === null || typeof v !== 'object' || typeof v.verified !== 'boolean') return null;
+  return { verified: v.verified, signer: v.verified ? (login(raw.committer) ?? login(raw.author)) : null };
+}
+
+// getRun's answer from what `gh api repos/{o}/{r}/actions/runs/<id>` prints:
+// { workflow, headSha, actor, conclusion }. `workflow` is the run's name (the workflow's `name:`, which
+// GITHUB_WORKFLOW carries), `actor` the triggering actor (GITHUB_TRIGGERING_ACTOR), else the actor,
+// `conclusion` null while the run is in progress. Returns null for an answer without a name or head sha.
+export function mapRun(raw) {
+  if (raw === null || typeof raw !== 'object' || typeof raw.name !== 'string' || typeof raw.head_sha !== 'string') return null;
+  return {
+    workflow: raw.name,
+    headSha: raw.head_sha,
+    actor: login(raw.triggering_actor) ?? login(raw.actor),
+    conclusion: typeof raw.conclusion === 'string' ? raw.conclusion : null,
+  };
+}

@@ -11,6 +11,15 @@
 // What is protected: a mid-chain edit is caught by the chain (verifyJournal); shortening or removing a
 // committed file is caught against the default branch (appendOnlyProblems); lines not yet committed are
 // not protected. Nothing here repairs a journal.
+//
+// The chain carries no key: anyone who rewrites a file can recompute every hash, so the chain shows an
+// edit only against what the default branch already holds. The `actor` field is what the session
+// reports and proves nothing about who ran it. What binds a journal to a person is the commit that
+// carries it (D-71): under `check --ci` every commit of the pull request that changes a journal file
+// must be signed and verified by the git host (C-1 getCommit). The sync pull request records each
+// merged journal's last hash in `.slicekit/journal-heads.log` (headsLines), with the CI run that wrote
+// it, and `check --ci` recomputes every line that file gains from git and C-1 getRun rather than trust
+// its writer (D-89). The kit manages no keys.
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -215,6 +224,21 @@ function resolves(root, ref) {
   }
 }
 
+// The merge base of `tip` and `against` (default: the default branch, local, else origin's), as
+// { ref, base }, or null when neither ref nor a merge base exists.
+export function mergeBaseWith(root, cfg, { against, tip = 'HEAD' } = {}) {
+  const def = cfg?.defaultBranch ?? 'main';
+  const candidates = against != null ? [against] : [def, `origin/${def}`];
+  const ref = candidates.find((r) => resolves(root, r));
+  if (ref === undefined) return null;
+  try {
+    return { ref, base: git(root, ['merge-base', assertRef(tip), ref]) };
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
 // Append-only against git: every journal file at the merge base of HEAD and `against` (default: the
 // default branch, local, else origin's) must still exist in the working tree and start with the base
 // copy's bytes (CRLF read as LF). [] outside a repo. When the ref or the merge base does not exist: []
@@ -224,18 +248,9 @@ function resolves(root, ref) {
 export function appendOnlyProblems(root, cfg, { against, ci = false } = {}) {
   if (!isRepo(root)) return [];
   const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
-  const noBase = () => (ci ? [{ file: relDir, line: 0, message: NO_BASE }] : []);
-  const def = cfg?.defaultBranch ?? 'main';
-  const candidates = against != null ? [against] : [def, `origin/${def}`];
-  const ref = candidates.find((r) => resolves(root, r));
-  if (ref === undefined) return noBase();
-  let base;
-  try {
-    base = git(root, ['merge-base', 'HEAD', ref]);
-  } catch (e) {
-    if (e instanceof GitError) return noBase();
-    throw e;
-  }
+  const found = mergeBaseWith(root, cfg, { against });
+  if (found === null) return ci ? [{ file: relDir, line: 0, message: NO_BASE }] : [];
+  const { ref, base } = found;
   // --full-name lists paths from the top level, as `git show <base>:<path>` takes them; the prefix
   // (root's place below the top level) maps each back to root.
   const prefix = git(root, ['rev-parse', '--show-prefix']);
@@ -323,4 +338,97 @@ export function appendJournal(root, fields, { branch = journalBranch(root), now 
     }
     return line;
   }, budgetMs);
+}
+
+// ---- signed commits and the journal-heads file (03 REQ-3.8, D-71, D-89) ----
+
+export const HEADS_FILE = 'journal-heads.log';
+export const SIGNED_MESSAGE = 'journal commits must be signed';
+const HEADS_LINE = /^(\S+) hash=(\S+) merge=([0-9a-f]{40}) run=(\S+) workflow=(\S+) actor=(\S+)$/;
+
+// Where the sync pull request records each merged journal's last hash: `.slicekit/journal-heads.log`.
+export const headsPath = (root, cfg) => path.join(kitPaths(root, cfg ?? { docsRoot: 'docs' }).kit, HEADS_FILE);
+
+// One line of the journal-heads file (no newline):
+//   <journal file> hash=<its last hash> merge=<merge sha> run=<run id> workflow=<name> actor=<login>
+// Every value goes through the journal's own masking, so none carries a space or `=`.
+export function headsLine({ file, hash, merge, run, workflow, actor }) {
+  return `${value(file)} hash=${value(hash)} merge=${value(merge)} run=${value(run)} workflow=${value(workflow)} actor=${value(actor)}`;
+}
+
+// -> {file, hash, merge, run, workflow, actor}, or null.
+export function parseHeadsLine(text) {
+  const m = HEADS_LINE.exec(String(text).replace(/\r$/, ''));
+  if (!m) return null;
+  const [, file, hash, merge, run, workflow, actor] = m;
+  return { file, hash, merge, run, workflow, actor };
+}
+
+const gitOr = (root, args, fallback) => {
+  try {
+    return git(root, args);
+  } catch (e) {
+    if (e instanceof GitError) return fallback;
+    throw e;
+  }
+};
+
+// The bytes of `rel` (relative to root) at commit `rev` (CRLF read as LF), or null when it has none.
+function bytesAt(root, rev, rel) {
+  try {
+    return lf(gitBytes(root, ['show', `${rev}:./${rel}`]));
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+}
+
+// The lines the sync job adds to the journal-heads file for merge commit `merge` (REQ-3.8): one per
+// journal file the merge added or changed against its first parent (the default branch before the
+// merge), sorted by file, each with that file's last hash at the merge and the run's id, workflow and
+// actor. The sync job writes with it (`slicekit journal heads`, values from the run's environment), and
+// `check --ci` recomputes with it (values from C-1 getRun), so the two cannot drift. Throws GitError
+// when `merge` is not a commit of this clone.
+export function headsLines(root, cfg, merge, { run, workflow, actor }) {
+  const sha = git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${assertRef(merge)}^{commit}`]);
+  const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
+  const parent = gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
+  const listed = parent === ''
+    ? git(root, ['ls-tree', '-r', '--name-only', sha, '--', `${relDir}/`])
+    : git(root, ['diff', '--relative', '--name-only', '--no-renames', '--diff-filter=AM', parent, sha, '--', `${relDir}/`]);
+  const files = (listed === '' ? [] : listed.split('\n'))
+    .map((f) => f.replace(/\r$/, ''))
+    .filter((f) => f.startsWith(`${relDir}/`) && f.endsWith('.log') && !f.slice(relDir.length + 1).includes('/'))
+    .sort();
+  return files.map((file) => {
+    const text = (bytesAt(root, sha, file) ?? Buffer.alloc(0)).toString('utf8');
+    const last = text.endsWith('\n') ? lastLine(text) : null;
+    const hash = (last === null ? null : parseLine(last)?.hash) ?? '-';
+    return headsLine({ file, hash, merge: sha, run, workflow, actor });
+  });
+}
+
+// Appends lines to the journal-heads file and returns them. The file is written only here.
+export function appendHeads(root, cfg, lines) {
+  if (lines.length === 0) return [];
+  const file = headsPath(root, cfg);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const text = readIfAny(file);
+  const sep = text !== '' && !text.endsWith('\n') ? '\n' : '';
+  fs.appendFileSync(file, `${sep}${lines.join('\n')}\n`);
+  return lines;
+}
+
+// The commits after `base` up to `tip` that change a file under .slicekit/journal/, newest first.
+// The journal-heads file sits beside that directory, not in it, so a sync commit is not one of them.
+export function journalCommits(root, cfg, base, tip) {
+  const relDir = toPosix(path.relative(root, dirOf(root, cfg)));
+  const out = git(root, ['log', '--format=%H', `${assertRef(base)}..${assertRef(tip)}`, '--', `${relDir}/`]);
+  return out === '' ? [] : out.split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+// The journal-heads file at `base` and at `tip`: { rel, was, now } (bytes, LF; empty when absent).
+export function headsAt(root, cfg, base, tip) {
+  const rel = toPosix(path.relative(root, headsPath(root, cfg)));
+  return { rel, was: bytesAt(root, base, rel) ?? Buffer.alloc(0), now: bytesAt(root, tip, rel) ?? Buffer.alloc(0) };
 }

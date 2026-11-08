@@ -214,6 +214,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node node_modules/slicekit/bin/slicekit.js status --sync --write
+      # One line per journal file the merge changed, with this run's id, workflow and actor (REQ-3.8);
+      # check --ci on the sync pull request recomputes each line from git and the host (D-89).
+      - name: Record the journal heads
+        run: node node_modules/slicekit/bin/slicekit.js journal heads "$GITHUB_SHA"
       - name: Commit identity
         run: |
           git config user.name 'github-actions[bot]'

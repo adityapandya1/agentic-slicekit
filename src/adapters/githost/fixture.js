@@ -13,6 +13,9 @@ import {
   assertComment,
   mapOpenPullRequests,
   mapWorkflowPermissions,
+  mapCommit,
+  mapRun,
+  assertRunId,
   decidedSlicekitRun,
   filterMergedSince,
   mapBranchRules,
@@ -46,6 +49,8 @@ import {
 //   branch-<branch>.json what `gh api repos/{o}/{r}/branches/<branch>` prints (missing: no classic protection)
 //   branch-rules-error.txt   gh refusing the rules read (no token, no network)
 //   codeowners.json      `{path, text}`, the CODEOWNERS file GitHub reads (missing: none)
+//   commit-<sha>.json    what `gh api repos/{o}/{r}/commits/<sha>` prints, for getCommit (missing: not found)
+//   run-<id>.json        what `gh api repos/{o}/{r}/actions/runs/<id>` prints, for getRun (missing: not found)
 //   ruleset-apply-error.txt  gh refusing the ruleset write
 //   ruleset-calls.jsonl  written: `{branch, rules}` per ruleset write; the rules are also added to
 //                        branch-rules-<branch>.json, so a later read sees them
@@ -116,6 +121,25 @@ export function fixtureHost(dir) {
       if (raw === undefined) return null;
       const got = mapWorkflowPermissions(raw);
       if (got === null) throw new GitHostError('git host fixture workflow-permissions.json: needs can_approve_pull_request_reviews');
+      return got;
+    },
+    // As the GitHub host: commit-<sha>.json mapped by mapCommit; a missing file is a commit the host
+    // does not have.
+    getCommit(sha) {
+      assertSha(sha);
+      const raw = readJson(path.join(dir, `commit-${sha}.json`));
+      if (raw === undefined) throw new GitHostNotFound(`gh api commits/${sha}: not found`);
+      const got = mapCommit(raw);
+      if (got === null) throw new GitHostError(`git host fixture commit-${sha}.json: needs commit.verification.verified`);
+      return got;
+    },
+    // As the GitHub host: run-<id>.json mapped by mapRun; a missing file is a run the host does not have.
+    getRun(id) {
+      const run = assertRunId(id);
+      const raw = readJson(path.join(dir, `run-${run}.json`));
+      if (raw === undefined) throw new GitHostNotFound(`gh api actions/runs/${run}: not found`);
+      const got = mapRun(raw);
+      if (got === null) throw new GitHostError(`git host fixture run-${run}.json: needs name and head_sha`);
       return got;
     },
     readCodeowners() {

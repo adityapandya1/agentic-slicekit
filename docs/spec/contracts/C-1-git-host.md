@@ -22,12 +22,12 @@ second file, not a second kit.
 | `listMergedSince` | isoDate | pull requests merged at or after that instant |
 | `ciStatus` | sha | success, failure, pending, with run url |
 | `renderWorkflow` | config | the CI file content for this host |
-| `getCommit` | sha | signature verified (yes or no), signer |
+| `getCommit` | sha | signature verified (yes or no) by the host, signer (03 REQ-3.8, D-71) |
 | `dispatchWorkflow` | workflow file, ref | — (starts the workflow on that ref, 03 REQ-3.11) |
 | `listOpenPullRequests` | — | every open pull request of this repository (never a fork's): number, url, title, head, base |
 | `closePullRequest` | number, comment | — (closes it with that comment; the sync job closes the `[sync]` pull requests a newer one supersedes, 03 REQ-3.11) |
 | `readWorkflowPermissions` | — | whether GitHub Actions may create pull requests, and the default token permissions, or none when the host does not say (03 REQ-3.11, REQ-3.14) |
-| `getRun` | run id | workflow file, head sha, triggering actor, conclusion (03 REQ-3.8) |
+| `getRun` | run id | workflow name, head sha, triggering actor, conclusion (03 REQ-3.8, D-89) |
 | `readBranchRules` | branch | the repository rulesets that apply: pull request required, approvals, code-owner review, required checks, force push (D-84) |
 | `readCodeowners` | — | the CODEOWNERS file's path and content, or none |
 | `applyBranchRules` | branch, rules | the rules set (called only by `slicekit init --protect`, 03 REQ-3.14) |
@@ -41,4 +41,10 @@ through `dispatchWorkflow`, so the required checks run on that head (D-80), and 
 pull requests it supersedes through `closePullRequest`. No operation changes the Actions setting
 `readWorkflowPermissions` reads; a human does.
 
-Cites: D-09, D-67, D-70, D-71, D-77, D-78, D-80, D-84.
+Under `slicekit check --ci`, the journal rule calls `getCommit` for each commit of the pull request
+that changes a file under `.slicekit/journal/`, and `getRun` for the run each new line of <!-- slicekit:example -->
+`.slicekit/journal-heads.log` names, to recompute that line (03 REQ-3.8, D-71, D-89). Neither is called <!-- slicekit:example -->
+outside CI. The kit manages no keys: the host verifies a signature against the keys on the signer's
+account.
+
+Cites: D-09, D-67, D-70, D-71, D-77, D-78, D-80, D-84, D-89.
