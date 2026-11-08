@@ -49,15 +49,49 @@ function ignoredByGit(root, rel) {
   }
 }
 
-// Returns true when it appended the un-ignores again.
+// The ignore-file line git matches for `rel`, as `<source>:<line>:<pattern>`.
+function ignoringLine(root, rel) {
+  try {
+    return git(root, ['check-ignore', '-v', '--no-index', rel]).split('\t')[0];
+  } catch {
+    return null;
+  }
+}
+
+function endsWithUnignores(raw) {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim());
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  const tail = lines.slice(-UNIGNORE_RULES.length);
+  return tail.length === UNIGNORE_RULES.length && tail.every((l, i) => l === UNIGNORE_RULES[i]);
+}
+
+// Appends the un-ignores again when git still ignores a probe and the file does not already end with
+// them. When git still ignores a probe after that, as under an excluded parent such as `.slicekit/`,
+// the note names the line that ignores it and nothing more is appended (P4/S-47 review H-1).
+// Returns { appended, note }.
 function reassertUnignores(root, file) {
-  if (!isRepo(root) || !exists(file)) return false;
-  if (!UNIGNORE_PROBES.some((rel) => ignoredByGit(root, rel))) return false;
+  const none = { appended: false, note: null };
+  if (!isRepo(root) || !exists(file)) return none;
+  const before = UNIGNORE_PROBES.filter((rel) => ignoredByGit(root, rel));
+  if (before.length === 0) return none;
   const raw = fs.readFileSync(file, 'utf8');
-  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-  const sep = raw === '' || raw.endsWith('\n') ? '' : eol;
-  fs.appendFileSync(file, `${sep}${UNIGNORE_RULES.map((rule) => `${rule}${eol}`).join('')}`);
-  return true;
+  let appended = false;
+  if (!endsWithUnignores(raw)) {
+    const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+    const sep = raw === '' || raw.endsWith('\n') ? '' : eol;
+    fs.appendFileSync(file, `${sep}${UNIGNORE_RULES.map((rule) => `${rule}${eol}`).join('')}`);
+    appended = true;
+  }
+  const still = UNIGNORE_PROBES.filter((rel) => ignoredByGit(root, rel));
+  if (still.length === 0) return { appended, note: null };
+  // The copy just appended changed nothing git decides: take it back out, byte for byte.
+  if (appended && still.length === before.length) {
+    fs.writeFileSync(file, raw);
+    appended = false;
+  }
+  const lines = [...new Set(still.map((rel) => ignoringLine(root, rel)).filter(Boolean))];
+  const note = `${still.join(' and ')} still ignored by git (${lines.join(', ')}); a later un-ignore cannot re-include a path under an excluded folder, so init does not append its un-ignores again`;
+  return { appended, note };
 }
 
 // Hooks checked out with CRLF break sh (REQ-3.9).
@@ -336,12 +370,14 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultB
     }
   }
   const ignoreState = ensureLines(paths.gitignore, IGNORE_RULES);
-  lists[reassertUnignores(root, paths.gitignore) && ignoreState === 'skipped' ? 'updated' : ignoreState].push(rel(paths.gitignore));
+  const unignores = reassertUnignores(root, paths.gitignore);
+  lists[unignores.appended && ignoreState === 'skipped' ? 'updated' : ignoreState].push(rel(paths.gitignore));
   const attributes = path.join(root, '.gitattributes');
   lists[ensureLines(attributes, attributeRules(root, cfg))].push(rel(attributes));
 
   const repo = isRepo(root);
   const warnings = repo ? [] : [NOT_A_REPO];
+  if (unignores.note) warnings.push(unignores.note);
   if (cliWarning) warnings.push(cliWarning);
   const hooks = installHooks(paths, rel, lists, warnings);
   if (repo) {
