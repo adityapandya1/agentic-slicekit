@@ -7,6 +7,7 @@ import { git, GitError, isRepo } from '../git.js';
 import { checkCli } from '../hook-cli.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 import { init, knownDefaultBranch, protect } from '../init.js';
+import { ACTIONS_PR_OFF } from '../check/rules/host-rules.js';
 import { kitVersion } from '../render/index.js';
 
 const USAGE =
@@ -114,6 +115,7 @@ async function run(args, io) {
       for (const check of done.removed) io.stdout(`removed ${done.branch}: required check ${check}, which is not gate or checks\n`);
       io.stdout(`host rules: ruleset slicekit applied to ${done.branch}\n`);
     }
+    if (done.actionsPullRequests === 'off') io.stdout(`not set: ${ACTIONS_PR_OFF}; init --protect does not change it\n`);
   }
   return 0;
 }

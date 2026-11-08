@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { GitHostNotFound } from '../adapters/githost/errors.js';
 import { SLICEKIT_WORKFLOW } from '../adapters/githost/gh-json.js';
-import { GitError, currentBranch, git, pushBranch, switchBranch } from '../git.js';
+import { SYNC_BRANCH, SYNC_TITLE } from '../check/ci-event.js';
+import { GitError, currentBranch, git, switchBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { prBodyProblems } from '../prbody.js';
 import { listSlices, setState } from './index.js';
@@ -79,7 +80,8 @@ export function syncFromHost(root, cfg, host) {
 // branch means a run already did this: nothing is opened a second time. The commit is made with
 // ALLOW_PROTECTED_COMMIT removed from its environment, so the git hooks guard it as any other.
 // Returns { outcome: 'unchanged' } | { outcome: 'open', branch, number, url } |
-// { outcome: 'opened', branch, number, url, files }. Throws SyncOpenError, GitError or GitHostError.
+// { outcome: 'opened', branch, number, url, files }, each with `closed`, the older [sync] pull requests
+// it closed as superseded. Throws SyncOpenError, GitError or GitHostError.
 export class SyncOpenError extends Error {
   constructor(message) {
     super(message);
@@ -129,6 +131,35 @@ export function syncBody(short, defaultBranch, files) {
   ].join('\n');
 }
 
+// Pushes the sync branch, and only a `sync/<short sha>` branch, with a lease on what origin holds
+// for it now: none, or the commit a run that stopped before its pull request left there. A re-run
+// makes a new commit (its committer time differs), so a plain push would be refused; the lease
+// replaces only the ref read a moment before and never touches any other branch.
+function pushSyncBranch(root, cfg, branch) {
+  if (!SYNC_BRANCH.test(branch) || branch === cfg.defaultBranch || (cfg.protectedBranches ?? []).includes(branch)) {
+    throw new SyncOpenError(`sync open pushes only a sync/<short sha> branch, not ${branch}`);
+  }
+  const ref = `refs/heads/${branch}`;
+  const listed = gitGuarded(root, ['ls-remote', '--heads', 'origin', ref]).trim();
+  const held = listed.split('\n').map((l) => l.split(/\s+/)).find(([, name]) => name === ref)?.[0] ?? '';
+  gitGuarded(root, ['push', '-q', `--force-with-lease=${ref}:${held}`, 'origin', `HEAD:${ref}`]);
+}
+
+// Closes every other open `[sync]` pull request on a `sync/<short sha>` branch into the default
+// branch, with a comment naming the one that supersedes it. The sync state is cumulative from the
+// default branch's tip, so the newest sync pull request carries every change an older one did.
+// Returns the numbers closed.
+function closeSuperseded(host, cfg, keep) {
+  const closed = [];
+  for (const pr of host.listOpenPullRequests()) {
+    if (pr.number === keep.number || pr.head === keep.branch) continue;
+    if (!SYNC_BRANCH.test(pr.head) || !SYNC_TITLE.test(pr.title) || (pr.base !== null && pr.base !== cfg.defaultBranch)) continue;
+    host.closePullRequest(pr.number, `Superseded by #${keep.number} (${keep.url}): the sync state is cumulative from ${cfg.defaultBranch}'s tip, so #${keep.number} carries every change this pull request did.`);
+    closed.push(pr.number);
+  }
+  return closed;
+}
+
 export function openSyncPullRequest(root, cfg, host) {
   const start = currentBranch(root);
   if (start !== cfg.defaultBranch) {
@@ -142,8 +173,9 @@ export function openSyncPullRequest(root, cfg, host) {
   if (open) {
     // A re-run of the job: the pull request is there, but the first run may have stopped before its
     // dispatch, so start the workflow on the branch again; a second run of the checks is harmless.
+    const closed = closeSuperseded(host, cfg, { number: open.number, url: open.url, branch });
     host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
-    return { outcome: 'open', branch, number: open.number, url: open.url };
+    return { outcome: 'open', branch, number: open.number, url: open.url, closed };
   }
 
   const title = syncTitle(short);
@@ -155,12 +187,14 @@ export function openSyncPullRequest(root, cfg, host) {
   try {
     gitGuarded(root, ['--literal-pathspecs', 'add', '-A', '--', ...files]);
     gitGuarded(root, ['--literal-pathspecs', 'commit', '-q', '-m', `chore(slicekit): sync state after ${short}`, '--', ...files]);
-    pushBranch(root, { protectedBranches: cfg.protectedBranches ?? [], defaultBranch: cfg.defaultBranch });
+    pushSyncBranch(root, cfg, branch);
   } finally {
     // Back to where it started; the change lives on the sync branch.
     git(root, ['switch', '-q', start]);
   }
   const made = host.openPullRequest({ branch, base: cfg.defaultBranch, title, body, draft: false });
+  // Closed only once the new one is open, so a failed open leaves the older one standing.
+  const closed = closeSuperseded(host, cfg, { number: made.number, url: made.url, branch });
   host.dispatchWorkflow(SLICEKIT_WORKFLOW.file, branch);
-  return { outcome: 'opened', branch, number: made.number, url: made.url, files };
+  return { outcome: 'opened', branch, number: made.number, url: made.url, files, closed };
 }

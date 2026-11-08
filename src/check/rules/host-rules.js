@@ -6,6 +6,12 @@
 //
 // When the host cannot be read (no network, no token, a token that may not read the rules), the rule
 // fails under --ci and otherwise reports a note, "host rules not checked", that does not block (D-81).
+// When the generated workflow has a sync job, the rule also reads the repository's Actions workflow
+// permissions through C-1: the sync job opens its [sync] pull request with the workflow's own token
+// (REQ-3.11), which GitHub refuses while "Allow GitHub Actions to create and approve pull requests" is
+// off. Off fails under --ci and is a note otherwise. The workflow's own token cannot read that setting
+// (it needs administration read), so a read the host refuses is a note in both, never a failure: under
+// D-81 it would fail every CI run, which no setting a human can change would fix.
 // A repository with no origin remote names no host: nothing to judge. The rule never writes a host
 // setting; `slicekit init --protect` is the one place that does, and shares missingRules.
 import { getHost } from '../../adapters/githost/index.js';
@@ -18,6 +24,26 @@ export const blocking = true;
 export const ratchet = false;
 
 const PROTECT = 'run slicekit init --protect as an admin';
+
+// Where a human turns on the setting the sync job needs; slicekit never changes it (D-77).
+export const ACTIONS_PR_SETTING = 'Settings, Actions, General, Workflow permissions, "Allow GitHub Actions to create and approve pull requests"';
+export const ACTIONS_PR_OFF = `GitHub Actions may not create pull requests, so the sync job cannot open its [sync] pull request; a human turns on ${ACTIONS_PR_SETTING} (approvals still need a human under the ruleset)`;
+
+// Whether the workflow renderWorkflow writes for `cfg` has a sync job.
+export const hasSyncJob = (cfg) => /^jobs:\s*$[\s\S]*^ {2}sync:\s*$/m.test(renderWorkflow(cfg).replace(/\r\n/g, '\n'));
+
+// The sync job's Actions setting: 'on', 'off', 'unknown' (the host does not say) or { error } when
+// the host refused the read.
+export function actionsPullRequestSetting(cfg, env, root) {
+  try {
+    const got = getHost(cfg, env, root).readWorkflowPermissions();
+    if (got === null) return 'unknown';
+    return got.canCreatePullRequests ? 'on' : 'off';
+  } catch (e) {
+    if (!(e instanceof GitHostError)) throw e;
+    return { error: e.message };
+  }
+}
 // The jobs of the generated workflow a merge waits on: the gate, and the checks job, which needs every
 // command and observability job and passes when each passed or was skipped for bookkeeping. A command
 // job's matrix names are never required: a job skipped by its own if reports one check under its id
@@ -111,7 +137,13 @@ export function run(ctx) {
     found.push(`${branch}: protected by classic branch protection only; move to a repository ruleset, the protection slicekit reads (D-84), or ${PROTECT}`);
   }
   for (const m of missingRules(cfg, read.rules, read.codeowners)) found.push(`${branch}: ${m.missing}; ${PROTECT}`);
-  return found.map((message) => ({ file: '-', line: 0, message }));
+  const out = found.map((message) => ({ file: '-', line: 0, message }));
+  if (hasSyncJob(cfg)) {
+    const setting = actionsPullRequestSetting(cfg, env, root);
+    if (setting === 'off') out.push({ file: '-', line: 0, message: ACTIONS_PR_OFF, ...(ci ? {} : { note: true }) });
+    else if (typeof setting === 'object') out.push({ file: '-', line: 0, message: `the Actions pull request setting not checked: ${setting.error}`, note: true });
+  }
+  return out;
 }
 
 export default { id, blocking, ratchet, run };

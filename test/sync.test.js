@@ -586,3 +586,55 @@ test('dispatchWorkflow takes only a .yml or .yaml file name', async () => {
     assert.throws(() => assertWorkflowFile(bad), /workflow must be a \.yml file name/, String(bad));
   }
 });
+
+test('a re-run after a failure between the push and the pull request pushes its sync branch again with a lease', async () => {
+  await withSyncRepo(async ({ root, remote, fixture }) => {
+    const mainTip = gitIn(root, ['rev-parse', 'HEAD']);
+    const branch = `sync/${gitIn(root, ['rev-parse', '--short', 'HEAD'])}`;
+    // The first run pushes the branch, then the host refuses the pull request.
+    await syncState(root, fixture);
+    fs.writeFileSync(path.join(fixture, 'pr-create-error.txt'), 'GitHub Actions is not permitted to create or approve pull requests');
+    const first = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(first.code, 1);
+    assert.deepEqual(remoteBranches(remote), [branch, 'main'].sort());
+    const stale = gitIn(remote, ['rev-parse', `refs/heads/${branch}`]);
+
+    // The re-run makes a new commit for the same branch; the lease lets it replace the stale one.
+    fs.rmSync(path.join(fixture, 'pr-create-error.txt'));
+    gitIn(root, ['branch', '-D', branch]);
+    await new Promise((r) => setTimeout(r, 1100));
+    await syncState(root, fixture);
+    const again = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(again.code, 0, again.stderr);
+    const now = gitIn(remote, ['rev-parse', `refs/heads/${branch}`]);
+    assert.notEqual(now, stale);
+    assert.equal(gitIn(remote, ['rev-parse', `${now}^`]), mainTip);
+    assert.equal(gitIn(remote, ['rev-parse', 'refs/heads/main']), mainTip);
+    assert.deepEqual(remoteBranches(remote), [branch, 'main'].sort());
+    assert.deepEqual(syncCalls(fixture).map((c) => c.op), ['openPullRequest', 'dispatchWorkflow']);
+  });
+});
+
+test('sync open closes the older [sync] pull requests it supersedes, and no other', async () => {
+  await withSyncRepo(async ({ root, fixture }) => {
+    const pr = (number, head, title, base = 'main') => ({ number, url: `https://example.test/pull/${number}`, state: 'OPEN', isDraft: false, isCrossRepository: false, headRefName: head, baseRefName: base, title, body: 'x', headRefOid: null, labels: [] });
+    const older = [
+      pr(1, 'sync/deadbee', '[sync] state after deadbee'),
+      pr(2, 'feature/x', '[sync] state after feature'),
+      pr(3, 'sync/abcdef1', 'not a sync title'),
+      pr(4, 'sync/0123456', '[sync] state after 0123456', 'release'),
+    ];
+    for (const p of older) fs.writeFileSync(path.join(fixture, `pr-${p.number}.json`), `${JSON.stringify(p, null, 2)}\n`);
+    await syncState(root, fixture);
+    const r = await syncCli(root, fixture, ['sync', 'open']);
+    assert.equal(r.code, 0, r.stderr);
+    const calls = syncCalls(fixture);
+    assert.deepEqual(calls.map((c) => c.op), ['openPullRequest', 'closePullRequest', 'dispatchWorkflow']);
+    const close = calls[1];
+    assert.equal(close.number, 1);
+    assert.match(close.comment, /^Superseded by #15 \(https:\/\/example\.test\/pull\/15\)/);
+    assert.match(r.stdout, /closed #1: superseded by #15/);
+    const state = (n) => JSON.parse(fs.readFileSync(path.join(fixture, `pr-${n}.json`), 'utf8')).state;
+    assert.deepEqual([1, 2, 3, 4].map(state), ['CLOSED', 'OPEN', 'OPEN', 'OPEN']);
+  });
+});

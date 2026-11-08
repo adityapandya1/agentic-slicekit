@@ -11,7 +11,7 @@ import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
 import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from './workflow.js';
 import { getHost } from './adapters/githost/index.js';
-import { missingRules, requiredChecks } from './check/rules/host-rules.js';
+import { actionsPullRequestSetting, hasSyncJob, missingRules, requiredChecks } from './check/rules/host-rules.js';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates/docs/', import.meta.url));
 const GITHOOKS_DIR = fileURLToPath(new URL('../templates/githooks/', import.meta.url));
@@ -276,7 +276,8 @@ export function bareCliWarning(cli) {
 // ruleset that is not gate or checks is taken out of that ruleset; a check
 // another ruleset requires is the team's and stays. Returns the branch, what each rule set reads as,
 // and the checks removed: both empty when nothing changed. A GitHostError (no token, no admin rights)
-// is the caller's to print.
+// is the caller's to print. `actionsPullRequests` is 'off' when the workflow has a sync job and the
+// Actions setting it needs is off: init --protect never changes that setting, a human does (REQ-3.11).
 export function protect(root, { env = process.env } = {}) {
   const cfg = loadConfig(root);
   const branch = cfg.defaultBranch;
@@ -285,9 +286,10 @@ export function protect(root, { env = process.env } = {}) {
   const missing = missingRules(cfg, rules, host.readCodeowners());
   const kitChecks = requiredChecks(cfg);
   const unknown = (rules.requiredChecks ?? []).filter((c) => !kitChecks.includes(c));
-  if (missing.length === 0 && unknown.length === 0) return { branch, set: [], removed: [] };
+  const actionsPullRequests = hasSyncJob(cfg) ? actionsPullRequestSetting(cfg, env, root) : 'unknown';
+  if (missing.length === 0 && unknown.length === 0) return { branch, set: [], removed: [], actionsPullRequests };
   const done = host.applyBranchRules(branch, { ...Object.fromEntries(missing.map((m) => [m.key, m.value])), kitChecks });
-  return { branch, set: missing.map((m) => m.set), removed: done?.removedChecks ?? [] };
+  return { branch, set: missing.map((m) => m.set), removed: done?.removedChecks ?? [], actionsPullRequests };
 }
 
 export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultBranch, env = process.env }) {

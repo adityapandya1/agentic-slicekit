@@ -9,6 +9,10 @@ import {
   assertPrNumber,
   assertTitle,
   assertWorkflowFile,
+  assertComment,
+  mapOpenPullRequests,
+  mapWorkflowPermissions,
+  OPEN_PR_FIELDS,
   BRANCH_PR_FIELDS,
   CODEOWNERS_PATHS,
   filterMergedSince,
@@ -112,6 +116,15 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       return mapBranchRules(rules, api(`${repoPath()}/branches/${branchPath(branch)}`));
     },
     // The CODEOWNERS file GitHub reads on the default branch, as { path, text }, or null.
+    // The repository's Actions workflow permissions (REQ-3.11, REQ-3.14): whether "Allow GitHub Actions
+    // to create and approve pull requests" is on, which the sync job's `gh pr create` needs. Reading it
+    // needs a token with the repository's administration read; the workflow's own token has none, so in
+    // CI this is a GitHostError the caller reports as not read.
+    readWorkflowPermissions() {
+      const got = mapWorkflowPermissions(api(`${repoPath()}/actions/permissions/workflow`));
+      if (got === null) throw new GitHostError('the Actions workflow permissions answer has no can_approve_pull_request_reviews');
+      return got;
+    },
     readCodeowners() {
       for (const file of CODEOWNERS_PATHS) {
         let got;
@@ -218,6 +231,17 @@ export function githubHost(env = process.env, root = process.cwd(), exec = execF
       assertBranch(branch);
       const list = ghJson(['pr', 'list', '--head', branch, '--state', 'open', '--json', BRANCH_PR_FIELDS]);
       return pickBranchPullRequest(list, branch, base);
+    },
+    // Every open pull request of this repository, as [{ number, url, title, head, base }] (a fork's
+    // dropped), oldest first. The sync job reads it to close the [sync] pull requests a newer one replaces.
+    listOpenPullRequests() {
+      return mapOpenPullRequests(ghJson(['pr', 'list', '--state', 'open', '--limit', '200', '--json', OPEN_PR_FIELDS]));
+    },
+    // Closes pull request `n` with a comment saying why; the branch stays. Needs pull-requests: write.
+    closePullRequest(n, comment) {
+      assertPrNumber(n);
+      assertComment(comment);
+      gh(exec, ['pr', 'close', String(n), `--comment=${comment}`], { env, cwd: root });
     },
     // Starts the workflow `file` on branch `ref` with workflow_dispatch (D-80): a pull request opened
     // with the workflow's own token starts no run, and this is how its checks run. Needs actions: write.

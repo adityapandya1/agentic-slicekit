@@ -301,3 +301,33 @@ export function pruneRulesetChecks(rules, kitChecks) {
   }
   return { rules: out, removed };
 }
+
+// The fields `gh pr list` prints for listOpenPullRequests.
+export const OPEN_PR_FIELDS = 'number,url,title,isCrossRepository,baseRefName,headRefName';
+
+// listOpenPullRequests's answer from what `gh pr list --state open --json OPEN_PR_FIELDS` prints:
+// [{ number, url, title, head, base }], this repository's own branches only (a fork's dropped).
+export function mapOpenPullRequests(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((p) => p && p.isCrossRepository !== true && Number.isInteger(p.number) && typeof p.headRefName === 'string')
+    .map((p) => ({ number: p.number, url: p.url ?? null, title: typeof p.title === 'string' ? p.title : '', head: p.headRefName, base: p.baseRefName ?? null }))
+    .sort((a, b) => a.number - b.number);
+}
+
+// A comment as `gh pr close --comment` takes it: non-empty text.
+export function assertComment(text) {
+  if (typeof text !== 'string' || text.trim() === '') throw new Error(`comment must be non-empty text, got ${JSON.stringify(text)}`);
+  return text;
+}
+
+// readWorkflowPermissions's answer from what `gh api repos/{o}/{r}/actions/permissions/workflow`
+// prints: { canCreatePullRequests, defaultPermissions }. `can_approve_pull_request_reviews` is the
+// repository setting "Allow GitHub Actions to create and approve pull requests". Returns null for an
+// answer without it, which the caller reports as not read.
+export function mapWorkflowPermissions(raw) {
+  if (raw === null || typeof raw !== 'object' || typeof raw.can_approve_pull_request_reviews !== 'boolean') return null;
+  return {
+    canCreatePullRequests: raw.can_approve_pull_request_reviews,
+    defaultPermissions: typeof raw.default_workflow_permissions === 'string' ? raw.default_workflow_permissions : null,
+  };
+}

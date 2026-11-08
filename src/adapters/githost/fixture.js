@@ -10,6 +10,9 @@ import {
   assertPrNumber,
   assertTitle,
   assertWorkflowFile,
+  assertComment,
+  mapOpenPullRequests,
+  mapWorkflowPermissions,
   decidedSlicekitRun,
   filterMergedSince,
   mapBranchRules,
@@ -33,6 +36,11 @@ import {
 //   pr-calls.jsonl       written: `{op, ...input}` per pull request write (open, update, ready, draft)
 //                        and per workflow dispatch (`{op: 'dispatchWorkflow', file, ref}`), in order
 //   dispatch-error.txt   gh refusing `workflow run`
+//   pr-close-error.txt   gh refusing `pr close`; closePullRequest records `{op: 'closePullRequest', number, comment}`
+//                        in pr-calls.jsonl and sets the pull request's state to CLOSED
+//   workflow-permissions.json  what `gh api repos/{o}/{r}/actions/permissions/workflow` prints (missing:
+//                        readWorkflowPermissions returns null, the setting not known)
+//   workflow-permissions-error.txt  gh refusing that read (a token without administration read)
 //   branch-rules-<branch>.json   what `gh api repos/{o}/{r}/rules/branches/<branch>` prints (an array,
 //                        `[]` for no rules; missing: the rules cannot be read); `/` is written `%2F`
 //   branch-<branch>.json what `gh api repos/{o}/{r}/branches/<branch>` prints (missing: no classic protection)
@@ -101,6 +109,14 @@ export function fixtureHost(dir) {
       const rules = readJson(branchFile(dir, 'branch-rules', branch));
       if (rules === undefined) throw new GitHostError(`git host fixture ${dir}: no branch-rules-${branch}.json`);
       return mapBranchRules(rules, readJson(branchFile(dir, 'branch', branch)) ?? null);
+    },
+    readWorkflowPermissions() {
+      refuse(dir, 'workflow-permissions-error.txt', 'gh api');
+      const raw = readJson(path.join(dir, 'workflow-permissions.json'));
+      if (raw === undefined) return null;
+      const got = mapWorkflowPermissions(raw);
+      if (got === null) throw new GitHostError('git host fixture workflow-permissions.json: needs can_approve_pull_request_reviews');
+      return got;
     },
     readCodeowners() {
       const got = readJson(path.join(dir, 'codeowners.json'));
@@ -201,6 +217,17 @@ export function fixtureHost(dir) {
       assertBranch(ref);
       refuse(dir, 'dispatch-error.txt', 'gh workflow run');
       recordPr(dir, { op: 'dispatchWorkflow', file, ref });
+    },
+    listOpenPullRequests() {
+      return mapOpenPullRequests(prNumbers(dir).map((n) => readJson(prFile(dir, n))).filter((raw) => raw?.state === 'OPEN'));
+    },
+    closePullRequest(n, comment) {
+      assertPrNumber(n);
+      assertComment(comment);
+      refuse(dir, 'pr-close-error.txt', 'gh pr close');
+      const raw = readPr(dir, n);
+      writePr(dir, { ...raw, state: 'CLOSED' });
+      recordPr(dir, { op: 'closePullRequest', number: n, comment });
     },
     // As the GitHub host: the open pull requests with that head, a fork's (isCrossRepository) dropped.
     pullRequestForBranch(branch, { base } = {}) {
