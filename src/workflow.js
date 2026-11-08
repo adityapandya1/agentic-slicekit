@@ -64,6 +64,31 @@ export function javaBuildTool(root, commands) {
   return fromFiles.size > 0 ? 'maven' : null;
 }
 
+// setup-java fails a job whose cache matches no file, so the cache is set only when the checkout holds
+// a file the tool's cache keys on, at any depth: pom.xml for Maven; a Gradle build, settings or wrapper
+// file, versions.properties or gradle/*.versions.toml for Gradle (the action's own patterns).
+const CACHE_SKIP = new Set(['.git', 'node_modules', '.worktrees']);
+const CACHE_FILE = {
+  maven: (name) => name === 'pom.xml',
+  gradle: (name, dir) => /\.gradle/.test(name) || name === 'gradle-wrapper.properties' || name === 'versions.properties'
+    || (path.basename(dir) === 'gradle' && name.endsWith('.versions.toml')),
+};
+export function hasCacheFile(root, tool) {
+  const match = CACHE_FILE[tool];
+  if (!root || !match) return false;
+  const dirs = [root];
+  while (dirs.length > 0) {
+    const dir = dirs.pop();
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDirectory()) { if (!CACHE_SKIP.has(e.name)) dirs.push(path.join(dir, e.name)); }
+      else if (match(e.name, dir)) return true;
+    }
+  }
+  return false;
+}
+
 function setupJavaSteps(v, java, tool) {
   if (!tool) return [];
   return [
