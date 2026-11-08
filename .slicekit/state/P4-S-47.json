@@ -1,8 +1,12 @@
 {
   "slice": "P4/S-47",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 133,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/133",
+    "headSha": "e138148a43bc27ba7fe43d933300965779552283"
+  },
   "redCommit": "d3e3fbbe9df97aba7ac830a050d672f54d3e0e33",
   "frozenTests": [
     "test/init-heads-ignore.test.js"
@@ -32,6 +36,22 @@
       "at": "2026-11-08T12:07:13.513Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-08T12:17:21.702Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 133,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/133",
+          "headSha": "e138148a43bc27ba7fe43d933300965779552283",
+          "title": "[P4/S-47] Init un-ignores the journal heads log"
+        }
+      }
     }
   ]
 }
