@@ -68,3 +68,11 @@ test('a call after a line break, an assignment, a wrapper or combined shell flag
   assert.equal(javaBuildTool(null, ['cd svc && mvn verify']), 'maven');
   assert.equal(javaBuildTool(null, ['echo mvn']), null);
 });
+
+// Codex on #135: a call after a shell keyword that opens a command position still counts.
+test('a call after then, do or else still counts', () => {
+  assert.equal(javaBuildTool(null, ['if [ "$CI" = true ]; then mvn verify; fi']), 'maven');
+  assert.equal(javaBuildTool(null, ['for m in a b; do ./gradlew -p "$m" test; done']), 'gradle');
+  assert.equal(javaBuildTool(null, ['if false; then true; else gradle check; fi']), 'gradle');
+  assert.equal(javaBuildTool(null, ['if [ -f x ]; then echo mvn; fi']), null);
+});
