@@ -1,11 +1,11 @@
 {
   "slice": "P4/S-42",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 128,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/128",
-    "headSha": "a374d9eafdf2e4f4dd3e79808a0a1d24921d9ccc"
+    "headSha": "4015e7b421791769f64a684c85ade814d047830d"
   },
   "redCommit": "323027efa005ea3139b46185e3b014d330450384",
   "frozenTests": [
@@ -74,6 +74,22 @@
           "path": ".slicekit/reviews/P4-S-42-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-08T08:34:28.248Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 128,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/128",
+          "headSha": "4015e7b421791769f64a684c85ade814d047830d",
+          "title": "[P4/S-42] The journal is tied to signed commits"
         }
       }
     }
