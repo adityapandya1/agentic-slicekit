@@ -10,7 +10,7 @@ decisions: [D-62, D-63, D-90, D-91]
 
 ## Done when
 
-1. With `release.auto` true in config (default false; the kit's own config sets it), the sync pull request after a slice pull request merges also sets `package.json`'s version: the patch number up by one, or, when that merge leaves every slice of the slice's phase `merged` or `released`, the minor number up by one and the patch at 0; and it adds the newest `CHANGELOG.md` section for that version, naming the slice's ID, name and pull request, or for a minor version the phase and each of its slices; and it carries the files `update --yes` writes at that version (the rendered `.claude/` files name the kit's version), as `build render` would commit them (REQ-5.5, D-43, D-90).
+1. With `release.auto` true in config (default false; the kit's own config sets it), the sync pull request after a slice pull request merges also sets `package.json`'s version: the patch number up by one, or, when a merge it records leaves every slice of that slice's phase `merged` or `released`, the minor number up by one and the patch at 0; and it adds the newest `CHANGELOG.md` section for that version, naming each slice the sync records as newly merged (its ID, name and pull request), and for a minor version the phase and each of its slices. A sync that supersedes an earlier unmerged one, and so records several slice merges, sets one version whose section names every one of them, so no merged slice drops out of the changelog; and it carries the files `update --yes` writes at that version (the rendered `.claude/` files name the kit's version), as `build render` would commit them (REQ-5.5, D-43, D-90).
 2. A merge that changes `package.json`'s version itself, a `[plan]`, `[sync]` or `[release]` merge, and a config without `release.auto` set no version and add no section; the next merge counts from the version on the default branch, never from a version an open sync pull request proposes (REQ-5.5, D-90).
 3. `check --ci` on a sync pull request accepts a change to `package.json` only in its `version` field, to `CHANGELOG.md` only as one new section on top, and to rendered files only where they equal a fresh render at that version, each equal to what CI computes for the merge the sync branch names; any other change to those files in a sync pull request is one finding naming the file (REQ-5.5, D-43, D-89, D-90).
 4. `.github/workflows/publish.yml` runs on a push to the default branch and on `workflow_dispatch`; when `package.json`'s version is not on npm and no tag `v<version>` exists, one job on `ubuntu-latest` in the environment `npm`, with `id-token: write` and `contents: write`, runs `npm ci` and `npm test`, installs npm 11.5.1 or later, runs `npm publish --provenance --access public` with no token, then pushes the tag `v<version>`; otherwise it publishes nothing; every action is pinned by SHA from `templates/workflow/pins.json` (REQ-5.5, D-62, D-91). <!-- slicekit:pending P5/S-48 -->
@@ -22,6 +22,7 @@ decisions: [D-62, D-63, D-90, D-91]
 |---|---|---|
 | `release-version.test.js » a slice merge sets the next patch version and a changelog section` | happy | REQ-5.5 |
 | `release-version.test.js » the merge that completes a phase sets the next minor version` | happy | REQ-5.5 |
+| `release-version.test.js » a sync that records two slice merges sets one version naming both` | happy | REQ-5.5 |
 | `release-version.test.js » a merge that sets the version itself, a plan merge, or a config without release.auto sets no version` | negative | REQ-5.5 |
 | `release-version.test.js » a sync pull request whose version or changelog differs from what CI computes fails` | negative | REQ-5.5 |
 | `publish.test.js » the publish workflow pins every action by SHA and publishes with provenance when the version is new` | happy | REQ-5.5 |
@@ -38,9 +39,9 @@ decisions: [D-62, D-63, D-90, D-91]
 
 **Files:** Create `src/release-version.js`, `test/release-version.test.js`. Modify `src/state/sync.js` (or `src/cli/status.js`, wherever `status --sync --write` computes the sync change), `src/config.js`, `.slicekit/config.json`, `src/check/` (the sync pull request's rule).
 
-- [ ] **Step 1: Failing tests** — the four `release-version.test.js` tests above, on a fixture repository with a fixture host (`SLICEKIT_GITHOST_FIXTURE`); no test reaches the network.
+- [ ] **Step 1: Failing tests** — the five `release-version.test.js` tests above, on a fixture repository with a fixture host (`SLICEKIT_GITHOST_FIXTURE`); no test reaches the network.
 - [ ] **Step 2: Run** `node --test test/release-version.test.js` → FAIL.
-- [ ] **Step 3: Implement** `nextVersion({ current, merged, phaseComplete })` and `changelogSection(...)` as pure functions; the sync step writes `package.json` (only the `version` field, the file's other bytes unchanged), prepends the section under the file's intro and runs `update --yes` so the rendered files follow; `release.auto` is validated as a boolean; CI recomputes both for the merge the sync branch names, as D-89 does for the heads log.
+- [ ] **Step 3: Implement** `nextVersion({ current, merges, phaseComplete })` and `changelogSection(...)` as pure functions; the sync step writes `package.json` (only the `version` field, the file's other bytes unchanged), prepends the section under the file's intro and runs `update --yes` so the rendered files follow; `release.auto` is validated as a boolean; CI recomputes both for the merge the sync branch names, as D-89 does for the heads log.
 - [ ] **Step 4: Run** the same → PASS.
 - [ ] **Step 5: Commit** `feat(release): the sync pull request sets the next version`.
 
