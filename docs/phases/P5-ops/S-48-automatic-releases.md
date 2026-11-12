@@ -31,7 +31,7 @@ decisions: [D-62, D-63, D-90, D-91]
 
 ## Expected changes
 
-`src/release-version.js`, `src/state/sync.js`, `src/cli/sync.js`, `src/cli/status.js`, `src/check/rules/journal.js`, `src/check/rules/sync-release.js`, `src/check/index.js`, `src/config.js`, `.slicekit/config.json`, `templates/workflow/slicekit.yml`, `.github/workflows/slicekit.yml`, `.github/workflows/publish.yml`, `templates/workflow/pins.json`, `package.json`, `CHANGELOG.md`, `.claude/`, `docs/runbook.md`, `test/fixtures/golden/workflow/`, tests.
+`src/release-version.js`, `src/state/sync.js`, `src/cli/sync.js`, `src/cli/status.js`, `src/check/rules/journal.js`, `src/check/rules/sync-release.js`, `src/check/index.js`, `src/config.js`, `.slicekit/config.json`, `templates/workflow/slicekit.yml`, `.github/workflows/slicekit.yml`, `.github/workflows/publish.yml`, `templates/workflow/pins.json`, `package.json`, `CHANGELOG.md`, `.claude/`, `docs/runbook.md`, `docs/platform.md`, `test/fixtures/golden/workflow/`, tests.
 
 ## Tasks
 
@@ -47,7 +47,7 @@ decisions: [D-62, D-63, D-90, D-91]
 
 ### Task 2: Publishing from CI
 
-**Files:** Create `.github/workflows/publish.yml`, `test/publish.test.js`. Modify `templates/workflow/pins.json` only if an action is not pinned yet, `docs/runbook.md`, `test/runbook.test.js`.
+**Files:** Create `.github/workflows/publish.yml`, `test/publish.test.js`. Modify `templates/workflow/pins.json` only if an action is not pinned yet, `docs/runbook.md`, `docs/platform.md` (its deployment line says a pushed `v*` tag publishes; it becomes a merge to the default branch, approved in the `npm` environment), `test/runbook.test.js`.
 
 - [ ] **Step 1: Failing tests** — the two `publish.test.js` tests (they read the workflow as text, and run its "is this version new" script with a stubbed `npm view` and `git ls-remote`), and the `runbook.test.js` test.
 - [ ] **Step 2: Run** `node --test test/publish.test.js test/runbook.test.js` → FAIL.
