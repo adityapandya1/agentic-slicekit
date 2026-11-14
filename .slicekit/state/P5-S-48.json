@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-48",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 139,
@@ -15,7 +15,8 @@
   ],
   "unfrozen": [
     "test/runbook.test.js",
-    "test/publish.test.js"
+    "test/publish.test.js",
+    "test/release-version.test.js"
   ],
   "verdicts": [
     {
@@ -102,6 +103,17 @@
           "blockers": 1,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-14T19:44:17.654Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/release-version.test.js",
+        "amendCommit": "4e21b6763c1bee81de25f7b29491ca1e5e3dd50d",
+        "reason": "Done when 2 says what a merge that sets the version itself is, as this test already checks it (review H-1); the test itself does not change"
       }
     }
   ]
