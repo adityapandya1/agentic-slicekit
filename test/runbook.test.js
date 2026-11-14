@@ -45,7 +45,11 @@ test('the release steps write the changelog entry before publishing', () => {
   assert.match(release.replace(/\s+/g, ' '), /CHANGELOG\.md[^.]*release slice/);
   const log = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'CHANGELOG.md'), 'utf8');
   const versions = log.split('\n').filter((l) => /^## /.test(l)).map((l) => l.replace(/^## /, '').split(/\s/)[0]);
-  assert.deepEqual(versions, ['0.3.0', '0.2.1', '0.2.0', '0.1.2', '0.1.1']);
+  // D-90: each sync pull request adds its version's section on top, so the list ends with the versions
+  // up to 0.3.0 and its newest section is the version in package.json.
+  assert.deepEqual(versions.slice(-5), ['0.3.0', '0.2.1', '0.2.0', '0.1.2', '0.1.1']);
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
+  assert.equal(versions[0], pkg.version);
 });
 
 // P5/S-48, REQ-5.5, D-62, D-91: a version reaches npm from CI when its sync pull request merges, after

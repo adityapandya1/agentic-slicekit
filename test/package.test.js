@@ -39,9 +39,13 @@ test('package metadata', () => {
   assert.deepEqual(pkg.files, ['bin', 'src', 'templates']);
 });
 
-// P5/S-48, D-63: Phase 4 ships as 0.3.0, the first version published from CI.
-test('package.json is 0.3.0, links the repository and has no dependencies', () => {
-  assert.equal(pkg.version, '0.3.0');
+// P5/S-48, D-63: Phase 4 ships as 0.3.0, the first version published from CI. D-90: each sync pull
+// request after it sets the next version, so the test holds for 0.3.0 and every version above it.
+test('package.json is 0.3.0 or later, links the repository and has no dependencies', () => {
+  const m = pkg.version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  assert.ok(m, pkg.version);
+  const [major, minor] = m.slice(1).map(Number);
+  assert.ok(major > 0 || minor >= 3, `${pkg.version} is below 0.3.0`);
   assert.equal(pkg.dependencies, undefined);
   assert.equal(pkg.repository.url, `git+${REPO}.git`);
   assert.equal(pkg.homepage, `${REPO}#readme`);

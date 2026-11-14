@@ -119,6 +119,7 @@ From 0.3.0 a version reaches npm from CI, with a provenance attestation; nobody 
 3. The author approves the deployment: the run's page on GitHub, "Review deployments", `npm`, "Approve and deploy". Rejecting it publishes nothing; a later run of the workflow (`gh workflow run publish.yml`) asks again.
 4. The approved job runs `npm ci` (once the kit has a lockfile) and `npm test`, installs npm 11.5.1 or later, runs `npm publish --provenance --access public` through trusted publishing, then pushes the tag `v<version>`.
 5. Check: `npm view slicekit version` prints the new version, and `npm view slicekit@<version> dist.attestations` prints the provenance attestation. An empty answer means the version carries none: see "Rolling back a bad version on npm".
+6. Check the tag: `git ls-remote --tags origin refs/tags/v<version>` prints one line. No line means the step "Tag the version" failed after `npm publish`: the version is on npm with no tag, and no later run adds it, because every later run finds the version on npm and publishes and tags nothing. The author adds the tag by hand, on the commit the failed run published: `gh run view <run id> --json headSha` prints that commit, then `git tag v<version> <commit>` and `git push origin v<version>`. The version is not published again.
 
 A version that is bad once on npm is handled by "Rolling back a bad version on npm".
 
