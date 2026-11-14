@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-49",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 147,
@@ -21,6 +21,13 @@
       "blockers": 1,
       "independent": false,
       "headSha": "5f8700e3810cc40e299aab7362f8ea178aad1b62"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-49-r2.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "82b6493cc9679e64a323b861c8827f207cdf733e"
     }
   ],
   "ci": null,
@@ -101,6 +108,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
           "headSha": "82b6493cc9679e64a323b861c8827f207cdf733e",
           "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T23:48:41.014Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-49-r2.md",
+          "blockers": 1,
+          "independent": false
         }
       }
     }
