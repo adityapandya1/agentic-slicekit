@@ -31,6 +31,8 @@ decisions: [D-62, D-63, D-90, D-91]
 
 Amended (author, 2026-11-14): `test/runbook.test.js`, whose changelog pin gains 0.3.0, the version this slice adds.
 
+Amended (author, 2026-11-14): `test/publish.test.js`, whose helper puts its stub directory first inside the shell, since the bash of Git for Windows puts its own `git` ahead of the inherited PATH.
+
 ## Expected changes
 
 `src/release-version.js`, `src/state/sync.js`, `src/cli/sync.js`, `src/cli/status.js`, `src/check/rules/journal.js`, `src/check/rules/sync-release.js`, `src/check/index.js`, `src/config.js`, `.slicekit/config.json`, `templates/workflow/slicekit.yml`, `.github/workflows/slicekit.yml`, `.github/workflows/publish.yml`, `templates/workflow/pins.json`, `package.json`, `CHANGELOG.md`, `.claude/`, `docs/runbook.md`, `docs/platform.md`, `test/fixtures/golden/workflow/`, tests.
