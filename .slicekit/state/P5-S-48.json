@@ -9,7 +9,9 @@
     "test/publish.test.js",
     "test/runbook.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/runbook.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -36,6 +38,17 @@
       "at": "2026-11-12T09:45:38.554Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-14T19:13:18.029Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/runbook.test.js",
+        "amendCommit": "0877764e27f109cf774dd6b3dda02e9facccfd4d",
+        "reason": "the changelog pin gains 0.3.0, the version this slice adds"
+      }
     }
   ]
 }
