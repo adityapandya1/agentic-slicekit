@@ -1,0 +1,88 @@
+# The kit's publish workflow (05 REQ-5.5, D-62, D-91). On a push to the default branch (the merge of
+# the sync pull request that sets the version, D-90) and on workflow_dispatch: when package.json's
+# version is not on npm and no tag v<version> exists, the publish job, in the environment npm whose
+# required reviewer is the author, runs npm ci and npm test, installs npm 11.5.1 or later (trusted
+# publishing needs it), publishes with provenance through npm trusted publishing (no token is stored
+# anywhere) and pushes the tag v<version>. Otherwise it publishes nothing. Every action is pinned by
+# SHA from templates/workflow/pins.json.
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.new.outputs.publish }}
+      version: ${{ steps.new.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      # publish=true only when the version is on neither npm nor a tag.
+      - name: Is this version new
+        id: new
+        run: |
+          name="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).name)")"
+          version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version)")"
+          # npm prints nothing for a version it does not hold; E404 means the package has none.
+          if ! on_npm="$(npm view "${name}@${version}" version 2>npm-view.err)"; then
+            if grep -q E404 npm-view.err; then on_npm=""; else cat npm-view.err >&2; exit 1; fi
+          fi
+          rm -f npm-view.err
+          tagged="$(git ls-remote --tags origin "refs/tags/v${version}")"
+          publish=true
+          if [ "$(printf '%s' "$on_npm" | tr -d '[:space:]')" = "$version" ]; then
+            echo "${name}@${version} is already on npm"
+            publish=false
+          fi
+          if [ -n "$tagged" ]; then
+            echo "the tag v${version} already exists"
+            publish=false
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      # The kit has no dependencies and no lockfile yet; npm ci runs once it has one.
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: npm with trusted publishing
+        run: npm install -g npm@11.5.1
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
+      - name: Tag the version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"

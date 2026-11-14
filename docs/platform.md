@@ -10,7 +10,7 @@ None. The kit is a command-line package with no deployed service; a version on n
 
 ## How a change reaches each environment
 
-A pull request merges to `main` after CI and a human review. A version reaches npm when the author publishes it from `main` (D-41); from P5/S-24 the publish workflow does it on a `v*` tag (D-62) (D-79).
+A pull request merges to `main` after CI and a human review. A version reaches npm from CI: the merge to `main` of the sync pull request that sets the version starts the publish workflow, which publishes once the author approves its deployment to the environment `npm` (D-62, D-90, D-91). The previews up to 0.2.1 were published by hand (D-41) (D-79).
 
 ## Access and ownership
 

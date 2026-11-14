@@ -7,6 +7,7 @@ import { programStage } from '../stage.js';
 import { renderBuild } from '../state/build.js';
 import { LockError, readSlice } from '../state/index.js';
 import { syncFromHost } from '../state/sync.js';
+import { ReleaseError, applyRelease } from '../release-version.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 
@@ -28,10 +29,11 @@ function slices(root, cfg) {
 
 // The errors status reports and exits 2 on: a bad config or slice file, the host saying no, a held lock.
 const expected = (e) =>
-  e instanceof ConfigError || e instanceof SliceFileError || e instanceof GitHostError || e instanceof LockError;
+  e instanceof ConfigError || e instanceof SliceFileError || e instanceof GitHostError || e instanceof LockError || e instanceof ReleaseError;
 
 // Under --json, stdout carries exactly one JSON document on every path:
-//   success  { stage, slices, synced (with --sync), warnings, build (with --write) }
+//   success  { stage, slices, synced (with --sync), warnings, build (with --write), version (when
+//            --sync --write set one under release.auto, D-90) }
 //   failure  { error, synced, warnings }, exit 2
 // Without --json, changes go to stdout and warnings and errors to stderr.
 async function run(args, io) {
@@ -45,6 +47,7 @@ async function run(args, io) {
   const root = io.cwd;
   const warnings = [];
   const synced = [];
+  let version = null;
   const warn = (w) => {
     warnings.push(w);
     if (!values.json) io.stderr(`slicekit: ${w}\n`);
@@ -68,6 +71,14 @@ async function run(args, io) {
         throw e;
       }
       record(result);
+      // With --write and release.auto, the sync also sets the next version (D-90).
+      if (values.write) {
+        const release = applyRelease(root, cfg, result.changes);
+        if (release) {
+          version = release.version;
+          if (!values.json) io.stdout(`version ${version}: package.json and CHANGELOG.md\n`);
+        }
+      }
     }
     let build;
     if (values.write) {
@@ -84,6 +95,7 @@ async function run(args, io) {
         ...(values.sync ? { synced } : {}),
         warnings,
         ...(build ? { build } : {}),
+        ...(version ? { version } : {}),
       };
       io.stdout(`${JSON.stringify(out, null, 2)}\n`);
       return 0;
