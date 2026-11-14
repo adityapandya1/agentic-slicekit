@@ -29,6 +29,8 @@ decisions: [D-62, D-63, D-90, D-91]
 | `publish.test.js » the publish workflow publishes nothing when the version is already on npm or tagged` | negative | REQ-5.5 |
 | `runbook.test.js » the release steps name the environment's approval, the attestation check and the rollback` | happy | REQ-5.5 |
 
+Amended (author, 2026-11-14): `test/runbook.test.js`, whose changelog pin gains 0.3.0, the version this slice adds.
+
 ## Expected changes
 
 `src/release-version.js`, `src/state/sync.js`, `src/cli/sync.js`, `src/cli/status.js`, `src/check/rules/journal.js`, `src/check/rules/sync-release.js`, `src/check/index.js`, `src/config.js`, `.slicekit/config.json`, `templates/workflow/slicekit.yml`, `.github/workflows/slicekit.yml`, `.github/workflows/publish.yml`, `templates/workflow/pins.json`, `package.json`, `CHANGELOG.md`, `.claude/`, `docs/runbook.md`, `docs/platform.md`, `test/fixtures/golden/workflow/`, tests.
