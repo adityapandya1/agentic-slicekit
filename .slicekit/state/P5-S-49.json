@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-49",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 147,
@@ -11,7 +11,9 @@
   "frozenTests": [
     "test/release-version-order.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/release-version-order.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -73,6 +75,17 @@
           "blockers": 1,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-14T23:32:49.144Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/release-version-order.test.js",
+        "amendCommit": "a862e62ab1595124e1bd6f6eede10db65cd069f5",
+        "reason": "review B-1 of round 1: the file gains a test for a sync merge whose slice was already recorded merged"
       }
     }
   ]
