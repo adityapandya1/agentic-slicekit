@@ -136,7 +136,11 @@ function runNewVersionStep(script, { version, published = [], tags = [] }) {
     const log = path.join(dir, 'calls.jsonl');
     fs.writeFileSync(log, '');
     const file = path.join(dir, 'step.sh');
-    fs.writeFileSync(file, script);
+    // The stub directory goes first on PATH inside the shell, in the form the shell itself gives for
+    // it (`pwd`: /c/... under Git for Windows, the plain path on Linux and macOS). A Windows PATH set
+    // from outside is rewritten by bash at startup, and Git for Windows' bin\bash.exe then puts its
+    // own directories, with the real git, ahead of it.
+    fs.writeFileSync(file, `PATH="$(cd "$(dirname "$0")" && pwd)/bin:$PATH"\nexport PATH\n${script}`);
     const env = { ...process.env };
     const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
     env[key] = [bin, env[key]].filter(Boolean).join(path.delimiter);
