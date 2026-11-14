@@ -10,7 +10,8 @@
     "test/runbook.test.js"
   ],
   "unfrozen": [
-    "test/runbook.test.js"
+    "test/runbook.test.js",
+    "test/publish.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -48,6 +49,17 @@
         "unfreeze": "test/runbook.test.js",
         "amendCommit": "0877764e27f109cf774dd6b3dda02e9facccfd4d",
         "reason": "the changelog pin gains 0.3.0, the version this slice adds"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-14T19:13:21.724Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/publish.test.js",
+        "amendCommit": "e672a5c0c4315b4181b39aee508f93449757c5d1",
+        "reason": "the helper puts its stub directory first inside the shell; the bash of Git for Windows puts its own git ahead of the inherited PATH"
       }
     }
   ]
