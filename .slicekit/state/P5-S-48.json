@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-48",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 139,
@@ -17,7 +17,15 @@
     "test/runbook.test.js",
     "test/publish.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-48-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -79,6 +87,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
           "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a",
           "title": "[P5/S-48] Versions follow the plan, published from CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T19:31:43.903Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-48-r1.md",
+          "blockers": 1,
+          "independent": false
         }
       }
     }
