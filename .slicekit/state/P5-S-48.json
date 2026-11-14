@@ -1,8 +1,12 @@
 {
   "slice": "P5/S-48",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 139,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+    "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a"
+  },
   "redCommit": "7a12dbe9a476923a32088d58844706ce34569b15",
   "frozenTests": [
     "test/release-version.test.js",
@@ -60,6 +64,22 @@
         "unfreeze": "test/publish.test.js",
         "amendCommit": "e672a5c0c4315b4181b39aee508f93449757c5d1",
         "reason": "the helper puts its stub directory first inside the shell; the bash of Git for Windows puts its own git ahead of the inherited PATH"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T19:17:12.034Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 139,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+          "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a",
+          "title": "[P5/S-48] Versions follow the plan, published from CI"
+        }
       }
     }
   ]
