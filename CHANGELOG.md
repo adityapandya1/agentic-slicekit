@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.3.1
+
+- P5/S-48 Versions follow the plan, published from CI (#139)
+
 ## 0.3.0
 
 Phase 4: the guards refuse what they cannot judge, the git host's rules are checked, the state sync
