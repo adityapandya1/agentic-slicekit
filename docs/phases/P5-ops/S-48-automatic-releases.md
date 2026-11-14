@@ -29,7 +29,7 @@ decisions: [D-62, D-63, D-90, D-91]
 | `publish.test.js » the publish workflow publishes nothing when the version is already on npm or tagged` | negative | REQ-5.5 |
 | `runbook.test.js » the release steps name the environment's approval, the attestation check and the rollback` | happy | REQ-5.5 |
 
-Amended (author, 2026-11-14): `test/runbook.test.js`, whose changelog pin gains 0.3.0, the version this slice adds.
+Amended (author, 2026-11-14): `test/runbook.test.js`, whose changelog test checks the last five changelog versions, and that the newest section equals the version in `package.json` (since commit a29f581).
 
 Amended (author, 2026-11-14): `test/publish.test.js`, whose helper puts its stub directory first inside the shell, since the bash of Git for Windows puts its own `git` ahead of the inherited PATH.
 

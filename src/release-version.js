@@ -1,19 +1,30 @@
-// The version a sync pull request sets (05 REQ-5.5, D-90, P5/S-48). With `release.auto` true in
-// config, the sync step after a merge sets package.json's version and adds CHANGELOG.md's newest
-// section for it: the patch number up by one for the slice merges the sync records, or the minor
-// number up by one (patch 0) when a merge it records leaves every slice of that slice's phase
-// `merged` or `released`. One version per sync, however many merges it records; its section names
-// every one of them. A merge that changes package.json's version itself, with that version's
-// CHANGELOG.md section (the release slice's own, or a sync pull request's), a merge that records no
-// slice merge (a [plan], [sync] or [release] merge), and a config without `release.auto` set none. The version counts from package.json at the merge commit, never from one
-// an open sync pull request proposes. The rendered files follow the version (`update --yes`), as
-// `build render` would commit them.
+// The version a sync pull request sets (05 REQ-5.5, D-90, D-92, P5/S-48, P5/S-49). With
+// `release.auto` true in config, the sync step after a merge sets package.json's version and adds
+// CHANGELOG.md's newest section for it: the patch number up by one, or the minor number up by one
+// (patch 0) when a slice it names leaves every slice of that slice's phase `merged` or `released`.
+// One version per sync; its section names every slice it versions.
+//
+// The changelog is the record (D-92). The slices a sync versions are the merged slices that no
+// CHANGELOG.md section at the merge names, less those whose own merge set the version, less those
+// merged at or before the floor: the newest merge that set the version by hand, or the commit that
+// turned `release.auto` on when there is none. So the result does not depend on which merge the
+// sync runs on, nor on which slices this run of the sync moved to `merged`. A sync with no such
+// slice, and a config without `release.auto`, set none. The version counts from package.json at
+// the merge commit, never from one an open sync pull request proposes. The rendered files follow
+// the version (`update --yes`), as `build render` would commit them.
+//
+// A merge sets the version when it changes package.json's version and CHANGELOG.md at that merge
+// holds the new version's section. It did so by hand unless it is a sync pull request's merge: one
+// that also moves a slice's recorded state to `merged`. A slice's own merge is the newest commit of
+// the first-parent history that changed its state file and left it in a state before `merged`.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, releaseAutoError } from './config.js';
+import { CONFIG_PATH, ConfigError, releaseAutoError } from './config.js';
 import { GitError, git } from './git.js';
 import { readText, writeText } from './fs.js';
+import { stateFileName } from './ids.js';
+import { kitPaths } from './paths.js';
 import { RENDERED, SETTINGS, kitVersion } from './render/index.js';
 import { entriesForShape } from './render/manifest.js';
 import { applyUpdate, planUpdate } from './render/update.js';
@@ -99,33 +110,120 @@ export function setVersion(text, version) {
   return next;
 }
 
-// The version field of package.json at `rev`, or null when the commit holds none.
-function versionAt(root, rev) {
-  let text;
+// The text of `file` (a POSIX path from the root) at `rev`, or null when the commit holds none.
+function textAt(root, rev, file) {
   try {
-    text = git(root, ['show', `${rev}:${PACKAGE}`]);
+    return git(root, ['show', `${rev}:${file}`]);
   } catch (e) {
     if (e instanceof GitError) return null;
     throw e;
   }
+}
+
+function jsonAt(root, rev, file) {
+  const text = textAt(root, rev, file);
+  if (text === null) return null;
   try {
-    const v = JSON.parse(text).version;
-    return typeof v === 'string' ? v : null;
+    return JSON.parse(text);
   } catch {
     return null;
   }
 }
 
+// The version field of package.json at `rev`, or null when the commit holds none.
+function versionAt(root, rev) {
+  const v = jsonAt(root, rev, PACKAGE)?.version;
+  return typeof v === 'string' ? v : null;
+}
+
+// The lines of a changelog's `## ` sections: everything from its first `## ` heading on.
+function sectionLines(text) {
+  const all = (text ?? '').split('\n');
+  const at = all.findIndex((l) => /^## /.test(l));
+  return at < 0 ? [] : all.slice(at);
+}
+
 // The versions CHANGELOG.md's `## ` headings name at `rev`, newest first; [] when it holds none.
 function changelogVersionsAt(root, rev) {
-  let text;
+  return sectionLines(textAt(root, rev, CHANGELOG)).filter((l) => /^## /.test(l)).map((l) => l.replace(/^## /, '').split(/\s/)[0]);
+}
+
+// Whether a changelog section names the slice `id` (P1/S-01 does not name P1/S-011).
+function namesSlice(sections, id) {
+  const re = new RegExp(`(^|[^A-Za-z0-9/-])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9])`);
+  return sections.some((l) => re.test(l));
+}
+
+// Whether the commit `rev` set the version: it changes package.json's version from its first
+// parent's, and CHANGELOG.md at it holds the new version's section. A first commit sets none.
+function setsVersion(root, rev) {
+  const now = versionAt(root, rev);
+  if (now === null) return false;
+  const before = versionAt(root, `${rev}^1`);
+  return before !== null && before !== now && changelogVersionsAt(root, rev).includes(now);
+}
+
+const posix = (p) => p.split(path.sep).join('/');
+const stateDir = (root, cfg) => posix(path.relative(root, kitPaths(root, cfg).state));
+const nonEmpty = (out) => out.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+
+// A slice's recorded state at `rev`, or null when the commit holds no readable state file.
+function stateAt(root, rev, file) {
+  const stored = jsonAt(root, rev, file);
+  if (stored === null || typeof stored !== 'object') return null;
+  return typeof stored.state === 'string' ? stored.state : 'todo';
+}
+
+// Whether `rev` is a sync pull request's merge: it moves a recorded slice state to merged.
+function movesSliceToMerged(root, cfg, rev) {
+  let changed;
   try {
-    text = git(root, ['show', `${rev}:${CHANGELOG}`]);
+    changed = nonEmpty(git(root, ['-c', 'core.quotepath=off', 'diff', '--name-only', '--no-renames', `${rev}^1`, rev, '--', stateDir(root, cfg)]));
   } catch (e) {
-    if (e instanceof GitError) return [];
+    if (e instanceof GitError) return false;
     throw e;
   }
-  return text.split('\n').filter((l) => /^## /.test(l)).map((l) => l.replace(/^## /, '').split(/\s/)[0]);
+  return changed.filter((f) => f.endsWith('.json')).some((f) => {
+    const before = stateAt(root, `${rev}^1`, f);
+    return before !== null && !DONE.includes(before) && DONE.includes(stateAt(root, rev, f));
+  });
+}
+
+// The commits of `rev`'s first-parent history that changed one of `paths`, newest first.
+function firstParentCommits(root, rev, paths, extra = []) {
+  return nonEmpty(git(root, ['log', '--first-parent', '-m', '--format=%H', ...extra, rev, '--', ...paths]));
+}
+
+// The floor of D-92 at `merge`: the newest first-parent commit that set the version by hand; with
+// none, the newest one that turned release.auto on (a first commit that holds it on counts). null
+// when the history holds neither, and then no slice is versioned.
+function floorOf(root, cfg, merge) {
+  // -G keeps the commits whose change to package.json touches a version line.
+  for (const c of firstParentCommits(root, merge, [PACKAGE], ['-G"version"'])) {
+    if (setsVersion(root, c) && !movesSliceToMerged(root, cfg, c)) return c;
+  }
+  const config = posix(CONFIG_PATH);
+  const autoAt = (rev) => jsonAt(root, rev, config)?.release?.auto === true;
+  for (const c of firstParentCommits(root, merge, [config])) {
+    if (autoAt(c) && !autoAt(`${c}^1`)) return c;
+  }
+  return null;
+}
+
+// The state files changed after `floor` up to `merge` on the first-parent history:
+// { byFile: Map(file → the commits that changed it, newest first), order: every such commit,
+// newest first }.
+function stateChangesAfter(root, cfg, floor, merge) {
+  const out = git(root, ['-c', 'core.quotepath=off', 'log', '--first-parent', '-m', '--no-renames', '--name-only', '--format=%x00%H', `${floor}..${merge}`, '--', stateDir(root, cfg)]);
+  const byFile = new Map();
+  const order = [];
+  for (const chunk of out.split('\0')) {
+    const [sha, ...files] = nonEmpty(chunk);
+    if (!sha) continue;
+    order.push(sha);
+    for (const f of files) byFile.set(f, [...(byFile.get(f) ?? []), sha]);
+  }
+  return { byFile, order };
 }
 
 // The paths the release step may write: package.json, CHANGELOG.md and the files `update` renders.
@@ -145,29 +243,42 @@ function phaseName(phaseDir, phaseId) {
   return null;
 }
 
-// What the sync after `merge` sets, given the slice changes syncFromHost made: { version, section }
-// or null (see the header). Reads the slice states on disk, so it runs after the sync.
-export function releaseFor(root, cfg, changes, { merge = 'HEAD' } = {}) {
+// What the sync on `merge` sets: { version, section } or null (see the header). Reads the slice
+// states on disk, so it runs after the sync; everything else it reads from the commits up to `merge`.
+export function releaseFor(root, cfg, { merge = 'HEAD' } = {}) {
   const bad = releaseAutoError(cfg);
   if (bad) throw new ConfigError([bad]);
   if (cfg.release?.auto !== true) return null;
-  if (!Array.isArray(changes) || changes.length === 0) return null;
   if (!fs.existsSync(path.join(root, PACKAGE))) return null;
   const current = versionAt(root, merge);
   if (current === null) return null;
-  // A first commit, or a merge that sets the version itself: no version from the sync. A merge sets
-  // it itself when it changes package.json's version and CHANGELOG.md at the merge already holds
-  // that version's section (the release slice's merge, or a sync pull request's).
-  const before = versionAt(root, `${merge}^1`);
-  if (before === null) return null;
-  if (before !== current && changelogVersionsAt(root, merge).includes(current)) return null;
   const all = findSliceFiles(root, cfg).map((f) => {
     const s = parseSliceFile(readText(f.path), f.path);
     const st = readSlice(root, cfg, s.id);
     return { id: s.id, name: s.name, phase: f.phaseId, phaseDir: f.phaseDir, state: st.state, pr: st.pr?.number ?? null };
   });
-  const byId = new Map(all.map((s) => [s.id, s]));
-  const merges = changes.map((c) => ({ id: c.id, name: byId.get(c.id)?.name ?? '', pr: c.pr, phase: byId.get(c.id)?.phase }));
+  // The merged slices no changelog section at the merge names.
+  const sections = sectionLines(textAt(root, merge, CHANGELOG));
+  const unnamed = all.filter((s) => DONE.includes(s.state) && !namesSlice(sections, s.id));
+  if (unnamed.length === 0) return null;
+  const floor = floorOf(root, cfg, merge);
+  if (floor === null) return null;
+  // Less those merged at or before the floor (no own merge after it), less those whose own merge
+  // set the version.
+  const { byFile, order } = stateChangesAfter(root, cfg, floor, merge);
+  const dir = stateDir(root, cfg);
+  const merges = [];
+  for (const s of unnamed) {
+    const file = `${dir}/${stateFileName(s.id)}`;
+    const own = (byFile.get(file) ?? []).find((sha) => {
+      const state = stateAt(root, sha, file);
+      return state !== null && !DONE.includes(state);
+    });
+    if (own === undefined || setsVersion(root, own)) continue;
+    merges.push({ id: s.id, name: s.name, pr: s.pr, phase: s.phase, at: order.indexOf(own) });
+  }
+  // In the order they merged, oldest first; the slices of one merge in the order of their files.
+  merges.sort((x, y) => y.at - x.at);
   const phases = [];
   for (const id of [...new Set(merges.map((m) => m.phase).filter(Boolean))]) {
     const slices = all.filter((s) => s.phase === id);
@@ -180,11 +291,27 @@ export function releaseFor(root, cfg, changes, { merge = 'HEAD' } = {}) {
   return { version, section: changelogSection({ version, merges, phases }) };
 }
 
+// Whether HEAD is the tip of the default branch: the local branch, or origin's when the clone has
+// no local one. `status --sync --write` sets a version only there (issue #142).
+export function onDefaultTip(root, cfg) {
+  const at = (ref) => {
+    try {
+      return git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    } catch (e) {
+      if (e instanceof GitError) return null;
+      throw e;
+    }
+  };
+  const head = at('HEAD');
+  const tip = at(`refs/heads/${cfg.defaultBranch}`) ?? at(`refs/remotes/origin/${cfg.defaultBranch}`);
+  return head !== null && head === tip;
+}
+
 // Writes what releaseFor computed: package.json's version, the changelog section, and the render at
 // that version (the kit's own checkout) or at the running kit's version (any other). `isKit` says
 // which; it defaults to whether `root` is the kit's checkout. Returns the release or null.
-export function applyRelease(root, cfg, changes, { merge = 'HEAD', isKit = isKitRoot(root) } = {}) {
-  const release = releaseFor(root, cfg, changes, { merge });
+export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root) } = {}) {
+  const release = releaseFor(root, cfg, { merge });
   if (release === null) return null;
   const pkg = path.join(root, PACKAGE);
   writeText(pkg, setVersion(readText(pkg), release.version));
