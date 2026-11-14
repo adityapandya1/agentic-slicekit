@@ -301,6 +301,48 @@ test('a slice the changelog names, or merged before the hand-set version, is not
   }, { release: undefined });
 });
 
+test('a sync merge whose slice was already recorded merged is not taken for a hand-set version', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    // Pull request 14 merges. A plan branch runs status --sync --write off the tip: it writes the
+    // state and no version, commits that state, and is merged (review B-1 of round 1).
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    gitIn(root, ['checkout', '-q', '-b', 'plan/notes']);
+    gitIn(root, ['commit', '-q', '--allow-empty', '-m', 'plan: notes']);
+    const off = syncWrite(root, fixture);
+    assert.ok(off.stderr.includes('version not set: HEAD is not the tip of main'), off.stderr);
+    gitIn(root, ['add', '-A']);
+    gitIn(root, ['commit', '-q', '-m', 'chore(slicekit): state']);
+    gitIn(root, ['checkout', '-q', 'main']);
+    gitIn(root, ['merge', '-q', '--no-ff', '-m', 'Merge pull request #15 from acme/plan/notes', '-m', '[plan] Notes', 'plan/notes'], { allowProtected: true });
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'todo', 'todo']);
+    assert.equal(read(root, 'package.json'), PACKAGE);
+
+    // The sync on that merge sets 0.1.1 naming P1/S-01 on its branch; main already records the
+    // slice merged, so the branch moves no slice state.
+    const sync = syncBranch(root, fixture);
+    assert.equal(JSON.parse(gitIn(root, ['show', `${sync.branch}:package.json`])).version, '0.1.1');
+    // Pull request 16 merges on main, then the sync pull request is merged.
+    mergeSlice(root, cfg, ids[1], 16, 'Fixture 2');
+    mergeSync(root, sync, 21);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'ready', 'todo']);
+    const pkgBefore = read(root, 'package.json');
+    const logBefore = read(root, 'CHANGELOG.md');
+    assert.equal(pkgBefore, withVersion(PACKAGE, '0.1.1'));
+    assert.deepEqual(versions(logBefore), ['0.1.1', '0.1.0']);
+
+    // The sync on the sync pull request's merge records P1/S-02 and sets the next version for it.
+    syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'merged', 'todo']);
+    assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.1.2'));
+    const log = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(log), ['0.1.2', '0.1.1', '0.1.0']);
+    assert.ok(log.endsWith(logBefore.slice(logBefore.indexOf('## 0.1.1'))), log);
+    const section = newest(log);
+    names(section, ['P1/S-02', 'Fixture 2', '#16']);
+    namesNone(section, ['P1/S-01', 'Fixture 1', '#14', 'P1/S-03']);
+  }, { release: { auto: true } });
+});
+
 test("status --sync --write off the default branch's tip sets no version", () => {
   const LINE = 'version not set: HEAD is not the tip of main';
   // What the release step writes stays as it was: package.json, CHANGELOG.md and the rendered files.

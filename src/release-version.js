@@ -15,13 +15,15 @@
 //
 // A merge sets the version when it changes package.json's version and CHANGELOG.md at that merge
 // holds the new version's section. It did so by hand unless it is a sync pull request's merge: one
-// that also moves a slice's recorded state to `merged`. A slice's own merge is the newest commit of
+// that brings in the commit `sync open` writes, `chore(slicekit): sync state after <short sha>`,
+// naming a commit already on the default branch. Whether the merge moves a slice's recorded state
+// plays no part: a sync whose slice was already recorded `merged` moves none. A slice's own merge is the newest commit of
 // the first-parent history that changed its state file and left it in a state before `merged`.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_PATH, ConfigError, releaseAutoError } from './config.js';
-import { GitError, git } from './git.js';
+import { GitError, git, resolveCommit } from './git.js';
 import { readText, writeText } from './fs.js';
 import { stateFileName } from './ids.js';
 import { kitPaths } from './paths.js';
@@ -174,18 +176,29 @@ function stateAt(root, rev, file) {
   return typeof stored.state === 'string' ? stored.state : 'todo';
 }
 
-// Whether `rev` is a sync pull request's merge: it moves a recorded slice state to merged.
-function movesSliceToMerged(root, cfg, rev) {
-  let changed;
+// The subject of the commit `sync open` writes on a sync branch (src/state/sync.js), and the title
+// of its pull request, which a squash merge may take as its subject; GitHub may add ` (#<number>)`.
+const SYNC_SUBJECT = /^(?:chore\(slicekit\): sync state after|\[sync\] state after) ([0-9a-f]{7,40})(?: \(#\d+\))?$/;
+
+// Whether `rev` is a sync pull request's merge: a commit it brings to the first-parent history
+// (`rev` itself, and for a merge commit the commits of its other parents) carries the sync commit's
+// subject, and the commit that subject names is one the first parent already holds: the merge the
+// sync ran on. It does not read the slice states, so a sync that moves none is still a sync.
+function isSyncMerge(root, rev) {
+  let brought;
   try {
-    changed = nonEmpty(git(root, ['-c', 'core.quotepath=off', 'diff', '--name-only', '--no-renames', `${rev}^1`, rev, '--', stateDir(root, cfg)]));
+    brought = git(root, ['log', '--format=%s', `${rev}^1..${rev}`]).split('\n');
   } catch (e) {
     if (e instanceof GitError) return false;
     throw e;
   }
-  return changed.filter((f) => f.endsWith('.json')).some((f) => {
-    const before = stateAt(root, `${rev}^1`, f);
-    return before !== null && !DONE.includes(before) && DONE.includes(stateAt(root, rev, f));
+  return brought.some((subject) => {
+    const m = SYNC_SUBJECT.exec(subject.trim());
+    if (!m) return false;
+    const named = resolveCommit(root, m[1]);
+    if (named === null) return false;
+    // Empty when every commit up to `named` is in the first parent's history.
+    return git(root, ['rev-list', '-n', '1', named, '--not', `${rev}^1`]) === '';
   });
 }
 
@@ -200,7 +213,7 @@ function firstParentCommits(root, rev, paths, extra = []) {
 function floorOf(root, cfg, merge) {
   // -G keeps the commits whose change to package.json touches a version line.
   for (const c of firstParentCommits(root, merge, [PACKAGE], ['-G"version"'])) {
-    if (setsVersion(root, c) && !movesSliceToMerged(root, cfg, c)) return c;
+    if (setsVersion(root, c) && !isSyncMerge(root, c)) return c;
   }
   const config = posix(CONFIG_PATH);
   const autoAt = (rev) => jsonAt(root, rev, config)?.release?.auto === true;
