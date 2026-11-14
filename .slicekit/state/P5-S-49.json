@@ -131,6 +131,16 @@
       "at": "2026-11-14T23:48:41.661Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "changes-requested",
+      "at": "2026-11-14T23:48:54.873Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "0c8af409e3bda3c66ad9c641896df1a424b87c04",
+        "reason": "review B-2 of round 2: the evaluation set gains a test for a sync pull request squash-merged under an edited subject"
+      }
     }
   ]
 }
