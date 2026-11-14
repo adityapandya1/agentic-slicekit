@@ -343,6 +343,38 @@ test('a sync merge whose slice was already recorded merged is not taken for a ha
   }, { release: { auto: true } });
 });
 
+test('a sync pull request squash-merged under an edited subject is not taken for a hand-set version', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    // Pull request 14 merges; its sync job cuts a sync branch that sets 0.1.1 naming P1/S-01.
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    const sync = syncBranch(root, fixture);
+    assert.equal(JSON.parse(gitIn(root, ['show', `${sync.branch}:package.json`])).version, '0.1.1');
+    // Pull request 16 merges on main, then the sync pull request is squash-merged under a subject a
+    // person typed at merge time (review B-2 of round 2): main gets one commit with one parent,
+    // and no commit with the sync commit's subject or the sync title.
+    mergeSlice(root, cfg, ids[1], 16, 'Fixture 2');
+    gitIn(root, ['merge', '-q', '--squash', sync.branch]);
+    gitIn(root, ['commit', '-q', '-m', 'Sync state (#21)'], { allowProtected: true });
+    assert.equal(gitIn(root, ['rev-list', '--parents', '-n', '1', 'HEAD']).split(' ').length, 2);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'ready', 'todo']);
+    const pkgBefore = read(root, 'package.json');
+    const logBefore = read(root, 'CHANGELOG.md');
+    assert.equal(pkgBefore, withVersion(PACKAGE, '0.1.1'));
+    assert.deepEqual(versions(logBefore), ['0.1.1', '0.1.0']);
+
+    // The sync on the squash commit records P1/S-02 and sets the next version for it.
+    const r = syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'merged', 'todo']);
+    assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.1.2'), r.stdout);
+    const log = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(log), ['0.1.2', '0.1.1', '0.1.0']);
+    assert.ok(log.endsWith(logBefore.slice(logBefore.indexOf('## 0.1.1'))), log);
+    const section = newest(log);
+    names(section, ['P1/S-02', 'Fixture 2', '#16']);
+    namesNone(section, ['P1/S-01', 'Fixture 1', '#14', 'P1/S-03']);
+  }, { release: { auto: true } });
+});
+
 test("status --sync --write off the default branch's tip sets no version", () => {
   const LINE = 'version not set: HEAD is not the tip of main';
   // What the release step writes stays as it was: package.json, CHANGELOG.md and the rendered files.
