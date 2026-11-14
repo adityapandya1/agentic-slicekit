@@ -1,0 +1,215 @@
+{
+  "slice": "P5/S-48",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 139,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+    "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d"
+  },
+  "redCommit": "7a12dbe9a476923a32088d58844706ce34569b15",
+  "frozenTests": [
+    "test/release-version.test.js",
+    "test/publish.test.js",
+    "test/runbook.test.js"
+  ],
+  "unfrozen": [
+    "test/runbook.test.js",
+    "test/publish.test.js",
+    "test/release-version.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-48-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-48-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P5-S-48i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d"
+    }
+  ],
+  "ci": {
+    "sha": "2a1beca28fadd5464cf09dc4b98c6f1382693eb4",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43641792257"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-12T09:45:37.694Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "7a12dbe9a476923a32088d58844706ce34569b15",
+        "testExit": 1,
+        "tests": [
+          "test/release-version.test.js",
+          "test/publish.test.js",
+          "test/runbook.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-12T09:45:38.554Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-14T19:13:18.029Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/runbook.test.js",
+        "amendCommit": "0877764e27f109cf774dd6b3dda02e9facccfd4d",
+        "reason": "the changelog pin gains 0.3.0, the version this slice adds"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-14T19:13:21.724Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/publish.test.js",
+        "amendCommit": "e672a5c0c4315b4181b39aee508f93449757c5d1",
+        "reason": "the helper puts its stub directory first inside the shell; the bash of Git for Windows puts its own git ahead of the inherited PATH"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T19:17:12.034Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 139,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+          "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a",
+          "title": "[P5/S-48] Versions follow the plan, published from CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T19:31:43.903Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-48-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-14T19:44:17.654Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/release-version.test.js",
+        "amendCommit": "4e21b6763c1bee81de25f7b29491ca1e5e3dd50d",
+        "reason": "Done when 2 says what a merge that sets the version itself is, as this test already checks it (review H-1); the test itself does not change"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T19:47:50.774Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 139,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+          "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d",
+          "title": "[P5/S-48] Versions follow the plan, published from CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T20:02:07.712Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-48-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-14T20:15:08.185Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "e6c54683b4a43198f3c932bd45f6dd1d44ca1f74",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43635310912"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-14T20:26:42.131Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P5-S-48i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-14T21:16:06.928Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "2a1beca28fadd5464cf09dc4b98c6f1382693eb4",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43641792257"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-14T21:16:08.838Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

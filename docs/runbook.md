@@ -14,6 +14,11 @@ With `tracker.kind` set to `jira`, declined should-haves go to Jira Cloud instea
 
 In a fork, run `gh repo set-default` so issues (and pull requests) go to the right repository.
 
+Publishing from CI needs two settings that only the author can change, made once (D-62, D-91). No npm token is stored anywhere:
+
+- On npmjs.com, slicekit's settings, "Trusted publishing": a trusted publisher on GitHub Actions with owner `adityapandya1`, repository `agentic-slicekit`, workflow `publish.yml` and environment `npm`.
+- On GitHub, Settings, Environments: an environment `npm` with the author as its required reviewer and the default branch `main` as its only deployment branch rule.
+
 ## The generated workflow's runners
 
 Every job of the generated workflow runs on `ci.runsOn` from config: one runner label, or the list of labels a self-hosted runner carries; absent is `ubuntu-latest` (D-67). The kit's own test matrix on three operating systems is unchanged.
@@ -51,7 +56,7 @@ After a pull request merges to the default branch, the workflow's `sync` job run
 
 - The repository setting the sync pull request needs: Settings, Actions, General, Workflow permissions, "Allow GitHub Actions to create and approve pull requests". While it is off, GitHub refuses the job's `gh pr create` and no sync pull request opens. A human with admin rights turns it on; neither `slicekit init --protect` nor any job changes it, and `init --protect` prints a `not set:` line naming it when it is off. Turning it on lets the workflow's token create a pull request; the ruleset still requires an approving review, the kit's workflow approves nothing, and GitHub does not let a pull request's author approve it, so a human approves and merges it. `slicekit check` reads the setting with the host-rules rule when the workflow has a sync job: off fails under `--ci` and is a note otherwise. The workflow's own token cannot read the setting (it needs administration read), so in the kit's CI the rule prints `the Actions pull request setting not checked` as a note; run `slicekit check --ci` with an admin's `gh` login to check it.
 
-- When the sync changed a slice's state, `BUILD.md` or `.slicekit/journal-heads.log`, `sync open` commits only those files on a branch `sync/<short sha of the merge commit>`, pushes that branch with a lease on what origin holds for it (only a `sync/<short sha>` branch, never any other), and opens a pull request titled `[sync] state after <short sha>` with a Done when, Proof and Decisions body. When nothing changed it opens nothing. When a pull request for that sync branch is already open (a re-run of the job), it opens no second one and starts the workflow on that branch again, so a run that stopped before its dispatch still gets its checks. Once its pull request is open, `sync open` closes every open `[sync]` pull request on a `sync/<short sha>` branch whose commit is an ancestor of this run's merge commit (`git merge-base --is-ancestor`), with a comment `Superseded by #<n>`: the sync state is cumulative from the default branch's tip, so a sync pull request cut from a later merge carries every change an earlier one did. When an open sync pull request was cut from a later merge (a re-run of an older merge's job), `sync open` pushes and opens nothing, prints `nothing to open` naming that pull request, and exits 0. A sync pull request whose commit the clone does not hold is left as it is.
+- When the sync changed a slice's state, `BUILD.md` or `.slicekit/journal-heads.log` (and, with `release.auto` true, `package.json`, `CHANGELOG.md` and the rendered files; see "Releasing a version"), `sync open` commits only those files on a branch `sync/<short sha of the merge commit>`, pushes that branch with a lease on what origin holds for it (only a `sync/<short sha>` branch, never any other), and opens a pull request titled `[sync] state after <short sha>` with a Done when, Proof and Decisions body. When nothing changed it opens nothing. When a pull request for that sync branch is already open (a re-run of the job), it opens no second one and starts the workflow on that branch again, so a run that stopped before its dispatch still gets its checks. Once its pull request is open, `sync open` closes every open `[sync]` pull request on a `sync/<short sha>` branch whose commit is an ancestor of this run's merge commit (`git merge-base --is-ancestor`), with a comment `Superseded by #<n>`: the sync state is cumulative from the default branch's tip, so a sync pull request cut from a later merge carries every change an earlier one did. When an open sync pull request was cut from a later merge (a re-run of an older merge's job), `sync open` pushes and opens nothing, prints `nothing to open` naming that pull request, and exits 0. A sync pull request whose commit the clone does not hold is left as it is.
 - A pull request opened with the workflow's own token starts no workflow, so `sync open` then starts the kit's workflow on the sync branch with workflow_dispatch (D-80). That run reports `gate` and `checks` on the sync branch's head, the two checks the ruleset requires. In it, `slicekit check --ci` reads the title and body of the branch's open pull request through the git host. The gate judges the sync commit as code, so every team command job runs. `ready-label` runs only on pull request events and does not run here.
 - A human reviews and merges the sync pull request like any other pull request.
 - First things to check: the `sync` job log shows the `sync open` output (`#<n> <url>` and `dispatched slicekit.yml on sync/<sha>`, or why nothing opened); the Actions tab shows a `workflow_dispatch` run on the sync branch. A sync pull request with no checks means the dispatch failed: start the workflow on that branch by hand (`gh workflow run slicekit.yml --ref sync/<sha>`). A `sync/<sha>` branch left on the remote by a run that stopped between its push and its pull request (the setting above off, a host error, a cancelled run) is replaced on a re-run of the job: the push carries a lease on the commit origin holds, read a moment before. A push the lease still refuses means the branch moved during the run: delete the stale `sync/<sha>` branch and re-run the job.
@@ -105,7 +110,22 @@ Preview versions reach npm from 0.1.1 (D-41); see "Releasing a preview".
 
 After the switch, the README walkthrough is the first thing a visitor tries. A failure of `test/walkthrough.test.js` on `main` is a broken first impression: fix it before any other work.
 
+## Releasing a version
+
+From 0.3.0 a version reaches npm from CI, with a provenance attestation; nobody publishes from their own machine (D-62, D-90, D-91).
+
+1. With `release.auto` true (the kit's own config sets it), the sync pull request after a slice merge sets `package.json`'s version (the patch number up by one, or the minor number up by one when the merge completes a phase), adds the version's section on top of `CHANGELOG.md`, and carries the render of `.claude/` at that version. On that sync pull request `slicekit check --ci` recomputes all three for the merge the branch names and fails naming any file that differs. A human reviews and merges it.
+2. The merge to `main` starts `.github/workflows/publish.yml`. Its `version` job asks npm (`npm view slicekit@<version> version`) and the remote's tags (`git ls-remote --tags origin refs/tags/v<version>`); when the version is on neither, the `publish` job waits in the environment `npm`. Any other push publishes nothing.
+3. The author approves the deployment: the run's page on GitHub, "Review deployments", `npm`, "Approve and deploy". Rejecting it publishes nothing; a later run of the workflow (`gh workflow run publish.yml`) asks again.
+4. The approved job runs `npm ci` (once the kit has a lockfile) and `npm test`, installs npm 11.5.1 or later, runs `npm publish --provenance --access public` through trusted publishing, then pushes the tag `v<version>`.
+5. Check: `npm view slicekit version` prints the new version, and `npm view slicekit@<version> dist.attestations` prints the provenance attestation. An empty answer means the version carries none: see "Rolling back a bad version on npm".
+6. Check the tag: `git ls-remote --tags origin refs/tags/v<version>` prints one line. No line means the step "Tag the version" failed after `npm publish`: the version is on npm with no tag, and no later run adds it, because every later run finds the version on npm and publishes and tags nothing. The author adds the tag by hand, on the commit the failed run published: `gh run view <run id> --json headSha` prints that commit, then `git tag v<version> <commit>` and `git push origin v<version>`. The version is not published again.
+
+A version that is bad once on npm is handled by "Rolling back a bad version on npm".
+
 ## Releasing a preview
+
+How the preview versions up to 0.2.1 were published, kept as the record; from 0.3.0 see "Releasing a version".
 
 The author publishes, by hand, from their own npm account; no command in the kit and no CI job publishes. Until S-24 moves publishing into CI, a preview carries no provenance attestation (D-41).
 
@@ -121,5 +141,5 @@ The author publishes, by hand, from their own npm account; no command in the kit
 A version number is never reused on npm, even after the version is removed, so a fix always ships as a new version.
 
 - Within 72 hours of publishing, and when no other package depends on it, `npm unpublish slicekit@<version>` removes the version. Its number stays used.
-- After that, `npm deprecate slicekit@<version> "<what is wrong>; use <fixed version>"` marks it: npm shows the message to anyone who installs it. Then publish the fix as the next patch version through "Releasing a preview".
+- After that, `npm deprecate slicekit@<version> "<what is wrong>; use <fixed version>"` marks it: npm shows the message to anyone who installs it. Then publish the fix as the next patch version through "Releasing a version".
 - If the bad version carries the `latest` tag, point the tag back at the last good version until the fix is out: `npm dist-tag add slicekit@<good version> latest`.

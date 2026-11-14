@@ -2,6 +2,72 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.3.0
+
+Phase 4: the guards refuse what they cannot judge, the git host's rules are checked, the state sync
+goes up as a pull request, and versions follow the plan and are published from CI. The first version
+published from CI, with a provenance attestation.
+
+### New
+
+- `slicekit check --ci` fails with `frozen test changed after red: <path>` when a test of a slice's
+  evaluation set differs from its content at the red commit. It reads the state file, the red commit
+  and the tests from git objects, so a file hidden with `git update-index --assume-unchanged` or
+  `--skip-worktree` is judged by its committed content (#71).
+- `agents.denyPaths` in `.slicekit/config.json` lists glob patterns agents may not read or change.
+  `init` and `update` render each one into `.claude/settings.json` as `Read` and `Edit` deny entries,
+  and the `pre-edit` and `pre-bash` hooks deny a matching path, naming the pattern. A team's own deny
+  entries are kept.
+- A new check rule, `host-rules`: the rulesets on the default branch must require a pull request, an
+  approval (from a code owner when CODEOWNERS exists) and the kit's CI checks, and refuse a force push.
+  Each missing rule is named. `slicekit init --protect`, run by a human with admin rights, sets the
+  missing ones as one ruleset named `slicekit`.
+- `slicekit sync open`: after a merge, the state change goes up as a pull request `[sync] state after
+  <short sha>` on a `sync/<short sha>` branch, and the workflow is started on that branch so its checks
+  run. The sync job no longer pushes to the default branch.
+- Journal commits must be signed: under `--ci` the journal rule names each commit that changes a
+  journal file and whose signature the git host does not verify. The sync pull request adds one line
+  per journal file the merge changed to `.slicekit/journal-heads.log`, and `check --ci` recomputes each
+  line from git and the run.
+- `ci.runsOn` sets the runner label, or labels, of every generated job. A repository with a Maven or
+  Gradle build file, or a declared command that calls `mvn`, `gradle` or `./gradlew`, gets a JDK of
+  `ci.java` (default 25) in each job that runs a team command.
+- `tracker.kind: "jira"` sends declined should-haves to Jira Cloud, with the email and token read from
+  `JIRA_EMAIL` and `JIRA_API_TOKEN`.
+- `docs/adapters.md` describes the exit path for a second agent tool: the files a renderer writes,
+  each hook subcommand with the JSON it reads and writes, and the deny rules.
+- `slicekit init --default-branch <name>` names the default branch.
+- `release.auto` in `.slicekit/config.json`: the sync pull request after a slice merge sets the next
+  version in `package.json` (a patch per slice, a minor per completed phase), adds its `CHANGELOG.md`
+  section and carries the render at that version. `check --ci` recomputes all three on the sync pull
+  request and names any file that differs.
+- The kit is published from CI: a merge to `main` whose version is neither on npm nor tagged is
+  published with provenance through npm trusted publishing, after the author approves it in the
+  environment `npm`, and then tagged `v<version>`. No npm token is stored.
+
+### Changed
+
+- The `pre-bash` hook denies a command it cannot judge, in every session: `git` or `gh` run through
+  `eval`, a shell's `-c` or an interpreter's inline code, and a git command whose subcommand, ref or
+  remote comes from a variable or a command substitution. It also denies a Bash write to a test frozen
+  for the active slice, `slicekit init --protect`, and a `gh api` call that writes to a repository's
+  rulesets or branch protection.
+- With paths staged, `build commit` commits only the staged paths and leaves the rest of the worktree
+  as it was; with nothing staged it commits every changed path, as before (#69).
+- With no origin, no `init.defaultBranch` and a current branch that is neither `main` nor `master`,
+  `init` refuses and asks for `--default-branch <name>`; it no longer protects the current branch (#87).
+
+### Fixed
+
+- `build commit` commits a deletion already staged with `git rm`; it failed with "pathspec did not
+  match" (#69).
+- `build amend --reason <text>` with no test named commits a change to the slice file alone when every
+  test the slice names is already unfrozen (#72).
+- The references rule no longer reports a path under `.slicekit/rendered/<version>/` named in a verdict
+  already on the default branch, so a version bump does not fail `check` on merged verdicts (#75).
+- `init` un-ignores `.slicekit/journal-heads.log`, and appends its un-ignore rules again when a later
+  rule such as `*.log` overrides them, so the sync job's `git add` is no longer refused.
+
 ## 0.2.1
 
 Fixes for a new user's first minutes.

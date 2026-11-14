@@ -235,7 +235,24 @@ export function validateConfig(cfg) {
   errors.push(...ciErrors(cfg.ci));
   errors.push(...testFilesErrors(cfg.testFiles));
   errors.push(...agentsErrors(cfg.agents));
+  errors.push(...releaseErrors(cfg.release));
   return errors;
+}
+
+// REQ-5.5, D-90: release is optional, an object whose one key is auto. release.auto (absent reads as
+// false) turns on the version the sync pull request sets after a slice merge; the release step
+// itself refuses one that is not a boolean (releaseAutoError), so every other command still loads
+// the config.
+function releaseErrors(release) {
+  if (release === undefined) return [];
+  if (!isObject(release)) return ['release: must be an object'];
+  return Object.keys(release).filter((key) => key !== 'auto').map((key) => `release.${key}: unknown key; use auto`);
+}
+
+// The release step's check of release.auto: null when it is absent or a boolean.
+export function releaseAutoError(cfg) {
+  const auto = cfg?.release?.auto;
+  return auto === undefined || typeof auto === 'boolean' ? null : 'release.auto: must be a boolean';
 }
 
 // REQ-3.13, D-72: agents is optional; agents.denyPaths holds glob patterns over repository-relative
