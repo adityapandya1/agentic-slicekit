@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-48",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 139,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
-    "headSha": "04444f798e5f61bbb6fcb770f4f3981d9254378a"
+    "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d"
   },
   "redCommit": "7a12dbe9a476923a32088d58844706ce34569b15",
   "frozenTests": [
@@ -114,6 +114,22 @@
         "unfreeze": "test/release-version.test.js",
         "amendCommit": "4e21b6763c1bee81de25f7b29491ca1e5e3dd50d",
         "reason": "Done when 2 says what a merge that sets the version itself is, as this test already checks it (review H-1); the test itself does not change"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T19:47:50.774Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 139,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/139",
+          "headSha": "a29f581e98c0f4e575cd56168ec27726cc70e50d",
+          "title": "[P5/S-48] Versions follow the plan, published from CI"
+        }
       }
     }
   ]
