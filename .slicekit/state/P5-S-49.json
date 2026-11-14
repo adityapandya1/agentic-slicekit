@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-49",
-  "state": "changes-requested",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 147,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
-    "headSha": "82b6493cc9679e64a323b861c8827f207cdf733e"
+    "headSha": "862e19b51b755346c7c0b34a229863da869f5239"
   },
   "redCommit": "2018c099f008a0898f0975cb72ed1be99e633772",
   "frozenTests": [
@@ -140,6 +140,22 @@
       "evidence": {
         "amendCommit": "0c8af409e3bda3c66ad9c641896df1a424b87c04",
         "reason": "review B-2 of round 2: the evaluation set gains a test for a sync pull request squash-merged under an edited subject"
+      }
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-14T23:54:35.961Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "862e19b51b755346c7c0b34a229863da869f5239",
+          "title": "[P5/S-49] Release version fixes"
+        }
       }
     }
   ]
