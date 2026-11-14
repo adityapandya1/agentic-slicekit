@@ -25,6 +25,9 @@
     "independent": "required"
   },
   "freezeTests": true,
+  "release": {
+    "auto": true
+  },
   "style": {
     "banned": [
       "minting at the gate",
