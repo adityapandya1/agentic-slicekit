@@ -8,7 +8,10 @@
 // Before the rules below, in every session and on every branch (D-83): (0a) a command it cannot judge:
 // a git or gh command whose arguments hold a variable or a command substitution; `eval`, a shell's
 // `-c` (`sh`, `bash`, `zsh`, `pwsh`, `cmd /c`, ...) or an interpreter's inline code (`node -e`,
-// `python -c`, `perl -e`, `ruby -e`) that names git or gh; (0b) a change to the host rules from the
+// `python -c`, `perl -e`, `ruby -e`) that names git or gh; a git command with a word that is a
+// prefix of a long option one of these rules reads and is not that option in full (`--forc`, `--har`,
+// `--f`), since git takes an unambiguous prefix as the option and the guard does not hold every option
+// of git to tell which prefix is one; (0b) a change to the host rules from the
 // agent's shell: `slicekit init --protect`; a `gh api` write (a method other than GET, or a field or
 // input flag without `-X GET`) to rulesets, rules or branch protection, the endpoint given as a path, as
 // a full URL or under a GitHub Enterprise Server host's `api/v3` prefix, the path ending at a `?` or a
@@ -31,16 +34,19 @@
 // and `git clean` with pathspecs are judged by those); (0d) a command naming a
 // path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
 // argument, redirection target, option value or `<rev>:<path>` path, resolved against the shell's
-// directory, a glob or brace expression by what it expands to (a glob that does not compile, such as
-// a reversed range, as the literal word; a bracket expression with a quoted or escaped member, a
-// collating symbol or an equivalence class as Bash reads it, and one the guard cannot read, such as
-// `[[.hyphen.]]`, as a word that may name any listed path), and the directory a pattern starts with
+// directory, a glob or brace expression by what it expands to and as the literal word (a bracket
+// expression as Bash 5 reads it: quoted and escaped members, the backslash among them, `]` first, `!`
+// and `^`, ranges, a range that runs backwards left out, named classes, and a collating symbol or an
+// equivalence class of one character; a word with an expression the guard does not read to its end,
+// such as `[[.hyphen.]]` or an unknown class name, is refused as one it cannot judge), and the
+// directory a pattern starts with
 // (`data` for `data/**`); a path named through a link or junction that leads into the repository is
 // judged where the link leads too; the directory each command runs in and each `cd`/`pushd` target
 // are judged too, a `cd` to a directory that does not exist yet is followed by its name, and while
 // the list is set a `cd` it cannot resolve from the text is refused: a variable, a substitution, `-`,
 // a glob or brace expression, and a `cd` in a pipeline or in the background. A `cd` inside a brace
-// group that is piped on or put in the background ends at the closing brace.
+// group that is piped on or put in the background ends at the closing brace, whatever redirections
+// follow the brace (`} 2>&1 |`) and whatever word the group follows (`time`, `!`, `coproc`).
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -81,14 +87,15 @@
 // checkout or a stash run through a git alias); a write through a symbolic link the same
 // command makes first (`ln -s test/a.test.js l && echo x > l`; a link that exists when the command is
 // judged is resolved) or through a hard link; `perl -i` switched on by `PERL5OPT` or by the script's
-// `#!` line; a name built from a variable, of which only the last segment is compared; a glob whose
-// bracket expression holds a quoted or escaped character, which is read there without the quoting.
+// `#!` line; a name built from a variable, of which only the last segment is compared.
 // Known gaps of rule 0d: a `cd` inside an `if`, `while`, `until`, `for` or `case` command that is
 // piped or put in the background (`while read f; do cd src; done | cat`) is taken to last, as is
 // one in a shell function's body; `CDPATH` is not read; a link to a listed directory that the
-// same command makes under a name built from a variable is not seen; an equivalence class in a word
-// is read as its character and every character outside ASCII, so it can refuse a word that names no
-// listed path.
+// same command makes under a name built from a variable is not seen; a glob read under a shell option
+// the command text does not show (`extglob`, `nocaseglob`, `globasciiranges` turned off in a profile)
+// or by a shell that orders a range by the locale (a Bash older than 5); a named class and an
+// equivalence class in a word are read as their ASCII members and every character outside ASCII, so
+// they can refuse a word that names no listed path.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -96,7 +103,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { bracketClass, denyDir, denyPaths, frozenTests, fromGitBash, leaves, matchesDeny, namesUnder, real, toPosix } from './paths.js';
+import { BACKSLASH_MEMBER, classSrc, denyDir, denyPaths, frozenTests, fromGitBash, leaves, matchesDeny, namesUnder, real, readBracket, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -110,7 +117,8 @@ const DELIM_END = /[\s;&|()<>`]/;
 // command that opened them; `stdin` is the command piped into this one; `subst` marks a command that
 // an unquoted backtick substitution interrupts (its output becomes this command's next argument);
 // `depth` counts the subshell parentheses a command sits in and `tick` says it sits in a backtick
-// substitution; `piped` marks a command whose output is piped on and `background` one ended by `&`.
+// substitution; `piped` marks a command whose output is piped on and `background` one ended by `&`;
+// `of` is the command a segment continues, when the `&` of a redirection (`2>&1`, `&>f`) split it off.
 function lex(command) {
   const s = String(command);
   const out = [];
@@ -231,7 +239,15 @@ function lex(command) {
         if (!tickOpen) cur.subst = true;
         tickOpen = !tickOpen;
       }
+      // The `&` of `>&`, `<&` and `&>` is part of a redirection, not the end of the command: the
+      // words after it still belong to the command the redirection is on, so that command, `of`,
+      // is the one a later `|` pipes on or a later `&` puts in the background (verdict P6-S-52-r2 H-2).
+      const redirects = c === '&' && ((word !== null && word === bare && !mask.includes('1') && /^\d*[<>]$/.test(word))
+        || (s[i + 1] === '>' && s[i - 1] !== '&'));
       const ended = endSegment();
+      if (redirects) cur.of = ended.of ?? ended;
+      // `|&` pipes as `|` does: the command after it reads the one before it.
+      if (c === '&' && s[i - 1] === '|' && !ended.toks.length && ended.stdin !== undefined) cur.stdin = ended.stdin;
       const open = cases.at(-1);
       if (open?.pattern && (c === '(' || c === ')')) {
         // A case pattern's parentheses: `a)` and the optional `(a)`; no subshell starts or ends.
@@ -249,9 +265,11 @@ function lex(command) {
       else if (c === '|') {
         cur.stdin = ended;
         ended.piped = true;
+        if (ended.of) ended.of.piped = true;
       } else if (c === '&' && s[i + 1] !== '&' && s[i + 1] !== '>' && !'&|<>'.includes(s[i - 1] ?? ' ')) {
         // A lone `&` puts the command in the background; `&&`, `|&`, `&>` and `>&` are not that.
         ended.background = true;
+        if (ended.of) ended.of.background = true;
       }
       i += 1;
       if (c === '\n' && pending.length) {
@@ -501,6 +519,74 @@ function parseStage(op, args) {
   return { kind: 'stage', op, whole: whole && !paths.length, paths };
 }
 
+// The long options this guard reads, per git subcommand: `flags` stand alone, `valued` take a value
+// (the next word, or after `=`), and `short` holds the short options whose value is the next word.
+// A rule that compares an option's name compares it whole, and git accepts any unambiguous prefix of
+// a long option (`--forc`, `--har`), so `cutOption` reads each long option against this list.
+const GIT_LONG = {
+  push: {
+    flags: ['--force', '--force-with-lease', '--force-if-includes', '--all', '--mirror', '--branches', '--delete'],
+    valued: ['--push-option', '--repo', '--receive-pack', '--exec'],
+    short: 'o',
+  },
+  commit: {
+    flags: ['--all', '--include'],
+    valued: ['--message', '--file', '--reuse-message', '--reedit-message', '--fixup', '--squash', '--author', '--date', '--cleanup',
+      '--template', '--trailer', '--pathspec-from-file'],
+    short: 'mFcCt',
+  },
+  add: { flags: ['--all', '--update'], valued: ['--pathspec-from-file'], short: '' },
+  rm: { flags: ['--cached'], valued: ['--pathspec-from-file'], short: '' },
+  checkout: {
+    flags: ['--force', '--patch', '--ours', '--theirs', '--merge', '--track', '--detach'],
+    valued: ['--pathspec-from-file', '--orphan', '--conflict', '--unified', '--inter-hunk-context'],
+    short: 'bBU',
+  },
+  switch: {
+    flags: ['--force', '--discard-changes', '--track', '--detach', '--merge'],
+    valued: ['--create', '--force-create', '--orphan', '--conflict'],
+    short: 'cC',
+  },
+  restore: {
+    flags: ['--staged', '--worktree', '--patch', '--ours', '--theirs', '--merge'],
+    valued: ['--source', '--pathspec-from-file', '--conflict', '--unified', '--inter-hunk-context'],
+    short: 'sU',
+  },
+  reset: { flags: ['--hard'], valued: [], short: '' },
+  clean: { flags: ['--dry-run'], valued: ['--exclude'], short: 'e' },
+  tag: { flags: ['--list'], valued: ['--message', '--file', '--local-user'], short: 'mFu' },
+};
+GIT_LONG.stage = GIT_LONG.add;
+
+// -> {cut, full} for the first long option of `git <sub>` that is not one of the list in full and is
+// a prefix of one of them (`--forc` of `--force`), or null. Git would read such a word as that option
+// when no other option of the subcommand starts the same way, which this list cannot tell; the guard
+// does not guess, and the caller refuses the command as one it cannot judge (verdict P6-S-52-r2 H-8).
+// A prefix of several options (`--f`) is refused the same way, naming the first: git itself refuses
+// an ambiguous one, so nothing git would run is lost. A word after `--`, and the value of an option
+// that takes one, is not an option.
+function cutOption(sub, args) {
+  const spec = Object.hasOwn(GIT_LONG, sub ?? '') ? GIT_LONG[sub] : null;
+  if (spec === null) return null;
+  const all = [...spec.flags, ...spec.valued];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a === '--') return null;
+    if (a.startsWith('--')) {
+      const name = a.split('=')[0];
+      if (all.includes(name)) {
+        if (spec.valued.includes(name) && !a.includes('=')) k += 1;
+        continue;
+      }
+      const full = all.find((o) => o.startsWith(name));
+      if (full !== undefined) return { cut: name, full };
+    } else if (/^-[A-Za-z]+$/.test(a) && spec.short.includes(a.at(-1))) {
+      k += 1;
+    }
+  }
+  return null;
+}
+
 // The branch a later commit in the same command will be on, if this changes it. UNKNOWN for `-`.
 export const UNKNOWN = Symbol('unknown');
 // `created` is true when the name is certainly the new branch; otherwise the evaluator carries the name
@@ -622,12 +708,15 @@ function graphqlDoc(text) {
       i = e + 3;
     } else if (text[i] === '"') {
       let e = i + 1;
-      while (e < text.length && text[e] !== '"' && text[e] !== '\n') e += text[e] === '\\' ? 2 : 1;
+      // A line terminator ends a string that is not a block string, closed or not.
+      while (e < text.length && text[e] !== '"' && text[e] !== '\n' && text[e] !== '\r') e += text[e] === '\\' ? 2 : 1;
       if (text[e] !== '"') return null;
       plain += ' ';
       i = e + 1;
     } else if (text[i] === '#') {
-      while (i < text.length && text[i] !== '\n') i += 1;
+      // A comment ends at a line terminator, which the GraphQL specification gives as a line feed, a
+      // carriage return, or a carriage return and a line feed (verdict P6-S-52-r2 H-7).
+      while (i < text.length && text[i] !== '\n' && text[i] !== '\r') i += 1;
     } else {
       plain += text[i];
       i += 1;
@@ -872,6 +961,9 @@ function gitWrites(w, cwd) {
   const args = w.slice(k + 1);
   const has = (...names) => args.some((a) => names.includes(a.split('=')[0]));
   const short = (letter) => args.some((a) => /^-[A-Za-z]+$/.test(a) && a.includes(letter));
+  // A `--no-<option>` may take back the option that spares the work tree (`--staged --no-staged`,
+  // `--dry-run --no-dry-run`); with one in the command, no option is read as sparing it.
+  const negates = args.some((a) => a.startsWith('--no-'));
   // The forms that rewrite the work tree and name no path reach every file (verdict P6-S-52-r1 H-6):
   // a forced checkout or switch throws away each local change, `git reset --hard` does too, `git stash`
   // takes the changes away or puts them back, and `git clean` removes what is not tracked.
@@ -888,15 +980,15 @@ function gitWrites(w, cwd) {
   }
   if (sub === 'clean') {
     // A dry run removes nothing, with `-f` or without.
-    if (has('--dry-run') || short('n')) return [];
+    if ((has('--dry-run') || short('n')) && !negates) return [];
     const named = positionals(args, new Set(['-e', '--exclude']));
     return named.length ? specs(named) : every;
   }
   if (sub === 'checkout' && (has('--force') || short('f'))) return every;
   if (!['checkout', 'restore', 'rm', 'mv'].includes(sub)) return [];
   // `git restore --staged` alone writes the index, and `git rm --cached` only that.
-  if (sub === 'restore' && (has('--staged') || short('S')) && !(has('--worktree') || short('W'))) return [];
-  if (sub === 'rm' && has('--cached')) return [];
+  if (sub === 'restore' && (has('--staged') || short('S')) && !negates && !(has('--worktree') || short('W'))) return [];
+  if (sub === 'rm' && has('--cached') && !negates) return [];
   const VALUED = {
     checkout: ['-b', '-B', '--orphan', '--conflict', '-U', '--unified', '--inter-hunk-context', '--pathspec-from-file'],
     restore: ['-s', '--source', '--conflict', '-U', '--unified', '--inter-hunk-context', '--pathspec-from-file'],
@@ -916,6 +1008,21 @@ function gitWrites(w, cwd) {
     else out.push({ word, removes: true, pathspec: true, dir });
   }
   return out;
+}
+
+// What the shell expands a write's word to when a member of a bracket expression in it was quoted or
+// escaped (`rm test/[a\]].test.js`): {pattern}, the word as `literalMembers` writes it, or {any} when
+// an expression in it is not read. The word is the end of one of the command's tokens, whose mask
+// says what was quoted. A git pathspec is not read here: git, not the shell, matches it, as written.
+function writePattern(toks, wr) {
+  if (wr.any || wr.pathspec || typeof wr.word !== 'string' || !GLOB.test(wr.word)) return {};
+  for (const t of toks) {
+    if (typeof t.m !== 'string' || !t.m.includes('1') || !t.v.endsWith(wr.word)) continue;
+    const [pattern, , unread] = literalMembers(wr.word, t.m.slice(t.v.length - wr.word.length));
+    if (unread) return { any: true };
+    if (pattern !== wr.word) return { pattern };
+  }
+  return {};
 }
 
 // -> [{word, removes?, into?, any?, pathspec?, dir?}]: the paths a simple command writes. `removes`
@@ -1007,7 +1114,7 @@ function walk(seg, state, acc) {
   if (toks.length && state.cwd !== null) acc.named.push({ word: state.cwd, dir: null, isDir: true });
   for (const n of namedWords(seg.toks, toks[0])) acc.named.push({ ...n, dir: state.cwd, globstar: !!state.globstar });
   if (!toks.length) {
-    for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word });
+    for (const word of redirectTargets(seg.toks)) acc.writes.push({ dir: state.cwd, word, ...writePattern(seg.toks, { word }) });
     return;
   }
   const w = toks.map((t) => t.v);
@@ -1018,7 +1125,7 @@ function walk(seg, state, acc) {
   if (why && acc.unjudgeable === null) acc.unjudgeable = why;
   const host = hostRulesChange(w);
   if (host && acc.hostRules === null) acc.hostRules = host;
-  for (const t of writeTargets(seg, w, head, state.cwd)) acc.writes.push({ ...t, dir: t.dir === undefined ? state.cwd : t.dir });
+  for (const t of writeTargets(seg, w, head, state.cwd)) acc.writes.push({ ...t, ...writePattern(seg.toks, t), dir: t.dir === undefined ? state.cwd : t.dir });
   const ownCommit = head === 'git' && w[gitSubIndex(w)] === 'commit';
   if (state.cwd !== null && !MENTION_READERS.has(head) && !ownCommit) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
@@ -1134,6 +1241,11 @@ function walk(seg, state, acc) {
   }
   const sub = w[k];
   const args = w.slice(k + 1);
+  const cut = cutOption(sub, args);
+  if (cut && acc.unjudgeable === null) {
+    acc.unjudgeable = `git ${sub} ${cut.cut} may be ${cut.full} cut short, which git accepts when no other option starts the same way`;
+    acc.fix = `write ${cut.full} in full`;
+  }
   let inv;
   if (sub === 'commit') inv = parseCommit(args);
   else if (sub === 'push') inv = parsePush(args);
@@ -1154,7 +1266,7 @@ function walk(seg, state, acc) {
 // command's text for rule 6, the paths written (rule 0c), and the first reason for rules 0a and 0b.
 // cwd null means unknown.
 function parse(command, cwd) {
-  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, hostRules: null, cdUnknown: null };
+  const acc = { invs: [], texts: [], mentions: [], writes: [], named: [], unjudgeable: null, fix: undefined, hostRules: null, cdUnknown: null };
   walkAll(lex(command), { cwd, label: cwd, stack: [] }, acc);
   return acc;
 }
@@ -1165,28 +1277,52 @@ function parse(command, cwd) {
 // subshell too, so its `cd` ends at the closing brace (verdict P6-S-52-r1 H-2); one that ends a
 // pipeline runs in a subshell in Bash and in the shell itself in zsh, so after a `cd` in it the
 // directory is unknown, as it is after a `cd` that ends a pipeline.
+//
+// Where a group opens and ends is read from the shell grammar (verdict P6-S-52-r2 H-2). `{` opens a
+// group where a command may start: first in a command, or after the words that may come before one
+// there (`!`, `time` and its `-p`, `if`, `then`, `elif`, `else`, `do`, `while`, `until`, another `{`,
+// `coproc` and its name, `function` and its name). `}` first in a command closes the group, and the
+// command it ends runs on through the redirections after the brace to the operator that ends it: the
+// lexer marks that command `piped` or `background` whatever redirections stand between (`} 2>&1 |`,
+// `} &>f &`). A `coproc` group always runs in a subshell. A `}` that closes no group read here means
+// the text was not read as the shell reads it, so where a `cd` before it lasts is not known.
 function walkAll(segs, state, acc) {
   const snapshot = () => ({ cwd: state.cwd, label: state.label, why: state.why, stack: [...state.stack], globstar: state.globstar });
-  const bare = (t, word) => t !== undefined && t.v === word && t.b === word && !t.m?.includes('1');
+  const plain = (t) => t !== undefined && t.v === t.b && !t.m?.includes('1');
+  const bare = (t, word) => plain(t) && t.v === word;
   const saved = [];
   const groups = [];
   for (const seg of segs) {
     const depth = (seg.depth ?? 0) + (seg.tick ? 1 : 0);
     while (saved.length < depth) saved.push(snapshot());
     while (saved.length > depth) Object.assign(state, saved.pop());
-    // Each `{` among the reserved words a command starts with opens a group.
-    for (const t of seg.toks) {
-      if (!(t.v === t.b && !t.m?.includes('1') && KEYWORDS.has(t.v))) break;
-      if (t.v === '{') groups.push({ ...snapshot(), tail: seg.stdin !== undefined });
+    let coproc = false;
+    for (let k = 0; k < seg.toks.length; k++) {
+      const t = seg.toks[k];
+      if (!plain(t)) break;
+      if (t.v === '{') {
+        groups.push({ ...snapshot(), tail: seg.stdin !== undefined, detached: coproc });
+        coproc = false;
+      } else if (t.v === 'time') {
+        while (bare(seg.toks[k + 1], '-p') || bare(seg.toks[k + 1], '--')) k += 1;
+      } else if (t.v === 'coproc') {
+        coproc = true;
+        if (!bare(seg.toks[k + 1], '{') && bare(seg.toks[k + 2], '{')) k += 1;
+      } else if (t.v === 'function') {
+        k += 1;
+      } else if (!KEYWORDS.has(t.v)) break;
     }
-    const group = bare(seg.toks[0], '}') ? groups.pop() : undefined;
+    const closes = bare(seg.toks[0], '}');
+    const group = closes ? groups.pop() : undefined;
+    if (closes && !group && acc.cdUnknown === null) acc.cdUnknown = 'a cd in a brace group whose opening brace the guard did not read';
+    const detached = seg.piped === true || seg.background === true || group?.detached === true;
     // A redirection on the closing brace of such a group is judged from the directory outside it.
-    if (group && (seg.piped === true || seg.background === true)) {
-      const { tail, ...before } = group;
+    if (group && detached) {
+      const { tail, detached: always, ...before } = group;
       Object.assign(state, before);
     }
     walk(seg, state, acc);
-    if (group?.tail && seg.piped !== true && seg.background !== true && state.cwd !== group.cwd) {
+    if (group?.tail && !detached && state.cwd !== group.cwd) {
       if (acc.cdUnknown === null) acc.cdUnknown = 'a cd in a brace group that ends a pipeline';
       state.cwd = null;
       state.why = 'a cd in a brace group that ends a pipeline lasts in zsh and not in Bash, so the guard does not follow it';
@@ -1294,28 +1430,42 @@ const GLOB = /[*?[]/;
 
 // A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment;
 // `[!...]` and `[^...]` are both a negated class, as Bash reads them; a `[` nothing closes is itself).
-// Null when the pattern does not compile, as a class with a reversed range (`[z-a]`) does not: Bash
-// matches nothing with such a pattern and passes the word on as it is, so the caller judges the literal
-// word (issue #119). `star` is what `*` matches: within one segment for the shell, across them for a
-// git pathspec. The expression carries `unsure` when a bracket expression in it is one the reader cannot
-// read as Bash would (a named collating symbol, an equivalence class it cannot bound): the caller then
-// takes the word to match any path (verdict P6-S-52-r1 H-1).
+// Each bracket expression is read by `readBracket`, as Bash reads one. A range that runs backwards
+// (`[z-a]`) is left out of its expression, as Bash leaves it out: alone it matches nothing, so Bash
+// passes the word on as it is and the caller judges the literal word too (issue #119). Null only when
+// the expression built here does not compile. `star` is what `*` matches: within one segment for the
+// shell, across them for a git pathspec. The expression carries `unsure` when a bracket expression in
+// it is one the reader does not read to its end as Bash would: the caller then takes the word to be
+// one it cannot judge (verdict P6-S-52-r1 H-1, verdict P6-S-52-r2 B-1).
 function globRe(pattern, star = '[^/]*') {
   let src = '';
   let unsure = false;
+  // A character that is not syntax. On Windows a letter stands for both of its cases, since a name
+  // that is not a glob is looked up there without regard to case; the expression carries no `i` flag,
+  // so that a negated bracket expression leaves out only the characters it names, as Bash does.
+  const literal = (c) => {
+    const lower = c.toLowerCase();
+    const upper = c.toUpperCase();
+    const forms = WIN && lower !== upper && lower.length === 1 && upper.length === 1 ? [lower, upper] : [c];
+    const esc = forms.map((x) => `\\u${x.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+    return forms.length > 1 ? `[${esc}]` : esc;
+  };
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i];
-    const cls = c === '[' ? bracketClass(pattern, i) : null;
-    if (cls) {
-      src += `(?!/)${cls.src}`;
+    const cls = c === '[' ? readBracket(pattern, i) : null;
+    if (cls?.unsure) {
+      unsure = true;
+      src += '[^/]*';
       i = cls.end;
-      if (cls.unsure) unsure = true;
+    } else if (cls) {
+      src += `(?!/)${classSrc(cls, WIN)}`;
+      i = cls.end;
     } else if (c === '*') src += star;
     else if (c === '?') src += '[^/]';
-    else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
+    else src += literal(c);
   }
   try {
-    const re = new RegExp(`^${src}$`, WIN ? 'i' : '');
+    const re = new RegExp(`^${src}$`);
     if (unsure) re.unsure = true;
     return re;
   } catch {
@@ -1329,22 +1479,28 @@ function reaches(wr, frozen) {
   const word = fromGitBash(String(wr.word).replace(/\\/g, '/'));
   if (word === '') return false;
   const star = wr.pathspec ? '.*' : '[^/]*';
+  // The word is read as a glob as it stands and, when a member of a bracket expression in it was
+  // quoted, as the pattern that keeps the quoting (`writePattern`): either reading may reach the test.
+  const globs = [word, ...(wr.pattern === undefined ? [] : [fromGitBash(wr.pattern.replace(/\\/g, '/'))])].filter((g) => GLOB.test(g));
   if (/[$`]/.test(word) || (wr.dir === null && !path.isAbsolute(word))) {
     // The directory or the name is unknown: judge by the last segment.
     const last = word.split('/').pop();
     if (/[$`]/.test(last)) return false;
-    const lastRe = GLOB.test(last) ? globRe(last, star) : null;
-    if (lastRe?.unsure) return true;
-    return lastRe ? lastRe.test(path.posix.basename(frozen)) : fkey(last) === fkey(path.posix.basename(frozen));
+    for (const g of globs) {
+      const lastRe = GLOB.test(g.split('/').pop()) ? globRe(g.split('/').pop(), star) : null;
+      // A bracket expression the reader cannot read as Bash would may match the frozen test.
+      if (lastRe?.unsure || lastRe?.test(path.posix.basename(frozen))) return true;
+    }
+    return fkey(last) === fkey(path.posix.basename(frozen));
   }
-  const target = toPosix(path.resolve(wr.dir === null ? '' : real(wr.dir), word));
-  // A glob that does not compile is the literal word.
-  const re = GLOB.test(word) ? globRe(target, star) : null;
-  // A bracket expression the reader cannot read as Bash would may match the frozen test.
-  if (re?.unsure) return true;
-  if (re) {
-    return re.test(frozen) || (wr.removes === true && frozen.split('/').some((_, k, all) => re.test(all.slice(0, k).join('/'))));
+  const from = wr.dir === null ? '' : real(wr.dir);
+  const target = toPosix(path.resolve(from, word));
+  for (const g of globs) {
+    const re = globRe(toPosix(path.resolve(from, g)), star);
+    if (re?.unsure) return true;
+    if (re && (re.test(frozen) || (wr.removes === true && frozen.split('/').some((_, k, all) => re.test(all.slice(0, k).join('/')))))) return true;
   }
+  // A glob that matches nothing is passed on as the literal word, which is judged as one below.
   const canon = toPosix(real(target));
   if (fkey(canon) === fkey(frozen)) return true;
   if (wr.removes && fkey(frozen).startsWith(`${fkey(canon)}/`)) return true;
@@ -1414,51 +1570,41 @@ function namedWords(toks, head) {
 
 // A quoted or escaped character inside an unquoted bracket expression is a member of it and nothing
 // else, as Bash reads `d[a\]]ta`: there the escaped `]` does not close the expression. The lexer has
-// removed the quoting, so each such member is written here as the collating symbol of its character
-// (`[.].]`), which the bracket reader takes as that character (verdict P6-S-52-r1 H-1). A path
-// separator is left as it is: a bracket expression does not reach across one. -> [word, mask].
+// removed the quoting and kept it in the mask, so each bracket expression is read here with the mask
+// by `readBracket`, the one reader of bracket expressions, and written again as a pattern string that
+// reads the same with no mask: each quoted member becomes the collating symbol of its character
+// (`[.].]`), and a quoted backslash that of `BACKSLASH_MEMBER`, since a backslash in the string would
+// be taken for a path separator (verdict P6-S-52-r1 H-1, verdict P6-S-52-r2 B-1).
+// -> [word, mask, unsure]: `unsure` when an expression of the word is one the reader does not read.
 function literalMembers(v, m) {
+  const quoted = (j) => m[j] === '1';
   let word = '';
   let mask = '';
   let i = 0;
   while (i < v.length) {
-    let end = -1;
-    let quoted = false;
-    if (v[i] === '[' && m[i] !== '1') {
-      let j = i + 1;
-      if ((v[j] === '!' || v[j] === '^') && m[j] !== '1') j += 1;
-      for (let first = true; j < v.length; first = false) {
-        if (m[j] === '1') {
-          quoted = true;
-          j += 1;
-        } else if (v[j] === ']' && !first) {
-          end = j;
-          break;
-        } else {
-          const kind = v[j] === '[' && ':=.'.includes(v[j + 1] ?? ' ') ? v[j + 1] : null;
-          const close = kind === null ? -1 : v.indexOf(`${kind}]`, j + 3);
-          j = close === -1 ? j + 1 : close + 2;
-        }
-      }
-    }
-    if (end === -1 || !quoted) {
-      word += v[i];
-      mask += m[i];
+    const cls = v[i] === '[' && !quoted(i) ? readBracket(v, i, quoted) : null;
+    if (cls?.unsure) return [v, m, true];
+    if (cls === null) {
+      // A `[` that was quoted, or that nothing closes, is that character: written as itself, it could
+      // open an expression when the string is read again with no mask.
+      const own = v[i] === '[';
+      word += own ? `[[.${v[i]}.]]` : v[i];
+      mask += own ? '0001000' : m[i];
       i += 1;
       continue;
     }
-    for (let k = i; k <= end; k++) {
-      if (m[k] === '1' && v[k] !== '/' && v[k] !== '\\') {
-        word += `[.${v[k]}.]`;
+    for (let k = i; k <= cls.end; k++) {
+      if (quoted(k)) {
+        word += `[.${v[k] === '\\' ? BACKSLASH_MEMBER : v[k]}.]`;
         mask += '00100';
       } else {
         word += v[k];
         mask += m[k];
       }
     }
-    i = end + 1;
+    i = cls.end + 1;
   }
-  return [word, mask];
+  return [word, mask, false];
 }
 
 // Appends to `out` the paths word `t` names from character `cut` on: each word its braces expand to,
@@ -1476,9 +1622,16 @@ function wordPaths(t, cut, out) {
   const glob = GLOB.test(t.b);
   // The same words with each quoted member of a bracket expression marked: what the shell expands.
   // The word as written stays the name that is judged and reported.
-  const [pv, pm] = glob ? literalMembers(v, m) : [v, m];
+  const [pv, pm, unread] = glob ? literalMembers(v, m) : [v, m, false];
   const marked = pv === v ? null : t.b.includes('{') && t.b.includes('}') ? expandBraces(pv, pm) : [pv];
-  const patterns = marked?.length === variants.length ? marked : null;
+  // A word whose bracket expression is not read, before its braces expand or after, and one whose
+  // marked form does not expand as the word does, is not judged by a guess: it is refused.
+  const unsure = (w) => globRe(w.replace(/\\/g, '/'))?.unsure === true;
+  if (unread || (marked !== null && marked?.length !== variants.length) || (glob && (marked ?? variants).some(unsure))) {
+    out.push({ word: v, unsure: true });
+    return;
+  }
+  const patterns = marked;
   const home = (w) => ((w === '~' || w.startsWith('~/')) && t.b.includes('~') ? os.homedir() + w.slice(1) : w);
   const REV = /^[^:]*:(?:[0-3]:)?(.+)$/;
   for (let k = 0; k < variants.length; k++) {
@@ -1661,8 +1814,9 @@ function deniedPath(root, cfg, named) {
     }
     return null;
   };
-  for (const { dir, word, fromTop, glob, wide, isDir, globstar, pattern } of named) {
+  for (const { dir, word, fromTop, glob, wide, unsure, isDir, globstar, pattern } of named) {
     if (wide) return { wide: word };
+    if (unsure) return { unsure: word };
     const once = JSON.stringify([dir, word, fromTop, glob, isDir, globstar, pattern]);
     if (seen.has(once)) continue;
     seen.add(once);
@@ -1708,11 +1862,11 @@ export function handle(input, { root, cfg }) {
   const command = input?.tool_input?.command;
   if (typeof command !== 'string') throw new Error('tool_input.command is missing');
   const start = typeof input.cwd === 'string' && input.cwd !== '' ? resolveDir(null, input.cwd) : root;
-  const { invs, texts, mentions, writes, named, cdUnknown, unjudgeable: why, hostRules } = parse(command, start);
+  const { invs, texts, mentions, writes, named, cdUnknown, unjudgeable: why, fix, hostRules } = parse(command, start);
   const protectedSet = new Set(cfg.protectedBranches);
 
   // (0a), in every session and on every branch (D-83)
-  if (why) return deny(`cannot judge this command (REQ-3.2): ${why}; run git and gh with literal arguments`);
+  if (why) return deny(`cannot judge this command (REQ-3.2): ${why}; ${fix ?? 'run git and gh with literal arguments'}`);
   // (0b)
   if (hostRules?.unjudged) {
     return deny(`cannot judge this command (REQ-3.14): ${hostRules.unjudged}, so it cannot be told from a write to the git host's rules; ${hostRules.fix ?? "give the query in the command as -f query='...'"}`);
@@ -1731,7 +1885,7 @@ export function handle(input, { root, cfg }) {
   }
   const named0d = deniedPath(root, cfg, named);
   if (named0d?.unsure) {
-    return deny(`cannot tell what ${named0d.unsure} expands to, so it may name a path of agents.denyPaths (REQ-3.13); name the path without a collating symbol or an equivalence class`);
+    return deny(`cannot tell what ${named0d.unsure} expands to, so it may name a path of agents.denyPaths (REQ-3.13); name the path without the bracket expression`);
   }
   if (named0d?.wide) {
     return deny(`${named0d.wide} expands too wide to judge against agents.denyPaths (REQ-3.13); name the paths or narrow the expression`);

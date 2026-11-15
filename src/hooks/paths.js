@@ -140,70 +140,172 @@ export function frozenTests(root, cfg) {
 
 // ---- agents.denyPaths (REQ-3.13, D-72) ----
 
-// The bracket expression that opens at p[i], as the source of a regular-expression class:
-// {src, end}, `end` the index of its closing `]`; null when no `]` closes it, so the `[` is a literal
-// character. A leading `!` or `^` negates; a `]` that comes first is a member, as are `[` and `^`
-// elsewhere; `[:alpha:]` and the other POSIX class names are read. A reversed range (`[z-a]`) is kept
-// as written, so the expression that holds it does not compile and the caller knows.
-// As Bash reads them: a backslash makes the next character a member; a collating symbol of one
-// character (`[.d.]`) is that character; an equivalence class of one character (`[=d=]`) is that
-// character and, since a locale may add accented forms of it, any character outside ASCII.
-// `unsure` is set where what Bash matches cannot be told from the text: a collating symbol or an
-// equivalence class named by more than one character (`[.hyphen.]`), and an equivalence class in a
-// negated expression, where the added characters would be left out. A caller that judges a command
-// word then treats the word as one that may match any path; `src` is not to be relied on.
+// The members within ASCII of each class name Bash knows, as [first, last] character codes.
+const ALPHA = [[65, 90], [97, 122]];
+const DIGIT = [[48, 57]];
 const POSIX_CLASS = {
-  alpha: 'a-zA-Z',
-  digit: '0-9',
-  alnum: 'a-zA-Z0-9',
-  upper: 'A-Z',
-  lower: 'a-z',
-  space: '\\s',
-  blank: ' \\t',
-  punct: '!-\\/:-@\\[-`{-~',
-  xdigit: '0-9A-Fa-f',
-  word: '\\w',
-  cntrl: '\\x00-\\x1f\\x7f',
-  print: '\\x20-\\x7e',
-  graph: '\\x21-\\x7e',
+  alpha: ALPHA,
+  digit: DIGIT,
+  alnum: [...ALPHA, ...DIGIT],
+  upper: [[65, 90]],
+  lower: [[97, 122]],
+  space: [[9, 13], [32, 32]],
+  blank: [[9, 9], [32, 32]],
+  punct: [[33, 47], [58, 64], [91, 96], [123, 126]],
+  xdigit: [...DIGIT, [65, 70], [97, 102]],
+  word: [...ALPHA, ...DIGIT, [95, 95]],
+  cntrl: [[0, 31], [127, 127]],
+  print: [[32, 126]],
+  graph: [[33, 126]],
+  ascii: [[0, 127]],
 };
-export function bracketClass(p, i) {
-  let j = i + 1;
-  const negated = p[j] === '!' || p[j] === '^';
-  if (negated) j += 1;
-  let body = '';
-  let unsure = false;
-  // One character as a member that is never a range's `-`, a negation or the closing bracket.
-  const member = (c) => (/[\\\][^-]/.test(c) ? `\\${c}` : c);
-  for (let first = true; ; first = false) {
-    if (j >= p.length) return null;
-    const c = p[j];
-    if (c === ']' && !first) break;
-    const named = c === '[' && p[j + 1] === ':' ? /^\[:([a-z]+):\]/.exec(p.slice(j)) : null;
-    const kind = c === '[' && (p[j + 1] === '=' || p[j + 1] === '.') ? p[j + 1] : null;
-    // The name starts at j + 2 and holds at least one character, which may be `]` or the mark itself.
-    const close = kind === null ? -1 : p.indexOf(`${kind}]`, j + 3);
-    if (named && POSIX_CLASS[named[1]] !== undefined) {
-      body += POSIX_CLASS[named[1]];
-      j += named[0].length;
-    } else if (close !== -1) {
+// The classes that hold no character outside ASCII in any locale.
+const ASCII_ONLY = new Set(['digit', 'xdigit', 'ascii']);
+
+// How a quoted backslash is written as a member of a bracket expression in a pattern string: the
+// collating symbol of this private-use character. A backslash itself is a path separator to the code
+// that carries the string, so it cannot stand there.
+export const BACKSLASH_MEMBER = String.fromCharCode(0xe000);
+
+// The bracket expression that opens at p[i], read as Bash 5 reads one in a file name pattern.
+// -> null when no `]` closes it before the path segment ends, so the `[` is a literal character (a
+//    bracket expression does not reach across a `/`);
+// -> {end, unsure: true} when it holds a form this does not read to its end as Bash does; a caller
+//    then takes the word to be one it cannot judge, never one that matches nothing;
+// -> {end, negated, ranges, wide, reversed}: `end` is the index of the closing `]`, `ranges` the
+//    members as [first, last] character codes, `wide` whether a member may also be any character
+//    outside ASCII, `reversed` whether a range was left out for running backwards.
+// `quoted(j)` says that the shell took p[j] quoted or escaped: such a character is a member and
+// nothing else, so it does not negate, close, open a class or make a range. Without `quoted`, p is a
+// pattern string and a backslash makes the next character a member.
+// What is read: a leading `!` or `^` negates; a `]` that comes first is a member; `[`, `!` and `^`
+// elsewhere are members; `a-c` is a range by character code, as Bash orders one with its default
+// `globasciiranges`, a `-` that comes first or last is a member, and a range that runs backwards is
+// left out while the other members stay (`[z-ab]` is `b`); `[:alpha:]` and the other class names are
+// read, and may hold any character outside ASCII where a locale adds letters; a collating symbol of
+// one character (`[.d.]`) is that character, as a member or as an end of a range; an equivalence
+// class of one character (`[=d=]`) is that character and any character outside ASCII.
+// What is not read, and so is `unsure`: a class name Bash does not know; a collating symbol or an
+// equivalence class named by more than one character, or one nothing closes; an equivalence class in
+// a negated expression; a class or an equivalence class as the end of a range; a quoted character
+// inside a class, symbol or equivalence name; a character outside the Basic Multilingual Plane.
+export function readBracket(p, i, quoted = null) {
+  const q = (j) => quoted !== null && quoted(j);
+  const is = (j, c) => p[j] === c && !q(j);
+  let stop = p.indexOf('/', i);
+  if (stop === -1) stop = p.length;
+  const unsure = { end: stop - 1, unsure: true };
+  // A surrogate is half of a character this does not compare, and the private-use character stands
+  // for a backslash only inside a collating symbol.
+  const odd = (code) => (code >= 0xd800 && code <= 0xdfff) || code === 0xe000 || Number.isNaN(code);
+  // Whether any character from j up to k (k not included) was quoted.
+  const anyQuoted = (j, k) => {
+    for (let n = j; n < k; n++) if (q(n)) return true;
+    return false;
+  };
+  // One character at j, written plainly, escaped or as a collating symbol -> {code, next}, or null.
+  const single = (j) => {
+    if (is(j, '[') && is(j + 1, '.')) {
+      const close = p.indexOf('.]', j + 3);
+      if (close === -1 || close + 1 >= stop || anyQuoted(j + 2, close + 2)) return null;
       const name = p.slice(j + 2, close);
-      if (name.length !== 1) unsure = true;
-      else {
-        body += member(name);
-        if (kind === '=' && negated) unsure = true;
-        else if (kind === '=') body += '\\u0080-\\uffff';
+      if (name.length !== 1) return null;
+      if (name === BACKSLASH_MEMBER) return { code: 92, next: close + 2 };
+      return odd(name.charCodeAt(0)) ? null : { code: name.charCodeAt(0), next: close + 2 };
+    }
+    const at = quoted === null && p[j] === '\\' && j + 1 < stop ? j + 1 : j;
+    return odd(p.charCodeAt(at)) ? null : { code: p.charCodeAt(at), next: at + 1 };
+  };
+  let j = i + 1;
+  const negated = is(j, '!') || is(j, '^');
+  if (negated) j += 1;
+  const ranges = [];
+  let wide = false;
+  let reversed = false;
+  for (let first = true; ; first = false) {
+    if (j >= stop) return null;
+    if (is(j, ']') && !first) break;
+    if (is(j, '[') && is(j + 1, ':')) {
+      const close = p.indexOf(':]', j + 2);
+      if (close !== -1 && close + 1 < stop) {
+        if (anyQuoted(j + 2, close + 2)) return unsure;
+        const name = p.slice(j + 2, close);
+        if (!Object.hasOwn(POSIX_CLASS, name)) return unsure;
+        ranges.push(...POSIX_CLASS[name]);
+        if (!ASCII_ONLY.has(name)) wide = true;
+        j = close + 2;
+        continue;
       }
-      j = close + 2;
-    } else if (c === '\\' && j + 1 < p.length) {
-      body += member(p[j + 1]);
-      j += 2;
+      // No `:]` follows: the `[` is a member, as Bash reads it.
+    } else if (is(j, '[') && is(j + 1, '=')) {
+      if (j + 4 < stop && is(j + 3, '=') && is(j + 4, ']')) {
+        const code = p.charCodeAt(j + 2);
+        // In a negated expression the characters a locale adds would be left out, and are not known.
+        if (q(j + 2) || odd(code) || negated) return unsure;
+        ranges.push([code, code]);
+        wide = true;
+        j += 5;
+        continue;
+      }
+      const close = p.indexOf('=]', j + 2);
+      if (close !== -1 && close + 1 < stop) return unsure;
+      // No `=]` follows: the `[` is a member.
+    }
+    const lo = single(j);
+    if (lo === null) return unsure;
+    j = lo.next;
+    if (is(j, '-') && j + 1 < stop && !is(j + 1, ']')) {
+      if (is(j + 1, '[') && (is(j + 2, ':') || is(j + 2, '='))) return unsure;
+      const hi = single(j + 1);
+      if (hi === null) return unsure;
+      j = hi.next;
+      if (lo.code > hi.code) reversed = true;
+      else ranges.push([lo.code, hi.code]);
     } else {
-      body += c === '\\' || c === ']' || c === '[' || c === '^' ? `\\${c}` : c;
-      j += 1;
+      ranges.push([lo.code, lo.code]);
     }
   }
-  return unsure ? { src: `[${negated ? '^' : ''}${body}]`, end: j, unsure: true } : { src: `[${negated ? '^' : ''}${body}]`, end: j };
+  return { end: j, negated, ranges, wide, reversed };
+}
+
+// A bracket expression `readBracket` read, as the source of a regular-expression class. Each member is
+// written as an escape, so no member is syntax. In a negated expression the characters outside ASCII
+// that a class may hold are not left out: the class then matches more, never less, than Bash's.
+// With `fold` (Windows, in a regular expression with no `i` flag), an expression that is not negated
+// takes each letter in both cases, and a negated one leaves out only the characters it names, as Bash
+// does: under an `i` flag `[!A]` would refuse `a`, which Bash matches.
+export function classSrc({ ranges, negated, wide }, fold = false) {
+  const u = (code) => `\\u${code.toString(16).padStart(4, '0')}`;
+  const all = [...ranges];
+  let any = wide && !negated;
+  if (fold && !negated) {
+    for (const [lo, hi] of ranges) {
+      if (hi - lo > 1024) {
+        any = true;
+        all.push(...ALPHA);
+        continue;
+      }
+      for (let c = lo; c <= hi; c++) {
+        const s = String.fromCharCode(c);
+        for (const v of [s.toLowerCase(), s.toUpperCase()]) {
+          if (v.length === 1 && v !== s) all.push([v.charCodeAt(0), v.charCodeAt(0)]);
+        }
+      }
+    }
+  }
+  const body = all.map(([lo, hi]) => (lo === hi ? u(lo) : `${u(lo)}-${u(hi)}`)).join('') + (any ? '\\u0080-\\uffff' : '');
+  return `[${negated ? '^' : ''}${body}]`;
+}
+
+// The bracket expression that opens at p[i] of a pattern string, as the source of a
+// regular-expression class: {src, end}; null when the `[` is a literal character. `unsure` marks one
+// `readBracket` does not read, whose `src` is not to be relied on, and `reversed` one that holds a
+// range running backwards (`[z-a]`).
+export function bracketClass(p, i) {
+  const b = readBracket(p, i);
+  if (b === null) return null;
+  if (b.unsure) return { src: '[^]', end: b.end, unsure: true };
+  return b.reversed ? { src: classSrc(b), end: b.end, reversed: true } : { src: classSrc(b), end: b.end };
 }
 
 // One gitignore-style pattern over repository-relative POSIX paths as an anchored regular expression:
@@ -237,7 +339,8 @@ function denyRe(pattern) {
     else if (c === '[' && bracketClass(p, i) !== null) {
       const cls = bracketClass(p, i);
       // A pattern is not matched by a guess: validateConfig refuses it by name.
-      if (cls.unsure) throw new Error(`bracket expression ${p.slice(i, cls.end + 1)} holds a collating symbol or an equivalence class the guards cannot read`);
+      if (cls.unsure) throw new Error(`bracket expression ${p.slice(i, cls.end + 1)} holds a class name, a collating symbol or an equivalence class the guards cannot read`);
+      if (cls.reversed) throw new Error('Range out of order in character class');
       src += cls.src;
       i = cls.end;
     } else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
