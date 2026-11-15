@@ -32,6 +32,8 @@ Amended (author's standing instruction, 2026-11-15): `test/observability.test.js
 
 Amended (author's standing instruction, 2026-11-15): `test/workflow.test.js` is unfrozen for the golden file test of H-2.
 
+Amended (author's standing instruction, 2026-11-15): the steps section fails closed (reviews H-8 to H-11 of round 3): text in a code block or an HTML comment is not read, and any other line holding a vertical bar is the one steps table in its exact form or is refused with its file and line. `test/observability.test.js` gains a test per finding. Three assertions that earlier fixes added, and that expected a line to pass with no message, change to expect the refusal: a Command of two code spans and text (the H-4 test), a row after the table has ended (the H-6 test), and a table of other columns before the steps table (the H-7 test in `test/workflow.test.js`). No test of the evaluation set changes.
+
 ## Expected changes
 
 `src/observability.js`, `src/config.js`, `src/workflow.js`, `src/cli/workflow.js`, `src/init.js`, `templates/instructions/commands/intake.md`, `examples/backend/docs/observability.md`, `docs/runbook.md`, `test/fixtures/golden/workflow/`, tests.
