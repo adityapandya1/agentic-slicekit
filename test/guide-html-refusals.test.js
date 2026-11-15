@@ -1,14 +1,16 @@
 // P6/S-54 (REQ-5.8, D-97): scripts/guide-html.js converts a closed set of Markdown constructs and
 // refuses every other one. One test per refused construct: the script exits 1, names the file and the
 // line, and writes no page, with and without --check. Then the same characters where they are text
-// (a code span, a fenced block, an underscore inside a word), which the script converts.
+// (a code span, a fenced block, an underscore inside a word), which the script converts. Last, the
+// texts outside a page's body (a page's first heading, the index's title and headings, the link text
+// of a Pages row), the order of headings and the ids of the page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SCRIPT = path.join(ROOT, 'scripts', 'guide-html.js');
@@ -117,6 +119,45 @@ const REFUSED = [
   ['a code span that runs over two lines of a list item', '- A `span that opens here\n  and closes` on the next line.', 0],
   ['a table inside a list item', '- first\n  | a | b |\n  |---|---|\n  | 1 | 2 |', 1],
   ['a heading whose text is a closing # mark', '# #', 0],
+  // Straight after a line of a list item, with no blank line: Markdown reads the table as text of the item.
+  ['a table straight after a list item', '- first\n| a | b |\n|---|---|\n| 1 | 2 |', 1],
+  ['a table straight after an item of a list inside an item', '- first\n  - inner\n| a | b |\n|---|---|\n| 1 | 2 |', 2],
+  ['a table straight after a later line of a list item', '- first\n  and more\n| a | b |\n|---|---|\n| 1 | 2 |', 2],
+  ['a heading straight after a list item', '- first\n## Title', 1],
+  ['a code block straight after a list item', `- first\n${FENCE}text\ncode\n${FENCE}`, 1],
+  ['a comment line straight after a list item', '- first\n<!-- a comment -->', 1],
+  ['a table straight after a line of a paragraph', 'Some text\n| a | b |\n|---|---|\n| 1 | 2 |', 1],
+  // HTML comments where Markdown does not read a comment inside a text.
+  ['a comment at the start of a line with text after it', '<!-- a comment --> **strong** and `code`', 0],
+  ['a comment at the start of a later line of a paragraph', 'The first line\n<!-- a comment --> and **more**', 1],
+  ['a comment that holds a bar in a table row', '| a | b |\n|---|---|\n| 1 <!-- x | y --> | 2 |', 2],
+  ['a comment in a table row', '| a | b |\n|---|---|\n| 1 <!-- x --> | 2 |', 2],
+  ['a comment in the header row of a table', '| a <!-- x --> | b |\n|---|---|\n| 1 | 2 |', 0],
+  ['a comment straight after a list marker', '- <!-- a comment --> text', 0],
+  ['a comment line inside a list item', '- first\n  <!-- a comment -->', 1],
+  ['an indented comment line', '  <!-- a comment -->', 0],
+  ['a comment that holds two dashes together', 'Some text <!-- a -- b --> and more.', 0],
+  ['a comment that ends with a dash', 'Some text <!-- a ---> and more.', 0],
+  // White space that is no space, tab or line feed.
+  ['a no-break space after the # marks', '## Title', 0],
+  ['a no-break space after a list marker', '- first', 0],
+  ['a no-break space after a numbered list marker', '1. first', 0],
+  ['a no-break space in a paragraph', 'Two words.', 0],
+  ['an em space in a table cell', '| a | b |\n|---|---|\n| 1 x | 2 |', 2],
+  ['an ideographic space in a list item', '- first　second', 0],
+  ['a narrow no-break space in a heading', '## A title', 0],
+  ['a form feed in a paragraph', 'Two\fwords.', 0],
+  ['a no-break space on a fence line', `${FENCE} text\ncode\n${FENCE}`, 0],
+  // An e-mail address whatever its name part ends in, and the other bare addresses.
+  ['an e-mail address whose name ends in a dash', 'Write to someone-@example.com.', 0],
+  ['an e-mail address whose name ends in a plus', 'Write to someone+@example.com.', 0],
+  ['an e-mail address whose name ends in a dot', 'Write to someone.@example.com.', 0],
+  ['an @ between two words', 'The package name@latest is installed.', 0],
+  ['a web address written bare with ftp', 'See ftp://example.com/file for more.', 0],
+  ['a mailto address written bare', 'Write to mailto:someone for more.', 0],
+  // A heading that has no place or gives no id.
+  ['a heading two levels below the one before it', '## Usage\n\n#### Deep', 2],
+  ['a heading with no letter or digit', '## \\*\\*\\*', 0],
 ];
 
 // What Markdown reads as the start of a block when it stands straight after a list marker:
@@ -204,6 +245,18 @@ const CONVERTED = [
   ['an ampersand that begins no entity in a link target', 'See [the page](https://example.com/?a=1&b=2).', '<a href="https://example.com/?a=1&amp;b=2">the page</a>'],
   ['a block start inside a code span straight after a list marker', '- `# Title` and `> quoted` are text', '<li><code># Title</code> and <code>&gt; quoted</code> are text</li>'],
   ['a later line of a list item in the first column', '- first\ncontinued in the first column', '<li>first continued in the first column</li>'],
+  ['a comment after the text of a paragraph line, left out', 'Reads one file. <!-- slicekit:example -->', '<p>Reads one file.</p>'],
+  ['a comment between two words, left out with the spaces round it kept', 'Before <!-- a comment --> after.', '<p>Before  after.</p>'],
+  ['a comment after the text of a list item, left out', '- first <!-- a comment -->\n- second', '<li>first</li>\n      <li>second</li>'],
+  ['a comment line in the first column, left out', 'Before.\n\n<!-- a comment -->\n\nAfter.', '<p>Before.</p>\n    <p>After.</p>'],
+  ['a comment line straight after a paragraph line, which ends the paragraph', 'Before.\n<!-- a comment -->\nAfter.', '<p>Before.</p>\n    <p>After.</p>'],
+  ['a comment line between two numbered lists, which stay two lists', '1. one\n\n<!-- a comment -->\n\n1. two', '<li>one</li>\n    </ol>\n    <ol>\n      <li>two</li>'],
+  ['a no-break space inside a code span', 'The span `a b` stays.', '<code>a b</code>'],
+  ['a no-break space inside a fenced block', `${FENCE}text\na b\n${FENCE}`, 'a b'],
+  ['a space at the end of a code span', 'A title that begins `[spec] ` is exempt.', '<code>[spec] </code>'],
+  ['one space at each end of a code span, taken off', 'The span ` a ` stays.', '<code>a</code>'],
+  ['an @ that stands alone or begins a word', 'Meet @ noon, and ask @someone.', '<p>Meet @ noon, and ask @someone.</p>'],
+  ['a table after a list and a blank line', '- first\n\n| a | b |\n|---|---|\n| 1 | 2 |', '<td>1</td><td>2</td>'],
 ];
 
 for (const [name, md, holds] of CONVERTED) {
@@ -217,3 +270,167 @@ for (const [name, md, holds] of CONVERTED) {
     assert.equal(check.code, 0, check.out);
   });
 }
+
+// ---------------------------------------------------------------- the texts outside a page's body
+// The first heading of a page, the title of the index, the link text of a Pages row and the headings
+// of the index go through the same reader and writer as every other text. A guide of one index and
+// the pages commands/init.md and commands/check.md, each file given as its lines.
+const CHECK = ['# slicekit check', '', 'Runs every rule.'];
+const ROWS = ['| [init](commands/init.md) | Adds the kit |', '| [check](commands/check.md) | Runs every rule |'];
+const indexOf = ({ title = '# Guide', before = [], rows = ROWS, group = '### Commands' } = {}) => [
+  title, '', 'What the guide holds.', '', ...before, '## Pages', '', group, '', '| Page | What it does |', '|---|---|', ...rows, ''];
+
+function guideOf(t, { index = indexOf(), init = INIT.split('\n'), check = CHECK } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-guide-refusals-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(dir, 'commands'));
+  fs.writeFileSync(path.join(dir, 'README.md'), `${index.join('\n')}\n`);
+  fs.writeFileSync(path.join(dir, 'commands', 'init.md'), `${init.join('\n')}\n`);
+  fs.writeFileSync(path.join(dir, 'commands', 'check.md'), `${check.join('\n')}\n`);
+  return dir;
+}
+
+// The script writes the page for the guide and the check passes; gives the page.
+function written(t, files) {
+  const guide = guideOf(t, files);
+  const wrote = run(['--guide', guide]);
+  assert.equal(wrote.code, 0, wrote.out);
+  const check = run(['--check', '--guide', guide]);
+  assert.equal(check.code, 0, check.out);
+  return fs.readFileSync(path.join(guide, PAGE), 'utf8');
+}
+
+// The script exits 1 naming `file` and the line that holds `mark` (the first line of `lines` that
+// includes it), and writes no page, with and without --check.
+function refusedAt(t, files, file, lines, mark) {
+  const guide = guideOf(t, files);
+  const line = lines.findIndex((l) => l.includes(mark)) + 1;
+  assert.ok(line > 0, `no line holds ${mark}`);
+  const named = new RegExp(`${file.replace('.', '\\.')}:${line}\\b`);
+  for (const args of [['--guide', guide], ['--check', '--guide', guide]]) {
+    const r = run(args);
+    assert.equal(r.code, 1, `${args[0]}: exit ${r.code}: ${r.out}`);
+    assert.match(r.out, named, `${args[0]} does not name ${file}:${line}: ${r.out}`);
+    assert.ok(!fs.existsSync(path.join(guide, PAGE)), `${args[0]} wrote the page`);
+  }
+  return guide;
+}
+
+test('converted: emphasis, a link and an escaped character in the first heading of a page', (t) => {
+  const html = written(t, { init: ['# The *init* page, see [check](check.md) and \\*stars\\*', '', 'Adds the kit.'] });
+  assert.ok(html.includes('<h4><code>The <em>init</em> page, see <a href="#commands-check">check</a> and *stars*</code></h4>'), html.slice(html.indexOf('<section id="commands-init"'), html.indexOf('<section id="commands-init"') + 400));
+});
+
+test('converted: a code span in the first heading of a page, and the words Check rule as a tag', (t) => {
+  const html = written(t, { init: ['# Check rule: `layout` & more', '', 'Checks the layout.'] });
+  assert.ok(html.includes('<h4><code><code>layout</code> &amp; more</code></h4><span class="tag t-rare">Check rule</span>'));
+});
+
+test('refused: a link to a missing page in the first heading of a page', (t) => {
+  const init = ['# The init page, see [the page](no-such-page.md)', '', 'Adds the kit.'];
+  const guide = refusedAt(t, { init }, 'commands/init.md', init, 'no-such-page');
+  assert.match(run(['--guide', guide]).out, /leads to nothing in the guide/);
+});
+
+test('refused: a construct the script does not convert in the first heading of a page', (t) => {
+  const init = ['# The _init_ page', '', 'Adds the kit.'];
+  refusedAt(t, { init }, 'commands/init.md', init, '_init_');
+});
+
+test('converted: strong, a link and an escaped character in the title of the index', (t) => {
+  const html = written(t, { index: indexOf({ title: '# The **Guide**, from [init](commands/init.md) on, \\*starred\\*' }) });
+  assert.ok(html.includes('<h1>The <b>Guide</b>, from <a href="#commands-init">init</a> on, *starred*</h1>'));
+});
+
+test('refused: a link to a missing page in the title of the index', (t) => {
+  const index = indexOf({ title: '# The Guide of [a page](commands/none.md)' });
+  refusedAt(t, { index }, 'README.md', index, 'commands/none.md');
+});
+
+test('converted: emphasis, a code span and an escaped character in the link text of a Pages row', (t) => {
+  const rows = ['| [*init* `now` \\_x\\_](commands/init.md) | Adds the kit |', ROWS[1]];
+  const html = written(t, { index: indexOf({ rows }) });
+  assert.ok(html.includes('<li><a href="#commands-init"><em>init</em> <code>now</code> _x_</a></li>'));
+  assert.ok(!html.includes('\\_x'), 'the page holds the backslash of the row');
+});
+
+test('refused: a first cell of a Pages row that holds more than one link', (t) => {
+  const rows = ['| [init](commands/init.md) and *more* | Adds the kit |', ROWS[1]];
+  const index = indexOf({ rows });
+  refusedAt(t, { index }, 'README.md', index, 'and *more*');
+});
+
+test('refused: a first cell of a Pages row that links no page file', (t) => {
+  const rows = ['| [init](commands/none.md) | Adds the kit |', ...ROWS];
+  const index = indexOf({ rows });
+  refusedAt(t, { index }, 'README.md', index, 'commands/none.md');
+});
+
+test('converted: a link in a section heading of the index is a link in the heading and text in the contents list', (t) => {
+  const html = written(t, { index: indexOf({ before: ['## About [init](commands/init.md) and *more*', '', 'Text.', ''] }) });
+  assert.ok(html.includes('<h2>About <a href="#commands-init">init</a> and <em>more</em></h2>'));
+  assert.ok(html.includes('<li><a href="#about-init-and-more">About init and <em>more</em></a></li>'));
+});
+
+test('converted: emphasis in the heading of a group of pages', (t) => {
+  const html = written(t, { index: indexOf({ group: '### The *commands*' }) });
+  assert.ok(html.includes('<h2>The <em>commands</em></h2>'));
+  assert.ok(html.includes('<a href="#the-commands">The <em>commands</em></a>'));
+});
+
+test('refused: a ### heading of the index before its first ## heading', (t) => {
+  const index = indexOf({ before: ['### Early', '', 'Text.', ''] });
+  const guide = refusedAt(t, { index }, 'README.md', index, '### Early');
+  assert.doesNotMatch(run(['--guide', guide]).out, /undefined/);
+});
+
+test('refused: a heading of the index two levels below the one before it', (t) => {
+  const index = indexOf({ before: ['## About', '', '#### Deep', '', 'Text.', ''] });
+  refusedAt(t, { index }, 'README.md', index, '#### Deep');
+});
+
+test('refused: a heading of four # under the Pages section of the index', (t) => {
+  const index = [...indexOf(), '#### Deeper', ''];
+  refusedAt(t, { index }, 'README.md', index, '#### Deeper');
+});
+
+test('refused: a second # heading in the index', (t) => {
+  const index = indexOf({ before: ['# Again', '', 'Text.', ''] });
+  refusedAt(t, { index }, 'README.md', index, '# Again');
+});
+
+for (const [name, heading] of [['the theme button', '## Theme'], ['the contents list', '## Toc'], ['the top bar', '## Top'],
+  ['the section of a page', '## Commands init'], ['a heading of a page', '## Commands init  usage']]) {
+  test(`refused: an index heading whose id is the id of ${name}`, (t) => {
+    const index = indexOf({ before: [heading, '', 'Text.', ''] });
+    const guide = refusedAt(t, { index, init: [...INIT.split('\n'), '## Usage', '', 'Text.'] }, 'README.md', index, heading);
+    assert.match(run(['--guide', guide]).out, /an id stands once in the web page/);
+  });
+}
+
+test('refused: a group of pages whose id is the id of a section of the index', (t) => {
+  const index = indexOf({ before: ['## Commands', '', 'Text.', ''] });
+  refusedAt(t, { index }, 'README.md', index, '### Commands');
+});
+
+test('converted: two headings of the same words in one file get two ids', (t) => {
+  const html = written(t, { init: [...INIT.split('\n'), '## Notes', '', 'One.', '', '## Notes', '', 'Two.'] });
+  assert.ok(html.includes('id="commands-init--notes"') && html.includes('id="commands-init--notes-1"'));
+  const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(ids).size, ids.length, 'an id stands twice in the page');
+});
+
+test('refused: a heading of a page whose id is the numbered id of another', (t) => {
+  const init = [...INIT.split('\n'), '## Notes', '', 'One.', '', '## Notes', '', 'Two.', '', '## Notes 1', '', 'Three.'];
+  refusedAt(t, { init }, 'commands/init.md', init, '## Notes 1');
+});
+
+test('the last guard refuses a page that holds undefined as an element or an id twice', async () => {
+  const { sound } = await import(pathToFileURL(SCRIPT).href);
+  const ok = '<main id="a"><h2 id="b">undefined is a word here</h2></main>';
+  assert.equal(sound(ok), ok);
+  for (const [html, says] of [['<undefined id="a">x</undefined>', /undefined/], ['<p>x</p></undefined>', /undefined/], ['<h2 id="undefined">x</h2>', /undefined/],
+    ['<a href="#undefined">x</a>', /undefined/], ['<h2 id="a">x</h2>\n<h3 id="a">y</h3>', /the id "a" twice/], ['<h2 id="">x</h2>', /the id ""/], ['<h2 id="a b">x</h2>', /the id "a b"/]]) {
+    assert.throws(() => sound(html), says, html);
+  }
+});

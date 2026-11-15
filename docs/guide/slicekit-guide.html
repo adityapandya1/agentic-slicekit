@@ -297,7 +297,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
   <div class="group" id="build-loop">
     <h3>Build loop</h3>
     <p><a href="#commands-build"><code>build</code></a> holds the deterministic steps that <code>/slicekit build</code> and <code>/slicekit review</code> share, and <a href="#commands-instructions"><code>instructions</code></a> prints the brief of each agent they spawn. Each <code>build</code> subcommand but <code>build next</code> and <code>build parallel</code> takes the slice ID, <code>P&lt;n&gt;/S-&lt;nn&gt;</code>. A slice's worktree is <code>.worktrees/P&lt;n&gt;-S-&lt;nn&gt;</code> on the branch <code>slice/P&lt;n&gt;-S-&lt;nn&gt;-&lt;descr&gt;</code>. The agent runs every step; you type one only to resume or inspect by hand.</p>
-    <p><b>Shared by the <code>build</code> subcommands.</b> <code>--worktree &lt;p&gt;</code> names the worktree to act in. Without it the build worktree is used, never the review one, so the building session needs no flag while a review session runs; the review session always passes it. Exit codes: <b>0</b> done; <b>1</b> refused (the slice's state, a failing command or check, a frozen test, git, the git host, the tracker or a held lock); <b>2</b> bad usage, an unknown slice ID, a missing required option or a config problem.</p>
+    <p><b>Shared by the <code>build</code> subcommands.</b> <code>--worktree &lt;p&gt;</code> names the worktree to act in. Without it the build worktree is used, never the review one, so the building session needs no flag while a review session runs; the review session always passes it. Exit codes: <b>0</b> done; <b>1</b> refused (the slice's state, a failing command or check, a frozen test, a state file hidden from git or changed on disk, git, the git host, the tracker or a held lock); <b>2</b> bad usage, an unknown slice ID, a missing required option or a config problem.</p>
   </div>
   <div class="group" id="review-and-release">
     <h3>Review and release</h3>
@@ -1660,7 +1660,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
       <li><code>a [sync] title belongs to a sync/&lt;short sha&gt; branch</code>: a <code>[sync]</code> title on any other branch.</li>
     </ul>
     <h5 id="rules-ci-title--when-it-judges">When it judges</h5>
-    <p>Only under <code>check --ci</code>, and only when the GitHub event holds a pull request. A title that begins <code>[spec]</code>, <code>[plan]</code> or <code>[release]</code> is exempt, and so is <code>[sync]</code> on a sync branch. Draft and closed pull requests are judged alike. A pull request opened by an actor listed in <code>ci.botActors</code> is exempt.</p>
+    <p>Only under <code>check --ci</code>, and only when the GitHub event holds a pull request. A title that begins <code>[spec] </code>, <code>[plan] </code> or <code>[release] </code> is exempt, and so is <code>[sync] </code> on a sync branch. Draft and closed pull requests are judged alike. A pull request opened by an actor listed in <code>ci.botActors</code> is exempt.</p>
     <h5 id="rules-ci-title--how-to-clear-a-finding">How to clear a finding</h5>
     <p>Open the pull request with <code>build pr</code>. For a change to a slice that already merged, plan a new slice.</p>
     <h5 id="rules-ci-title--the-failure-it-prevents">The failure it prevents</h5>

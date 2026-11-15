@@ -150,7 +150,7 @@ The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`: [`bra
 
 [`build`](commands/build.md) holds the deterministic steps that `/slicekit build` and `/slicekit review` share, and [`instructions`](commands/instructions.md) prints the brief of each agent they spawn. Each `build` subcommand but `build next` and `build parallel` takes the slice ID, `P<n>/S-<nn>`. A slice's worktree is `.worktrees/P<n>-S-<nn>` on the branch `slice/P<n>-S-<nn>-<descr>`. The agent runs every step; you type one only to resume or inspect by hand.
 
-**Shared by the `build` subcommands.** `--worktree <p>` names the worktree to act in. Without it the build worktree is used, never the review one, so the building session needs no flag while a review session runs; the review session always passes it. Exit codes: **0** done; **1** refused (the slice's state, a failing command or check, a frozen test, git, the git host, the tracker or a held lock); **2** bad usage, an unknown slice ID, a missing required option or a config problem.
+**Shared by the `build` subcommands.** `--worktree <p>` names the worktree to act in. Without it the build worktree is used, never the review one, so the building session needs no flag while a review session runs; the review session always passes it. Exit codes: **0** done; **1** refused (the slice's state, a failing command or check, a frozen test, a state file hidden from git or changed on disk, git, the git host, the tracker or a held lock); **2** bad usage, an unknown slice ID, a missing required option or a config problem.
 
 ### Review and release
 
