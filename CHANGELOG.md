@@ -2,6 +2,11 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.3.3
+
+- P5/S-22 Observability steps in CI (#149)
+- P5/S-21 Runbook rule and `/slicekit release` (#150)
+
 ## 0.3.2
 
 - P5/S-49 Release version fixes (#147)
