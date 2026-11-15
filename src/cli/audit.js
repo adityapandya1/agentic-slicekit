@@ -1,4 +1,4 @@
-// slicekit audit context [area] [--json] and slicekit audit check <report> [area] [--every-claim]
+// slicekit audit context [area] [--all] [--json] and slicekit audit check <report> [area] [--every-claim]
 // (REQ-2.14, D-58):
 // the claims `/slicekit audit` hands the auditor, each with the files it names and its candidate
 // commits, and the check of the auditor's report against the claims of the same area, which the
@@ -12,7 +12,7 @@ import { indexGraph, loadGraph } from '../graph/load.js';
 import { GraphError } from '../graph/schema.js';
 import { readReport } from '../reports.js';
 
-const USAGE = 'audit context [area] [--json]\n  audit check <report> [area] [--every-claim]';
+const USAGE = 'audit context [area] [--all] [--json]\n  audit check <report> [area] [--every-claim]';
 const SUBCOMMANDS = ['context', 'check'];
 
 const usage = (io, why) => {
@@ -23,12 +23,23 @@ const usage = (io, why) => {
 // `(none)` is what a procedure prints for no argument.
 const areaOf = (arg) => (arg === undefined || arg === '(none)' ? undefined : arg);
 
-function contextLines(c) {
+// The candidate commits printed for one claim without --all (P5/S-23 review H-7).
+export const SHOWN = 10;
+
+// The narrowest area that names `claim`: its REQ ID, or `runbook` for a runbook section.
+const areaFor = (claim) => (claim.id.startsWith('runbook#') ? 'runbook' : claim.id);
+
+// At most SHOWN candidates per claim, the newest, then one line counting the rest and naming the
+// command that prints them; with `all`, each one. --json and the check hold every candidate.
+function contextLines(c, { all = false } = {}) {
   const out = [c.report];
   for (const claim of c.claims) {
     out.push(`${claim.id} ${claim.where} ${claim.title}`.trimEnd());
     out.push(`  files: ${claim.files.join(', ')}`.trimEnd());
-    for (const k of claim.candidates) out.push(`  candidate ${k.sha.slice(0, 7)} ${k.date} ${k.subject}`.trimEnd());
+    const shown = all ? claim.candidates : claim.candidates.slice(0, SHOWN);
+    for (const k of shown) out.push(`  candidate ${k.sha.slice(0, 7)} ${k.date} ${k.subject}`.trimEnd());
+    const more = claim.candidates.length - shown.length;
+    if (more > 0) out.push(`  ${more} more candidate${more === 1 ? '' : 's'}, each older: audit context ${areaFor(claim)} --all`);
   }
   return out;
 }
@@ -37,7 +48,7 @@ async function run(args, io) {
   let values;
   let positionals;
   try {
-    ({ values, positionals } = parseArgs({ args, options: { json: { type: 'boolean' }, 'every-claim': { type: 'boolean' } }, allowPositionals: true }));
+    ({ values, positionals } = parseArgs({ args, options: { json: { type: 'boolean' }, all: { type: 'boolean' }, 'every-claim': { type: 'boolean' } }, allowPositionals: true }));
   } catch (e) {
     return usage(io, e.message);
   }
@@ -55,7 +66,7 @@ async function run(args, io) {
     if (sub === 'context') {
       if (rest.length > 1) return usage(io, `unexpected argument ${rest[1]}`);
       const context = auditContext(root, cfg, areaOf(rest[0]));
-      io.stdout(json ? `${JSON.stringify(context, null, 2)}\n` : contextLines(context).map((l) => `${l}\n`).join(''));
+      io.stdout(json ? `${JSON.stringify(context, null, 2)}\n` : contextLines(context, { all: Boolean(values.all) }).map((l) => `${l}\n`).join(''));
       return 0;
     }
     if (rest.length === 0) return usage(io, 'missing report');

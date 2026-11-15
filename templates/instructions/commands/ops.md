@@ -27,7 +27,8 @@ When the symptom is `(none)`, ask the human for it and stop until they answer.
    release record that output names. The agent holds no tool that writes a file or runs a command:
    its reply is the report.
 4. Write the agent's reply, as it is, to the report path from step 2 with the Write tool. Change no
-   word of it.
+   word of it. Step 2 created that path as an empty file, so read it with the Read tool before the
+   first write, or the Write tool refuses to overwrite it.
 5. Run `{{cli}} ops check <report>`. It prints `ok <report>`, or one `<report>:<line> <message>`
    line per problem: a missing section, a slice or pull request the graph does not hold, a cited
    `<file>:<line>` that does not exist, an action marked by no one. On findings, send them to the

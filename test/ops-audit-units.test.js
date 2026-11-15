@@ -262,3 +262,67 @@ test('auditReportProblems refuses a claim with two rows and, asked for every cla
     repo.cleanup();
   }
 });
+
+// P5/S-23 review H-6: in First checks a `<path>:<line>` token is a citation by the file it names, not
+// by a slash: a file of the repository or of the graph, or a path that ends in a file extension.
+test('opsReportProblems: a citation is a token that names a file, with a slash or without', () => {
+  const index = indexOf(['src/a.js', 'docs/gone.md', 'Procfile'], [
+    { id: 'slice:P1/S-01', kind: 'slice', label: 'x' },
+    { id: 'pull-request:1', kind: 'pull-request', label: 'x' },
+    { id: 'pull-request:api#4', kind: 'pull-request', label: 'x' },
+  ]);
+  const NOT = 'is not a line of a file in the repository';
+  withDir({ 'docs/runbook.md': 'one\ntwo\n', 'README.md': 'one\n', LICENSE: 'one\n', 'src/a.js': 'one\n' }, (root) => {
+    const check = (checks) => opsReportProblems(root, index, 'r.md', OPS('- Read the log (anyone)', checks));
+    // A missing file is refused with no slash in its path, and so is a line past a file's end.
+    assert.deepEqual(check('- Read nosuch.md:3, then README.md:2 and LICENSE:4.'), [
+      `r.md:7 nosuch.md:3 ${NOT}`,
+      `r.md:7 README.md:2 ${NOT}`,
+      `r.md:7 LICENSE:4 ${NOT}`,
+    ]);
+    // A file of the graph that is not on disk is a citation, with an extension or without.
+    assert.deepEqual(check('- docs/gone.md:1 and Procfile:1'), [`r.md:7 docs/gone.md:1 ${NOT}`, `r.md:7 Procfile:1 ${NOT}`]);
+    // An image and tag, a host path and port, a host and port and a time name no file and end in no
+    // file extension: none is a citation, with a slash or without.
+    assert.deepEqual(check('- Pull registry/app:2 and call svc.internal/health:8080, then localhost:3000 at 10:30.'), []);
+    // Files that exist, cited with a slash and without, pass.
+    assert.deepEqual(check('- README.md:1, LICENSE:1, src/a.js:1 and `docs/runbook.md:2`'), []);
+  });
+});
+
+// P5/S-23 review H-7: `audit context` prints at most ten candidate commits per claim, newest first,
+// then one line counting the rest; `--all` prints each one; `audit check` still judges a drifted row
+// against every candidate.
+test('audit context prints ten candidates per claim and counts the rest; audit check reads them all', async () => {
+  const repo = makeRepo();
+  try {
+    const { root } = repo;
+    initKit(root, { name: 'demo', shape: 'backend', commands: { test: 'node --test' }, cli: 'node bin/slicekit.js' });
+    commitFixed(root, 'plan', { 'docs/runbook.md': '# Runbook: demo\n\n## Health\n\nIt answers ok (`src/a.js`).\n', 'src/a.js': '0\n' });
+    const shas = [];
+    for (let i = 1; i <= 12; i++) shas.push(commitFixed(root, `fix: change ${i}`, { 'src/a.js': `${i}\n` }));
+    assert.equal((await cli(root, ['graph'])).code, 0);
+    const candidatesOf = (out) => out.split('\n').filter((l) => /^\s+candidate /.test(l)).map((l) => l.trim().split(' ')[1]);
+    const sha7 = (s) => s.slice(0, 7);
+
+    const ctx = await cli(root, ['audit', 'context', 'runbook']);
+    assert.equal(ctx.code, 0, `${ctx.stdout}\n${ctx.stderr}`);
+    assert.deepEqual(candidatesOf(ctx.stdout), shas.slice(2).reverse().map(sha7), ctx.stdout);
+    const lines = ctx.stdout.split('\n');
+    const more = lines.indexOf('  2 more candidates, each older: audit context runbook --all');
+    assert.ok(more > 0 && /^\s+candidate /.test(lines[more - 1]), ctx.stdout);
+
+    const all = await cli(root, ['audit', 'context', 'runbook', '--all']);
+    assert.equal(all.code, 0, `${all.stdout}\n${all.stderr}`);
+    assert.deepEqual(candidatesOf(all.stdout), [...shas].reverse().map(sha7), all.stdout);
+    assert.doesNotMatch(all.stdout, /more candidates/);
+
+    // The oldest candidate is not printed without --all; a drifted row naming it still passes.
+    const report = lines[0];
+    fs.writeFileSync(path.join(root, report), AUDIT([`| runbook#health | docs/runbook.md:3 | it answers 1 | src/a.js:1 | drifted | ${sha7(shas[0])} |`]));
+    const checked = await cli(root, ['audit', 'check', report, 'runbook']);
+    assert.equal(checked.code, 0, `${checked.stdout}\n${checked.stderr}`);
+  } finally {
+    repo.cleanup();
+  }
+});

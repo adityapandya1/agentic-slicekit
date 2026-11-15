@@ -145,3 +145,13 @@ test('lineExists and footerProblems', () => {
   assert.deepEqual(footerProblems('r.md', '## A\n\nx\n- Skipped: nothing\n'), ['r.md:4 no "Skipped:" line', 'r.md:4 no "Not checked:" line']);
   assert.deepEqual(footerProblems('r.md', ''), ['r.md:1 no "Skipped:" line', 'r.md:1 no "Not checked:" line']);
 });
+
+// P5/S-23 review H-8: nextReport reserves the path as an empty file, and a session's Write tool
+// refuses to overwrite a file it has not read; each procedure says to read the file first.
+test('the ops and audit procedures say to read the reserved report file before writing to it', () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'instructions', 'commands');
+  for (const name of ['ops.md', 'audit.md']) {
+    const text = fs.readFileSync(path.join(dir, name), 'utf8').replace(/\s+/g, ' ');
+    assert.match(text, /created[^.]*\bempty\b[^.]*\bread\b[^.]*\bbefore\b[^.]*\bwrit/i, `${name} does not say to read the reserved file before writing`);
+  }
+});

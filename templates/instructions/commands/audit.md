@@ -15,12 +15,16 @@ that reads the repository's history goes through `{{cli}}`; run no git or gh com
    with no area. Its first line is the report path. Then, for each claim in the area (each REQ block
    of the spec, each `##` section of the runbook), it prints the claim's ID, its `<file>:<line>` and
    its title, the files the claim names, and one `candidate` line for each commit that touched one of
-   those files after the claim's heading was last changed. On exit 2 the area names no claim: print
-   what it says and ask the human for another area.
+   those files after the claim's heading was last changed. It prints at most ten `candidate` lines
+   for a claim, the newest, then one line that counts the older ones and names the area to run with
+   `--all` to print them. On exit 2 the area names no claim: print what it says and ask the human
+   for another area.
 3. Spawn the auditor in audit mode. Its brief is the output of `{{cli}} instructions auditor`. Give
    it the whole output of step 2 and the report path, and tell it this is an audit, not a gap scan:
    the claims are the ones listed, and the evidence is the code, the tests and the CI history. The
-   auditor writes the report at that path.
+   auditor writes the report at that path. Step 2 created that path as an empty file, so tell the
+   auditor to read it with the Read tool before the first write, or the Write tool refuses to
+   overwrite it.
 4. Run `{{cli}} audit check <report> {{args}} --every-claim`, with the same area as step 2 or none.
    The check reads the area's claims from the spec and the runbook, as step 2 did. It prints
    `ok <report>`, or one `<report>:<line> <message>` line per problem: a missing `## Claims` table,

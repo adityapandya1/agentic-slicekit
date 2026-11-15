@@ -91,6 +91,30 @@ const MARKED = /\((?:anyone|on-call|owner: [^()]*[^()\s][^()]*)\)[.\s]*$/;
 const PR_REF = /(?<![\w&/#.-])([A-Za-z0-9._-]+)?#(\d+)\b/g;
 const CITATION = /(?<![\w./-])([A-Za-z0-9_.][\w./-]*):(\d+)\b/g;
 
+// The file extensions a path can end in without naming a file of the graph: the cited file may be
+// missing, and its extension still says it was meant as a file.
+const EXTENSIONS = new Set(
+  'c cc cfg cjs conf cpp cs css csv env go gradle h hpp html ini java js json jsx kt lock log lua md mjs php properties proto ps1 py rb rs scss sh sql svelte swift tf toml ts tsx txt vue xml yaml yml'.split(' '),
+);
+const extensionOf = (file) => /\.([A-Za-z0-9]+)$/.exec(file.split('/').at(-1))?.[1].toLowerCase() ?? null;
+
+// Whether the text before the colon of a `<path>:<line>` token in First checks makes it a citation
+// (P5/S-23 review H-6), with a slash in it or without. It is one when the path is a file in the
+// repository or a file of the graph, and when its last segment ends in a file extension: one of
+// EXTENSIONS, or the extension of a file of the graph. A token that names no file and ends in no file
+// extension, such as `localhost:8080`, `svc.internal/health:8080` or `registry/app:2`, is none.
+function isCitation(root, index, file) {
+  if (file === '' || file === '.') return false;
+  if (index.node(`file:${file}`)) return true;
+  try {
+    if (fs.statSync(path.join(root, file)).isFile()) return true;
+  } catch {
+    // Not a file on disk: the extension decides.
+  }
+  const ext = extensionOf(file);
+  return ext !== null && (EXTENSIONS.has(ext) || index.byKind('file').some((n) => extensionOf(keyOf(n.id)) === ext));
+}
+
 const FENCE = /^\s*(```|~~~)/;
 const SUBHEADING = /^\s{0,3}#{3,6}\s/;
 const NO_MARK = 'who may take it: (anyone), (on-call) or (owner: <name>)';
@@ -183,8 +207,7 @@ export function opsReportProblems(root, index, rel, text) {
   for (const { text: l, line } of content(OPS_SECTIONS[1])) {
     for (const m of l.matchAll(CITATION)) {
       const file = normalisePath(m[1]);
-      // A token that is no path in the repository, such as `host.example:8080`, is not a citation.
-      if (!file.includes('/') && !fs.existsSync(path.join(root, file))) continue;
+      if (!isCitation(root, index, file)) continue;
       if (!lineExists(root, file, Number(m[2]))) out.push(`${rel}:${line} ${m[1]}:${m[2]} is not a line of a file in the repository`);
     }
   }
