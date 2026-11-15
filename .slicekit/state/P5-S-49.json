@@ -178,6 +178,16 @@
           "independent": true
         }
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:03:58.366Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "37232690e9a0e49fa66404943dd1a94162733d8f",
+        "reason": "reviews B-3 and B-4 of round 3: the evaluation set gains a test for a rebase-merged version-setting slice and one for a hand-set section holding a slice line"
+      }
     }
   ]
 }
