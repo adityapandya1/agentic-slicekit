@@ -1187,7 +1187,7 @@ Writes the release record `<docsRoot>/releases/P<n>.md`, sets each slice of the 
 
 **What it does:**
 
-- `--dry-run`: Prints the record it would write, and writes nothing. It runs on any branch.
+- `--dry-run`: Prints the record it would write, and writes nothing but the migration of an older config. It runs on any branch.
 - `--undo`: Releases nothing. Removes a record that is not committed, puts the phase's state files and `BUILD.md` back as the last commit has them, and prints `removed <record>`. It refuses a record the last commit holds, and when there is no record. It cannot be given with `--dry-run`.
 
 | Exit | Meaning |
@@ -1779,10 +1779,10 @@ Four commands differ on purpose: `ci bookkeeping` and `ready-label` exit 0 whate
 
 `.slicekit/config.json` carries `configVersion`. A config with an older one is migrated on the first command that is not `hook`: the file is written once and each change is printed on stderr. A hook reads the config as migrated and writes nothing. A `configVersion` newer than the kit's is refused with a message naming both versions.
 
-In two cases a command reads the config as migrated, writes nothing and prints one line on stderr saying the config is at the older version and is read as the newer one, unwritten (D-93):
+In two cases a command reads the config as migrated, writes nothing and prints one line on stderr saying the config is at the older version and is read as the newer one, unwritten (D-93, D-94):
 
 - `slicekit branch`, of every kind, because it refuses a changed tracked file. The branch is cut first, and the next command writes the migration on it.
-- Every command on a slice branch or a slice's review branch, because no build step commits a config change there. The slice whose Expected changes name `.slicekit/config.json` is the exception; its slice branch is written and `slicekit build config` commits the change.
+- Every command on a slice branch or a slice's review branch, because no build step commits a config change there. The slice whose Expected changes name `.slicekit/config.json` is the exception; its slice branch and its review branch are written and `slicekit build config` commits the change.
 
 A team commits the migration on a plan branch with three commands, run from the default branch after the newer kit is installed:
 
@@ -1790,7 +1790,7 @@ A team commits the migration on a plan branch with three commands, run from the 
 2. Any command that is not `hook` or `branch`, for example `slicekit status`, writes the migrated config there and prints each change.
 3. `slicekit pr open --title <title> --body-file <file> --commit <message> --paths .slicekit/config.json` commits it and opens the pull request, which a human reviews and merges.
 
-If another command ran on the default branch first, the config is already written there and `slicekit branch` refuses with `commit or stash your changes first`; undo the migration in the file until it equals the committed one, then start at step 1. A kit before config version 2 refuses a migrated config with `configVersion: must be 1`.
+If another command ran on the default branch first, for example `slicekit release P<n> --dry-run`, the config is already written there. `slicekit branch`, of every kind, still cuts the branch when the only uncommitted change to a tracked file is the config and it equals what the migration writes from the committed config; the change is carried to the new branch, where `pr open` commits it. Any other uncommitted change is refused with `commit or stash your changes first`. A kit before config version 2 refuses a migrated config with `configVersion: must be 1`.
 
 ### Other conventions
 

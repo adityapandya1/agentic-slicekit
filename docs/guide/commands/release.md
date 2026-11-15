@@ -20,7 +20,7 @@ It refuses, with one line per reason and nothing written:
 
 Options:
 
-- `--dry-run`: prints the record it would write, and writes nothing. It runs on any branch.
+- `--dry-run`: prints the record it would write, and writes nothing but the migration of an older config. It runs on any branch.
 - `--undo`: releases nothing. It removes a record that is not committed, puts the phase's state files and `BUILD.md` back as the last commit has them, and prints `removed <record>`. It refuses a record the last commit holds, and when there is no record. It cannot be given with `--dry-run`.
 
 ## What it reads and writes

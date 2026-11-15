@@ -1,13 +1,17 @@
 // `slicekit branch <spec|gaps|plan|release> <slug>` (REQ-2.3..REQ-2.5, REQ-2.9, D-54): puts the session on the
 // work branch of a document pull request, cut from the default branch as origin has it. The command owns git
 // (D-19). A change to a tracked file (staged or not) is refused, so no edit is carried across;
-// untracked files go along as git carries them, so a source dropped in for intake survives.
+// untracked files go along as git carries them, so a source dropped in for intake survives. The one
+// change carried is the config as the migration writes it from the committed one (D-94): an earlier
+// command on this branch, such as `release --dry-run`, wrote it, and `pr open` commits it.
 // A `release/<slug>` branch that exists away from the default branch's tip is moved there or refused;
 // one that holds its own commits is refused with its open pull request, read through the git host
 // (C-1 pullRequestForBranch), or with the next free slug when the host says none is open.
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
-import { ConfigError, loadConfig } from '../config.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { CONFIG_PATH, ConfigError, loadConfig, migrateConfig } from '../config.js';
 import { GitError, assertRef, currentBranch, git, hasRemote, switchBranch } from '../git.js';
 
 const KINDS = ['spec', 'gaps', 'plan', 'release'];
@@ -23,6 +27,29 @@ const resolves = (root, ref) => {
     throw e;
   }
 };
+
+const CONFIG_FILE = CONFIG_PATH.split(path.sep).join('/');
+
+// D-94: whether the only uncommitted change to a tracked file is the config, and the file holds
+// exactly what the migration writes from the config the last commit holds. A config staged with
+// one content and holding another in the working directory is not that change.
+function onlyMigratedConfig(root) {
+  const names = (args) => git(root, ['diff', '--name-only', '--no-renames', '-z', ...args]).split('\0').filter((f) => f !== '');
+  const staged = names(['--cached', 'HEAD']);
+  const unstaged = names([]);
+  const changed = new Set([...staged, ...unstaged]);
+  if (changed.size !== 1 || !changed.has(CONFIG_FILE)) return false;
+  if (staged.length > 0 && unstaged.length > 0) return false;
+  try {
+    const committed = JSON.parse(git(root, ['show', `HEAD:${CONFIG_FILE}`]));
+    const { cfg, from } = migrateConfig(committed);
+    if (cfg === committed || from === cfg.configVersion) return false;
+    return fs.readFileSync(path.join(root, CONFIG_PATH), 'utf8') === `${JSON.stringify(cfg, null, 2)}\n`;
+  } catch (e) {
+    if (e instanceof GitError || e instanceof ConfigError || e instanceof SyntaxError || e.code !== undefined) return false;
+    throw e;
+  }
+}
 
 async function run(args, io) {
   const [kind, slug, ...rest] = args;
@@ -44,7 +71,7 @@ async function run(args, io) {
       io.stdout(`${target}\n`);
       return 0;
     }
-    const dirty = git(root, ['status', '--porcelain', '--untracked-files=no']) !== '';
+    const dirty = git(root, ['status', '--porcelain', '--untracked-files=no']) !== '' && !onlyMigratedConfig(root);
     if (dirty && !onTarget) {
       io.stderr('slicekit: commit or stash your changes first\n');
       return 1;

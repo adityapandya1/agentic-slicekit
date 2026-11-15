@@ -2,9 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, ConfigNewerError, loadConfig, migrateConfigFile } from '../config.js';
 import { currentBranch } from '../git.js';
-import { parseSliceAddr, sliceFromBranch } from '../ids.js';
+import { sliceFromBranch } from '../ids.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
-import { reviewBranch } from '../worktrees.js';
 import { auditCommand } from './audit.js';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
@@ -128,7 +127,8 @@ export async function main(argv, io) {
   // writes the team's tracked file mid-turn; it reads the config migrated in memory (loadConfig).
   // D-93 names two more cases that read it migrated, write nothing and print one line: a slice
   // branch or a slice's review branch (writesMigration), and `slicekit branch` of every kind, which
-  // refuses a changed tracked file; the branch is cut first and the next command writes on it.
+  // refuses a changed tracked file; the branch is cut first and the next command writes on it. A
+  // migration an earlier command already wrote is carried by `slicekit branch` itself (D-94).
   if (command !== COMMANDS.hook && typeof io.cwd === 'string') {
     try {
       // The branch is asked about only when the config is older, so a current one costs no git call.
@@ -163,9 +163,10 @@ const CONFIG_FILE = CONFIG_PATH.split(path.sep).join('/');
 // Whether a command run in `cwd` may write the migrated config (review r1, H-1; D-93). On a slice branch
 // or a slice's review branch no build step commits a changed config (`build commit` refuses a kit
 // file, `build pr` an uncommitted change), so there the config is read migrated and left as it is.
-// The one slice branch that writes is that of a slice whose Expected changes name the config:
-// `build config` commits it (D-53). Its review branch does not write. Anything unreadable on the
-// way (no slice file, a config that does not load) is no reason to write.
+// The exception is the slice whose Expected changes name the config: its slice branch and its review
+// branch both write, since a review branch's commits go to the slice branch and `build config`
+// commits the file (D-53, D-94). Anything unreadable on the way (no slice file, a config that does
+// not load) is no reason to write.
 function writesMigration(cwd) {
   let branch;
   try {
@@ -175,7 +176,6 @@ function writesMigration(cwd) {
   }
   const id = branch === null ? null : sliceFromBranch(branch);
   if (id === null) return true;
-  if (branch === reviewBranch(parseSliceAddr(id))) return false;
   try {
     const cfg = loadConfig(cwd);
     for (const f of findSliceFiles(cwd, cfg)) {
