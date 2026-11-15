@@ -1,0 +1,311 @@
+{
+  "slice": "P5/S-49",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 147,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+    "headSha": "3928b66bb8f8b1ad2a71993603a2b533e4bdbc3a"
+  },
+  "redCommit": "2018c099f008a0898f0975cb72ed1be99e633772",
+  "frozenTests": [
+    "test/release-version-order.test.js"
+  ],
+  "unfrozen": [
+    "test/release-version-order.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-49-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "5f8700e3810cc40e299aab7362f8ea178aad1b62"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-49-r2.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "82b6493cc9679e64a323b861c8827f207cdf733e"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P5-S-49i-r3.md",
+      "blockers": 2,
+      "independent": true,
+      "headSha": "862e19b51b755346c7c0b34a229863da869f5239"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P5-S-49i-r4.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "bee910a235f935080b4d389de032bf73bbb41df1"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P5-S-49i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "3928b66bb8f8b1ad2a71993603a2b533e4bdbc3a"
+    }
+  ],
+  "ci": {
+    "sha": "05ca3b62d1e1303775e34840bd3cabf729ff248a",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43659332072"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-14T23:15:23.269Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "2018c099f008a0898f0975cb72ed1be99e633772",
+        "testExit": 1,
+        "tests": [
+          "test/release-version-order.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-14T23:15:24.029Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T23:24:44.469Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "5f8700e3810cc40e299aab7362f8ea178aad1b62",
+          "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T23:32:30.174Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-49-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-14T23:32:49.144Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/release-version-order.test.js",
+        "amendCommit": "a862e62ab1595124e1bd6f6eede10db65cd069f5",
+        "reason": "review B-1 of round 1: the file gains a test for a sync merge whose slice was already recorded merged"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-14T23:41:28.035Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "82b6493cc9679e64a323b861c8827f207cdf733e",
+          "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-14T23:48:41.014Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-49-r2.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-14T23:48:41.661Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "changes-requested",
+      "at": "2026-11-14T23:48:54.873Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "0c8af409e3bda3c66ad9c641896df1a424b87c04",
+        "reason": "review B-2 of round 2: the evaluation set gains a test for a sync pull request squash-merged under an edited subject"
+      }
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-14T23:54:35.961Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "862e19b51b755346c7c0b34a229863da869f5239",
+          "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T00:03:47.369Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P5-S-49i-r3.md",
+          "blockers": 2,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:03:58.366Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "37232690e9a0e49fa66404943dd1a94162733d8f",
+        "reason": "reviews B-3 and B-4 of round 3: the evaluation set gains a test for a rebase-merged version-setting slice and one for a hand-set section holding a slice line"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:09:58.220Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "014c5ce7b3c0b3b28d435eada47d5c4a0f2c1e41",
+        "reason": "Done when 3 states how a hand-set version and the slices before it are told (reviews B-3, B-4)"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T00:12:13.536Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "bee910a235f935080b4d389de032bf73bbb41df1",
+          "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T00:20:06.949Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P5-S-49i-r4.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:20:16.294Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "0d21b3c4e8b6b1940c6e14a344bae4904f46beb7",
+        "reason": "reviews B-5 and H-2 of round 4: two more tests, and Done when 3 says at which commit a version is set"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T00:29:23.350Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 147,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/147",
+          "headSha": "3928b66bb8f8b1ad2a71993603a2b533e4bdbc3a",
+          "title": "[P5/S-49] Release version fixes"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T00:40:05.067Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P5-S-49i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T00:41:09.824Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "05ca3b62d1e1303775e34840bd3cabf729ff248a",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43659332072"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T00:41:12.165Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

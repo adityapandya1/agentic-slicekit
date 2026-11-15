@@ -1,4 +1,4 @@
-// sync-release (05 REQ-5.5, D-43, D-89, D-90): under --ci on a sync pull request (a `sync/<short sha>`
+// sync-release (05 REQ-5.5, D-43, D-89, D-90, D-92): under --ci on a sync pull request (a `sync/<short sha>`
 // branch), the files the release step writes (package.json, CHANGELOG.md and the rendered files) must
 // equal what CI computes for the merge the branch names: a fresh checkout of that merge in a temporary
 // worktree, synced from the git host and given the version, section and render the sync step would
@@ -78,12 +78,13 @@ function blob(root, rev, file) {
 }
 
 // Runs the sync step in the merge's worktree and returns the release paths it changed, with their
-// new content (null for a removed file).
+// new content (null for a removed file). The version comes from the function the sync job runs
+// (applyRelease): the merged slices no changelog section at the merge names (D-92).
 function expectedFiles(root, ctx, wt, owns) {
   const cfg = loadConfig(wt);
   const host = getHost(cfg, ctx.env ?? process.env, root);
-  const { changes } = syncFromHost(wt, cfg, host);
-  applyRelease(wt, cfg, changes, { merge: 'HEAD', isKit: isKitRoot(root) });
+  syncFromHost(wt, cfg, host);
+  applyRelease(wt, cfg, { merge: 'HEAD', isKit: isKitRoot(root) });
   const tracked = nul(git(wt, ['diff', '--name-only', '--no-renames', '-z', 'HEAD']));
   const untracked = nul(git(wt, ['ls-files', '--others', '--exclude-standard', '-z']));
   const out = new Map();

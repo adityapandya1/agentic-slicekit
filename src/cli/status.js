@@ -7,7 +7,7 @@ import { programStage } from '../stage.js';
 import { renderBuild } from '../state/build.js';
 import { LockError, readSlice } from '../state/index.js';
 import { syncFromHost } from '../state/sync.js';
-import { ReleaseError, applyRelease } from '../release-version.js';
+import { ReleaseError, applyRelease, onDefaultTip } from '../release-version.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 
@@ -71,9 +71,12 @@ async function run(args, io) {
         throw e;
       }
       record(result);
-      // With --write and release.auto, the sync also sets the next version (D-90).
-      if (values.write) {
-        const release = applyRelease(root, cfg, result.changes);
+      // With --write and release.auto, the sync also sets the next version (D-90, D-92), and only
+      // when HEAD is the tip of the default branch (issue #142): a version counts from that branch.
+      if (values.write && cfg.release?.auto === true && !onDefaultTip(root, cfg)) {
+        io.stderr(`slicekit: version not set: HEAD is not the tip of ${cfg.defaultBranch}\n`);
+      } else if (values.write) {
+        const release = applyRelease(root, cfg);
         if (release) {
           version = release.version;
           if (!values.json) io.stdout(`version ${version}: package.json and CHANGELOG.md\n`);
