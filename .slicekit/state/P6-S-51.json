@@ -16,7 +16,9 @@
     "test/cli.test.js",
     "test/user-guide.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/journal-heads.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -50,6 +52,17 @@
       "at": "2026-11-15T12:22:24.916Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T13:25:01.249Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/journal-heads.test.js",
+        "amendCommit": "db1dc9f9757cf244a07d44fb398803d4da09ce91",
+        "reason": "an older test in the frozen file pins the first-parent heads rule this slice replaces; one count changes"
+      }
     }
   ]
 }
