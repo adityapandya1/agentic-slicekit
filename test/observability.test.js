@@ -203,3 +203,36 @@ test('a command in a double-backtick span keeps its inner backtick only', () => 
   assert.deepEqual(read.errors, []);
   assert.deepEqual(read.steps.map((s) => s.run), ['echo `x`', 'npm run plain', '`echo a` && echo `b`']);
 });
+
+// Review round 2 of P5/S-22.
+
+test('a line of the steps table that begins with a bar is read as a row or refused with its line (H-6)', () => {
+  // A row with no closing bar is a row, and the rows after it are read.
+  const open = doc(table('| A | npm run a |', '| B | npm run b', '| C | npm run c |'));
+  const openRead = docSteps(open, REL);
+  assert.deepEqual(openRead.errors, []);
+  assert.deepEqual(openRead.warnings, []);
+  assert.deepEqual(openRead.steps, [
+    { name: 'A', run: 'npm run a', at: `${REL}:${lineOf(open, '| A |')}` },
+    { name: 'B', run: 'npm run b', at: `${REL}:${lineOf(open, '| B |')}` },
+    { name: 'C', run: 'npm run c', at: `${REL}:${lineOf(open, '| C |')}` },
+  ]);
+
+  // A row holding a lone carriage return is refused with its line, and the row after it is read.
+  const split = doc(table('| Split | echo a\recho b |', '| Smoke | npm run smoke |'));
+  const splitRead = docSteps(split, REL);
+  assert.equal(splitRead.errors.length, 1, JSON.stringify(splitRead));
+  assert.ok(splitRead.errors[0].startsWith(`${REL}:${lineOf(split, '| Split |')}: `), splitRead.errors[0]);
+  assert.match(splitRead.errors[0], /carriage return/);
+  assert.deepEqual(splitRead.steps.map((s) => s.name), ['Smoke']);
+
+  // A line of text inside the table does not end it: the row after it is read.
+  const mixed = doc(table('| A | npm run a |', 'a line of text', '| C | npm run c |'));
+  assert.deepEqual(docSteps(mixed, REL).steps.map((s) => s.name), ['A', 'C']);
+
+  // A blank line ends the table: a line beginning with a bar after it is no row.
+  const ended = doc(`${table('| A | npm run a |')}\n\n| Later | npm run later |`);
+  const endedRead = docSteps(ended, REL);
+  assert.deepEqual(endedRead.errors, []);
+  assert.deepEqual(endedRead.steps.map((s) => s.name), ['A']);
+});

@@ -1142,3 +1142,52 @@ test('golden workflow for a config step and a step of observability.md (REQ-3.11
   assert.deepEqual(all.warnings, []);
   assert.equal(renderWorkflow(cfg, loadPins(), { steps: all.steps }), golden);
 });
+
+// Review round 2 of P5/S-22.
+test('a header naming Step and Command with any other column set is refused with its line (H-7)', () => {
+  const withHeader = (header, ...rows) =>
+    ['# Observability', '', '## CI steps the monitoring setup requires', '', header, '|---|---|---|', ...rows, '', '## On-call contact', '', 'None.', ''].join('\n');
+  const rel = 'docs/observability.md';
+
+  for (const [header, row] of [
+    ['| Step | Command | Note |', '| Trace check | npm run trace-check | nightly |'],
+    ['| Command | Step |', '| npm run trace-check | Trace check |'],
+    ['| Owner | Step | Command |', '| ada | Trace check | npm run trace-check |'],
+  ]) {
+    const read = docSteps(withHeader(header, row), rel);
+    assert.equal(read.errors.length, 1, `${header}: ${JSON.stringify(read)}`);
+    assert.ok(read.errors[0].startsWith(`${rel}:5: `), read.errors[0]);
+    assert.deepEqual(read.steps, [], header);
+  }
+
+  // A header of the two columns with no divider line under it is refused, not skipped.
+  const bare = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command |', '| Trace check | npm run trace-check |', ''].join('\n');
+  const bareRead = docSteps(bare, rel);
+  assert.equal(bareRead.errors.length, 1, JSON.stringify(bareRead));
+  assert.ok(bareRead.errors[0].startsWith(`${rel}:5: `), bareRead.errors[0]);
+
+  // A header with no closing bar is the steps table's header, and its rows are read.
+  const open = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command', '|---|---', '| Trace check | npm run trace-check |', ''].join('\n');
+  const openRead = docSteps(open, rel);
+  assert.deepEqual(openRead.errors, []);
+  assert.deepEqual(openRead.steps.map((s) => s.name), ['Trace check']);
+
+  // A table of other columns before the steps table is not the steps table and is no error.
+  const other = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Owner | Contact |', '|---|---|', '| ada | ada@example.com |', '', '| Step | Command |', '|---|---|', '| Trace check | npm run trace-check |', ''].join('\n');
+  const otherRead = docSteps(other, rel);
+  assert.deepEqual(otherRead.errors, []);
+  assert.deepEqual(otherRead.steps.map((s) => s.name), ['Trace check']);
+
+  // `slicekit workflow --write` and `--check` refuse the third column, name the file and line, and write nothing.
+  withKitRepo((root) => {
+    const workflow = path.join(root, WORKFLOW_PATH);
+    const before = fs.readFileSync(workflow, 'utf8');
+    fs.writeFileSync(s22DocFile(root), withHeader('| Step | Command | Note |', '| Trace check | npm run trace-check | nightly |'));
+    for (const mode of ['--write', '--check']) {
+      const r = runCli(['workflow', mode], { cwd: root });
+      assert.notEqual(r.code, 0, `${mode}: ${r.stdout}`);
+      assert.ok(r.stderr.includes(`${rel}:5: `), `${mode}: ${r.stderr}`);
+    }
+    assert.equal(fs.readFileSync(workflow, 'utf8'), before);
+  });
+});
