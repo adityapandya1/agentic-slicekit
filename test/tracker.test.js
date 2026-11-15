@@ -156,6 +156,13 @@ function withDeclineKit(fn) {
   const repo = makeRepo();
   const hostDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-host-'));
   const trackerDir = tempCopy();
+  // P6/S-53: a test of an asynchronous tracker returns a promise; the kit is kept until it settles.
+  let pending = false;
+  const cleanup = () => {
+    repo.cleanup();
+    fs.rmSync(hostDir, { recursive: true, force: true });
+    fs.rmSync(trackerDir, { recursive: true, force: true });
+  };
   try {
     init(repo.root, { name: 'demo', shape: 'backend' });
     const id = writeSliceFixture(repo.root);
@@ -179,11 +186,14 @@ function withDeclineKit(fn) {
     const body = renderPrBody({ slice: id, name: 'Fixture 1', sections });
     const pr = { number: 1, url: 'https://example.test/pull/1', state: 'OPEN', isDraft: true, headRefName: 'slice/P1-S-01-a', title: `[${id}] Fixture 1`, body, headRefOid: 'abc1234', labels: [] };
     fs.writeFileSync(path.join(hostDir, 'pr-1.json'), JSON.stringify(pr));
-    return fn({ root: repo.root, cfg, id, host: fixtureHost(hostDir), tracker: fixtureTracker(trackerDir), hostDir, trackerDir });
+    const out = fn({ root: repo.root, cfg, id, host: fixtureHost(hostDir), tracker: fixtureTracker(trackerDir), hostDir, trackerDir });
+    if (out !== null && typeof out?.then === 'function') {
+      pending = true;
+      return out.finally(cleanup);
+    }
+    return out;
   } finally {
-    repo.cleanup();
-    fs.rmSync(hostDir, { recursive: true, force: true });
-    fs.rmSync(trackerDir, { recursive: true, force: true });
+    if (!pending) cleanup();
   }
 }
 
@@ -342,7 +352,9 @@ test('jira open, comment and find call the Jira REST API with the configured pro
   const jql = search.url.searchParams.get('jql');
   assert.match(jql, /project\s*=\s*"?SK"?/);
   assert.match(jql, /summary\s*~\s*"/);
-  assert.ok(jql.includes('P2/S-15') && jql.includes('H-1'), jql);
+  const value = jqlSummaryValue(jql);
+  assert.equal(typeof value, 'string', jql);
+  for (const part of ['P2', 'S-15', 'H-1']) assert.ok(value.split(/\s+/).includes(part), `${part} in ${value}`);
   assert.match(jql, /ORDER BY created ASC/i);
 
   found = [{ id: '8', key: 'SK-8', fields: { summary: '[P2/S-15] H-1: later', status: { statusCategory: { key: 'indeterminate' } } } }];
@@ -384,4 +396,290 @@ test('jira without JIRA_API_TOKEN fails naming the variable and prints no token'
       return true;
     });
   }
+});
+
+// P6/S-53 (REQ-1.1, REQ-2.6, D-74): the search value, the pages and the promise path of build decline.
+
+// The value of the string literal after `summary ~` in a JQL query, with JQL's string escapes undone.
+// null when the query holds no such literal or an escape JQL does not know, which Jira refuses.
+function jqlSummaryValue(jql) {
+  const m = /summary\s*~\s*"((?:[^"\\]|\\[\s\S])*)"/.exec(String(jql ?? ''));
+  if (!m) return null;
+  const simple = { '\\': '\\', '"': '"', "'": "'", ' ': ' ', t: '\t', n: '\n', r: '\r' };
+  const raw = m[1];
+  let out = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    if (raw[i] !== '\\') {
+      out += raw[i];
+      continue;
+    }
+    const c = raw[i + 1];
+    if (c === 'u' && /^[0-9a-fA-F]{4}$/.test(raw.slice(i + 2, i + 6))) {
+      out += String.fromCharCode(parseInt(raw.slice(i + 2, i + 6), 16));
+      i += 5;
+    } else if (Object.hasOwn(simple, c)) {
+      out += simple[c];
+      i += 1;
+    } else {
+      return null;
+    }
+  }
+  return out;
+}
+
+// The first reserved character of Jira's text search that stands unescaped in a search value, or
+// null. A backslash escapes the character after it. Brackets, braces, `^`, `:`, `/`, `&` and `|` are
+// syntax wherever they stand; `+`, `-`, `!`, `*`, `?` and `~` are syntax at the start of a term.
+function unescapedReserved(value) {
+  const anywhere = '(){}[]^:/&|';
+  const leading = '+-!*?~';
+  let termStart = true;
+  for (let i = 0; i < value.length; i += 1) {
+    const c = value[i];
+    if (c === '\\') {
+      if (i + 1 >= value.length) return '\\';
+      i += 1;
+      termStart = false;
+      continue;
+    }
+    if (anywhere.includes(c)) return c;
+    if (termStart && leading.includes(c)) return c;
+    termStart = /\s/.test(c) || c === '"';
+  }
+  return null;
+}
+
+// A Jira whose search parses the JQL it is sent and answers HTTP 400, as Jira Cloud does, when the
+// `summary ~` value is missing, holds no word, or holds a reserved character unescaped.
+function strictJira(issues) {
+  const values = [];
+  const { seen, fetchImpl } = jiraFetch((c) => {
+    if (c.method !== 'GET' || c.url.pathname !== '/rest/api/3/search/jql') return { status: 404, json: { errorMessages: ['no such route'] } };
+    const value = jqlSummaryValue(c.url.searchParams.get('jql'));
+    values.push(value);
+    if (value === null) return { status: 400, json: { errorMessages: ['Error in the JQL Query: the summary clause cannot be parsed.'] } };
+    const bad = unescapedReserved(value);
+    if (bad !== null) return { status: 400, json: { errorMessages: [`Unable to parse the text '${value}' for field 'summary': unescaped '${bad}'.`] } };
+    if (!/[A-Za-z0-9]/.test(value)) return { status: 400, json: { errorMessages: ["The text query for field 'summary' holds no word."] } };
+    return { json: { issues } };
+  });
+  return { values, seen, fetchImpl };
+}
+
+const JIRA_ENV = { JIRA_EMAIL: 'bot@acme.test', JIRA_API_TOKEN: 'tok-123' };
+const jiraIssue = (n, summary, category = 'new') => ({ id: String(n), key: `SK-${n}`, fields: { summary, status: { statusCategory: { key: category } } } });
+const searches = (seen) => seen.filter((c) => c.method === 'GET' && c.url.pathname === '/rest/api/3/search/jql');
+
+test('jira find sends a search value with no unescaped reserved character', async () => {
+  // The checks of the fake hold: the prefix as written is refused, an escaped one is read back whole.
+  assert.equal(unescapedReserved('[P2/S-15] H-1:'), '[');
+  assert.equal(unescapedReserved('P2/S-15 H-1'), '/');
+  assert.equal(unescapedReserved('P2 S-15 H-1:'), ':');
+  assert.equal(unescapedReserved('\\[P2\\/S-15\\] H-1\\:'), null);
+  assert.equal(unescapedReserved('P2 S-15 H-1'), null);
+  assert.equal(jqlSummaryValue('project = "SK" AND summary ~ "\\\\[P2\\\\/S-15\\\\] \\"H-1\\"" ORDER BY created ASC'), '\\[P2\\/S-15\\] "H-1"');
+  assert.equal(jqlSummaryValue('project = "SK" AND summary ~ "\\[P2" ORDER BY created ASC'), null);
+  assert.equal(jqlSummaryValue('project = "SK" ORDER BY created ASC'), null);
+
+  const jiraTracker = await loadJira();
+  const jira = strictJira([
+    jiraIssue(3, 'mentions [P2/S-15] H-1: elsewhere'),
+    jiraIssue(4, '[P2/S-15] H-10: other'),
+    jiraIssue(7, '[P2/S-15] H-1: x', 'done'),
+  ]);
+  const t = jiraTracker(jiraCfg(), JIRA_ENV, jira.fetchImpl);
+
+  // A looser search value changes no answer: the hits are still narrowed to the prefix.
+  assert.deepEqual(await t.find('P2/S-15', 'H-1'), { id: 7, url: `${JIRA_BASE}/browse/SK-7`, state: 'closed' });
+  assert.equal(await t.find('P2/S-15', 'H-2'), null);
+  assert.equal(await t.find('P12/S-50', 'B-3'), null);
+
+  assert.equal(jira.values.length, 3);
+  for (const value of jira.values) {
+    assert.equal(typeof value, 'string', 'the query holds a summary ~ string literal');
+    assert.equal(unescapedReserved(value), null, value);
+  }
+  const jql = searches(jira.seen)[0].url.searchParams.get('jql');
+  assert.match(jql, /project\s*=\s*"?SK"?/);
+  assert.match(jql, /ORDER BY created ASC/i);
+});
+
+test('jira find follows nextPageToken to a match on a later page', async () => {
+  const jiraTracker = await loadJira();
+  // Page one: older issues that share the prefix's words and none that begins with it.
+  const pages = {
+    '': { issues: [jiraIssue(3, 'mentions [P2/S-15] H-1: elsewhere'), jiraIssue(4, '[P2/S-15] H-10: other'), jiraIssue(5, '[P2/S-1] H-1: another slice')], nextPageToken: 'page-2', isLast: false },
+    'page-2': { issues: [jiraIssue(6, '[P2/S-15] H-11: other'), jiraIssue(9, '[P2/S-15] H-1: the match', 'done'), jiraIssue(10, '[P2/S-15] H-1: later')], nextPageToken: 'page-3', isLast: false },
+    'page-3': { issues: [jiraIssue(11, '[P2/S-15] H-1: last')], isLast: true },
+  };
+  const { seen, fetchImpl } = jiraFetch((c) => {
+    if (c.method !== 'GET' || c.url.pathname !== '/rest/api/3/search/jql') return { status: 404, json: { errorMessages: ['no such route'] } };
+    const page = pages[c.url.searchParams.get('nextPageToken') ?? ''];
+    return page ? { json: page } : { status: 400, json: { errorMessages: ['unknown page token'] } };
+  });
+  const t = jiraTracker(jiraCfg(), JIRA_ENV, fetchImpl);
+
+  assert.deepEqual(await t.find('P2/S-15', 'H-1'), { id: 9, url: `${JIRA_BASE}/browse/SK-9`, state: 'closed' });
+  // Two pages read, in order, with one query; the page after the match is not asked for.
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].url.searchParams.get('nextPageToken'), null);
+  assert.equal(seen[1].url.searchParams.get('nextPageToken'), 'page-2');
+  assert.equal(seen[1].url.searchParams.get('jql'), seen[0].url.searchParams.get('jql'));
+  assert.equal(seen[1].auth, seen[0].auth);
+
+  // No match on any page: every page is read until no token is left.
+  seen.length = 0;
+  assert.equal(await t.find('P2/S-15', 'H-2'), null);
+  assert.deepEqual(seen.map((c) => c.url.searchParams.get('nextPageToken')), [null, 'page-2', 'page-3']);
+});
+
+test('jira find stops with an error when a page token repeats', async () => {
+  const jiraTracker = await loadJira();
+  // A faulty server: page-a, page-b, then page-a again, and no page holds the finding.
+  const next = { '': 'page-a', 'page-a': 'page-b', 'page-b': 'page-a' };
+  const { seen, fetchImpl } = jiraFetch((c) => {
+    if (seen.length > 20) throw new Error('the search did not stop');
+    const token = c.url.searchParams.get('nextPageToken') ?? '';
+    return { json: { issues: [jiraIssue(seen.length, '[P2/S-15] H-10: other')], nextPageToken: next[token], isLast: false } };
+  });
+  const t = jiraTracker(jiraCfg(), JIRA_ENV, fetchImpl);
+  await assert.rejects(t.find('P2/S-15', 'H-1'), (e) => {
+    assert.ok(e instanceof TrackerError, String(e));
+    assert.ok(e.message.includes('page-a'), e.message);
+    return true;
+  });
+  assert.deepEqual(seen.map((c) => c.url.searchParams.get('nextPageToken')), [null, 'page-a', 'page-b']);
+
+  // A token that repeats at once ends the search as well.
+  const same = jiraFetch(() => {
+    if (same.seen.length > 20) throw new Error('the search did not stop');
+    return { json: { issues: [], nextPageToken: 'page-same', isLast: false } };
+  });
+  const t2 = jiraTracker(jiraCfg(), JIRA_ENV, same.fetchImpl);
+  await assert.rejects(t2.find('P2/S-15', 'H-1'), (e) => e instanceof TrackerError && e.message.includes('page-same'));
+  assert.equal(same.seen.length, 2);
+});
+
+test('jira find stops with an error after 200 pages that each give a new token', async () => {
+  const jiraTracker = await loadJira();
+  // A faulty server: every page gives a token it has not given before, and no page holds the finding.
+  const { seen, fetchImpl } = jiraFetch(() => {
+    if (seen.length > 250) throw new Error('the search did not stop');
+    return { json: { issues: [jiraIssue(seen.length, '[P2/S-15] H-10: other')], nextPageToken: `page-${seen.length + 1}`, isLast: false } };
+  });
+  const t = jiraTracker(jiraCfg(), JIRA_ENV, fetchImpl);
+  await assert.rejects(t.find('P2/S-15', 'H-1'), (e) => {
+    assert.ok(e instanceof TrackerError, String(e));
+    assert.equal(e.message, 'jira find failed: the search still gave a page token after 200 pages; stopped');
+    return true;
+  });
+  assert.equal(seen.length, 200);
+  assert.equal(seen[0].url.searchParams.get('nextPageToken'), null);
+  assert.equal(seen[199].url.searchParams.get('nextPageToken'), 'page-200');
+});
+
+test('jira find prints no API token when Jira sends it back as a page token', async () => {
+  const jiraTracker = await loadJira();
+  const token = 'tok-SECRET-9f8e7d';
+  // A faulty server: every page gives the API token as its page token, so the token repeats.
+  const { seen, fetchImpl } = jiraFetch(() => {
+    if (seen.length > 20) throw new Error('the search did not stop');
+    return { json: { issues: [], nextPageToken: token, isLast: false } };
+  });
+  const t = jiraTracker(jiraCfg(), { JIRA_EMAIL: 'bot@acme.test', JIRA_API_TOKEN: token }, fetchImpl);
+  await assert.rejects(t.find('P2/S-15', 'H-1'), (e) => {
+    assert.ok(e instanceof TrackerError, String(e));
+    assert.match(e.message, /^jira find failed: the search gave the page token /);
+    const shown = `${e.message}\n${e.stack}\n${e.stderr ?? ''}\n${JSON.stringify(e)}`;
+    assert.ok(!shown.includes(token), shown);
+    return true;
+  });
+  assert.equal(seen.length, 2);
+});
+
+// A Jira that keeps the issues it is asked to open and answers every search with all of them.
+function keepingJira() {
+  const issues = [];
+  const { seen, fetchImpl } = jiraFetch((c) => {
+    if (c.method === 'POST' && c.url.pathname === '/rest/api/3/issue') {
+      const n = issues.length + 1;
+      issues.push({ ...jiraIssue(10000 + n, c.body.fields.summary), key: `SK-${n}` });
+      return { status: 201, json: { id: String(10000 + n), key: `SK-${n}` } };
+    }
+    if (c.method === 'GET' && c.url.pathname === '/rest/api/3/search/jql') return { json: { issues, isLast: true } };
+    return { status: 404, json: { errorMessages: ['no such route'] } };
+  });
+  const opened = () => seen.filter((c) => c.method === 'POST' && c.url.pathname === '/rest/api/3/issue');
+  return { issues, seen, opened, fetchImpl };
+}
+
+test('declineFinding with a jira tracker resolves to the issue and lists it in the pull request body', async () => {
+  const jiraTracker = await loadJira();
+  await withDeclineKit(async ({ root, cfg, id, host }) => {
+    const jira = keepingJira();
+    const withJira = { ...cfg, tracker: jiraCfg().tracker };
+    const tracker = jiraTracker(withJira, JIRA_ENV, jira.fetchImpl);
+    const url = `${JIRA_BASE}/browse/SK-1`;
+
+    const first = declineFinding(root, withJira, host, tracker, id, 'H-1');
+    assert.equal(typeof first?.then, 'function', 'a promise with an asynchronous tracker');
+    assert.deepEqual(await first, { url, created: true, state: 'open' });
+    assert.equal(jira.opened().length, 1);
+    assert.equal(jira.opened()[0].body.fields.summary, `[${id}] H-1: a long function`);
+    assert.equal(jira.opened()[0].body.fields.project.key, 'SK');
+    assert.equal(getSection(host.getPullRequest(1).body, 'Should-haves declined'), url);
+
+    const again = declineFinding(root, withJira, host, tracker, id, 'H-1');
+    assert.equal(typeof again?.then, 'function');
+    assert.deepEqual(await again, { url, created: false, state: 'open' });
+    assert.equal(jira.opened().length, 1, 'no second issue');
+    const body = host.getPullRequest(1).body;
+    assert.equal(getSection(body, 'Should-haves declined'), url);
+    assert.equal(body.split(url).length - 1, 1, 'the body lists the URL once');
+
+    // An issue done in Jira reads as closed and is not opened again.
+    jira.issues[0].fields.status.statusCategory.key = 'done';
+    assert.deepEqual(await declineFinding(root, withJira, host, tracker, id, 'H-1'), { url, created: false, state: 'closed' });
+    assert.equal(jira.opened().length, 1);
+  });
+});
+
+test('build decline with a jira tracker prints already filed and opens no second issue', async () => {
+  const { main } = await import('../src/cli/index.js');
+  await withDeclineKit(async ({ root, id, hostDir }) => {
+    const file = path.join(root, '.slicekit', 'config.json');
+    fs.writeFileSync(file, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), tracker: jiraCfg().tracker }, null, 2)}\n`);
+    const env = { ...process.env, ...JIRA_ENV, SLICEKIT_GITHOST_FIXTURE: hostDir };
+    delete env.SLICEKIT_TRACKER_FIXTURE;
+    const jira = keepingJira();
+    const url = `${JIRA_BASE}/browse/SK-1`;
+    const run = async () => {
+      const out = [];
+      const err = [];
+      const code = await main(['build', 'decline', id, 'H-1'], { cwd: root, env, stdout: (s) => out.push(s), stderr: (s) => err.push(s) });
+      return { code, stdout: out.join(''), stderr: err.join('') };
+    };
+
+    // The network is this test's fetch, put back whatever happens.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = jira.fetchImpl;
+    try {
+      const first = await run();
+      assert.equal(first.stderr, '');
+      assert.equal(first.code, 0);
+      assert.equal(first.stdout, `${url}\n`);
+      assert.equal(jira.opened().length, 1);
+
+      const second = await run();
+      assert.equal(second.stderr, '');
+      assert.equal(second.code, 0);
+      assert.equal(second.stdout, `${url} (already filed)\n`);
+      assert.equal(jira.opened().length, 1, 'no second issue');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    assert.ok(jira.seen.length > 0 && jira.seen.every((c) => c.url.origin === JIRA_BASE), 'every request went to the fake');
+    const body = fixtureHost(hostDir).getPullRequest(1).body;
+    assert.equal(body.split(url).length - 1, 1, 'the body lists the URL once');
+  });
 });
