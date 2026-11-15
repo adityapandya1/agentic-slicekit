@@ -492,6 +492,44 @@ test('examples/walkthrough uses no banned phrase and says it is not an example p
   assert.equal(fs.existsSync(path.join(WALK, '.slicekit')), false);
 });
 
+// P6/S-55 (REQ-5.7, D-98): the walkthrough moves from the README to docs/walkthrough.md, its commands
+// unchanged. `readWalkthrough(root)` reads them from <root>/docs/walkthrough.md, and a refusal names
+// that file's line. The digest is of the 44 commands the README's walkthrough held before the move,
+// joined by newlines.
+const WALKTHROUGH_COMMANDS_SHA1 = '152f97484df3c8d59d55ac7b3f32466ca41042dd';
+
+test("the walkthrough's commands are read from docs/walkthrough.md", async () => {
+  const helper = await import('./helpers/walkthrough.js');
+  assert.equal(typeof helper.readWalkthrough, 'function', 'test/helpers/walkthrough.js exports no readWalkthrough');
+
+  // A root whose README has no walkthrough: the commands come from docs/walkthrough.md.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-walkfile-'));
+  try {
+    fs.mkdirSync(path.join(root, 'docs'));
+    fs.writeFileSync(path.join(root, 'README.md'), '# Kit\n\n## Quick start\n\n```sh\nnot-read\n```\n');
+    const doc = (...block) => ['# Walkthrough', '', '## Walkthrough', '', ...block, ''].join('\n');
+    fs.writeFileSync(path.join(root, 'docs', 'walkthrough.md'), doc('```sh', 'npm i', '', 'cd demo', '```', '', '```text', 'printed', '```'));
+    assert.deepEqual(helper.readWalkthrough(root), [
+      { line: 6, command: 'npm i' },
+      { line: 8, command: 'cd demo' },
+    ]);
+    // A refusal names docs/walkthrough.md and its line.
+    fs.writeFileSync(path.join(root, 'docs', 'walkthrough.md'), doc('```sh', 'false; true', '```'));
+    assert.throws(() => helper.readWalkthrough(root), { message: /^docs\/walkthrough\.md:6: .*";"/ });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
+  // The kit's own: the README holds no walkthrough, and docs/walkthrough.md holds its commands unchanged.
+  const readme = fs.readFileSync(path.join(KIT_ROOT, 'README.md'), 'utf8');
+  assert.doesNotMatch(readme, /^##\s+Walkthrough\s*$/m, 'README.md still has ## Walkthrough');
+  const commands = helper.readWalkthrough(KIT_ROOT).map((c) => c.command);
+  assert.equal(commands.length, 44);
+  assert.equal(commands[0], 'KIT="$(pwd -W 2>/dev/null || pwd)"');
+  assert.equal(commands.at(-1), 'rm -rf "$WORK"');
+  assert.equal(createHash('sha1').update(commands.join('\n')).digest('hex'), WALKTHROUGH_COMMANDS_SHA1);
+});
+
 // The README's own walkthrough, run as a reader runs it from a checkout of the kit: every command
 // exits 0, and the last `status` shows the slice merged. A failing step names its README line.
 test("the README walkthrough's commands exit 0 on examples/backend", { timeout: 900_000 }, () => {

@@ -190,3 +190,23 @@ test('the guide index holds no command reference and links no PDF', () => {
   }
   assert.deepEqual(linking, [], 'these lines link a PDF file');
 });
+
+// P6/S-55 (REQ-5.8, D-97, D-98): the guide index opens as the README does: its heading, then the
+// README's one line, then one paragraph of at most four sentences on what the guide holds.
+test("the guide index opens with the README's line", () => {
+  const ONE_LINE = 'A closed-loop framework for spec-driven development with coding agents.';
+  const index = fs.readFileSync(path.join(GUIDE, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  // Its paragraphs: runs of non-blank lines.
+  const paragraphs = index.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  assert.equal(paragraphs[0], '# slicekit guide', 'the index heading');
+  assert.equal(paragraphs[1], ONE_LINE, "the line after the heading is not the README's");
+  const about = paragraphs[2] ?? '';
+  assert.doesNotMatch(about, /^#/, 'no paragraph follows the line');
+  const sentences = about.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z`[])/);
+  assert.ok(sentences.length <= 4, `the paragraph after the line has ${sentences.length} sentences: ${about}`);
+  assert.match(about, /guide/i, 'the paragraph does not say what the guide holds');
+
+  // The same line as the README's.
+  const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(readme.split('\n').some((l) => l.trim() === ONE_LINE), 'README.md has no line "A closed-loop framework ..."');
+});

@@ -195,3 +195,195 @@ test('docs/adapters.md names every slash command template in its commands row', 
   const leftOut = templates.filter((file) => !named(file));
   assert.deepEqual(leftOut, [], 'the commands row of docs/adapters.md leaves out these templates');
 });
+
+// ---- P6/S-55 (REQ-5.7, D-98): the front page ----
+
+const ONE_LINE = 'A closed-loop framework for spec-driven development with coding agents.';
+const BANNER = 'docs/assets/slicekit-banner.png';
+const GRAPH_QUERIES = ['trace', 'impact', 'history', 'uncovered', 'shipped'];
+
+// Lines with their ends trimmed, blank lines and lone <p>/<div> wrapper tags left out.
+const WRAPPER = /^<\/?(p|div)(\s[^>]*)?>$/i;
+const nonBlank = (lines) => lines.map((l) => l.trim()).filter((l) => l !== '' && !WRAPPER.test(l));
+
+// The text of the README before `## Quick start`: what a reader sees before any install step.
+function opening(text) {
+  const lines = text.split('\n');
+  const end = lines.findIndex((l) => l.trim() === '## Quick start');
+  return end < 0 ? null : lines.slice(0, end).join('\n');
+}
+
+// Why the README's opening breaks D-98: a version, a count of slices, tests or phases, or a list of
+// phases. [] when it holds none.
+function openingProblems(text) {
+  const open = opening(text);
+  if (open === null) return ['the README has no ## Quick start'];
+  const problems = [];
+  const version = /\b\d+\.\d+\.\d+\b/.exec(open);
+  if (version) problems.push(`a version number: ${version[0]}`);
+  const count = /\b(\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty)\s+(slices?|tests?|phases?)\b/i.exec(open);
+  if (count) problems.push(`a count: ${count[0]}`);
+  const phase = /\bPhases?\s+(\d+|one|two|three|four|five|six)\b/i.exec(open);
+  if (phase) problems.push(`a list of phases: ${phase[0]}`);
+  return problems;
+}
+
+test('the README opens with the banner, the one line, the badges and Why, and the banner file exists', () => {
+  // The banner is a PNG in the repository.
+  const banner = new URL(`../${BANNER}`, import.meta.url);
+  assert.ok(fs.existsSync(banner), `${BANNER} does not exist`);
+  assert.deepEqual([...fs.readFileSync(banner).subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], `${BANNER} is not a PNG`);
+
+  const lines = readme.split('\n');
+  const whyAt = lines.findIndex((l) => l.trim() === '## Why');
+  assert.ok(whyAt >= 0, 'the README has no ## Why');
+  const top = nonBlank(lines.slice(0, whyAt));
+  assert.ok(top.length >= 3, top.join('\n'));
+  // First the banner image.
+  const file = BANNER.replace(/[.]/g, '\\.');
+  const image = new RegExp(`(!\\[[^\\]]*\\]\\((\\./)?${file}\\))|(<img\\s[^>]*src="(\\./)?${file}")`);
+  assert.match(top[0], image, 'the README does not open with the banner image');
+  // Then the one line.
+  assert.equal(top[1], ONE_LINE, 'the line after the banner');
+  // Then the three badges, and nothing else before ## Why.
+  const badges = top.slice(2).join('\n');
+  const images = badges.match(/!\[|<img\s/g) ?? [];
+  assert.equal(images.length, 3, `between the line and ## Why: ${badges}`);
+  assert.match(badges, /img\.shields\.io\/npm\/v\/slicekit|badge\.fury\.io\/js\/slicekit/, 'no npm version badge');
+  assert.match(
+    badges,
+    /github\.com\/adityapandya1\/agentic-slicekit\/actions\/workflows\/[\w.-]+\.ya?ml\/badge\.svg|img\.shields\.io\/github\/actions\/workflow\/status\/adityapandya1\/agentic-slicekit/,
+    'no CI workflow badge',
+  );
+  assert.match(badges, /img\.shields\.io\/(badge\/licen[sc]e-MIT|npm\/l\/slicekit|github\/license\/adityapandya1\/agentic-slicekit)/i, 'no MIT license badge');
+  for (const l of top.slice(2)) assert.match(l, /^(\[!\[|!\[|<a\s|<img\s)/, `not a badge: ${l}`);
+
+  // Why: at most five lines, on prompts and rule files the agent can skip against the checks outside it.
+  const why = nonBlank(section('Why').split('\n'));
+  assert.ok(why.length >= 1 && why.length <= 5, `## Why has ${why.length} lines`);
+  const prose = why.join(' ');
+  for (const word of [/prompts?/i, /rule files?/i, /\bCLI\b/, /\bhooks\b/i, /\bCI\b/]) assert.match(prose, word);
+});
+
+test("the README's opening holds no version number, no count and no list of phases", () => {
+  const clean = ['![slicekit](docs/assets/slicekit-banner.png)', '', ONE_LINE, '', '## Why', '', 'It checks each step.', '', '## Quick start', '', 'npm install 0.6.0'].join('\n');
+  assert.deepEqual(openingProblems(clean), [], 'a version after ## Quick start is not in the opening');
+  const withIt = (line) => clean.replace('It checks each step.', line);
+  assert.deepEqual(openingProblems(withIt('Version 0.6.0 is out.')), ['a version number: 0.6.0']);
+  assert.deepEqual(openingProblems(withIt('It was built in 55 slices.')), ['a count: 55 slices']);
+  assert.deepEqual(openingProblems(withIt('It has 1200 tests.')), ['a count: 1200 tests']);
+  assert.deepEqual(openingProblems(withIt('It took five phases.')), ['a count: five phases']);
+  assert.deepEqual(openingProblems(withIt('Phase 3 is the graph.')), ['a list of phases: Phase 3']);
+  assert.deepEqual(openingProblems(withIt('Phases 1 to 5 work.')), ['a list of phases: Phases 1']);
+  assert.deepEqual(openingProblems(clean.replace('## Quick start', '## Install')), ['the README has no ## Quick start']);
+
+  assert.deepEqual(openingProblems(readme), [], 'the README opening');
+});
+
+// A transcript line as the reader reads it: no leading space or tree marker, inner runs of spaces as one.
+const norm = (l) => l.replace(/^[\s⎿│]+/, '').replace(/\s+/g, ' ').trim();
+// A slash command typed in the transcript, after an optional prompt marker; null for any other line.
+const typed = (l) => /^\s*(?:[>$❯]\s*)?(\/slicekit\b.*)$/.exec(l)?.[1].trim() ?? null;
+
+// The fenced blocks of a markdown text: [{lang, lines}].
+function codeBlocks(text) {
+  const blocks = [];
+  let cur = null;
+  for (const l of text.split('\n')) {
+    if (cur === null) {
+      const m = /^\s*(`{3,}|~{3,})\s*([\w-]*)/.exec(l);
+      if (m) cur = { fence: m[1], lang: m[2].toLowerCase(), lines: [] };
+    } else if (l.trim().startsWith(cur.fence) && l.trim().replace(/[`~]/g, '') === '') {
+      blocks.push({ lang: cur.lang, lines: cur.lines });
+      cur = null;
+    } else {
+      cur.lines.push(l);
+    }
+  }
+  return blocks;
+}
+
+test('See it in action comes before Quick start, and each build output line is one the walkthrough prints', () => {
+  const names = headings();
+  assert.ok(names.includes('See it in action'), `no ## See it in action: ${names.join(' | ')}`);
+  assert.equal(names.indexOf('See it in action'), names.indexOf('Why') + 1, names.join(' | '));
+  assert.ok(names.indexOf('See it in action') < names.indexOf('Quick start'), names.join(' | '));
+
+  const blocks = codeBlocks(section('See it in action'));
+  assert.equal(blocks.length, 1, `See it in action holds ${blocks.length} code blocks`);
+  const [block] = blocks;
+  assert.equal(block.lang, 'text');
+  assert.ok(block.lines.length <= 40, `the transcript has ${block.lines.length} lines`);
+
+  // The six slash commands, in order.
+  const commands = block.lines.map(typed).filter((c) => c !== null);
+  const order = ['/slicekit intake', '/slicekit specify', '/slicekit plan', '/slicekit build P1/S-01', '/slicekit review', '/slicekit release'];
+  let at = -1;
+  for (const c of order) {
+    const i = commands.findIndex((x, j) => j > at && (x === c || x.startsWith(`${c} `)));
+    assert.ok(i > at, `the transcript does not run ${c} in order: ${commands.join(' | ')}`);
+    at = i;
+  }
+
+  // The output of the build step: its lines up to the next slash command.
+  const start = block.lines.findIndex((l) => typed(l)?.startsWith('/slicekit build P1/S-01'));
+  const rest = block.lines.slice(start + 1);
+  const stop = rest.findIndex((l) => typed(l) !== null);
+  const output = rest.slice(0, stop < 0 ? undefined : stop).map(norm).filter((l) => l !== '');
+  assert.ok(output.length >= 1, 'the build step shows no output');
+
+  // The lines the walkthrough prints, as docs/walkthrough.md records them in its ```text blocks.
+  const walkFile = new URL('../docs/walkthrough.md', import.meta.url);
+  assert.ok(fs.existsSync(walkFile), 'docs/walkthrough.md does not exist');
+  const walk = fs.readFileSync(walkFile, 'utf8').replace(/\r\n/g, '\n');
+  const printed = new Set(codeBlocks(walk).filter((b) => b.lang === 'text').flatMap((b) => b.lines.map(norm)).filter((l) => l !== ''));
+  assert.ok(printed.size > 0, 'docs/walkthrough.md records no output in a ```text block');
+  const unknown = output.filter((l) => !printed.has(l));
+  assert.deepEqual(unknown, [], 'build output lines the walkthrough does not print');
+});
+
+// The slash command a template under templates/claude-code/commands/ gives: `/slicekit` for
+// slicekit.md, `/slicekit <stage>` for slicekit-<stage>.md.
+const slashOf = (file) => (file === 'slicekit.md' ? '/slicekit' : `/slicekit ${/^slicekit-([a-z-]+)\.md$/.exec(file)[1]}`);
+
+// The templates and graph queries the README's "What it covers" table leaves out, and a header that
+// is not stage, command and what you get. A stage command counts as `/slicekit <stage>` or
+// `/slicekit-<stage>`; the bare `/slicekit` counts only where no stage follows it.
+function coversMissing(text, templates) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => l.trim() === '## What it covers');
+  if (start < 0) return ['the README has no ## What it covers'];
+  const end = lines.findIndex((l, i) => i > start && /^##?\s/.test(l));
+  const rows = lines.slice(start + 1, end < 0 ? undefined : end).filter((l) => l.trim().startsWith('|'));
+  if (rows.length < 3) return ['## What it covers has no table'];
+  const head = rows[0].split('|').map((c) => c.trim()).filter(Boolean);
+  const missing = [];
+  if (!(head.length === 3 && /stage/i.test(head[0]) && /command/i.test(head[1]) && /get/i.test(head[2]))) missing.push(`table header: ${rows[0].trim()}`);
+  const table = rows.slice(2).join('\n');
+  for (const file of templates) {
+    const found =
+      file === 'slicekit.md'
+        ? /\/slicekit(?![\w-]|[ \t]+[a-z])/.test(table)
+        : new RegExp(`/slicekit[ -]${slashOf(file).slice('/slicekit '.length)}(?![\\w-])`).test(table);
+    if (!found) missing.push(file);
+  }
+  for (const q of GRAPH_QUERIES) if (!new RegExp(`(^|[^\\w-])${q}([^\\w-]|$)`).test(table)) missing.push(q);
+  return missing;
+}
+
+test('What it covers names every command template and the graph queries', () => {
+  const templates = fs.readdirSync(new URL('../templates/claude-code/commands/', import.meta.url)).filter((f) => f.endsWith('.md')).sort();
+  assert.ok(templates.length >= 10 && templates.includes('slicekit.md'), templates.join(' '));
+
+  // An in-memory README with a row per template and one for the graph queries.
+  const row = (file) => `| stage | \`${slashOf(file)}\` | what it gives |`;
+  const queries = `| graph | ${GRAPH_QUERIES.map((q) => `\`slicekit ${q}\``).join(', ')} | answers |`;
+  const page = (files, q = queries) => ['# Kit', '', '## What it covers', '', '| Stage | Command | What you get |', '|---|---|---|', ...files.map(row), q, '', '## Quick start', ''].join('\n');
+  assert.deepEqual(coversMissing(page(templates), templates), []);
+  // One template left out is named; `/slicekit build` does not count as the bare `/slicekit`.
+  assert.deepEqual(coversMissing(page(templates.filter((f) => f !== 'slicekit-gaps.md')), templates), ['slicekit-gaps.md']);
+  assert.deepEqual(coversMissing(page(templates.filter((f) => f !== 'slicekit.md')), templates), ['slicekit.md']);
+  assert.deepEqual(coversMissing(page(templates, queries.replace(', `slicekit shipped`', '')), templates), ['shipped']);
+
+  assert.deepEqual(coversMissing(readme, templates), [], 'the README leaves out of What it covers');
+});
