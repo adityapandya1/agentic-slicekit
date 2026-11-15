@@ -1,0 +1,298 @@
+{
+  "slice": "P5/S-22",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 149,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+    "headSha": "2c88ba13e1bd2154ceb106eb962686c41c4d1b16"
+  },
+  "redCommit": "08562fde37368e058aca4862ae135afee23b79de",
+  "frozenTests": [
+    "test/observability.test.js",
+    "test/workflow.test.js"
+  ],
+  "unfrozen": [
+    "test/observability.test.js",
+    "test/workflow.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-22-r1.md",
+      "blockers": 2,
+      "independent": false,
+      "headSha": "e0cd33d825ddfcb564a5ba5dab789155ee145924"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-22-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P5-S-22i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "49841fe3fbe314d4defbe3c45925552d6df9a6d4"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P5-S-22i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "d8d8f19a7c7ca29cd6ff292d7f0bf9a92b5ca2a8"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P5-S-22i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2c88ba13e1bd2154ceb106eb962686c41c4d1b16"
+    }
+  ],
+  "ci": {
+    "sha": "da303c56dabf928aa2021d1a5015421663e5c040",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43667534968"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T01:02:48.870Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "08562fde37368e058aca4862ae135afee23b79de",
+        "testExit": 1,
+        "tests": [
+          "test/observability.test.js",
+          "test/workflow.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T01:02:49.397Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:09:43.726Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "e0cd33d825ddfcb564a5ba5dab789155ee145924",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:12:58.805Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-22-r1.md",
+          "blockers": 2,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T01:13:04.945Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/observability.test.js",
+        "amendCommit": "3f43cf0bb26fee2aa460b7d7a11c5b208b81856c",
+        "reason": "review round 1: tests added for B-1, B-2, H-1, H-3, H-4"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T01:13:06.273Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "29218519df1309a4201ab7f8963b83c72168047b",
+        "reason": "review round 1: the golden file test of H-2"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:26:26.354Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:31:58.464Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-22-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:40:37.347Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "49841fe3fbe314d4defbe3c45925552d6df9a6d4",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:47:06.969Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P5-S-22i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T01:54:18.023Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "282cb216762429e159b971dde0fa736346cfed82",
+        "reason": "reviews H-8 to H-11: the steps section fails closed; three assertions added by earlier fixes change to expect the refusal"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T01:57:16.921Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "e326cfabc2c384f7a4715f25f1b95e2f2f574a8f",
+        "reason": "Task 1's interface text gives the table's exact form (reviews H-8 to H-11)"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:01:13.679Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "d8d8f19a7c7ca29cd6ff292d7f0bf9a92b5ca2a8",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T02:05:44.944Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P5-S-22i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:16:49.476Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "2c88ba13e1bd2154ceb106eb962686c41c4d1b16",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T02:23:01.414Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P5-S-22i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T02:33:07.859Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "da303c56dabf928aa2021d1a5015421663e5c040",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43667534968"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T02:33:10.487Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 // The GitHub Actions workflow init writes (REQ-3.11): a gate, a job per declared team command, a job
-// per observability step (D-20), the ready label and the post-merge state sync (D-12), which opens a
+// per observability step of config and of observability.md (D-20, D-56), the ready label and the post-merge state sync (D-12), which opens a
 // [sync] pull request and starts the workflow on its branch with workflow_dispatch (D-78, D-80). The YAML is
 // generated as text; every free-text value goes through yamlScalar so a quote, colon or hash in a
 // team's command cannot change the document's structure.
@@ -7,8 +7,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_RUNS_ON, DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, MATRIX_OS, shardErrors, shardRunnerErrors } from './config.js';
+import { ConfigError, DEFAULT_RUNS_ON, DEFAULT_TIMEOUT_MINUTES, GITHUB_EXPRESSION, LINE_SEPARATOR, MATRIX_OS, shardErrors, shardRunnerErrors } from './config.js';
 import { readText } from './fs.js';
+import { allSteps, docSteps } from './observability.js';
+import { kitPaths } from './paths.js';
 import { substitute } from './render/entry.js';
 
 export const WORKFLOW_TEMPLATE = fileURLToPath(new URL('../templates/workflow/slicekit.yml', import.meta.url));
@@ -277,7 +279,9 @@ function fillFreeText(line, vars) {
   return m[1] + yamlScalar(substitute(m[2], vars, FREE_TEXT_KEYS));
 }
 
-export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8'), root = null } = {}) {
+// `steps` are the observability steps to render, one obs-<n> job each in that order: config's own when
+// the caller passes none; workflowState passes config's followed by those of observability.md (D-56).
+export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileSync(WORKFLOW_TEMPLATE, 'utf8'), root = null, steps = cfg.ci?.observabilitySteps ?? [] } = {}) {
   if (/[\r\n]/.test(cfg.cli)) throw new Error('cli: must be one line to render the workflow');
   const v = checkPins(pins);
   const matrix = cfg.ci?.matrix === true;
@@ -294,7 +298,6 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   const shards = given && (matrix ? given : { [runsOn]: Object.values(given)[0] });
   const commands = COMMAND_ORDER.filter((name) => typeof cfg.commands[name] === 'string' && cfg.commands[name].trim() !== '');
   const jdk = setupJavaSteps(v, cfg.ci?.java ?? DEFAULT_JAVA, javaBuildTool(root, commands.map((c) => cfg.commands[c])), root);
-  const steps = cfg.ci?.observabilitySteps ?? [];
   const texts = [cfg.cli, ...commands.map((c) => cfg.commands[c]), ...steps.map((s) => s.run)];
   if (texts.some((t) => GITHUB_EXPRESSION.test(t))) throw new Error('workflow: a command contains a GitHub expression; pass values through env:');
   const blocks = {
@@ -327,12 +330,25 @@ export function renderWorkflow(cfg, pins = loadPins(), { template = fs.readFileS
   return out.join('\n');
 }
 
-// The rendered workflow and the repository's copy of it (null when absent), line endings normalised.
+// The observability steps of a repository (D-56): config's, then the rows of the steps table of its
+// observability.md when the file exists. A step the workflow cannot carry, or one named in both
+// places, throws a ConfigError naming the file and line; a row with no command is a warning.
+export function workflowSteps(root, cfg) {
+  const file = kitPaths(root, cfg).observability;
+  const rel = path.relative(root, file).split(path.sep).join('/');
+  const all = allSteps(cfg, fs.existsSync(file) ? docSteps(readText(file), rel) : null);
+  if (all.errors.length > 0) throw new ConfigError(all.errors);
+  return { steps: all.steps, warnings: all.warnings };
+}
+
+// The rendered workflow and the repository's copy of it (null when absent), line endings normalised,
+// with the warnings of the steps read from observability.md.
 export function workflowState(root, cfg, pins = loadPins()) {
-  const expected = renderWorkflow(cfg, pins, { root });
+  const { steps, warnings } = workflowSteps(root, cfg);
+  const expected = renderWorkflow(cfg, pins, { root, steps });
   const file = path.join(root, WORKFLOW_PATH);
   const current = fs.existsSync(file) ? readText(file) : null;
-  return { file, expected, current };
+  return { file, expected, current, warnings };
 }
 
 // D-49: a team whose test command never reads SLICEKIT_SHARD runs the whole command in every shard.
