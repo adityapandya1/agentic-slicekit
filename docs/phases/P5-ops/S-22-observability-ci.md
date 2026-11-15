@@ -30,6 +30,8 @@ decisions: [D-20, D-56]
 
 Amended (author's standing instruction, 2026-11-15): `test/observability.test.js` and `test/workflow.test.js` gain tests for the findings of review round 1: a row holding a line separator is refused with its line (B-1), a bare pipe in a command and a row with more cells than the header are refused (B-2, H-1), the golden file `backend-doc-step.yml` is compared (H-2), two rows with one Step name are refused (H-3), and a command in a double-backtick span keeps its inner backtick only (H-4). No existing test changes.
 
+Amended (author's standing instruction, 2026-11-15): `test/workflow.test.js` is unfrozen for the golden file test of H-2.
+
 ## Expected changes
 
 `src/observability.js`, `src/config.js`, `src/workflow.js`, `src/cli/workflow.js`, `src/init.js`, `templates/instructions/commands/intake.md`, `examples/backend/docs/observability.md`, `docs/runbook.md`, `test/fixtures/golden/workflow/`, tests.
