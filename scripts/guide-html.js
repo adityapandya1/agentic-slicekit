@@ -17,9 +17,40 @@
 // The bytes depend only on the files read and on this script: no version, date, user name or path of
 // this machine, and every line ends in LF. `node:fs` and `node:path` only.
 //
-// Exit 1, naming the file and line, and nothing written: an image, a block quote, raw HTML, an
-// indented code block, a rule line, a link definition, a footnote, a task item, a table row with the
-// wrong number of cells, an open code block, a link that leads nowhere in the guide. Also exit 1: a
+// What the script converts, and nothing else (the set is closed; see `tokens` and `parse`):
+//   - a heading: one to six #, a space, the text, starting in the first column;
+//   - a paragraph: lines that start in the first column, joined by a space;
+//   - a code block between two fence lines of ``` or ~~~ that start in the first column, the first
+//     with nothing or one language name after the marks; its text is literal;
+//   - a list of - * or + items, or of numbered items that start at 1, each item's text on one or
+//     more lines, with or without blank lines between items (the list is written without them), and
+//     a list inside an item at any depth, its items starting where the text of that item starts or
+//     up to three spaces further in;
+//   - a table: a header row and rows that start with a bar, a delimiter line of dashes without
+//     colons, the same number of cells in each, and \| for a bar inside a cell;
+//   - inside a text: a code span, whose text is literal; a link [text](target) whose target holds
+//     no space, bracket or title; **strong** and *emphasis*, one inside the other; a backslash
+//     before a punctuation character, for that character; an HTML comment that begins and ends on
+//     one line, which is left out;
+//   - as the character itself: an underscore inside a word or between two spaces, a star between two
+//     spaces, a < that no letter, /, ! or ? follows, an & that begins no entity.
+//
+// Exit 1, naming the file and line, and nothing written, with or without --check, for everything
+// else. At the start of a line: a block quote, a rule line, a heading underlined with = or -, a
+// heading with no space after its # or closed by # marks, a link definition, a footnote, a task
+// item, an empty list item, an indented line outside a list (an indented code block, or a second
+// paragraph or other block inside a list item), a tab in the indentation, a code block or a heading
+// inside a list item, an indented fence line, a fence line with more than a language name, a code
+// block that is not closed, a list item indented to no level, a second list inside one item, a list
+// whose marker changes, a numbered list that does not start at 1, a table whose header row has no
+// leading bar, a table row with no leading bar or text straight after a table, a table row or
+// delimiter line with the wrong number of cells, a column alignment, a line break made by two
+// trailing spaces or a trailing backslash. Inside a text: an image, emphasis or strong written with
+// underscores, three or more stars, a star that pairs with none, strikethrough or any other tilde,
+// a reference-style link or any square bracket that is not part of a link, a link with a title or
+// with a space or bracket in its target, an HTML tag of any name, an HTML comment that does not end
+// on its line, a link in angle brackets, an HTML entity, a web address or an e-mail address written
+// bare, a code span that is not closed, a link that leads nowhere in the guide. Also exit 1: a
 // page file the index does not list, or a listed page that is missing. Exit 2: bad usage.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,31 +63,221 @@ const readText = (file) => fs.readFileSync(file, 'utf8').replace(/^﻿/, '').rep
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fail = (message) => { throw new Error(message); };
 
+// ---------------------------------------------------------------- Markdown: inline
+// The text of a heading, a paragraph, a list item or a table cell, as tokens: {t:'text',s}
+// {t:'code',s} {t:'link',raw,body,url,at} {t:'b',body} {t:'em',body}. The set is closed: a character
+// that Markdown gives a meaning and that is none of these throws a Refusal, with its place in the text.
+class Refusal extends Error {
+  constructor(what, at) { super(what); this.at = at; }
+}
+const refuse = (what, at) => { throw new Refusal(what, at); };
+
+const ASCII_PUNCT = /[!-/:-@[-`{-~]/;
+const isSpace = (c) => c === undefined || /\s/.test(c);
+const isPunct = (c) => c !== undefined && /[\p{P}\p{S}]/u.test(c);
+const isWord = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
+
+// The code span that opens at text[i]: a run of backticks, closed by the next run of the same
+// length. null when no run closes it.
+function codeSpan(text, i) {
+  let n = 0;
+  while (text[i + n] === '`') n++;
+  let k = i + n;
+  while (k < text.length) {
+    if (text[k] !== '`') { k++; continue; }
+    let m = 0;
+    while (text[k + m] === '`') m++;
+    if (m === n) return { end: k + m, body: text.slice(i + n, k) };
+    k += m;
+  }
+  return null;
+}
+
+// A run of stars opens emphasis when text follows it, and closes emphasis when text precedes it;
+// beside punctuation the other side has to be a space or punctuation, as Markdown judges it.
+const starRun = (text, i) => { let n = 0; while (text[i + n] === '*') n++; return n; };
+const opens = (text, i, n) => !isSpace(text[i + n]) && (!isPunct(text[i + n]) || isSpace(text[i - 1]) || isPunct(text[i - 1]));
+const closes = (text, i, n) => !isSpace(text[i - 1]) && (!isPunct(text[i - 1]) || isSpace(text[i + n]) || isPunct(text[i + n]));
+
+// Where the run of n stars at text[i] is closed. Between the two, a run of the other length may open
+// and close; any other star that touches text is refused.
+function starClose(text, i, n, base) {
+  let k = i + n;
+  while (k < text.length) {
+    const c = text[k];
+    if (c === '\\') { k += 2; continue; }
+    if (c === '`') {
+      const span = codeSpan(text, k);
+      if (!span) refuse('a code span that is not closed', base + k);
+      k = span.end;
+      continue;
+    }
+    if (c !== '*') { k++; continue; }
+    const m = starRun(text, k);
+    if (isSpace(text[k - 1]) && isSpace(text[k + m])) { k += m; continue; }
+    if (m === n && closes(text, k, m)) return k;
+    if (m !== n && m <= 2 && opens(text, k, m)) { k = starClose(text, k, m, base) + m; continue; }
+    refuse('stars that do not pair as emphasis or strong', base + k);
+  }
+  return refuse('emphasis or strong that is not closed', base + i);
+}
+
+function tokens(text, base = 0, inLink = false) {
+  const out = [];
+  let buf = '';
+  const flush = () => { if (buf) out.push({ t: 'text', s: buf }); buf = ''; };
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const at = base + i;
+    if (c === '\\') {
+      const next = text[i + 1];
+      if (next === undefined) refuse('a backslash at the end of the text (a line break)', at);
+      if (ASCII_PUNCT.test(next)) { buf += next; i += 2; } else { buf += c; i++; }
+    } else if (c === '`') {
+      const span = codeSpan(text, i);
+      if (!span) refuse('a code span that is not closed', at);
+      flush();
+      out.push({ t: 'code', s: span.body });
+      i = span.end;
+    } else if (c === '!' && text[i + 1] === '[') {
+      refuse('an image', at);
+    } else if (c === '[') {
+      if (inLink) refuse('a square bracket inside the text of a link', at);
+      if (text[i + 1] === '^') refuse('a footnote', at);
+      let k = i + 1;
+      while (k < text.length && text[k] !== ']') {
+        if (text[k] === '\\') { k += 2; continue; }
+        if (text[k] === '[') refuse('a square bracket inside square brackets', base + k);
+        if (text[k] === '`') {
+          const span = codeSpan(text, k);
+          if (!span) refuse('a code span that is not closed', base + k);
+          k = span.end;
+          continue;
+        }
+        k++;
+      }
+      if (k >= text.length) refuse('a square bracket that opens no link (write \\[ for the character)', at);
+      if (text[k + 1] !== '(') refuse('square brackets with no (target) after them: a reference-style link, or text to write with \\[ and \\]', at);
+      const target = /^\(([^()\s<>]+)\)/.exec(text.slice(k + 1));
+      if (!target) refuse('a link whose target holds a title, a space, a bracket or nothing', at);
+      flush();
+      const raw = text.slice(i + 1, k);
+      out.push({ t: 'link', raw, body: tokens(raw, at + 1, true), url: target[1], at });
+      i = k + 1 + target[0].length;
+    } else if (c === ']') {
+      refuse('a square bracket that closes no link (write \\] for the character)', at);
+    } else if (c === '*') {
+      const n = starRun(text, i);
+      if (isSpace(text[i - 1]) && isSpace(text[i + n])) { buf += text.slice(i, i + n); i += n; continue; }
+      if (n > 2) refuse('emphasis written with three or more stars', at);
+      if (!opens(text, i, n)) refuse('a star that opens no emphasis (write \\* for the character)', at);
+      const end = starClose(text, i, n, base);
+      flush();
+      out.push({ t: n === 2 ? 'b' : 'em', body: tokens(text.slice(i + n, end), at + n, inLink) });
+      i = end + n;
+    } else if (c === '_') {
+      let n = 0;
+      while (text[i + n] === '_') n++;
+      const inWord = isWord(text[i - 1]) && isWord(text[i + n]);
+      const alone = isSpace(text[i - 1]) && isSpace(text[i + n]);
+      if (!inWord && !alone) refuse('emphasis or strong written with underscores (write * or **, or \\_ for the character)', at);
+      buf += text.slice(i, i + n);
+      i += n;
+    } else if (c === '~') {
+      refuse('strikethrough (write \\~ for the character)', at);
+    } else if (c === '<' && /[A-Za-z/!?]/.test(text[i + 1] ?? '')) {
+      refuse('an HTML tag, an HTML comment that does not end on its line or a link in angle brackets (write \\< for the character)', at);
+    } else if (c === '&' && /^&(?:#\d+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/.test(text.slice(i, i + 40))) {
+      refuse('an HTML entity (write \\& for the character)', at);
+    } else if (!inLink && (c === 'h' || c === 'H' || c === 'w' || c === 'W') && !isWord(text[i - 1]) && /^(?:https?:\/\/|www\.)[^\s]/i.test(text.slice(i, i + 12))) {
+      refuse('a web address written bare (write it as a link or as a code span)', at);
+    } else if (!inLink && c === '@' && isWord(text[i - 1]) && /^@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/.test(text.slice(i, i + 80))) {
+      refuse('an e-mail address written bare (write it as a code span)', at);
+    } else {
+      buf += c;
+      i++;
+    }
+  }
+  flush();
+  return out;
+}
+
+// The line a place in a text is on. `where` is one line number, or the marks of a text joined from
+// several lines: [[offset of the line's first character, line number], ...].
+function lineAt(where, at) {
+  if (typeof where === 'number') return where;
+  let line = where[0][1];
+  for (const [offset, n] of where) if (offset <= at) line = n;
+  return line;
+}
+
+// `link` turns a link target into an href, or null for none.
+function render(toks, link, where) {
+  return toks.map((k) => {
+    if (k.t === 'text') return esc(k.s);
+    if (k.t === 'code') return `<code>${esc(k.s.trim())}</code>`;
+    if (k.t === 'link') {
+      const href = link(k.url, lineAt(where, k.at));
+      const body = render(k.body, link, where);
+      return href === null ? body : `<a href="${esc(href)}">${body}</a>`;
+    }
+    return `<${k.t}>${render(k.body, link, where)}</${k.t}>`;
+  }).join('');
+}
+const inline = (text, link, where) => render(tokens(text), link, where);
+
+const linkTokens = (toks) => toks.flatMap((k) => (k.t === 'link' ? [k] : k.body ? linkTokens(k.body) : []));
+const linksOf = (text) => linkTokens(tokens(text)).map((k) => k.url);
+const bare = (text) => text.replace(/`/g, '').trim();
+
 // ---------------------------------------------------------------- Markdown: blocks
-// Blocks, each with the line it starts on: {t:'h',level,text} {t:'p',text} {t:'code',lang,text}
-// {t:'list',ordered,items:[{text,lists}]} {t:'table',head:[],rows:[[]]}.
+// Blocks, each with the line it starts on: {t:'h',level,text} {t:'p',text,marks} {t:'code',lang,text}
+// {t:'list',ordered,items:[{text,marks,lists}]} {t:'table',head:[],rows:[[]]}.
 const FENCE = /^\s*(`{3,}|~{3,})\s*([\w-]*)\s*$/;
 const HEADING = /^(#{1,6})\s+(.+?)\s*$/;
 const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const DELIM = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
-const noComment = (line) => line.replace(/\s*<!--.*?-->/g, '');
 
-// The HTML elements a line of Markdown could carry. A placeholder such as <id> is text, not HTML.
-const HTML_TAG = /<\/?(?:a|abbr|b|blockquote|br|code|dd|del|details|div|dl|dt|em|h[1-6]|hr|i|iframe|img|ins|kbd|li|mark|ol|p|pre|s|script|small|span|strong|style|sub|summary|sup|table|tbody|td|th|thead|tr|u|ul)(?:\s[^<>]*)?\/?>/i;
+// The line without the HTML comments that begin and end on it. A code span is text and stays whole.
+function noComment(line) {
+  if (!line.includes('<!--')) return line;
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '\\') { out += line.slice(i, i + 2); i += 2; continue; }
+    if (line[i] === '`') {
+      const span = codeSpan(line, i);
+      const end = span ? span.end : line.length;
+      out += line.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (line.startsWith('<!--', i)) {
+      const close = line.indexOf('-->', i + 4);
+      if (close >= 0) { out = out.replace(/\s+$/, ''); i = close + 3; continue; }
+    }
+    out += line[i++];
+  }
+  return out;
+}
 
-// What the script does not convert, judged on one line outside a code block; null when the line holds
-// none. Code spans are text, so they are taken out first.
-function refused(line) {
-  if (/^\s{0,3}>/.test(line)) return 'a block quote';
-  if (/^\s{0,3}(?:-{3,}|={3,}|\*{3,}|_{3,}|(?:[-*_]\s+){2,}[-*_])\s*$/.test(line)) return 'a rule line or an underlined heading';
-  if (/^\s{0,3}\[[^\]]+\]:\s/.test(line)) return 'a link definition';
-  if (/^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s/.test(line)) return 'a task item';
-  const text = line.replace(/(`+)[^]*?\1(?!`)/g, '');
-  if (/!\[[^\]]*\][([]/.test(text)) return 'an image';
-  if (/\[\^[^\]]+\]/.test(text)) return 'a footnote';
-  if (/<[a-z][a-z0-9+.-]*:\/\/[^>\s]*>/i.test(text)) return 'a link in angle brackets';
-  if (/<!--|-->/.test(text)) return 'an HTML comment that does not end on its line';
-  if (HTML_TAG.test(text)) return 'raw HTML';
+// What the script does not convert, judged on the shape of one line outside a code block; null when
+// the line has none of these shapes. `next` is the line after it. What stands inside the line's text
+// is judged by `tokens`.
+function refused(line, next) {
+  const s = line.trimStart();
+  if (/^\s*\t/.test(line)) return 'a tab in the indentation';
+  if (s.startsWith('>')) return 'a block quote';
+  if (/^(?:=+|-+)\s*$/.test(s)) return 'an underlined heading or a rule line';
+  if (/^([-*_])(?:\s*\1){2,}\s*$/.test(s)) return 'a rule line';
+  if (/^(?:[-*+]|\d+[.)])\s*$/.test(s)) return 'an empty list item';
+  if (/^(?:[-*+]|\d+[.)])\s+\[[ xX]\](?:\s|$)/.test(s)) return 'a task item';
+  if (/^\[\^[^\]]*\]:/.test(s)) return 'a footnote';
+  if (/^\[[^\]]*\]:/.test(s)) return 'a link definition';
+  if (/^(?:`{3,}|~{3,})/.test(s)) return 'a code fence line that holds more than a language name';
+  if (line.includes('|') && DELIM.test(line)) return 'a table delimiter line under no header row that starts with a bar';
+  if (next !== undefined && next.trim() && (/ {2,}$/.test(line) || /(?:^|[^\\])(?:\\\\)*\\$/.test(line))) return 'a line break made by two trailing spaces or a trailing backslash';
   return null;
 }
 
@@ -71,23 +292,39 @@ function parse(md, file) {
   const lines = md.split('\n');
   const out = [];
   let i = 0;
-  // The line as the blocks read it: its comments taken out, and refused when it holds a construct
-  // the script does not convert.
+  const no = (line, what) => fail(`${file}:${line}: ${what} is a Markdown construct this script does not convert`);
+  // The line as the blocks read it: its comments taken out, and refused when it has a shape the
+  // script does not convert.
   const at = (k) => {
     const line = noComment(lines[k]);
-    const what = refused(line);
-    if (what) fail(`${file}:${k + 1}: ${what} is a Markdown construct this script does not convert`);
+    const what = refused(line, lines[k + 1]);
+    if (what) no(k + 1, what);
     return line;
   };
-  const startsBlock = (k) => FENCE.test(lines[k]) || HEADING.test(lines[k]) || ITEM.test(lines[k])
-    || (lines[k].trim().startsWith('|') && k + 1 < lines.length && DELIM.test(lines[k + 1]));
+  // A text is converted whole or refused, naming the line of the character that is refused.
+  const converts = (text, where) => {
+    try {
+      tokens(text);
+    } catch (err) {
+      if (!(err instanceof Refusal)) throw err;
+      no(lineAt(where, err.at), err.message);
+    }
+  };
+  const startsTable = (k) => lines[k].startsWith('|') && k + 1 < lines.length && lines[k + 1].includes('|') && DELIM.test(lines[k + 1]);
+  const startsBlock = (k) => FENCE.test(lines[k]) || HEADING.test(lines[k]) || ITEM.test(lines[k]) || startsTable(k);
+  const INDENTED = 'an indented line outside a list (an indented code block, or a paragraph or other block inside a list item)';
 
+  // A list whose items start `indent` spaces in. An item inside another starts where the text of
+  // that item starts, or up to three spaces further in.
   function list(indent) {
     const first = ITEM.exec(lines[i]);
-    const node = { t: 'list', line: i + 1, ordered: /\d/.test(first[2]), items: [] };
+    const ordered = /\d/.test(first[2]);
+    const marker = first[2].at(-1);
+    if (ordered && Number.parseInt(first[2], 10) !== 1) no(i + 1, 'a numbered list that does not start at 1');
+    const node = { t: 'list', line: i + 1, ordered, items: [] };
     while (i < lines.length) {
       if (FENCE.test(lines[i])) {
-        if (/^\s/.test(lines[i])) fail(`${file}:${i + 1}: a code block inside a list item is a Markdown construct this script does not convert`);
+        if (/^\s/.test(lines[i])) no(i + 1, 'a code block inside a list item');
         break;
       }
       const line = at(i);
@@ -97,23 +334,46 @@ function parse(md, file) {
         break;
       }
       const m = ITEM.exec(line);
-      if (m && m[1].length > indent) { node.items.at(-1).lists.push(list(m[1].length)); continue; }
+      const last = node.items.at(-1);
       if (m && m[1].length < indent) break;
-      if (m) node.items.push({ text: m[3], lists: [], line: i + 1 });
-      else if (HEADING.test(line)) break;
-      else node.items.at(-1).text += ` ${line.trim()}`;
+      if (m && m[1].length > indent) {
+        if (m[1].length < last.offset || m[1].length > last.offset + 3) no(i + 1, `a list item ${m[1].length} spaces in (an item inside the one above starts ${last.offset} to ${last.offset + 3} spaces in)`);
+        if (last.lists.length) no(i + 1, 'a second list inside one list item');
+        last.lists.push(list(m[1].length));
+        continue;
+      }
+      if (m) {
+        if (m[2].at(-1) !== marker) no(i + 1, 'a list whose marker changes from one item to the next');
+        const offset = line.length - m[3].length;
+        if (offset - m[1].length - m[2].length > 4) no(i + 1, 'an indented code block inside a list item');
+        node.items.push({ text: m[3], marks: [[0, i + 1]], offset, lists: [], line: i + 1 });
+      } else if (!/^\s/.test(line) && (HEADING.test(line) || startsTable(i))) break;
+      else if (/^#{1,6}(?:\s|$)/.test(line.trim())) no(i + 1, 'a heading inside a list item');
+      else {
+        last.marks.push([last.text.length + 1, i + 1]);
+        last.text += ` ${line.trim()}`;
+      }
       i++;
     }
     return node;
   }
+  const convertsList = (node) => {
+    for (const it of node.items) {
+      converts(it.text, it.marks);
+      it.lists.forEach(convertsList);
+    }
+  };
 
   while (i < lines.length) {
     const fence = FENCE.exec(lines[i]);
     if (fence) {
+      if (/^\s/.test(lines[i])) no(i + 1, 'an indented code fence');
       const start = i + 1;
       const body = [];
+      // The block ends at a line of the same mark, at least as many of them, and nothing else.
+      const closing = new RegExp(`^\\s*\\${fence[1][0]}{${fence[1].length},}\\s*$`);
       i++;
-      while (i < lines.length && !(lines[i].trim().startsWith(fence[1]) && FENCE.test(lines[i]))) body.push(lines[i++]);
+      while (i < lines.length && !closing.test(lines[i])) body.push(lines[i++]);
       if (i >= lines.length) fail(`${file}:${start}: a code block is not closed`);
       i++;
       out.push({ t: 'code', line: start, lang: fence[2], text: body.join('\n') });
@@ -121,59 +381,59 @@ function parse(md, file) {
     }
     const line = at(i);
     if (!line.trim()) { i++; continue; }
+    if (/^\s/.test(line)) no(i + 1, INDENTED);
     const h = HEADING.exec(line);
-    if (h) { out.push({ t: 'h', line: i + 1, level: h[1].length, text: h[2] }); i++; continue; }
-    if (/^#{1,6}\S/.test(line) || /^#{7,}/.test(line)) fail(`${file}:${i + 1}: a heading needs one to six # and a space; this script does not convert the line`);
-    if (line.trim().startsWith('|') && i + 1 < lines.length && DELIM.test(lines[i + 1])) {
+    if (h) {
+      if (/\s#+$/.test(h[2])) no(i + 1, 'a heading closed by # marks');
+      converts(h[2], i + 1);
+      out.push({ t: 'h', line: i + 1, level: h[1].length, text: h[2] });
+      i++;
+      continue;
+    }
+    if (line.startsWith('#')) fail(`${file}:${i + 1}: a heading needs one to six # and a space, then its text; this script does not convert the line`);
+    if (startsTable(i)) {
       const head = cells(line);
       const start = i + 1;
       const rows = [];
+      const delim = cells(lines[i + 1]);
+      if (delim.length !== head.length) fail(`${file}:${i + 2}: a table's delimiter line has ${delim.length} cells, its header has ${head.length}`);
+      if (lines[i + 1].includes(':')) no(i + 2, 'a column alignment (a colon in the delimiter line of a table)');
+      head.forEach((c) => converts(c, start));
       i += 2;
-      while (i < lines.length && lines[i].trim().startsWith('|')) {
+      while (i < lines.length && lines[i].startsWith('|')) {
         const row = cells(at(i));
         if (row.length !== head.length) fail(`${file}:${i + 1}: a table row has ${row.length} cells, its header has ${head.length}`);
+        row.forEach((c) => converts(c, i + 1));
         rows.push(row);
         i++;
       }
+      if (i < lines.length && noComment(lines[i]).trim() && !startsBlock(i)) no(i + 1, 'a table row with no leading bar, or text with no blank line after a table,');
       out.push({ t: 'table', line: start, head, rows });
       continue;
     }
     const item = ITEM.exec(line);
-    if (item) { out.push(list(item[1].length)); continue; }
-    if (/^(?: {4}|\t)/.test(line)) fail(`${file}:${i + 1}: an indented code block is a Markdown construct this script does not convert`);
+    if (item) {
+      const node = list(item[1].length);
+      convertsList(node);
+      out.push(node);
+      continue;
+    }
     const start = i + 1;
-    const para = [line.trim()];
+    const marks = [[0, start]];
+    let text = line.trim();
     i++;
-    while (i < lines.length && noComment(lines[i]).trim() && !startsBlock(i)) para.push(at(i++).trim());
-    out.push({ t: 'p', line: start, text: para.join(' ') });
+    while (i < lines.length && noComment(lines[i]).trim() && !startsBlock(i)) {
+      const more = at(i);
+      if (/^\s/.test(more)) no(i + 1, INDENTED);
+      marks.push([text.length + 1, i + 1]);
+      text += ` ${more.trim()}`;
+      i++;
+    }
+    converts(text, marks);
+    out.push({ t: 'p', line: start, marks, text });
   }
   return out;
 }
-
-// ---------------------------------------------------------------- Markdown: inline
-// Code spans, links, strong and emphasis. `link` turns a link target into an href, or null for none.
-const INLINE = /(`+)([^]*?[^`])\1(?!`)|\[((?:`[^`]*`|[^\]`])*)\]\(([^)\s]*)\)|\*\*([^]+?)\*\*|\*([^\s*](?:[^*]*[^\s*])?)\*/g;
-const plain = (s) => esc(s.replace(/\\([\\`*_{}[\]()#+\-.!|<>])/g, '$1'));
-
-function inline(text, link, line) {
-  let out = '';
-  let last = 0;
-  for (const m of text.matchAll(INLINE)) {
-    out += plain(text.slice(last, m.index));
-    last = m.index + m[0].length;
-    if (m[1]) out += `<code>${esc(m[2].trim())}</code>`;
-    else if (m[4] !== undefined) {
-      const href = link(m[4], line);
-      const body = inline(m[3], link, line);
-      out += href === null ? body : `<a href="${esc(href)}">${body}</a>`;
-    } else if (m[5] !== undefined) out += `<b>${inline(m[5], link, line)}</b>`;
-    else out += `<em>${inline(m[6], link, line)}</em>`;
-  }
-  return out + plain(text.slice(last));
-}
-
-const linksOf = (text) => [...text.matchAll(INLINE)].filter((m) => m[4] !== undefined).map((m) => m[4]);
-const bare = (text) => text.replace(/`/g, '').trim();
 
 // GitHub's anchor for a heading: lower case, punctuation dropped, spaces to dashes.
 const slug = (text) => bare(text).toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replace(/ /g, '-');
@@ -220,7 +480,7 @@ function codeBlock(b, usage) {
 
 function listHtml(b, link, ind) {
   const tag = b.ordered ? 'ol' : 'ul';
-  const items = b.items.map((it) => `${ind}  <li>${inline(it.text, link, it.line)}${it.lists.map((l) => `\n${listHtml(l, link, `${ind}    `)}\n${ind}  `).join('')}</li>`);
+  const items = b.items.map((it) => `${ind}  <li>${inline(it.text, link, it.marks)}${it.lists.map((l) => `\n${listHtml(l, link, `${ind}    `)}\n${ind}  `).join('')}</li>`);
   return `${ind}<${tag}>\n${items.join('\n')}\n${ind}</${tag}>`;
 }
 
@@ -244,7 +504,7 @@ function blocksHtml(blocks, { link, ind, headings, firstClass }) {
       out.push(`${ind}<${headings[b.level]}${b.id ? ` id="${b.id}"` : ''}>${inline(b.text, link, b.line)}</${headings[b.level]}>`);
     } else if (b.t === 'p') {
       const back = /^\[[^\]]*\]\([^)]*\)$/.test(b.text) && link(linksOf(b.text)[0], b.line) === '#toc';
-      out.push(`${ind}<p${back ? ' class="back"' : first ? ` class="${first}"` : ''}>${inline(b.text, link, b.line)}</p>`);
+      out.push(`${ind}<p${back ? ' class="back"' : first ? ` class="${first}"` : ''}>${inline(b.text, link, b.marks)}</p>`);
       first = null;
     } else if (b.t === 'code') out.push(`${ind}${codeBlock(b, usage)}`);
     else if (b.t === 'list') out.push(listHtml(b, link, ind));
@@ -483,12 +743,12 @@ export function guidePage(guideDir) {
           if (!groups.length) fail(`${INDEX}:${b.line}: a table of pages comes before the first ### heading of "## Pages"`);
           b.rows.forEach((row, k) => {
             const at = b.line + 2 + k;
-            const m = [...row[0].matchAll(INLINE)].find((x) => x[4] !== undefined);
-            const page = m && pages.get(path.posix.normalize(m[4]));
+            const m = linkTokens(tokens(row[0]))[0];
+            const page = m && pages.get(path.posix.normalize(m.url));
             if (!page) fail(`${INDEX}:${at}: the Pages row "${row[0]}" links no page file of the guide`);
             if (page.listed) fail(`${INDEX}:${at}: ${page.rel} is listed twice under "## Pages"`);
             page.listed = true;
-            groups.at(-1).pages.push({ page, label: bare(m[3]) });
+            groups.at(-1).pages.push({ page, label: bare(m.raw) });
           });
         }
         continue;
