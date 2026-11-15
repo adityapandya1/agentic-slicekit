@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-54",
-  "state": "in-review",
+  "state": "changes-requested",
   "branch": null,
   "pr": {
     "number": 186,
@@ -128,6 +128,13 @@
           "independent": false
         }
       }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-15T17:05:11.335Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
