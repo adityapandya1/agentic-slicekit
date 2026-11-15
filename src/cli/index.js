@@ -124,16 +124,23 @@ export async function main(argv, io) {
     io.stdout(commandUsage(command));
     return 0;
   }
-  // REQ-5.6, D-60: an older config is migrated before the command reads it. A hook never writes the
-  // team's tracked file mid-turn; it reads the config migrated in memory (loadConfig).
+  // REQ-5.6, D-60, D-93: an older config is migrated before the command reads it. A hook never
+  // writes the team's tracked file mid-turn; it reads the config migrated in memory (loadConfig).
+  // D-93 names two more cases that read it migrated, write nothing and print one line: a slice
+  // branch or a slice's review branch (writesMigration), and `slicekit branch` of every kind, which
+  // refuses a changed tracked file; the branch is cut first and the next command writes on it.
   if (command !== COMMANDS.hook && typeof io.cwd === 'string') {
     try {
       // The branch is asked about only when the config is older, so a current one costs no git call.
       const older = migrateConfigFile(io.cwd, { write: false });
-      const write = older !== null && writesMigration(io.cwd);
+      const here = older !== null && writesMigration(io.cwd);
+      const write = here && command !== COMMANDS.branch;
       const migrated = write ? migrateConfigFile(io.cwd) : older;
       if (migrated && !write) {
-        io.stderr(`config: ${CONFIG_FILE} is at configVersion ${migrated.from} and is read as ${migrated.to} here, unwritten; it is migrated on the default branch or on a plan branch
+        const where = here
+          ? 'slicekit branch writes nothing, and the next command writes it on the branch it runs on'
+          : 'it is migrated on the default branch or on a plan branch';
+        io.stderr(`config: ${CONFIG_FILE} is at configVersion ${migrated.from} and is read as ${migrated.to} here, unwritten; ${where}
 `);
       } else if (migrated) {
         io.stderr(`config: migrated ${CONFIG_FILE} from configVersion ${migrated.from} to ${migrated.to}
@@ -153,7 +160,7 @@ export async function main(argv, io) {
 
 const CONFIG_FILE = CONFIG_PATH.split(path.sep).join('/');
 
-// Whether a command run in `cwd` may write the migrated config (review r1, H-1). On a slice branch
+// Whether a command run in `cwd` may write the migrated config (review r1, H-1; D-93). On a slice branch
 // or a slice's review branch no build step commits a changed config (`build commit` refuses a kit
 // file, `build pr` an uncommitted change), so there the config is read migrated and left as it is.
 // The one slice branch that writes is that of a slice whose Expected changes name the config:

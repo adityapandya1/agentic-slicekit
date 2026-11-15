@@ -175,10 +175,17 @@ A version number is never reused on npm, even after the version is removed, so a
 
 ## Committing a config migration
 
-A kit with a newer config version migrates `.slicekit/config.json` on the first command that is not `hook`, and prints `config: migrated .slicekit/config.json from configVersion <old> to <new>` on stderr (REQ-5.6, D-60). The file is changed in the working directory and not committed.
+A kit with a newer config version migrates `.slicekit/config.json` on a command that is not `hook`: it writes the file once and prints `config: migrated .slicekit/config.json from configVersion <old> to <new>` and one line per change on stderr (REQ-5.6, D-60). The file is changed in the working directory and not committed. In two cases the command reads the config as migrated, writes nothing and prints one line on stderr instead (D-93):
 
-- On a slice branch or a slice's review branch the command writes nothing. It reads the config as migrated and prints one line on stderr: `config: .slicekit/config.json is at configVersion <old> and is read as <new> here, unwritten; it is migrated on the default branch or on a plan branch`. No build step commits a config change for a slice that does not name the config, so an open slice stays buildable through the upgrade.
-- The exception is the slice whose Expected changes name `.slicekit/config.json`: its slice branch is written, and `slicekit build config <slice>` commits the change (D-53). Its review branch is not written.
-- A team commits the migration on a plan branch, with `slicekit pr open --title "[plan] <what>" --body-file <file> --commit "<message>" --paths .slicekit/config.json`. A human reviews and merges that pull request.
-- Cut the plan branch with `slicekit branch plan <slug>` before the newer kit is installed, then install it and run any command there. Once the newer kit is installed, `slicekit branch plan <slug>` run on the default branch migrates the file first and then refuses with `commit or stash your changes first`. First check: `git status` shows `.slicekit/config.json` as modified. A human then cuts the branch from their own terminal with `git switch -c plan/<slug>`, which carries the change, and runs `pr open` as above.
-- An open slice receives the migrated config when the default branch is merged into its branch. Until then each command in its worktree prints the line above.
+- `slicekit branch`, of every kind (`spec`, `gaps`, `plan`, `release`), writes nothing, because it refuses a changed tracked file. It prints `config: .slicekit/config.json is at configVersion <old> and is read as <new> here, unwritten; slicekit branch writes nothing, and the next command writes it on the branch it runs on`. The branch is cut first, and the next command writes the migration on it.
+- On a slice branch or a slice's review branch every command writes nothing. It prints `config: .slicekit/config.json is at configVersion <old> and is read as <new> here, unwritten; it is migrated on the default branch or on a plan branch`. No build step commits a config change for a slice that does not name the config, so an open slice stays buildable through the upgrade. The exception is the slice whose Expected changes name `.slicekit/config.json`: its slice branch is written, and `slicekit build config <slice>` commits the change (D-53). Its review branch is not written.
+
+A team commits the migration on a plan branch, with three kit commands run from the default branch after the newer kit is installed:
+
+1. `slicekit branch plan <slug>` cuts `plan/<slug>` and prints the first line above. First check: `.slicekit/config.json` still holds the older `configVersion`.
+2. Any command that is not `hook` or `branch`, for example `slicekit status`, writes the migrated config on the plan branch and prints each change.
+3. `slicekit pr open --title "[plan] <what>" --body-file <file> --commit "<message>" --paths .slicekit/config.json` commits the config and opens the pull request. A human reviews and merges it.
+
+If a command other than `slicekit branch` ran on the default branch first, the config is already written there and `slicekit branch` refuses with `commit or stash your changes first`. First check: `slicekit status` prints no `config:` line, and `configVersion` in `.slicekit/config.json` is the newer one. Undo the migration in the file until it equals the committed one: the older `configVersion`, and each key the printed change lines name as removed (`"repos": []` for version 1). Then start at step 1; step 2 migrates the file again.
+
+An open slice receives the migrated config when the default branch is merged into its branch. Until then each command in its worktree prints the second line above.
