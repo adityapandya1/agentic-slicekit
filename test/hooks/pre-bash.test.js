@@ -940,3 +940,98 @@ test('a command naming a path in agents.denyPaths is denied', () => {
     cleanup();
   }
 });
+
+// ---- P6/S-52: host-rule writes by a route rule 0b let through ----
+
+// REQ-3.14, D-88, issue #103
+test('a GraphQL mutation that writes branch protection or a ruleset is denied, and a query is allowed', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  try {
+    const mutation = (name) => `mutation { ${name}(input: {clientMutationId: "x"}) { clientMutationId } }`;
+    const named = [
+      `gh api graphql -f query='${mutation('deleteBranchProtectionRule')}'`,
+      `gh api graphql -f query='${mutation('createBranchProtectionRule')}'`,
+      `gh api graphql -F query='${mutation('updateBranchProtectionRule')}'`,
+      `gh api graphql --raw-field query='${mutation('createRepositoryRuleset')}'`,
+      `gh api graphql --field query='${mutation('updateRepositoryRuleset')}'`,
+      `gh api graphql -f query='${mutation('deleteRepositoryRuleset')}'`,
+      `gh api graphql -f id=x -f query='mutation($id: ID!) { deleteBranchProtectionRule(input: {branchProtectionRuleId: $id}) { clientMutationId } }'`,
+    ];
+    for (const cmd of named) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.match(text, /REQ-3\.14/, `${cmd}: the reason names the rule: ${text}`);
+      }
+    }
+    // A query the command text does not hold cannot be judged, so it is denied too.
+    const unseen = [
+      'gh api graphql -F query=@mutation.graphql',
+      'gh api graphql -f query="$QUERY"',
+      'gh api graphql -f query="$(cat mutation.graphql)"',
+      'gh api graphql --input body.json',
+    ];
+    for (const cmd of unseen) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.match(text, /REQ-3\.(?:2|14)/, `${cmd}: the reason names the rule: ${text}`);
+      }
+    }
+    // A query, and a mutation of something other than the host's rules, pass in the main session; from
+    // a subagent a GraphQL call is the API write rule 5 already refuses, not a host-rule write.
+    const others = [
+      "gh api graphql -f query='query { viewer { login } }'",
+      "gh api graphql -f query='{ viewer { login } }'",
+      `gh api graphql -f query='query { repository(owner: "o", name: "r") { branchProtectionRules(first: 5) { nodes { id } } } }'`,
+      `gh api graphql -f query='query { repository(owner: "o", name: "r") { rulesets(first: 5) { nodes { id } } } }'`,
+      `gh api graphql -f query='mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }'`,
+    ];
+    for (const cmd of others) {
+      assertAllow(decide(root, cmd));
+      assertDeny(decide(root, cmd, { agent: 'a1' }), AGENT);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.14, D-88, issue #104
+test('a gh api write to a ruleset through a full URL is denied', () => {
+  const { root, cleanup } = repoOn('slice/x');
+  try {
+    const writes = [
+      'gh api -X PUT https://api.github.com/repos/o/r/rulesets/1',
+      'gh api -XDELETE https://api.github.com/repos/o/r/rulesets/1',
+      'gh api -X PUT "https://api.github.com/repos/o/r/rulesets/1"',
+      'gh api --method POST https://api.github.com/repos/o/r/rulesets',
+      'gh api https://api.github.com/repos/o/r/rulesets -f name=x',
+      'gh api https://api.github.com/repos/o/r/rulesets --input ruleset.json',
+      'gh api -X PUT https://api.github.com/repos/o/r/branches/main/protection --input p.json',
+      'gh api -X POST https://api.github.com/repos/o/r/rules/branches/main',
+      'gh api -X PUT https://ghe.example.com/api/v3/repos/o/r/rulesets/1',
+      'gh api -X DELETE https://ghe.example.com/api/v3/repos/o/r/branches/main/protection',
+      'gh api https://ghe.example.com/api/v3/repos/o/r/rulesets -F enforcement=disabled',
+    ];
+    for (const cmd of writes) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.match(text, /REQ-3\.14/, `${cmd}: the reason names the rule: ${text}`);
+      }
+    }
+    const reads = [
+      'gh api -X GET https://api.github.com/repos/o/r/rulesets/1',
+      'gh api https://api.github.com/repos/o/r/rulesets',
+      'gh api --method GET https://api.github.com/repos/o/r/rulesets -F per_page=100',
+      'gh api -X GET https://ghe.example.com/api/v3/repos/o/r/rulesets/1',
+      'gh api https://ghe.example.com/api/v3/repos/o/r/branches/main/protection',
+    ];
+    for (const cmd of reads) {
+      assertAllow(decide(root, cmd));
+      assertAllow(decide(root, cmd, { agent: 'a1' }));
+    }
+    // The main session may still write other API paths through a full URL.
+    assertAllow(decide(root, 'gh api https://api.github.com/repos/o/r/issues -f title=x'));
+    assertAllow(decide(root, 'gh api -X PUT https://ghe.example.com/api/v3/repos/o/r/pulls/5/merge'));
+  } finally {
+    cleanup();
+  }
+});
