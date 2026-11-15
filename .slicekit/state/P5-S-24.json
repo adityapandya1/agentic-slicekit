@@ -12,7 +12,8 @@
     "test/readme.test.js"
   ],
   "unfrozen": [
-    "test/examples.test.js"
+    "test/examples.test.js",
+    "test/readme.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -52,6 +53,17 @@
         "unfreeze": "test/examples.test.js",
         "amendCommit": "2f261586ff137ba39d8a88016e1a9bd981816bb3",
         "reason": "copyExample stages a copied example's hooks as executable, as init does"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T06:19:58.312Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/readme.test.js",
+        "amendCommit": "16ddb9f3c7416fc96ac89120228da84064636b21",
+        "reason": "the link helper's pattern lost its backslashes in a template literal and matched no Markdown link"
       }
     }
   ]
