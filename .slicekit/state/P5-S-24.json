@@ -1,8 +1,12 @@
 {
   "slice": "P5/S-24",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 161,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/161",
+    "headSha": "7fd15b5bd03ea6cc4c7bbd647c53f00eed1d8d09"
+  },
   "redCommit": "426666f48ed310b1991d0e6b3f9324cb3b3d554f",
   "frozenTests": [
     "test/walkthrough.test.js",
@@ -64,6 +68,22 @@
         "unfreeze": "test/readme.test.js",
         "amendCommit": "16ddb9f3c7416fc96ac89120228da84064636b21",
         "reason": "the link helper's pattern lost its backslashes in a template literal and matched no Markdown link"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T06:24:29.996Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 161,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/161",
+          "headSha": "7fd15b5bd03ea6cc4c7bbd647c53f00eed1d8d09",
+          "title": "[P5/S-24] Examples, walkthrough, user guide"
+        }
       }
     }
   ]
