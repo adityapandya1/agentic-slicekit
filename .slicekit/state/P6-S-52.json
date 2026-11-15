@@ -1,11 +1,11 @@
 {
   "slice": "P6/S-52",
-  "state": "ready",
+  "state": "merged",
   "branch": null,
   "pr": {
     "number": 177,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
-    "headSha": "fe028b486eee9a26192a9d7c11024a9e3925645c"
+    "headSha": "43fbd9d794089f626efc34551bb13ce6beb834ea"
   },
   "redCommit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
   "frozenTests": [
@@ -44,7 +44,7 @@
     "status": "success",
     "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43728613457"
   },
-  "mergedAt": null,
+  "mergedAt": "2026-11-15T15:14:24Z",
   "handoff": null,
   "history": [
     {
@@ -187,6 +187,21 @@
       "at": "2026-11-15T15:14:01.669Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "ready",
+      "to": "merged",
+      "at": "2026-11-15T15:14:34.021Z",
+      "by": "sync",
+      "evidence": {
+        "mergedAt": "2026-11-15T15:14:24Z",
+        "pr": {
+          "number": 177,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+          "headSha": "43fbd9d794089f626efc34551bb13ce6beb834ea"
+        },
+        "source": "host"
+      }
     }
   ]
 }
