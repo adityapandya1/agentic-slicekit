@@ -11,7 +11,10 @@
 // one that holds its own commits is refused with its open pull request, read through the git host
 // (C-1 pullRequestForBranch), or with the next free slug when the host says none is open. The host
 // is asked about each `release/<slug>-<n>` branch as well: the phase's open release pull request
-// may be on one of them, taken after `release/<slug>` was closed unmerged (issue #152).
+// may be on one of them, taken after `release/<slug>` was closed unmerged (issue #152). A slug
+// given numbered, `<base>-<n>` with <n> 2 or more (the numbers the command itself names), belongs
+// to the family of `release/<base>`: the host is asked about that branch and each
+// `release/<base>-<n>` too, so an open release pull request on any of them refuses.
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 import fs from 'node:fs';
@@ -129,6 +132,9 @@ async function run(args, io) {
   }
   const root = io.cwd;
   const target = `${kind}/${slug}`;
+  // The first branch of the release family a numbered slug belongs to; else the target itself.
+  const numberedSlug = kind === 'release' ? /^(.+)-(\d+)$/.exec(slug) : null;
+  const family = numberedSlug && Number(numberedSlug[2]) >= 2 ? `${kind}/${numberedSlug[1]}` : target;
   try {
     const cfg = loadConfig(root);
     const base = assertRef(cfg.defaultBranch);
@@ -199,10 +205,15 @@ async function run(args, io) {
         }
         // And, for a release, each numbered branch of the slug another clone pushed.
         if (kind === 'release') {
-          try {
-            git(root, ['fetch', '-q', 'origin', `+refs/heads/${target}-*:refs/remotes/origin/${target}-*`]);
-          } catch (e) {
-            if (!(e instanceof GitError)) throw e;
+          const specs = [`+refs/heads/${target}-*:refs/remotes/origin/${target}-*`];
+          // And, for a numbered slug, the first branch of its family and that one's numbered branches.
+          if (family !== target) specs.push(`+refs/heads/${family}:refs/remotes/origin/${family}`, `+refs/heads/${family}-*:refs/remotes/origin/${family}-*`);
+          for (const spec of specs) {
+            try {
+              git(root, ['fetch', '-q', 'origin', spec]);
+            } catch (e) {
+              if (!(e instanceof GitError)) throw e;
+            }
           }
         }
       } catch (e) {
@@ -221,6 +232,8 @@ async function run(args, io) {
       // branch lacks; one that does is refused: with its open pull request when the host has one,
       // else with the next free slug. A numbered branch of the slug, `release/<slug>-<n>`, that
       // holds commits the default branch lacks is asked about too, whatever `release/<slug>` holds.
+      // So are the other branches of a numbered slug's family: `release/<base>` and each
+      // `release/<base>-<n>`.
       const tip = git(root, ['rev-parse', '--verify', `${from}^{commit}`]);
       const copies = [`refs/heads/${target}`, remote].filter((ref) => resolves(root, ref));
       const stale = copies.filter((ref) => git(root, ['rev-parse', '--verify', `${ref}^{commit}`]) !== tip);
@@ -230,8 +243,10 @@ async function run(args, io) {
       // open a second one beside it. A pull request needs its branch on origin, so the host is
       // asked unless a fetch that worked found no such branch there.
       const onOrigin = (name) => origin && (!fetched || resolves(root, `refs/remotes/origin/${name}`));
-      const numbered = numberedBranches(root, target).filter((name) => [`refs/heads/${name}`, `refs/remotes/origin/${name}`].some((ref) => resolves(root, ref) && ahead(ref)));
-      for (const name of [...(own ? [target] : []), ...numbered].filter(onOrigin)) {
+      const holdsOwn = (name) => [`refs/heads/${name}`, `refs/remotes/origin/${name}`].some((ref) => resolves(root, ref) && ahead(ref));
+      const numbered = numberedBranches(root, target).filter(holdsOwn);
+      const kin = family === target ? [] : [family, ...numberedBranches(root, family)].filter((name) => name !== target && holdsOwn(name));
+      for (const name of [...kin, ...(own ? [target] : []), ...numbered].filter(onOrigin)) {
         let open;
         try {
           open = getHost(cfg, io.env ?? process.env, root).pullRequestForBranch(name, { base });

@@ -326,14 +326,28 @@ export const isReleasePath = (cfg, root = null) => {
   return (f) => dests.has(f) || dirs.some((d) => f.startsWith(d));
 };
 
+// The config of each example, read before the release step writes a file: [{ example, cfg }]. An
+// example whose config does not load stops the step with one line naming its folder and the config
+// problem, so the reader of the sync job's log knows which file to mend.
+function exampleConfigs(root) {
+  return exampleDirs(root).map((example) => {
+    try {
+      return { example, cfg: loadExampleConfig(root, example) };
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      throw new ReleaseError(`${example}: its config does not load (${e.message}); no version is set and no file is written`);
+    }
+  });
+}
+
 // Renders each example at `version`, as `update --yes` would in that folder: the files whose plan
 // is changed or missing are written, an edited one is left, and the reference copies are that
-// version's alone. Returns the examples rendered.
-export function renderExamples(root, version) {
+// version's alone. Every example's config is read before the first one is rendered. Returns the
+// examples rendered.
+export function renderExamples(root, version, configs = exampleConfigs(root)) {
   const out = [];
-  for (const example of exampleDirs(root)) {
+  for (const { example, cfg } of configs) {
     const dir = path.join(root, ...example.split('/'));
-    const cfg = loadExampleConfig(root, example);
     applyUpdate(dir, cfg, planUpdate(dir, cfg, { version }), { version });
     out.push(example);
   }
@@ -412,7 +426,9 @@ export function onDefaultTip(root, cfg) {
 // that version (the kit's own checkout) or at the running kit's version (any other), of the
 // repository's own files and then of each example under `examples/` (D-95). `isKit` says
 // which; it defaults to whether `root` is the kit's checkout. Returns the release, or null when
-// there is none or the files on disk already hold it (a second run on the same commit).
+// there is none or the files on disk already hold it (a second run on the same commit). Every
+// example's config is read first; one that does not load throws a ReleaseError naming the example,
+// and package.json, CHANGELOG.md and every rendered file are left as they were.
 export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root) } = {}) {
   const release = releaseFor(root, cfg, { merge });
   if (release === null) return null;
@@ -424,10 +440,12 @@ export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root
   // the version computed and CHANGELOG.md on disk holds its section, an earlier run on this commit
   // wrote them: this run writes nothing and sets no version.
   if (versionOf(pkgText) === release.version && holdsSection(logText, release.version)) return null;
+  // Before the first write: an example whose config does not load refuses the release (ReleaseError).
+  const examples = exampleConfigs(root);
   writeText(pkg, setVersion(pkgText, release.version));
   writeText(log, prependSection(logText, release.section));
   const version = isKit ? release.version : kitVersion();
   applyUpdate(root, cfg, planUpdate(root, cfg, { version }), { version });
-  renderExamples(root, version);
+  renderExamples(root, version, examples);
   return release;
 }

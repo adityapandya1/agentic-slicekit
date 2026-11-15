@@ -426,3 +426,65 @@ test('branch release moves a stale release branch to the tip, and refuses one th
     { remote: true },
   );
 });
+
+// P5/S-50 review round 1 (H-4), issue #152, REQ-2.9: a numbered slug given directly, `<slug>-<n>`,
+// asks the git host about the whole family: the base slug's branch and every numbered one. An open
+// release pull request on any of them refuses, naming it, and no branch is cut.
+test('branch release with a numbered slug asks the host about the base branch and every numbered one', async () => {
+  await withRepo(
+    async (root) => {
+      const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-branch-host-'));
+      const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: fixture };
+      const run = async (args) => {
+        let stdout = '';
+        let stderr = '';
+        const code = await main(args, { cwd: root, env, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } });
+        return { code, stdout, stderr };
+      };
+      const url = (n) => `https://github.com/acme/demo/pull/${n}`;
+      const put = (number, head, state) =>
+        fs.writeFileSync(
+          path.join(fixture, `pr-${number}.json`),
+          `${JSON.stringify({ number, url: url(number), state, mergedAt: null, headRefOid: sha(root, `refs/heads/${head}`), headRefName: head, baseRefName: 'main', isDraft: false, title: '[release] P1', body: '', labels: [] }, null, 2)}\n`,
+        );
+      try {
+        // release/p1 and release/p1-2 each hold a commit main lacks, and both are on origin.
+        for (const name of ['release/p1', 'release/p1-2']) {
+          git(root, ['switch', '-q', '-c', name, 'main']);
+          commit(root, `docs(release): P1 on ${name}`);
+          git(root, ['push', '-q', 'origin', name]);
+        }
+        git(root, ['switch', '-q', 'main']);
+        const refused = async (branch, number) => {
+          const r = await run(['branch', 'release', 'p1-3']);
+          assert.equal(r.code, 1, r.stdout + r.stderr);
+          assert.equal(r.stdout, '');
+          const lines = r.stderr.split('\n').filter((l) => l !== '');
+          assert.equal(lines.length, 1, r.stderr);
+          assert.equal(lines[0], `slicekit: ${branch} is the branch of open pull request #${number} (${url(number)}); the phase's release is already open`);
+          assert.equal(currentBranch(root), 'main');
+          assert.throws(() => sha(root, 'refs/heads/release/p1-3'), GitError);
+        };
+
+        // The phase's release is open on the numbered branch release/p1-2.
+        put(3, 'release/p1', 'CLOSED');
+        put(4, 'release/p1-2', 'OPEN');
+        await refused('release/p1-2', 4);
+
+        // The phase's release is open on the base slug's branch.
+        put(3, 'release/p1', 'OPEN');
+        put(4, 'release/p1-2', 'CLOSED');
+        await refused('release/p1', 3);
+
+        // Neither is open: the numbered slug is cut from the default branch.
+        put(3, 'release/p1', 'CLOSED');
+        const cut = await run(['branch', 'release', 'p1-3']);
+        assert.deepEqual([cut.code, cut.stdout], [0, 'release/p1-3\n'], cut.stderr);
+        assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+      } finally {
+        fs.rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+    { remote: true },
+  );
+});
