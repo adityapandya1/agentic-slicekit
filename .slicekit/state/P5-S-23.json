@@ -1,8 +1,12 @@
 {
   "slice": "P5/S-23",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 156,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+    "headSha": "35c731d776921118cc44be3959b1dc604d79d426"
+  },
   "redCommit": "8113dec61aae3de30ae3193acafa4d2cde85f910",
   "frozenTests": [
     "test/commands/ops.test.js",
@@ -38,6 +42,22 @@
       "at": "2026-11-15T03:55:55.332Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T04:12:32.428Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 156,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+          "headSha": "35c731d776921118cc44be3959b1dc604d79d426",
+          "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
     }
   ]
 }
