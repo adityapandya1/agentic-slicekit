@@ -1,8 +1,12 @@
 {
   "slice": "P6/S-53",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 176,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/176",
+    "headSha": "67a453e1de57157bb88d17511358e0985c9b9072"
+  },
   "redCommit": "44b1fcd7318c49709f188afee7d713af04bb2410",
   "frozenTests": [
     "test/tracker.test.js"
@@ -44,6 +48,22 @@
         "unfreeze": "test/tracker.test.js",
         "amendCommit": "56e4616c8967c954158866323be3193b19e98da9",
         "reason": "two lines of the test no code can meet: a three-digit slice number, and a query text asserted to hold a slash"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T12:18:06.220Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 176,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/176",
+          "headSha": "67a453e1de57157bb88d17511358e0985c9b9072",
+          "title": "[P6/S-53] Jira tracker"
+        }
       }
     }
   ]
