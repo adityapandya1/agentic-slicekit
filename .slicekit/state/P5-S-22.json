@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-22",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 149,
@@ -12,7 +12,9 @@
     "test/observability.test.js",
     "test/workflow.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/observability.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -75,6 +77,17 @@
           "blockers": 2,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T01:13:04.945Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/observability.test.js",
+        "amendCommit": "3f43cf0bb26fee2aa460b7d7a11c5b208b81856c",
+        "reason": "review round 1: tests added for B-1, B-2, H-1, H-3, H-4"
       }
     }
   ]
