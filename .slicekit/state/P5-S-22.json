@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-22",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 149,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
-    "headSha": "d8d8f19a7c7ca29cd6ff292d7f0bf9a92b5ca2a8"
+    "headSha": "2c88ba13e1bd2154ceb106eb962686c41c4d1b16"
   },
   "redCommit": "08562fde37368e058aca4862ae135afee23b79de",
   "frozenTests": [
@@ -230,6 +230,22 @@
           "path": ".slicekit/reviews/P5-S-22i-r4.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:16:49.476Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "2c88ba13e1bd2154ceb106eb962686c41c4d1b16",
+          "title": "[P5/S-22] Observability steps in CI"
         }
       }
     }
