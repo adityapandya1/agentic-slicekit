@@ -5,7 +5,7 @@ The two steps of `/slicekit audit` that the CLI takes: the claims handed to the 
 ## Usage
 
 ```text
-slicekit audit context [area] [--all] [--json]
+slicekit audit context [area] [--all] [--no-report] [--json]
 slicekit audit check <report> [area] [--every-claim]
 ```
 
@@ -13,8 +13,9 @@ slicekit audit check <report> [area] [--every-claim]
 
 The area is a spec file's name without `.md` or its path, a REQ prefix such as `REQ-2`, one REQ ID, the word `runbook`, or a path. With no area, every claim is listed.
 
-- `--all`: prints every candidate. Without it a claim shows its ten newest candidates, then one line counting the older ones.
-- `--json`: prints one JSON document that holds every candidate.
+- `--all`: prints every candidate. Without it a claim shows its ten newest candidates, then one line that counts the older ones and names the command that prints them: `audit context <area> --all --no-report`, written with the kit's command prefix (`cli` in the config).
+- `--no-report`: prints the context alone. No report path is printed and no report file is created. Use it with `--all` to read the older candidates of a claim during an audit; the report of that audit stays the one its first `audit context` created.
+- `--json`: prints one JSON document that holds every candidate. With `--no-report` its `report` is `null`.
 
 `audit check <report> [area]` reads the area's claims again from the spec and the runbook and prints `ok <report>`, or one `<report>:<line> <message>` line per problem:
 
@@ -27,7 +28,7 @@ The area is a spec file's name without `.md` or its path, a REQ prefix such as `
 
 ## What it reads and writes
 
-Reads the spec, the runbook, the graph file and git's history. `audit context` creates the empty report file `.slicekit/reports/audit-<k>.md`, which the ignore rules that `init` writes cover. `audit check` writes nothing. Neither changes a tracked file.
+Reads the spec, the runbook, the graph file and git's history. `audit context` creates the empty report file `.slicekit/reports/audit-<k>.md`, which the ignore rules that `init` writes cover; with `--no-report` it creates none. `audit check` writes nothing. Neither changes a tracked file.
 
 ## Exit codes
 
@@ -42,6 +43,10 @@ Reads the spec, the runbook, the graph file and git's history. `audit context` c
 ```console
 $ slicekit audit context runbook
 .slicekit/reports/audit-1.md
+runbook#how-to-run-it docs/runbook.md:3 How to run it
+  files: bin/slicekit.js
+  candidate 8b41d07 2026-11-02 fix(cli): --help prints on stdout
+$ slicekit audit context runbook --all --no-report
 runbook#how-to-run-it docs/runbook.md:3 How to run it
   files: bin/slicekit.js
   candidate 8b41d07 2026-11-02 fix(cli): --help prints on stdout

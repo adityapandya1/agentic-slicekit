@@ -318,14 +318,14 @@ The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`. The a
 slicekit branch <spec|gaps|plan|release> <slug>
 ```
 
-Puts you on the work branch `<kind>/<slug>` for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands, except a `release` branch: one that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so; one that holds its own commits is refused. Untracked files go along; changes to tracked files are refused.
+Puts you on the work branch `<kind>/<slug>` for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands, except a `release` branch: one that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so; one that holds its own commits is refused, and so is the command when a numbered branch of the slug, `release/<slug>-<n>`, has an open pull request. Untracked files go along; changes to tracked files are refused, except a migrated config that is the only such change: it is carried, dropped where the branch already holds it, or refused with one line where the branch holds another (see [its page](commands/branch.md#a-migrated-config)).
 
 **When to use it:** The first step of intake and specify (`spec`), gaps (`gaps`) and plan (`plan`), and the step of release that follows its dry run (`release`). The slug is the program name, lower-cased, with other characters turned into dashes; for `release` it is the phase in lower case.
 
 | Exit | Meaning |
 |---|---|
 | 0 | prints the branch name |
-| 1 | uncommitted changes to tracked files, or a git error; for `release`, a branch that holds commits the default branch lacks: the line names its open pull request (the phase's release is already open), or says the git host could not be asked, or, when no pull request is open, names the next slug to run the command with (`<slug>-2`) |
+| 1 | uncommitted changes to tracked files, or a git error; for `release`, a branch that holds commits the default branch lacks: the line names its open pull request (the phase's release is already open), or says the git host could not be asked, or, when no pull request is open, names the next slug to run the command with (`<slug>-2`); a numbered branch of the slug with an open pull request, named with its branch; a migrated config that differs from the one the branch holds |
 | 2 | bad usage, a bad slug (lowercase letters, digits and dashes, at most 60, not starting with a dash), or config |
 
 **Example:**
@@ -1790,7 +1790,7 @@ A team commits the migration on a plan branch with three commands, run from the 
 2. Any command that is not `hook` or `branch`, for example `slicekit status`, writes the migrated config there and prints each change.
 3. `slicekit pr open --title <title> --body-file <file> --commit <message> --paths .slicekit/config.json` commits it and opens the pull request, which a human reviews and merges.
 
-If another command ran on the default branch first, for example `slicekit release P<n> --dry-run`, the config is already written there. `slicekit branch`, of every kind, still cuts the branch when the only uncommitted change to a tracked file is the config and it equals what the migration writes from the committed config; the change is carried to the new branch, where `pr open` commits it. Any other uncommitted change is refused with `commit or stash your changes first`. A kit before config version 2 refuses a migrated config with `configVersion: must be 1`.
+If another command ran on the default branch first, for example `slicekit release P<n> --dry-run`, the config is already written there. `slicekit branch`, of every kind, still cuts the branch when the only uncommitted change to a tracked file is the config and it equals what the migration writes from the committed config; the change is carried to the new branch, where `pr open` commits it. Where the branch already holds the migrated config, with equal content, `slicekit branch` drops its own copy of the change and switches; where the branch holds a config that differs, it exits 1 with one line naming the file, the branch and the fields that differ, and the change is left where it is. Any other uncommitted change is refused with `commit or stash your changes first`. A kit before config version 2 refuses a migrated config with `configVersion: must be 1`.
 
 ### Other conventions
 

@@ -18,7 +18,9 @@ what merged; it does not deploy (D-12).
    puts the session on `release/<slug>` at the tip of the default branch as origin has it; a
    `release/<slug>` left behind that tip with no commit of its own is moved there, and the command
    says so. When `release/<slug>` holds commits the default branch lacks, it asks the git host for
-   an open pull request of that branch and exits 1 with one of three lines:
+   an open pull request of that branch and exits 1 with one of three lines. It asks the same of
+   each numbered branch of the slug, `release/<slug>-<n>`, that holds such commits, whatever
+   `release/<slug>` holds, and the first two lines then name that branch:
    1. `release/<slug> is the branch of open pull request #<n> (<url>); the phase's release is
       already open`: print the line to the human and stop. Take no other slug: merging or closing
       that pull request is the human's.
@@ -45,7 +47,10 @@ what merged; it does not deploy (D-12).
    **Decisions:** <the lines under "## Decisions" in the record, one per line, or "none">
    ```
 
-6. Run `{{cli}} pr open --title "[release] {{args}}" --body-file <file> --commit "docs(release): {{args}}" --paths <docsRoot>/releases/{{args}}.md,.slicekit/state,BUILD.md`.
+6. Run `{{cli}} pr open --title "[release] {{args}}" --body-file <file> --commit "docs(release): {{args}}" --paths <docsRoot>/releases/{{args}}.md,.slicekit/state,BUILD.md,.slicekit/config.json`.
+   The last path is the config: when an earlier command, such as step 1, wrote the migration of an
+   older config, step 2 carried it to the release branch, and this step commits it there (D-94).
+   A config with no change adds nothing to the commit.
 7. Print the pull request line `pr open` printed, and tell the human that merging the pull request
    is the release of {{args}} in this repository, and that it deploys nothing: deployment stays the
    team's (D-12).
