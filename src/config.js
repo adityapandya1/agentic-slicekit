@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { denyPatternError } from './hooks/paths.js';
 
 export const CONFIG_VERSION = 2;
 export const SHAPES = ['backend', 'fullstack', 'data'];
@@ -307,7 +308,13 @@ function agentsErrors(agents) {
   const list = agents.denyPaths;
   if (list === undefined) return [];
   if (!(isStringArray(list) && list.every((s) => s !== ''))) return ['agents.denyPaths: must be an array of non-empty strings'];
-  return [];
+  // Each pattern is compiled with the code the guards match with (issue #120).
+  const errors = [];
+  list.forEach((pattern, i) => {
+    const why = denyPatternError(pattern);
+    if (why !== null) errors.push(`agents.denyPaths[${i}]: ${why}`);
+  });
+  return errors;
 }
 
 // D-46: testFiles is optional; when present, regular expressions over the repository-relative POSIX

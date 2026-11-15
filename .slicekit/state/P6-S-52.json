@@ -1,0 +1,192 @@
+{
+  "slice": "P6/S-52",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 177,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+    "headSha": "fe028b486eee9a26192a9d7c11024a9e3925645c"
+  },
+  "redCommit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
+  "frozenTests": [
+    "test/hooks/pre-bash.test.js",
+    "test/hooks/pre-bash-redirect.test.js",
+    "test/hooks/pre-bash-deny.test.js",
+    "test/hooks/pre-edit.test.js",
+    "test/config.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-52-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P6-S-52-r2.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "66663b517122da3ab82680dfb4e2efe13db56252"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P6-S-52i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "fe028b486eee9a26192a9d7c11024a9e3925645c"
+    }
+  ],
+  "ci": {
+    "sha": "fbb6b215ce9d907119fdd68ad255b110108e6e6d",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43728613457"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T12:14:29.828Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
+        "testExit": 1,
+        "tests": [
+          "test/hooks/pre-bash.test.js",
+          "test/hooks/pre-bash-redirect.test.js",
+          "test/hooks/pre-bash-deny.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/config.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T12:14:31.019Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T12:39:55.365Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 177,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+          "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26",
+          "title": "[P6/S-52] Guards"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T13:04:28.823Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-52-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T13:24:31.939Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 177,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+          "headSha": "66663b517122da3ab82680dfb4e2efe13db56252",
+          "title": "[P6/S-52] Guards"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T13:37:14.120Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P6-S-52-r2.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-15T13:37:15.930Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-15T14:38:04.616Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 177,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+          "headSha": "fe028b486eee9a26192a9d7c11024a9e3925645c",
+          "title": "[P6/S-52] Guards"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T15:12:14.528Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P6-S-52i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T15:13:58.721Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "fbb6b215ce9d907119fdd68ad255b110108e6e6d",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43728613457"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T15:14:01.669Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

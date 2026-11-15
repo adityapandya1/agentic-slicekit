@@ -120,11 +120,29 @@ A team lists the paths agents may not read or change in `.slicekit/config.json`,
 
 `**` crosses directories; `*` and `?` stay inside one. A pattern with no `/` in it, such as `*.pem`, matches at any depth, and so does a directory name with only a trailing `/`; any other pattern starts at the repository root. A pattern that matches a directory covers everything under it, and pre-bash also refuses a command that names the directory a pattern starts with, such as `ls data` under `data/**`. Absent or empty, nothing is denied.
 
+Each pattern is compiled when the config is read, with the code the guards match with. A pattern that does not compile, such as a character class with a reversed range, is refused by its index in the list, and every command that loads the config stops until it is mended:
+
+```
+agents.denyPaths[1]: [z-a] does not compile as a glob (range out of order in character class)
+```
+
+Mend the pattern the line names (`[a-z]` for the one above) and run the command again.
+
 1. List the directories that hold real records (payment files, exports, customer extracts) and every file that holds a secret (keys, certificates, `.env` files).
 2. Run `slicekit update`. It writes a `Read(<pattern>)` and an `Edit(<pattern>)` rule per pattern into `permissions.deny` of `.claude/settings.json`; Claude Code refuses a read under those rules, since no hook sees a read. The rules slicekit wrote are recorded in `_slicekit.deny` and replaced on the next update; the team's own deny entries stay.
 3. Check: `slicekit hook pre-edit` refuses an Edit or Write to a listed path, and `slicekit hook pre-bash` refuses a command that names one, such as `cat data/pain001-sample.xml`; each refusal names the pattern.
 
-pre-bash reads the globs and brace expressions in a command's arguments as the shell expands them (an expansion too wide to judge is refused; `**` is read as recursive only after `shopt -s globstar` in the same command, or in a shell started with `-O globstar`, and as `*` otherwise, as Bash reads it by default; a globstar turned on in the user's shell profile cannot be seen from the command text), and follows `cd` and `pushd` along the command, so `cd data && ls` is refused. While the list is set, a `cd` to `-`, to a variable or to a command substitution (`$(...)` or backticks) is refused too. A `cd` whose target is a glob, such as `cd da*`, or a directory the same command creates first is not followed, and the commands after it are judged as if their directory were unknown, so a relative path they name is not checked (issue #118).
+pre-bash reads the globs and brace expressions in a command's arguments as the shell expands them (an expansion too wide to judge is refused; `**` is read as recursive only after `shopt -s globstar` in the same command, or in a shell started with `-O globstar`, and as `*` otherwise, as Bash reads it by default; a globstar turned on in the user's shell profile cannot be seen from the command text), and follows `cd` and `pushd` along the command, so `cd data && ls` is refused. A glob in a command's arguments that does not compile, such as the reversed range in `cat src/[z-a].js`, is judged as the literal word, as Bash passes it on. A bracket expression that pre-bash cannot read as Bash would, such as the named collating symbol in `cat [[.hyphen.]]ata/x.xml`, is refused with `cannot tell what <the word> expands to`; write the name out.
+
+How a `cd` is judged while the list is set:
+
+- A `cd` or `pushd` to a literal directory is followed, and the commands after it are judged from there. A directory that does not exist yet is followed by its name, so `mkdir x && cd x && cat ../data/x.xml` is refused and `mkdir x && cd x && ls` is allowed.
+- A `cd` inside `( ... )`, `$( ... )` or backticks ends where the subshell ends: after ``echo `cd src && pwd` ``, the next command is judged from the directory before it.
+- A `cd` whose target the command text does not settle is refused with `cannot tell where <the cd> goes`: a target of `-`, a variable, a command substitution, a glob or brace expression such as `cd da*`, and a `cd` that is part of a pipeline or put in the background with `&`. Write the directory out, and give the `cd` its own place in an `&&` chain.
+- A `cd` inside a brace group that is piped on or put in the background ends at the closing brace: after `{ cd src; } | cat`, the next command is judged from the directory before the group.
+- With the list set or empty, a `git commit` or a `git push` with no branch named is refused after a `cd` in a pipeline or in the background, since pre-bash does not follow that `cd`. The reason names the `cd` and says whether it was piped or put in the background.
+
+A name leaves the repository only when `..` is a whole path component: `cat ..secret` names a file in the repository and is refused under the pattern `..secret`. pre-edit and pre-bash also judge a listed path named through a link or junction that leads into the repository, and pre-edit judges a relative name against the working directory as given as well as where it resolves.
 
 The list keeps paths out of the model's context; it does not scan file contents, and a command that reaches a listed file through a variable or a script is not seen. Nor is a recursive command on a parent of a listed directory, such as a recursive grep of the repository root. Keep real data out of the repository where you can.
 
