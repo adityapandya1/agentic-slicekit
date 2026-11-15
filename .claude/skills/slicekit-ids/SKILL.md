@@ -1,7 +1,7 @@
 ---
 name: slicekit-ids
 description: The ID forms slicekit uses for requirements, decisions, gaps, contracts, phases, slices, branches, trailers and pull request titles.
-slicekit-managed: v0.3.2
+slicekit-managed: v0.3.3
 ---
 # IDs
 
