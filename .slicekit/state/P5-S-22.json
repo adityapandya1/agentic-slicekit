@@ -1,0 +1,32 @@
+{
+  "slice": "P5/S-22",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "08562fde37368e058aca4862ae135afee23b79de",
+  "frozenTests": [
+    "test/observability.test.js",
+    "test/workflow.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T01:02:48.870Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "08562fde37368e058aca4862ae135afee23b79de",
+        "testExit": 1,
+        "tests": [
+          "test/observability.test.js",
+          "test/workflow.test.js"
+        ]
+      }
+    }
+  ]
+}
