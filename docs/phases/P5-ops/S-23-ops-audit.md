@@ -33,13 +33,13 @@ decisions: [D-13, D-19, D-20, D-57, D-58]
 
 ## Expected changes
 
-`src/reports.js`, `src/ops.js`, `src/audit.js`, `src/cli/ops.js`, `src/cli/audit.js`, `src/cli/index.js`, `src/paths.js`, `src/init.js`, `.gitignore`, `templates/instructions/commands/ops.md`, `templates/instructions/commands/audit.md`, `templates/instructions/agents/ops.md`, `templates/instructions/agents/auditor.md`, `templates/claude-code/agents/ops.md`, `.claude/agents/ops.md`, `test/helpers/ops-fixture.js`, tests.
+`src/reports.js`, `src/ops.js`, `src/audit.js`, `src/cli/ops.js`, `src/cli/audit.js`, `src/cli/index.js`, `src/paths.js`, `src/init.js`, `.gitignore`, `templates/instructions/commands/ops.md`, `templates/instructions/commands/audit.md`, `templates/instructions/agents/ops.md`, `templates/instructions/agents/auditor.md`, `templates/claude-code/agents/ops.md`, `.claude/agents/ops.md`, tests.
 
 ## Tasks
 
 ### Task 1: The fixture and the report helpers
 
-**Files:** Create `test/helpers/ops-fixture.js`, `src/reports.js`. Modify `src/paths.js`, `src/init.js`, `.gitignore`, `test/init.test.js`.
+**Files:** Create `src/reports.js`; the fixture `opsRepo()` sits inline in the two evaluation test files, frozen with them (D-10). Modify `src/paths.js`, `src/init.js`, `.gitignore`, `test/init.test.js`.
 
 **Interfaces:**
 - `kitPaths(root, cfg).reports` is `<root>/.slicekit/reports`. Init's ignore rules gain the line .slicekit/reports/, and so does the kit's own ignore file.
