@@ -442,3 +442,72 @@ test("status --sync --write off the default branch's tip sets no version", () =>
     assert.equal(read(root, 'CHANGELOG.md'), CHANGELOG);
   }, { release: undefined });
 });
+
+test('a rebase-merged slice that sets the version itself is not versioned again', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    // Pull request 14 is rebase-merged (review B-3 of round 3): its commits land one by one on
+    // main. The first records the slice as building, the second sets 0.3.0 with a section written
+    // by hand, the last records the slice as ready with its pull request.
+    writeSlice(root, cfg, { ...readSlice(root, cfg, ids[0]), state: 'building' });
+    mergeCommit(root, 'chore(slicekit): P1/S-01 building');
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.3.0'));
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## 0.3.0\n\n- Phase 1.\n\n## 0.1.0\n\n- The first version.\n`);
+    mergeCommit(root, 'feat(P1/S-01): the first release');
+    parkAt(root, cfg, ids[0], 'ready', { number: 14, headSha: 'abc14def5678' });
+    mergeCommit(root, 'chore(slicekit): P1/S-01 ready');
+    const pkg = read(root, 'package.json');
+    const log = read(root, 'CHANGELOG.md');
+
+    // The sync on that tip records the merge and sets no second version for the slice.
+    const r = syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'todo', 'todo']);
+    assert.doesNotMatch(r.stdout, /^version /m);
+    assert.equal(read(root, 'package.json'), pkg);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+
+    // Pull request 16 merges after it: the next version names that slice alone.
+    gitIn(root, ['checkout', '-q', '--', '.']);
+    mergeSlice(root, cfg, ids[1], 16, 'Fixture 2');
+    syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'merged', 'todo']);
+    assert.equal(read(root, 'package.json'), withVersion(pkg, '0.3.1'));
+    const after = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(after), ['0.3.1', '0.3.0', '0.1.0']);
+    const section = newest(after);
+    names(section, ['P1/S-02', 'Fixture 2', '#16']);
+    namesNone(section, ['P1/S-01', 'Fixture 1', '#14', 'P1/S-03']);
+  }, { release: { auto: true } });
+});
+
+test('a hand-set version whose section mixes prose with a slice line is still a floor', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    // Pull request 14 merges; its sync pull request is never merged, so main keeps P1/S-01 at ready.
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    // A release pull request sets 0.2.0 by hand (review B-4 of round 3): its section holds a line
+    // of prose and one line in the generated slice line format, naming another slice.
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.2.0'));
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## 0.2.0\n\nThe second version, set by hand.\n\n- P1/S-03 Fixture 3 (#9)\n\n## 0.1.0\n\n- The first version.\n`);
+    mergeCommit(root, 'Merge pull request #15 from acme/release/0.2.0', '[release] 0.2.0');
+    const pkg = read(root, 'package.json');
+    const log = read(root, 'CHANGELOG.md');
+
+    // The sync on that tip records P1/S-01 merged and sets no version: it merged before the floor.
+    const r = syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'todo', 'todo']);
+    assert.doesNotMatch(r.stdout, /^version /m);
+    assert.equal(read(root, 'package.json'), pkg);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+
+    // Pull request 16 merges after the hand-set version: the next version names that slice alone.
+    gitIn(root, ['checkout', '-q', '--', '.']);
+    mergeSlice(root, cfg, ids[1], 16, 'Fixture 2');
+    syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'merged', 'todo']);
+    assert.equal(read(root, 'package.json'), withVersion(pkg, '0.2.1'));
+    const after = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(after), ['0.2.1', '0.2.0', '0.1.0']);
+    const section = newest(after);
+    names(section, ['P1/S-02', 'Fixture 2', '#16']);
+    namesNone(section, ['P1/S-01', 'Fixture 1', '#14']);
+  }, { release: { auto: true } });
+});

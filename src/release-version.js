@@ -5,21 +5,30 @@
 // One version per sync; its section names every slice it versions.
 //
 // The changelog is the record (D-92). The slices a sync versions are the merged slices that no
-// CHANGELOG.md section at the merge names, less those whose own merge set the version, less those
-// merged at or before the floor: the newest merge that set the version by hand, or the commit that
-// turned `release.auto` on when there is none. So the result does not depend on which merge the
-// sync runs on, nor on which slices this run of the sync moved to `merged`. A sync with no such
-// slice, and a config without `release.auto`, set none. The version counts from package.json at
-// the merge commit, never from one an open sync pull request proposes. The rendered files follow
-// the version (`update --yes`), as `build render` would commit them.
+// CHANGELOG.md section at the merge names, less those that began at or before the floor: the
+// newest commit that set the version by hand, or the commit that turned `release.auto` on when
+// there is none. So the result does not depend on which merge the sync runs on, nor on which
+// slices this run of the sync moved to `merged`. A sync with no such slice, and a config without
+// `release.auto`, set none. The version counts from package.json at the merge commit, never from
+// one an open sync pull request proposes. The rendered files follow the version (`update --yes`),
+// as `build render` would commit them.
+//
+// Where a slice begins: the oldest commit of the default branch's first-parent history that brings
+// its state file. For a merge commit or a squash merge that is the merge itself; for a rebase merge
+// it is the slice's first commit. A slice that begins at or before the floor either merged before
+// the version set by hand or set that version itself: the commits of a rebase-merged slice are
+// contiguous on that history, so a floor among them is that slice's own commit. Neither how the
+// pull request was merged, nor a commit's subject, nor a move of a slice's recorded state plays a
+// part.
 //
 // A commit sets the version when it changes package.json's version and CHANGELOG.md at that commit
 // holds the new version's section. What tells a sync's version from one set by hand is that
-// section's content, read at that commit: a section the kit generated (`changelogSection`) holds
-// slice lines, `- <slice ID> <name> (#<pull request>)`; a section written by hand holds none, and
-// its commit is a floor. Neither the commit's subject, nor how the pull request was merged, nor
-// whether it moves a slice's recorded state plays a part. A slice's own merge is the newest commit
-// of the first-parent history that changed its state file and left it in a state before `merged`.
+// section's content, read at that commit. The section is a sync's only when it holds a slice line
+// and every non-empty line under its heading is a line `changelogSection` writes: a slice line,
+// `- <slice ID> <name> (#<pull request>)`, or, for a minor version, a phase line. A section with
+// any other line was written by hand, and its commit is a floor. A section written by hand that
+// holds only lines of those shapes is taken for a sync's. That is accepted: the slices it names are
+// excluded by name, and only the slices merged before it that no section names are then counted.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,7 +76,24 @@ export function nextVersion({ current, merges, phaseComplete }) {
   return phaseComplete ? `${maj}.${min + 1}.0` : `${maj}.${min}.${pat + 1}`;
 }
 
-const sliceLine = (s) => `- ${s.id} ${s.name}${Number.isInteger(s.pr) ? ` (#${s.pr})` : ''}`;
+// The two lines `changelogSection` writes under a heading, each from its parts. `lineShape` builds
+// the test for a line of either kind from the same two functions, so the test follows the format.
+const sliceText = (id, name, pr) => `- ${id} ${name}${pr === null ? '' : ` (#${pr})`}`;
+const phaseText = (number, name) => `Phase ${number}${name ? `: ${name}` : ''}.`;
+const sliceLine = (s) => sliceText(s.id, s.name, Number.isInteger(s.pr) ? s.pr : null);
+const phaseLine = (p) => phaseText(p.id.replace(/^P/, ''), p.name);
+
+// A part left open in a line, and the text that may stand in its place.
+const OPEN = { id: '\u0001', name: '\u0002', number: '\u0003' };
+const FILLS = { [OPEN.id]: ID.sliceAddr, [OPEN.name]: '\\S.*', [OPEN.number]: '\\d+' };
+function lineShape(text) {
+  const literal = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${literal.replace(/[\u0001-\u0003]/g, (open) => FILLS[open])}$`);
+}
+const SLICE_SHAPES = [sliceText(OPEN.id, OPEN.name, null), sliceText(OPEN.id, OPEN.name, OPEN.number)].map(lineShape);
+const PHASE_SHAPES = [phaseText(OPEN.number, ''), phaseText(OPEN.number, OPEN.name)].map(lineShape);
+const isSliceLine = (l) => SLICE_SHAPES.some((re) => re.test(l));
+const isPhaseLine = (l) => PHASE_SHAPES.some((re) => re.test(l));
 
 // CHANGELOG.md's section for `version`: each phase it completes with all of that phase's slices,
 // then every other slice merge the sync records. merges and slices: [{ id, name, pr }];
@@ -76,7 +102,7 @@ export function changelogSection({ version, merges, phases = [] }) {
   const out = [`## ${version}`, ''];
   const named = new Set();
   for (const p of phases) {
-    out.push(`Phase ${p.id.replace(/^P/, '')}${p.name ? `: ${p.name}` : ''}.`, '');
+    out.push(phaseLine(p), '');
     for (const s of p.slices) {
       out.push(sliceLine(s));
       named.add(s.id);
@@ -170,18 +196,9 @@ const posix = (p) => p.split(path.sep).join('/');
 const stateDir = (root, cfg) => posix(path.relative(root, kitPaths(root, cfg).state));
 const nonEmpty = (out) => out.split('\n').map((l) => l.trim()).filter((l) => l !== '');
 
-// A slice's recorded state at `rev`, or null when the commit holds no readable state file.
-function stateAt(root, rev, file) {
-  const stored = jsonAt(root, rev, file);
-  if (stored === null || typeof stored !== 'object') return null;
-  return typeof stored.state === 'string' ? stored.state : 'todo';
-}
-
-// A slice line as `changelogSection` writes it: `- <slice ID> <name>`, the pull request after it.
-const SLICE_LINE = new RegExp(`^- ${ID.sliceAddr} \\S`);
-
 // Whether the commit `rev`, which set the version, set it by hand: CHANGELOG.md's section for that
-// version, as it stands at `rev`, holds no slice line. A section with one is a sync's, however its
+// version, as it stands at `rev`, holds a line `changelogSection` does not write, or no slice line.
+// A section of slice lines only (and, for a minor version, phase lines) is a sync's, however its
 // pull request was merged and whatever the commit's subject.
 function setByHand(root, rev) {
   const lines = sectionLines(textAt(root, rev, CHANGELOG));
@@ -190,7 +207,9 @@ function setByHand(root, rev) {
   const start = lines.findIndex((l) => heading(l) && l.replace(/^## /, '').split(/\s/)[0] === version);
   if (start < 0) return true;
   const end = lines.findIndex((l, i) => i > start && heading(l));
-  return !lines.slice(start + 1, end < 0 ? undefined : end).some((l) => SLICE_LINE.test(l));
+  const body = lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trimEnd()).filter((l) => l !== '');
+  const minor = SEMVER.exec(String(version))?.[3] === '0';
+  return !(body.some(isSliceLine) && body.every((l) => isSliceLine(l) || (minor && isPhaseLine(l))));
 }
 
 // The commits of `rev`'s first-parent history that changed one of `paths`, newest first.
@@ -214,20 +233,18 @@ function floorOf(root, cfg, merge) {
   return null;
 }
 
-// The state files changed after `floor` up to `merge` on the first-parent history:
-// { byFile: Map(file → the commits that changed it, newest first), order: every such commit,
-// newest first }.
-function stateChangesAfter(root, cfg, floor, merge) {
-  const out = git(root, ['-c', 'core.quotepath=off', 'log', '--first-parent', '-m', '--no-renames', '--name-only', '--format=%x00%H', `${floor}..${merge}`, '--', stateDir(root, cfg)]);
-  const byFile = new Map();
-  const order = [];
+// Where each slice begins at `merge`: Map(state file → the oldest commit of the first-parent
+// history that brings it).
+function sliceBegins(root, cfg, merge) {
+  const out = git(root, ['-c', 'core.quotepath=off', 'log', '--first-parent', '-m', '--no-renames', '--diff-filter=A', '--name-only', '--format=%x00%H', merge, '--', stateDir(root, cfg)]);
+  const begins = new Map();
+  // Newest first, so the last commit seen for a file is the oldest that brings it.
   for (const chunk of out.split('\0')) {
     const [sha, ...files] = nonEmpty(chunk);
     if (!sha) continue;
-    order.push(sha);
-    for (const f of files) byFile.set(f, [...(byFile.get(f) ?? []), sha]);
+    for (const f of files) begins.set(f, sha);
   }
-  return { byFile, order };
+  return begins;
 }
 
 // The paths the release step may write: package.json, CHANGELOG.md and the files `update` renders.
@@ -267,21 +284,17 @@ export function releaseFor(root, cfg, { merge = 'HEAD' } = {}) {
   if (unnamed.length === 0) return null;
   const floor = floorOf(root, cfg, merge);
   if (floor === null) return null;
-  // Less those merged at or before the floor (no own merge after it), less those whose own merge
-  // set the version.
-  const { byFile, order } = stateChangesAfter(root, cfg, floor, merge);
+  // Less those that began at or before the floor: merged before it, or the slice that set it.
+  const after = nonEmpty(git(root, ['rev-list', '--first-parent', `${floor}..${merge}`]));
+  const begins = sliceBegins(root, cfg, merge);
   const dir = stateDir(root, cfg);
   const merges = [];
   for (const s of unnamed) {
-    const file = `${dir}/${stateFileName(s.id)}`;
-    const own = (byFile.get(file) ?? []).find((sha) => {
-      const state = stateAt(root, sha, file);
-      return state !== null && !DONE.includes(state);
-    });
-    if (own === undefined || setsVersion(root, own)) continue;
-    merges.push({ id: s.id, name: s.name, pr: s.pr, phase: s.phase, at: order.indexOf(own) });
+    const at = after.indexOf(begins.get(`${dir}/${stateFileName(s.id)}`));
+    if (at < 0) continue;
+    merges.push({ id: s.id, name: s.name, pr: s.pr, phase: s.phase, at });
   }
-  // In the order they merged, oldest first; the slices of one merge in the order of their files.
+  // In the order they began, oldest first; the slices of one commit in the order of their files.
   merges.sort((x, y) => y.at - x.at);
   const phases = [];
   for (const id of [...new Set(merges.map((m) => m.phase).filter(Boolean))]) {
