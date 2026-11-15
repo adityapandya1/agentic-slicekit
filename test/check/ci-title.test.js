@@ -92,6 +92,15 @@ test('[spec] and [plan] titles are exempt from the slice rule', () => {
   });
 });
 
+// P5/S-21, REQ-3.7, D-54: the pull request that carries a release record names a phase, not a slice.
+test('a [release] title is exempt', () => {
+  withKit(({ run }) => {
+    assert.deepEqual(run(titled('[release] P1')), []);
+    // The tag needs its space, as [spec] and [plan] do.
+    assert.deepEqual(run(titled('[release]P1')), [{ file: FILE, line: 0, message: 'title must begin with [P<n>/S-<nn>]' }]);
+  });
+});
+
 test('outside --ci the rule does nothing', () => {
   withKit(({ run }) => assert.deepEqual(run(titled('Fix billing'), false), []));
 });

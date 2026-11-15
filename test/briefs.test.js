@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig } from '../src/config.js';
-import { PROCEDURES, TEMPLATES, renderBrief } from '../src/instructions.js';
+import { PROCEDURES, TEMPLATES, renderBrief, renderProcedure } from '../src/instructions.js';
 import { briefProblems } from './helpers/brief-lint.js';
 import { shapeProblems } from '../src/hooks/shapes.js';
 import { NO_GIT } from '../src/hooks/subagent-start.js';
@@ -36,6 +36,29 @@ test('briefs.test.js » no brief tells an agent to run git', () => {
   ]);
   assert.deepEqual(briefProblems(`Run \`{{cli}} nosuch\`.${footer}`, { kind: 'agent' }), ['unknown command nosuch']);
   assert.deepEqual(briefProblems(`Read it with \`git diff main...HEAD\`.${footer}`, { kind: 'agent' }), []);
+});
+
+// P5/S-21, REQ-2.9, D-19, D-54: the release procedure cuts the branch, runs the release and opens
+// the pull request through the kit's commands; it names no git or gh command.
+test('briefs.test.js » the release procedure names no git or gh command', () => {
+  const template = read(path.join(TEMPLATES, 'commands', 'release.md'));
+  assert.deepEqual(briefProblems(template, { kind: 'command' }), []);
+
+  const cfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
+  try {
+    const text = renderProcedure(root, cfg, 'release', ['P1']);
+    assert.doesNotMatch(text, /\{\{(?:cli|args)\}\}/, 'every placeholder is filled');
+    assert.deepEqual(briefProblems(text, { kind: 'command' }), []);
+    // Every command the procedure names is the kit's own.
+    const spans = [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
+    for (const s of spans) assert.doesNotMatch(s, /^\s*(?:git|gh)\s/, s);
+    for (const want of ['npx slicekit release P1 --dry-run', 'npx slicekit branch release ', 'npx slicekit release P1', 'npx slicekit check', 'npx slicekit pr open --title "[release] P1"']) {
+      assert.ok(text.includes(want), `the procedure does not name: ${want}`);
+    }
+  } finally {
+    cleanup();
+  }
 });
 
 // ---- further cases ----
