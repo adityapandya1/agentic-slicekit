@@ -13,7 +13,8 @@
     "test/workflow.test.js"
   ],
   "unfrozen": [
-    "test/observability.test.js"
+    "test/observability.test.js",
+    "test/workflow.test.js"
   ],
   "verdicts": [
     {
@@ -88,6 +89,17 @@
         "unfreeze": "test/observability.test.js",
         "amendCommit": "3f43cf0bb26fee2aa460b7d7a11c5b208b81856c",
         "reason": "review round 1: tests added for B-1, B-2, H-1, H-3, H-4"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T01:13:06.273Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/workflow.test.js",
+        "amendCommit": "29218519df1309a4201ab7f8963b83c72168047b",
+        "reason": "review round 1: the golden file test of H-2"
       }
     }
   ]
