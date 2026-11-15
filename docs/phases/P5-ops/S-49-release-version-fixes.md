@@ -26,10 +26,14 @@ decisions: [D-90, D-92]
 | `release-version-order.test.js » status --sync --write off the default branch's tip sets no version` | negative | REQ-5.5 |
 | `release-version-order.test.js » a sync merge whose slice was already recorded merged is not taken for a hand-set version` | negative | REQ-5.5 |
 | `release-version-order.test.js » a sync pull request squash-merged under an edited subject is not taken for a hand-set version` | negative | REQ-5.5 |
+| `release-version-order.test.js » a rebase-merged slice that sets the version itself is not versioned again` | negative | REQ-5.5 |
+| `release-version-order.test.js » a hand-set version whose section mixes prose with a slice line is still a floor` | negative | REQ-5.5 |
 
 Amended (author's standing instruction, 2026-11-15): `test/release-version-order.test.js` gains the test of the last row, the merge order of review B-1 of round 1.
 
 Amended (author's standing instruction, 2026-11-15): `test/release-version-order.test.js` gains the test `a sync pull request squash-merged under an edited subject is not taken for a hand-set version` (negative, REQ-5.5), the merge order of review B-2 of round 2.
+
+Amended (author's standing instruction, 2026-11-15): `test/release-version-order.test.js` gains the tests of the last two rows, the cases of reviews B-3 and B-4 of round 3.
 
 ## Expected changes
 
