@@ -1,11 +1,11 @@
 {
   "slice": "P6/S-54",
-  "state": "changes-requested",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 186,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
-    "headSha": "bddde861e3a4bc6a59d41308fd6aa1c0875c37e2"
+    "headSha": "088525b02b3a8031f67fbf5195930a2c59097b48"
   },
   "redCommit": "a7bf945fbbf2bf33de7179d8a558263251dc704a",
   "frozenTests": [
@@ -135,6 +135,22 @@
       "at": "2026-11-15T17:05:11.335Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-15T17:17:06.924Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "088525b02b3a8031f67fbf5195930a2c59097b48",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
     }
   ]
 }
