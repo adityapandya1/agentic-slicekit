@@ -1,0 +1,34 @@
+{
+  "slice": "P6/S-54",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "a7bf945fbbf2bf33de7179d8a558263251dc704a",
+  "frozenTests": [
+    "test/guide-page.test.js",
+    "test/user-guide.test.js",
+    "test/readme.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T16:22:45.782Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "a7bf945fbbf2bf33de7179d8a558263251dc704a",
+        "testExit": 1,
+        "tests": [
+          "test/guide-page.test.js",
+          "test/user-guide.test.js",
+          "test/readme.test.js"
+        ]
+      }
+    }
+  ]
+}
