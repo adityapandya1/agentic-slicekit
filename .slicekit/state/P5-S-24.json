@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-24",
-  "state": "draft-pr",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 161,
@@ -18,7 +18,8 @@
   "unfrozen": [
     "test/examples.test.js",
     "test/readme.test.js",
-    "test/user-guide.test.js"
+    "test/user-guide.test.js",
+    "test/walkthrough.test.js"
   ],
   "verdicts": [
     {
@@ -178,6 +179,17 @@
           "headSha": "72ef5fd3202b4a57718aa24fb5f40454ad15a83a",
           "title": "[P5/S-24] Examples, walkthrough, user guide"
         }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "building",
+      "at": "2026-11-15T07:04:37.551Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/walkthrough.test.js",
+        "amendCommit": "f8e67a5c4976a02426dd00b7a0db922d2f058e92",
+        "reason": "D-94 joins the slice's decisions (reviews B-1, H-3 of round 3)"
       }
     }
   ]
