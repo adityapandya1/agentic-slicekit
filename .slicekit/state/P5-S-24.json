@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-24",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 161,
@@ -19,7 +19,15 @@
     "test/examples.test.js",
     "test/readme.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-24-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "7fd15b5bd03ea6cc4c7bbd647c53f00eed1d8d09"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -83,6 +91,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/161",
           "headSha": "7fd15b5bd03ea6cc4c7bbd647c53f00eed1d8d09",
           "title": "[P5/S-24] Examples, walkthrough, user guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T06:33:49.499Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-24-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
