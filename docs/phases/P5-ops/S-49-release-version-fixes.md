@@ -12,7 +12,7 @@ decisions: [D-90, D-92]
 
 1. A sync sets a version for every merged slice that no `CHANGELOG.md` section on the default branch names and whose own merge did not set the version, whichever merge the sync runs on (D-92). When a slice merges before the sync pull request of a version-setting merge is merged, the later sync sets the next version with a section naming only the later slice; the version-setting slice is not named again and gets no second version (issue #141, REQ-5.5).
 2. When a sync pull request that sets a version is merged after a second slice merged, the sync on that merge sets the next version with a section naming the second slice, so no merged slice is left without a version and a changelog line (issue #143, REQ-5.5, D-90).
-3. A slice merged before the newest merge that set the version by hand, or before the commit that turned `release.auto` on when there is none, is never named and never counted; a sync with no slice left to version sets no version and adds no section (D-92).
+3. A slice merged before the newest merge that set the version by hand, or before the commit that turned `release.auto` on when there is none, is never named and never counted; a sync with no slice left to version sets no version and adds no section (D-92). A version is set by hand when its `CHANGELOG.md` section, at the commit that set it, holds any line the kit does not generate, or no slice line; a section made only of lines in the kit's own format is taken for a sync's, and the slices it names are excluded by name. A slice is before a hand-set version when the first commit that brings its state file to the default branch is at or before that version's commit, whichever way it was merged.
 4. `status --sync --write` sets a version only when HEAD is the tip of the default branch. On any other branch or commit it writes the state and `BUILD.md` as before, leaves `package.json`, `CHANGELOG.md` and the rendered files as they were, and prints `version not set: HEAD is not the tip of <default branch>` on stderr (issue #142, REQ-5.5).
 5. The amendment line for `test/runbook.test.js` in `docs/phases/P5-ops/S-48-automatic-releases.md` says what the test checks since commit a29f581: the last five changelog versions, and that the newest section equals the version in `package.json` (issue #140). `slicekit check` gives `0 findings`.
 
@@ -34,6 +34,8 @@ Amended (author's standing instruction, 2026-11-15): `test/release-version-order
 Amended (author's standing instruction, 2026-11-15): `test/release-version-order.test.js` gains the test `a sync pull request squash-merged under an edited subject is not taken for a hand-set version` (negative, REQ-5.5), the merge order of review B-2 of round 2.
 
 Amended (author's standing instruction, 2026-11-15): `test/release-version-order.test.js` gains the tests of the last two rows, the cases of reviews B-3 and B-4 of round 3.
+
+Amended (author's standing instruction, 2026-11-15): Done when 3 says how a hand-set version and the slices before it are told, as the code and the tests of rows 5 to 8 now have it; no test changes.
 
 ## Expected changes
 
