@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-54",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 186,
@@ -16,7 +16,15 @@
   "unfrozen": [
     "test/guide-page.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-54-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "35a51ee63bfc5404be5dd165cc4fab1ba3db1ca5"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -67,6 +75,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
           "headSha": "35a51ee63bfc5404be5dd165cc4fab1ba3db1ca5",
           "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T16:42:31.868Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-54-r1.md",
+          "blockers": 1,
+          "independent": false
         }
       }
     }
