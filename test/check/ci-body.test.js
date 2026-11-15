@@ -207,3 +207,12 @@ test('a [sync] body without Proof fails', () => {
   const noProof = ['**Done when:** the state of P1/S-01 reaches main', '**Decisions:** none'].join('\n');
   assert.deepEqual(local(noProof, title), [{ file: FILE, line: 0, message: 'pull request body is missing "Proof"' }]);
 });
+
+// P5/S-21, REQ-2.9, D-54: a [release] pull request carries Done when, Proof and Decisions, like [plan].
+test('a [release] body needs only Done when, Proof and Decisions, and no slice heading', () => {
+  const short = '**Done when:** every slice of P1 released\n**Proof:** check: 0 findings\n**Decisions:** none';
+  assert.deepEqual(local(short, '[release] P1'), []);
+  assert.deepEqual(messages(local('**Done when:** every slice of P1 released\n**Decisions:** none', '[release] P1')), ['pull request body is missing "Proof"']);
+  // The tag needs its space: without it the title is a slice's, and every REQ-2.10 section is asked for.
+  assert.ok(messages(local(short, '[release]P1')).includes('pull request body is missing "Runbook"'));
+});

@@ -81,3 +81,23 @@ test("the release steps name the environment's approval, the attestation check a
   assert.match(deps, /required reviewer/);
   assert.match(deps, /default branch|`main`/);
 });
+
+// P5/S-21, REQ-2.9, D-21, D-54: the runbook says how a phase's release is recorded, and its Rollback
+// section, which every release record quotes, says what to do.
+test('the runbook says how to record a release, and its Rollback section is filled', () => {
+  const recording = section('Recording a release').replace(/\s+/g, ' ');
+  assert.match(recording, /slicekit release P<n>/);
+  assert.match(recording, /\/slicekit release P<n>/);
+  assert.match(recording, /slicekit branch release <slug>/);
+  assert.match(recording, /\[release\] P<n>/);
+  // What it refuses, and that merging the pull request is the release.
+  assert.match(recording, /not merged/);
+  assert.match(recording, /no operational change/);
+  assert.match(recording, /Merging the `\[release\] P<n>` pull request is the release/);
+  assert.match(recording, /deploys nothing/);
+  const rollback = section('Rollback');
+  assert.doesNotMatch(rollback, /Not yet known/i);
+  assert.ok(rollback.trim().split('\n').length >= 3, rollback);
+  assert.match(rollback, /revert/i);
+  assert.match(rollback, /Rolling back a bad version on npm/);
+});

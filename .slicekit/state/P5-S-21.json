@@ -1,0 +1,291 @@
+{
+  "slice": "P5/S-21",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 150,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+    "headSha": "1c11eabc09f98c6c27009b4327264dc0d75626d7"
+  },
+  "redCommit": "3c89ffcae7ebcdfa6c0134bf0595cb6dff8a6216",
+  "frozenTests": [
+    "test/check/runbook.test.js",
+    "test/commands/release.test.js",
+    "test/check/ci-title.test.js",
+    "test/briefs.test.js"
+  ],
+  "unfrozen": [
+    "test/commands/release.test.js",
+    "test/check/ci-title.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-21-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "05cbed5227b2d12058295f548f13c5c7e59f24a6"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-21-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "9704326296de4ed897e875794d9675fcd8916b98"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P5-S-21i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "4cc816a2b29d73593f8f715511c03137be5c6e31"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P5-S-21i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "33c60839bd2db965ea9a66e5e10e901da73efce6"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P5-S-21i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "1c11eabc09f98c6c27009b4327264dc0d75626d7"
+    }
+  ],
+  "ci": {
+    "sha": "3fff16a015e77c499f38b943008ba50ea94c21ad",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43672074087"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T01:04:05.826Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "3c89ffcae7ebcdfa6c0134bf0595cb6dff8a6216",
+        "testExit": 1,
+        "tests": [
+          "test/check/runbook.test.js",
+          "test/commands/release.test.js",
+          "test/check/ci-title.test.js",
+          "test/briefs.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T01:04:06.465Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:23:36.570Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 150,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+          "headSha": "05cbed5227b2d12058295f548f13c5c7e59f24a6",
+          "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:42:23.965Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-21-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T01:42:39.331Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/commands/release.test.js",
+        "amendCommit": "abb6e7fc69903d90688f3c1c6daecb62758ad0ee",
+        "reason": "review round 1: tests for H-1 and H-3; the guide joins the expected changes for H-2"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:54:02.825Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 150,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+          "headSha": "9704326296de4ed897e875794d9675fcd8916b98",
+          "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T02:06:40.398Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-21-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:14:06.115Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 150,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+          "headSha": "4cc816a2b29d73593f8f715511c03137be5c6e31",
+          "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T02:33:07.295Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P5-S-21i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:45:00.940Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 150,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+          "headSha": "a9300fc8304cfec4f94195a28d891b7244f596d2",
+          "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "draft-pr",
+      "at": "2026-11-15T02:54:54.936Z",
+      "by": "cli",
+      "evidence": {
+        "head": "33c60839bd2db965ea9a66e5e10e901da73efce6"
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T03:01:40.283Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P5-S-21i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T03:01:44.631Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/ci-title.test.js",
+        "amendCommit": "edbdb441ffc01743536a8e0d8189ce8c2520465c",
+        "reason": "review H-8: the amendment record names every test added to the release test file"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T03:13:13.488Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 150,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
+          "headSha": "1c11eabc09f98c6c27009b4327264dc0d75626d7",
+          "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T03:22:11.639Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P5-S-21i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T03:35:23.875Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "3fff16a015e77c499f38b943008ba50ea94c21ad",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43672074087"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T03:35:26.220Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

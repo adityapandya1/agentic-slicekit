@@ -10,6 +10,7 @@ import { GitHostError } from '../src/adapters/githost/errors.js';
 import { fixtureHost } from '../src/adapters/githost/fixture.js';
 import { githubHost } from '../src/adapters/githost/github.js';
 import { REQUIRED_SECTIONS, renderPrBody } from '../src/prbody.js';
+import { commitIn, green, prCalls, stateIn } from './helpers/build-flow.js';
 import { commit, makeRemote, makeRepo } from './helpers/tmp-repo.js';
 
 const cfg = defaultConfig({ name: 'demo', shape: 'backend' });
@@ -382,4 +383,69 @@ test('the GitHub host finds the branch pull request among same-repository ones o
   assert.throws(() => host.pullRequestForBranch('o:spec/demo'), /branch of this repository/);
   answer = JSON.stringify([pr(4, { headRefName: 'other' })]);
   assert.equal(host.pullRequestForBranch('spec/demo'), null);
+});
+
+// ---- build pr and the runbook judgement (P5/S-21, REQ-3.7, D-55) ----
+
+const RUNBOOK_REFUSAL = 'the slice touches operations; change the runbook or give notes.runbook "no operational change: <reason>"';
+const BUILD_SLICE_FILE = 'docs/phases/P1-x/S-01-thing-1.md';
+const BUILD_RUNBOOK = '# Runbook: demo\n\nHow the thing is run.\n\n## Rollback\n\nRevert the pull request.\n\n## Alerts\n\nNone yet.\n';
+
+// `build pr` shares runbookVerdict with the check rule: a change above the first `##` heading lies in
+// no section, so it does not stand in for a Runbook line; a line added under a heading does.
+test('build pr refuses a runbook-flagged slice that changed only the # line', async () => {
+  const p = await green();
+  try {
+    const sliceFile = path.join(p.wt, ...BUILD_SLICE_FILE.split('/'));
+    fs.writeFileSync(sliceFile, fs.readFileSync(sliceFile, 'utf8').replace('runbook: no', 'runbook: yes'));
+    const runbook = path.join(p.wt, 'docs', 'runbook.md');
+    const before = fs.existsSync(runbook) ? fs.readFileSync(runbook, 'utf8').replace(/\r\n/g, '\n') : BUILD_RUNBOOK;
+    const [first, ...rest] = before.split('\n');
+    assert.match(first, /^# /, 'the runbook begins with its # line');
+    assert.ok(rest.some((l) => l.startsWith('## ')), 'the runbook has a ## section');
+    fs.writeFileSync(runbook, [`${first} (renamed)`, ...rest].join('\n'));
+    commitIn(p.wt, 'feat(P1/S-01): the runbook title\n\nSlice: P1/S-01');
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+
+    const refused = await p.pr();
+    assert.equal(refused.code, 1, refused.stdout);
+    assert.ok(refused.stderr.includes(RUNBOOK_REFUSAL), refused.stderr);
+    assert.deepEqual(prCalls(p.host), [], 'no pull request is opened');
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+    assert.equal(stateIn(p.wt).state, 'building');
+
+    // Trailing whitespace on a section's line is no change either (D-55).
+    const lastHeading = rest.filter((l) => l.startsWith('## ')).at(-1);
+    fs.writeFileSync(runbook, [`${first} (renamed)`, ...rest.map((l) => (l === lastHeading ? `${l}  ` : l))].join('\n'));
+    commitIn(p.wt, 'feat(P1/S-01): trailing spaces\n\nSlice: P1/S-01');
+    const spaces = await p.pr();
+    assert.equal(spaces.code, 1, spaces.stdout);
+    assert.ok(spaces.stderr.includes(RUNBOOK_REFUSAL), spaces.stderr);
+    assert.deepEqual(prCalls(p.host), []);
+
+    // The same change with a Runbook line that begins "no operational change" is not refused for the runbook.
+    const notes = JSON.parse(fs.readFileSync(p.notes, 'utf8'));
+    fs.writeFileSync(p.notes, JSON.stringify({ ...notes, runbook: 'no operational change: only the title' }));
+    const noted = await p.pr();
+    assert.ok(!noted.stderr.includes(RUNBOOK_REFUSAL), noted.stderr);
+  } finally {
+    p.cleanup();
+  }
+});
+
+// The Runbook line of the body names the sections that changed.
+test('build pr names the changed runbook sections in the body', async () => {
+  const p = await green();
+  try {
+    const runbook = path.join(p.wt, 'docs', 'runbook.md');
+    const before = fs.existsSync(runbook) ? fs.readFileSync(runbook, 'utf8').replace(/\r\n/g, '\n') : BUILD_RUNBOOK;
+    const heading = before.split('\n').filter((l) => l.startsWith('## ')).at(-1).replace(/^##\s+/, '').trim();
+    fs.writeFileSync(runbook, `${before.replace(/\n*$/, '\n')}\nPage the owner when the queue is over 100.\n`);
+    commitIn(p.wt, 'feat(P1/S-01): the runbook\n\nSlice: P1/S-01');
+    const opened = await p.pr();
+    assert.equal(opened.code, 0, opened.stderr);
+    assert.ok(readPr(p.host, 1).body.includes(`**Runbook:** changed: docs/runbook.md (${heading})\n`), readPr(p.host, 1).body);
+  } finally {
+    p.cleanup();
+  }
 });
