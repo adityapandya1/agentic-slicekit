@@ -1,11 +1,11 @@
 {
   "slice": "P6/S-53",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 176,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/176",
-    "headSha": "67a453e1de57157bb88d17511358e0985c9b9072"
+    "headSha": "a3be65f58039719761b3a009dd7e6c50422838c8"
   },
   "redCommit": "44b1fcd7318c49709f188afee7d713af04bb2410",
   "frozenTests": [
@@ -85,6 +85,22 @@
           "path": ".slicekit/reviews/P6-S-53-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T12:33:19.769Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 176,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/176",
+          "headSha": "a3be65f58039719761b3a009dd7e6c50422838c8",
+          "title": "[P6/S-53] Jira tracker"
         }
       }
     }
