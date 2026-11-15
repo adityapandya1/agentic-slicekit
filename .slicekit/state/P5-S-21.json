@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-21",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 150,
@@ -38,6 +38,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "4cc816a2b29d73593f8f715511c03137be5c6e31"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P5-S-21i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "33c60839bd2db965ea9a66e5e10e901da73efce6"
     }
   ],
   "ci": null,
@@ -191,6 +198,20 @@
       "by": "cli",
       "evidence": {
         "head": "33c60839bd2db965ea9a66e5e10e901da73efce6"
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T03:01:40.283Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P5-S-21i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
       }
     }
   ]
