@@ -1,0 +1,10 @@
+.slicekit/graph/
+.slicekit/.subagent-*
+.slicekit/local.json
+.slicekit/reports/
+!.slicekit/journal/
+!.slicekit/journal/*.log
+.slicekit/journal/*.lock
+!.slicekit/journal-heads.log
+.worktrees/
+node_modules/

@@ -13,6 +13,8 @@ import {
   loadConfig,
   localTestCommand,
 } from '../src/config.js';
+import { runCli } from './helpers/run-cli.js';
+import { makeRepo } from './helpers/tmp-repo.js';
 
 const base = () => defaultConfig({ name: 'demo', shape: 'backend' });
 
@@ -20,7 +22,7 @@ test('defaultConfig has every key and validates clean', () => {
   const cfg = base();
   assert.equal(cfg.configVersion, CONFIG_VERSION);
   assert.deepEqual(SHAPES, ['backend', 'fullstack', 'data']);
-  for (const key of ['name', 'shape', 'docsRoot', 'defaultBranch', 'protectedBranches', 'commands', 'repos', 'gitHost', 'tracker', 'review', 'freezeTests', 'style', 'destructive', 'ci']) {
+  for (const key of ['name', 'shape', 'docsRoot', 'defaultBranch', 'protectedBranches', 'commands', 'gitHost', 'tracker', 'review', 'freezeTests', 'style', 'destructive', 'ci']) {
     assert.ok(key in cfg, key);
   }
   assert.deepEqual(validateConfig(cfg), []);
@@ -247,5 +249,114 @@ test('ci.runsOn or ci.java of the wrong type is refused', () => {
     const errors = withCi({ java: bad });
     assert.ok(errors.length > 0, `java ${JSON.stringify(bad)} refused`);
     assert.ok(errors.every((e) => e.startsWith('ci.java: ')), `${JSON.stringify(bad)}: ${errors.join('; ')}`);
+  }
+});
+
+// ---- P5/S-24 (REQ-5.6, D-33, D-60): configVersion 2 and the migration ----
+
+// A repository whose config is as a version 1 kit wrote it: today's defaults, at `configVersion`,
+// holding the `repos` list version 2 removes. -> { root, file, cleanup }
+function repoAtVersion(configVersion, repos = []) {
+  const repo = makeRepo({ commits: 1 });
+  const file = path.join(repo.root, '.slicekit', 'config.json');
+  fs.mkdirSync(path.dirname(file));
+  fs.writeFileSync(file, `${JSON.stringify({ ...base(), configVersion, repos }, null, 2)}\n`);
+  return { ...repo, file };
+}
+
+const MIGRATED = /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m;
+
+test('an older configVersion is migrated and each change printed', () => {
+  const repo = repoAtVersion(1);
+  try {
+    const first = runCli(['status'], { cwd: repo.root });
+    assert.equal(first.code, 0, first.stderr);
+    assert.match(first.stderr, MIGRATED);
+    const lines = first.stderr.split(/\r?\n/);
+    assert.ok(lines.includes('  - removed repos, unread since D-47'), first.stderr);
+    // Each change is one line under the migrated line; an empty repos list has nothing more to say.
+    assert.deepEqual(lines.filter((l) => l.startsWith('  - ')), ['  - removed repos, unread since D-47']);
+
+    // Written once: version 2, no repos, two-space indentation and a final newline, every other key kept.
+    const text = fs.readFileSync(repo.file, 'utf8');
+    assert.ok(text.includes('\n  "configVersion": 2,\n'), text);
+    const written = JSON.parse(text);
+    assert.ok(!('repos' in written), text);
+    assert.equal(text, `${JSON.stringify(written, null, 2)}\n`);
+    const { repos: _removed, ...kept } = { ...base(), configVersion: 2 };
+    assert.deepEqual(written, kept);
+    assert.deepEqual(fs.readdirSync(path.dirname(repo.file)), ['config.json'], 'no temporary file is left behind');
+
+    const second = runCli(['status'], { cwd: repo.root });
+    assert.equal(second.code, 0, second.stderr);
+    assert.doesNotMatch(second.stderr, /config: migrated/);
+    assert.equal(fs.readFileSync(repo.file, 'utf8'), text);
+  } finally {
+    repo.cleanup();
+  }
+
+  // A repos list that held entries is printed, with where to list them now.
+  const held = repoAtVersion(1, ['api', 'web']);
+  try {
+    const r = runCli(['status'], { cwd: held.root });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stderr, MIGRATED);
+    assert.deepEqual(
+      r.stderr.split(/\r?\n/).filter((l) => l.startsWith('  - ')),
+      ['  - removed repos, unread since D-47', '  - repos held api, web; list them in .slicekit/workspace.json'],
+    );
+  } finally {
+    held.cleanup();
+  }
+});
+
+test('a hook reads an older config without writing it', () => {
+  assert.ok(CONFIG_VERSION > 1, `a version 1 config is older only than a kit at 2 or later; this kit is at ${CONFIG_VERSION}`);
+  const repo = repoAtVersion(1);
+  try {
+    const before = fs.readFileSync(repo.file);
+    // Stop's payload, as Claude Code sends it.
+    const stdin = JSON.stringify({
+      session_id: 's1',
+      transcript_path: path.join(repo.root, 'transcript.jsonl'),
+      cwd: repo.root,
+      permission_mode: 'default',
+      hook_event_name: 'Stop',
+      stop_hook_active: false,
+    });
+    const r = runCli(['hook', 'stop'], { cwd: repo.root, stdin });
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'the hook rewrote .slicekit/config.json');
+    assert.deepEqual(fs.readdirSync(path.dirname(repo.file)), ['config.json']);
+    assert.doesNotMatch(r.stderr, /config: migrated/);
+    // It answered from the gate, which read the config migrated: no complaint about the version.
+    const answer = JSON.parse(r.stdout);
+    assert.doesNotMatch(JSON.stringify(answer), /configVersion|could not run/);
+    // Read in memory, the config is the migrated one, and reading it wrote nothing either.
+    const cfg = loadConfig(repo.root);
+    assert.equal(cfg.configVersion, CONFIG_VERSION);
+    assert.ok(!('repos' in cfg));
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'loadConfig rewrote .slicekit/config.json');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test("a configVersion newer than the kit's is refused, naming both", () => {
+  assert.equal(CONFIG_VERSION, 2);
+  const repo = repoAtVersion(3);
+  try {
+    const before = fs.readFileSync(repo.file);
+    const r = runCli(['status'], { cwd: repo.root });
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.ok(r.stderr.includes("configVersion 3 is newer than this kit's 2"), r.stderr);
+    assert.match(r.stderr, /^slicekit: /m);
+    assert.equal(r.stdout, '');
+    assert.doesNotMatch(r.stderr, /config: migrated/);
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'a refused config was rewritten');
+    // A hook refuses it too, and writes nothing.
+    assert.throws(() => loadConfig(repo.root), (e) => e instanceof ConfigError && e.message.includes("configVersion 3 is newer than this kit's 2"));
+    assert.ok(fs.readFileSync(repo.file).equals(before));
+  } finally {
+    repo.cleanup();
   }
 });

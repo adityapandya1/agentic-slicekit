@@ -1,5 +1,6 @@
 // REQ-5.7: the README walkthrough's commands run verbatim in a bash session and stop at the first failure.
 // S-25: the README's walkthrough, read from its sh blocks and run as one bash session.
+// S-24: the walkthrough still exits 0 after the status, the user guide link and the examples change.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

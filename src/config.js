@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 export const SHAPES = ['backend', 'fullstack', 'data'];
 export const CONFIG_PATH = path.join('.slicekit', 'config.json');
 
@@ -30,6 +30,49 @@ export class ConfigError extends Error {
   }
 }
 
+// D-33: a config written by a newer kit is refused, never read as this kit's version.
+export class ConfigNewerError extends ConfigError {
+  constructor(version) {
+    super([`config: configVersion ${version} is newer than this kit's ${CONFIG_VERSION}; upgrade slicekit`]);
+    this.name = 'ConfigNewerError';
+    this.version = version;
+  }
+}
+
+const WORKSPACE_PATH = '.slicekit/workspace.json';
+
+// REQ-5.6, D-60: one entry per configVersion, taking a config at that version to the next one. Each
+// changes the config in place and returns one line per change.
+export const MIGRATIONS = {
+  // Version 2 removes repos, accepted and unread since D-47: the workspace file is the only list.
+  1: (cfg) => {
+    const held = Array.isArray(cfg.repos) ? cfg.repos : [];
+    delete cfg.repos;
+    const changes = ['removed repos, unread since D-47'];
+    if (held.length > 0) {
+      const names = held.map((r) => (typeof r === 'string' ? r : typeof r?.name === 'string' ? r.name : JSON.stringify(r)));
+      changes.push(`repos held ${names.join(', ')}; list them in ${WORKSPACE_PATH}`);
+    }
+    return changes;
+  },
+};
+
+// -> { cfg, from, changes }: a copy of `cfg` at CONFIG_VERSION, the version read, and one line per
+// change (none when it was current). A configVersion that is not an integer of 1 or more is left as
+// it is for validateConfig to name; one above CONFIG_VERSION throws ConfigNewerError.
+export function migrateConfig(cfg) {
+  const from = cfg !== null && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg.configVersion : undefined;
+  if (!(Number.isInteger(from) && from >= 1)) return { cfg, from, changes: [] };
+  if (from > CONFIG_VERSION) throw new ConfigNewerError(from);
+  const copy = structuredClone(cfg);
+  const changes = [];
+  for (let v = from; v < CONFIG_VERSION; v += 1) {
+    changes.push(...MIGRATIONS[v](copy));
+    copy.configVersion = v + 1;
+  }
+  return { cfg: copy, from, changes };
+}
+
 // The kit's own filler list, before any team extends it.
 export function seedBanned() {
   const file = fileURLToPath(new URL('../templates/style.json', import.meta.url));
@@ -47,7 +90,6 @@ export function defaultConfig({ name, shape, docsRoot = 'docs', commands = {}, c
     cli,
     protectedBranches: [defaultBranch],
     commands: { test: '', lint: '', build: '', e2e: '', ...commands },
-    repos: [],
     gitHost: { kind: 'github' },
     tracker: { kind: 'github-issues' },
     review: { independent: 'required' },
@@ -212,7 +254,9 @@ export function validateConfig(cfg) {
       if (!COMMAND_KEYS.includes(key)) errors.push(`commands.${key}: unknown command; use ${COMMAND_KEYS.join(', ')}`);
     }
   }
-  if (!Array.isArray(cfg.repos)) errors.push('repos: must be an array');
+  if (cfg.configVersion === CONFIG_VERSION && Object.hasOwn(cfg, 'repos')) {
+    errors.push(`repos: removed in configVersion 2; list repositories in ${WORKSPACE_PATH}`);
+  }
   for (const key of ['gitHost', 'tracker']) {
     if (!isObject(cfg[key]) || typeof cfg[key].kind !== 'string') errors.push(`${key}.kind: must be a string`);
   }
@@ -286,6 +330,8 @@ export function compileDestructive(cfg) {
   return cfg.destructive.map((src) => new RegExp(src, 'i'));
 }
 
+// An older config is read migrated (D-60); the file is never written here, so a hook that loads the
+// config leaves the tracked file as it is.
 export function loadConfig(root) {
   const file = path.join(root, CONFIG_PATH);
   let text;
@@ -294,15 +340,44 @@ export function loadConfig(root) {
   } catch {
     throw new ConfigError([`config: cannot read ${CONFIG_PATH}`]);
   }
-  let cfg;
+  let raw;
   try {
-    cfg = JSON.parse(text);
+    raw = JSON.parse(text);
   } catch {
     throw new ConfigError([`config: ${CONFIG_PATH} is not valid JSON`]);
   }
+  const { cfg } = migrateConfig(raw);
   const errors = validateConfig(cfg);
   if (errors.length > 0) throw new ConfigError(errors);
   return cfg;
+}
+
+// REQ-5.6, D-60: the config file of `root` moved to CONFIG_VERSION when it is older, written through
+// a temporary name and a rename. -> { from, to, changes }, or null when there is no config file, it
+// is not JSON, or it is current. A newer configVersion throws ConfigNewerError and writes nothing.
+// With `write` false the same answer is given and the file is left as it is (D-93: main() asks so
+// on a slice branch or a slice's review branch, and for `slicekit branch`).
+export function migrateConfigFile(root, { write = true } = {}) {
+  const file = path.join(root, CONFIG_PATH);
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+  } catch {
+    return null;
+  }
+  const { cfg, from, changes } = migrateConfig(raw);
+  if (cfg === raw || from === CONFIG_VERSION) return null;
+  if (!write) return { from, to: CONFIG_VERSION, changes };
+  const temporary = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporary, `${JSON.stringify(cfg, null, 2)}
+`);
+    fs.renameSync(temporary, file);
+  } catch (e) {
+    fs.rmSync(temporary, { force: true });
+    throw e;
+  }
+  return { from, to: CONFIG_VERSION, changes };
 }
 
 // The machine's own settings (D-43): `.slicekit/local.json`, untracked, in the session root (the

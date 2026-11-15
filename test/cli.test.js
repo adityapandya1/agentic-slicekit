@@ -1,10 +1,14 @@
 // REQ-1.1, REQ-5.1: the command line the install layout puts on PATH, whose entry dispatches each subcommand; its help, its usage and its exit codes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { CONFIG_VERSION, ConfigNewerError, defaultConfig, migrateConfig, migrateConfigFile, validateConfig } from '../src/config.js';
 import { main, COMMANDS } from '../src/cli/index.js';
 import { runCli } from './helpers/run-cli.js';
+import { makeRepo } from './helpers/tmp-repo.js';
 
 test('unknown subcommand exits 2 with usage', () => {
   const r = runCli(['nope'], { cwd: os.tmpdir() });
@@ -103,5 +107,221 @@ test('main dispatches to a registered command with its args and io', async () =>
     assert.equal(received.ioArg, io);
   } finally {
     delete COMMANDS.tmp;
+  }
+});
+
+// ---- P5/S-24 (REQ-5.6, D-60, D-93): the migration runs before the command, init included ----
+
+// A repository whose config a version 1 kit wrote: today's defaults at configVersion 1, holding repos.
+function repoWithConfig(change) {
+  const repo = makeRepo({ commits: 1 });
+  const file = path.join(repo.root, '.slicekit', 'config.json');
+  fs.mkdirSync(path.dirname(file));
+  const cfg = { ...defaultConfig({ name: 'demo', shape: 'backend' }), ...change };
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+  return { ...repo, file };
+}
+
+test('init rerun on an older config migrates it first', () => {
+  const repo = repoWithConfig({ configVersion: 1, repos: [] });
+  try {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: repo.root });
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.ok(r.stderr.split(/\r?\n/).includes('  - removed repos, unread since D-47'), r.stderr);
+    const text = fs.readFileSync(repo.file, 'utf8');
+    assert.ok(text.includes('\n  "configVersion": 2,\n'), text);
+    assert.ok(!('repos' in JSON.parse(text)), text);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// Review r1, H-1: a slice or review worktree holds no change a build step cannot commit, so there an
+// older config is read migrated and left as it is; the slice that names the config is the one that writes.
+test('on a slice branch or its review branch an older config is read migrated and not written', () => {
+  const told = /^config: \.slicekit\/config\.json is at configVersion 1 and is read as 2 here, unwritten; it is migrated on the default branch or on a plan branch$/m;
+  const sliceFile = (changes) =>
+    `---\nslice: P1/S-01\nname: Zone\nrepo: .\ngroup: A\nrunbook: no\nrequirements: [REQ-1.1]\ndecisions: [D-01]\n---\n\n## Done when\n\n1. It works.\n\n## Evaluation set\n\n| Test | Kind | Covers |\n|---|---|---|\n| \`a.test.js » works\` | happy | REQ-1.1 |\n\n## Expected changes\n\n${changes}\n`;
+  const repo = repoWithConfig({ configVersion: 1, repos: [] });
+  const sliceMd = path.join(repo.root, 'docs', 'phases', 'P1-x', 'S-01-zone.md');
+  fs.mkdirSync(path.dirname(sliceMd), { recursive: true });
+  const on = (branch) => execFileSync('git', ['switch', '-q', '-C', branch], { cwd: repo.root, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    const before = fs.readFileSync(repo.file);
+    for (const [branch, changes] of [
+      ['slice/P1-S-01-zone', '`src/x/a.js`.'],
+      ['slice/P1-S-01-review', '`src/x/a.js`.'],
+    ]) {
+      fs.writeFileSync(sliceMd, sliceFile(changes));
+      on(branch);
+      for (let run = 1; run <= 2; run += 1) {
+        const r = runCli(['status'], { cwd: repo.root });
+        assert.ok(fs.readFileSync(repo.file).equals(before), `${branch}: the config was rewritten`);
+        assert.match(r.stderr, told, branch);
+        assert.equal(r.stderr.match(/^config: /gm).length, 1, r.stderr);
+        assert.doesNotMatch(r.stderr, /config: migrated|configVersion: must be/, branch);
+      }
+    }
+
+    // The slice whose Expected changes name the config writes it: build config commits it (D-53).
+    fs.writeFileSync(sliceMd, sliceFile('`src/x/a.js`, `.slicekit/config.json`.'));
+    on('slice/P1-S-01-zone');
+    const named = runCli(['status'], { cwd: repo.root });
+    assert.match(named.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.doesNotMatch(named.stderr, told);
+    assert.equal(JSON.parse(fs.readFileSync(repo.file, 'utf8')).configVersion, 2);
+
+    // Review r3, B-1 (D-94): the review branch of that slice is written as its slice branch is.
+    fs.writeFileSync(repo.file, before);
+    on('slice/P1-S-01-review');
+    const reviewed = runCli(['status'], { cwd: repo.root });
+    assert.match(reviewed.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.ok(reviewed.stderr.split(/\r?\n/).includes('  - removed repos, unread since D-47'), reviewed.stderr);
+    assert.doesNotMatch(reviewed.stderr, told);
+    assert.equal(JSON.parse(fs.readFileSync(repo.file, 'utf8')).configVersion, 2);
+
+    // Any other branch writes as before: a plan branch is where a team commits the migration.
+    fs.writeFileSync(repo.file, before);
+    on('plan/config-2');
+    const plan = runCli(['status'], { cwd: repo.root });
+    assert.match(plan.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.doesNotMatch(plan.stderr, told);
+    assert.equal(JSON.parse(fs.readFileSync(repo.file, 'utf8')).configVersion, 2);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// Review r2, H-3 (D-93): `slicekit branch` refuses a changed tracked file, so it never writes the
+// migration; the branch is cut first and the next command writes the migration on it.
+test('branch plan on the default branch leaves an older config unwritten, and the next command writes it on the plan branch', () => {
+  const told = /^config: \.slicekit\/config\.json is at configVersion 1 and is read as 2 here, unwritten; slicekit branch writes nothing, and the next command writes it on the branch it runs on$/m;
+  const repo = repoWithConfig({ configVersion: 1, repos: ['api'] });
+  const gitOut = (args) => execFileSync('git', args, { cwd: repo.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    gitOut(['add', '-A']);
+    gitOut(['commit', '-q', '-m', 'config']);
+    const before = fs.readFileSync(repo.file);
+
+    const cut = runCli(['branch', 'plan', 'config-2'], { cwd: repo.root });
+    assert.equal(cut.code, 0, cut.stdout + cut.stderr);
+    assert.equal(cut.stdout, 'plan/config-2\n');
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'branch plan rewrote the config');
+    assert.match(cut.stderr, told);
+    assert.equal(cut.stderr.match(/^config: /gm).length, 1, cut.stderr);
+    assert.doesNotMatch(cut.stderr, /config: migrated|commit or stash/);
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'plan/config-2');
+
+    const next = runCli(['status'], { cwd: repo.root });
+    assert.match(next.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    const lines = next.stderr.split(/\r?\n/);
+    assert.ok(lines.includes('  - removed repos, unread since D-47'), next.stderr);
+    assert.ok(lines.includes('  - repos held api; list them in .slicekit/workspace.json'), next.stderr);
+    assert.doesNotMatch(next.stderr, told);
+    const after = JSON.parse(fs.readFileSync(repo.file, 'utf8'));
+    assert.equal(after.configVersion, 2);
+    assert.ok(!('repos' in after));
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'plan/config-2');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// Review r3, H-3 (D-94): a command that ran on the default branch first, such as `release --dry-run`,
+// wrote the migration there. `slicekit branch` cuts the branch and carries that one change; any other
+// uncommitted change to a tracked file is refused as before.
+test('branch plan cuts the branch when the only uncommitted change is the config as the migration writes it', () => {
+  const repo = repoWithConfig({ configVersion: 1, repos: ['api'] });
+  const other = path.join(repo.root, 'notes.md');
+  fs.writeFileSync(other, 'one\n');
+  const gitOut = (args) => execFileSync('git', args, { cwd: repo.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const refused = (what) => {
+    const r = runCli(['branch', 'plan', 'config-2'], { cwd: repo.root });
+    assert.equal(r.code, 1, `${what}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /^slicekit: commit or stash your changes first$/m, what);
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'main', what);
+  };
+  try {
+    gitOut(['add', '-A']);
+    gitOut(['commit', '-q', '-m', 'config']);
+    const committed = fs.readFileSync(repo.file);
+
+    const first = runCli(['status'], { cwd: repo.root });
+    assert.match(first.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    const migrated = fs.readFileSync(repo.file);
+    assert.equal(JSON.parse(migrated.toString('utf8')).configVersion, 2);
+
+    // Another tracked file changed as well: refused, and nothing is carried.
+    fs.writeFileSync(other, 'two\n');
+    refused('the config and another tracked file');
+    fs.writeFileSync(other, 'one\n');
+
+    // A config at the newer version that is not what the migration writes: refused.
+    fs.writeFileSync(repo.file, `${JSON.stringify({ ...JSON.parse(migrated.toString('utf8')), name: 'other' }, null, 2)}\n`);
+    refused('a config changed by hand');
+    fs.writeFileSync(repo.file, migrated);
+
+    const cut = runCli(['branch', 'plan', 'config-2'], { cwd: repo.root });
+    assert.equal(cut.code, 0, cut.stdout + cut.stderr);
+    assert.equal(cut.stdout, 'plan/config-2\n');
+    assert.doesNotMatch(cut.stderr, /commit or stash|^config: /m);
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'plan/config-2');
+    assert.ok(fs.readFileSync(repo.file).equals(migrated), 'the migrated config was not carried to the plan branch');
+    assert.equal(gitOut(['diff', '--name-only', 'HEAD']), '.slicekit/config.json');
+    assert.equal(gitOut(['rev-parse', 'HEAD']), gitOut(['rev-parse', 'main']), 'the branch command committed');
+    assert.ok(!fs.readFileSync(repo.file).equals(committed));
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a version 2 config holding repos is refused naming repos', () => {
+  const error = 'repos: removed in configVersion 2; list repositories in .slicekit/workspace.json';
+  const cfg = { ...defaultConfig({ name: 'demo', shape: 'backend' }), repos: [] };
+  assert.equal(cfg.configVersion, 2);
+  assert.deepEqual(validateConfig(cfg), [error]);
+  const repo = repoWithConfig({ repos: ['api'] });
+  try {
+    const before = fs.readFileSync(repo.file);
+    const r = runCli(['check'], { cwd: repo.root });
+    assert.notEqual(r.code, 0, r.stdout + r.stderr);
+    assert.ok(`${r.stdout}${r.stderr}`.includes(error), r.stdout + r.stderr);
+    assert.doesNotMatch(r.stderr, /config: migrated/);
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'a refused config was rewritten');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('migrateConfig copies, names the version read, and leaves a version that is no integer to validateConfig', () => {
+  const old = { ...defaultConfig({ name: 'demo', shape: 'backend' }), configVersion: 1, repos: [{ name: 'api' }, 'web'] };
+  const { cfg, from, changes } = migrateConfig(old);
+  assert.equal(from, 1);
+  assert.equal(cfg.configVersion, CONFIG_VERSION);
+  assert.ok(!('repos' in cfg));
+  assert.deepEqual(old.repos, [{ name: 'api' }, 'web'], 'the config passed in is not changed');
+  assert.deepEqual(changes, ['removed repos, unread since D-47', 'repos held api, web; list them in .slicekit/workspace.json']);
+  assert.deepEqual(validateConfig(cfg), []);
+
+  const current = defaultConfig({ name: 'demo', shape: 'backend' });
+  assert.deepEqual(migrateConfig(current), { cfg: current, from: CONFIG_VERSION, changes: [] });
+  for (const bad of ['1', 0, 1.5, null, undefined]) {
+    const odd = { ...current, configVersion: bad };
+    assert.deepEqual(migrateConfig(odd).changes, []);
+    assert.ok(validateConfig(migrateConfig(odd).cfg).includes(`configVersion: must be ${CONFIG_VERSION}`), String(bad));
+  }
+  assert.throws(() => migrateConfig({ ...current, configVersion: CONFIG_VERSION + 1 }), ConfigNewerError);
+
+  // No config file, or one that is not JSON, is not this function's to report.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-migrate-'));
+  try {
+    assert.equal(migrateConfigFile(dir), null);
+    fs.mkdirSync(path.join(dir, '.slicekit'));
+    fs.writeFileSync(path.join(dir, '.slicekit', 'config.json'), '{not json');
+    assert.equal(migrateConfigFile(dir), null);
+    assert.equal(fs.readFileSync(path.join(dir, '.slicekit', 'config.json'), 'utf8'), '{not json');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
