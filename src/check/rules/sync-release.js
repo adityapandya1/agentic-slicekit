@@ -6,7 +6,10 @@
 // section, and a rendered file only to its fresh render at that version. The rendered files of each
 // folder under examples/ that holds them are judged the same way (D-95): the sync step renders each
 // example at that version, so an example file is accepted only where it equals that render. One
-// finding per file that differs, naming it. A sync branch whose merge the checkout cannot resolve is the journal rule's
+// finding per file that differs, naming it. The version is computed by the function the sync step
+// runs, so the rule of D-96 holds here too: a phase whose line a CHANGELOG.md section at the merge
+// holds has had its minor version, and a sync pull request that carries a second one for it is one
+// finding on package.json and one on CHANGELOG.md (issue #174). A sync branch whose merge the checkout cannot resolve is the journal rule's
 // finding. Silent outside CI and on any other branch, and when the config has no release.auto and the
 // branch changes none of those files.
 import { execFileSync } from 'node:child_process';

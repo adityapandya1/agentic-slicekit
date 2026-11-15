@@ -59,11 +59,33 @@ export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
 // The tool counts only where a shell runs it: as the first word of a simple command. The command is
 // split at line breaks and at ; & | ( ); in each part, NAME=value assignments and the wrapper words
-// below (with the flags after them) and shell keywords such as then or do are skipped; a shell started with a flag holding c (sh -c,
+// below (with the flags after them) and shell keywords such as then or do are skipped; a flag of a
+// wrapper that takes a value (sudo -u runner, nice -n 10, env -u FOO) has that value skipped with it,
+// so the value is never read as the command (issue #136); a shell started with a flag holding c (sh -c,
 // bash -lc) has its script read the same way. A mention such as echo "mvn test" or rg 'gradle' docs
 // is an argument, not a call.
 const JAVA_TOOLS = { mvn: 'maven', gradle: 'gradle', './gradlew': 'gradle' };
-const WRAPPERS = new Set(['env', 'time', 'nice', 'nohup', 'exec', 'command', 'sudo', 'xvfb-run']);
+// Each wrapper word, with its options that take a value in the next word: the letters of the short
+// ones and the names of the long ones. `--user=runner` and `-urunner` hold their value themselves.
+const WRAPPER_VALUES = {
+  env: { short: 'uC', long: ['unset', 'chdir'] },
+  time: { short: 'fo', long: ['format', 'output'] },
+  nice: { short: 'n', long: ['adjustment'] },
+  nohup: { short: '', long: [] },
+  exec: { short: 'a', long: [] },
+  command: { short: '', long: [] },
+  sudo: { short: 'CDghpRrTtUu', long: ['close-from', 'chdir', 'group', 'host', 'prompt', 'chroot', 'role', 'command-timeout', 'type', 'other-user', 'user'] },
+  'xvfb-run': { short: 'efnpsw', long: ['error-file', 'auth-file', 'server-num', 'xauth-protocol', 'server-args', 'wait'] },
+};
+const WRAPPERS = new Set(Object.keys(WRAPPER_VALUES));
+// Whether the flag `word` of `wrapper` takes its value from the next word. In a cluster of short
+// flags the first one that takes a value ends the flags: what follows it in the word is its value.
+function takesNextWord(wrapper, word) {
+  const { short, long } = WRAPPER_VALUES[wrapper];
+  if (word.startsWith('--')) return long.includes(word.slice(2));
+  const at = [...word.slice(1)].findIndex((c) => short.includes(c));
+  return at !== -1 && at === word.length - 2;
+}
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
 // Shell keywords that open a command position: if ...; then mvn verify; fi.
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{']);
@@ -75,7 +97,11 @@ function toolCalled(command) {
     while (i < words.length) {
       const word = unquote(words[i]);
       if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || KEYWORDS.has(word)) { i += 1; continue; }
-      if (WRAPPERS.has(word)) { i += 1; while (i < words.length && words[i].startsWith('-')) i += 1; continue; }
+      if (WRAPPERS.has(word)) {
+        i += 1;
+        while (i < words.length && words[i].startsWith('-')) i += takesNextWord(word, unquote(words[i])) ? 2 : 1;
+        continue;
+      }
       break;
     }
     if (i >= words.length) continue;

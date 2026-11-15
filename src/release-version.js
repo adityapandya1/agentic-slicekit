@@ -4,6 +4,10 @@
 // (patch 0) when a slice it names leaves every slice of that slice's phase `merged` or `released`.
 // One version per sync; its section names every slice it versions.
 //
+// A phase gets its minor version once (D-96). The changelog is the record here too: a phase whose
+// line a CHANGELOG.md section at the merge holds has had its minor version. A slice added to that
+// phase later is a patch version, and its section names that slice alone, with no phase line.
+//
 // The changelog is the record (D-92). The slices a sync versions are the merged slices that no
 // CHANGELOG.md section at the merge names, less those that began at or before the floor: the
 // newest commit that set the version by hand, or the commit that turned `release.auto` on when
@@ -209,6 +213,16 @@ function namesSlice(sections, id) {
   return sections.some((l) => re.test(l));
 }
 
+// Whether a changelog section holds the line of the phase `id` (P1), with or without a name: the
+// phase has had its minor version (D-96). Phase 1's line is not Phase 11's.
+function namesPhase(sections, id) {
+  const number = id.replace(/^P/, '');
+  return sections.some((l) => {
+    const line = l.trimEnd();
+    return isPhaseLine(line) && (line === phaseText(number, '') || line.startsWith(`Phase ${number}:`));
+  });
+}
+
 // Whether the commit `rev` set the version: package.json at it holds a version and CHANGELOG.md at
 // it holds that version's section, and its first parent does not hold both. So the commit brought
 // the version, the section, or the two together. A first commit sets none, and neither does a
@@ -394,8 +408,10 @@ export function releaseFor(root, cfg, { merge = 'HEAD' } = {}) {
   }
   // In the order they began, oldest first; the slices of one commit in the order of their files.
   merges.sort((x, y) => y.at - x.at);
+  // A phase is completed by this sync only when no section at the merge holds its line (D-96).
   const phases = [];
   for (const id of [...new Set(merges.map((m) => m.phase).filter(Boolean))]) {
+    if (namesPhase(sections, id)) continue;
     const slices = all.filter((s) => s.phase === id);
     if (slices.length > 0 && slices.every((s) => DONE.includes(s.state))) {
       phases.push({ id, name: phaseName(slices[0].phaseDir, id), slices });

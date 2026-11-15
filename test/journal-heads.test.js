@@ -99,7 +99,8 @@ test('headsFiles over a multi-commit push after a recorded merge names every fil
   try {
     const m1 = mergeOf(r.root, 'slice/a', ['slice/a']);
     const recorded = recordedFor(r.root, m1);
-    assert.equal(recorded.split('\n').filter(Boolean).length, 1, recorded);
+    // The first sync of a two-parent merge records every journal file it holds: main's and slice/a's.
+    assert.equal(recorded.split('\n').filter(Boolean).length, 2, recorded);
     const tip = fastForward(r.root, 'slice/ff', ['slice/x', 'slice/y']);
     assert.deepEqual(files(r.root, tip, { recorded }), [rel(r.root, 'slice/x'), rel(r.root, 'slice/y')].sort());
   } finally {

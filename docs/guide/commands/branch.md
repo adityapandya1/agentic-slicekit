@@ -10,7 +10,7 @@ slicekit branch <spec|gaps|plan|release> <slug>
 
 The branch is `<kind>/<slug>`. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands. Untracked files go along; changes to tracked files are refused, with one exception, the migrated config below.
 
-A `release` branch is treated differently. One that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so. One that holds its own commits is refused with one of three lines: the open pull request of that branch, a line saying the git host could not be asked, or the next slug to run the command with (`<slug>-2`). The git host is also asked about each numbered branch of the slug, `release/<slug>-<n>`, that holds commits the default branch lacks: an open pull request on any of them refuses, the line names that pull request and its branch, and no further slug is named. A numbered slug given directly, `<slug>-<n>` with `<n>` 2 or more, belongs to the same family: the host is asked about `release/<slug>` and every `release/<slug>-<n>`.
+A `release` branch is treated differently. One that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so. One that holds its own commits is refused with one of three lines: the open pull request of that branch, a line saying the git host could not be asked, or the next slug to run the command with: the next free number of the slug's family, `<slug>-2` or the first number after it that no branch here or on origin has. The git host is also asked about each numbered branch of the slug, `release/<slug>-<n>`, that holds commits the default branch lacks: an open pull request on any of them refuses, the line names that pull request and its branch, and no further slug is named. A numbered slug given directly, `<slug>-<n>` with `<n>` 2 or more, belongs to the same family: the host is asked about `release/<slug>` and every `release/<slug>-<n>`, and the next slug named is `<slug>-<n+1>` or the first number after it that is free, never `<slug>-<n>-2`.
 
 The slug is the program name in lower case with other characters turned into dashes; for `release` it is the phase in lower case. It holds lowercase letters, digits and dashes, at most 60 characters, and does not start with a dash.
 
@@ -26,14 +26,16 @@ When an earlier command on the default branch, such as `release --dry-run`, alre
 | The commit the session is put on | What happens to the change |
 |---|---|
 | holds the config the current commit holds | it is carried to the branch, where `pr open` commits it |
-| holds the migrated config already, with equal content | this copy of the change is dropped, then the branch is switched to |
+| holds the migrated config already, with equal content | this copy of the change is dropped, then the branch is switched to; the file then holds the bytes that commit holds |
 | holds a config that differs from the migrated one | exit 1 with one line naming the file, the branch and the fields that differ; the change is left where it is and no branch is switched to |
+
+Two configs that differ only in their line endings or in whitespace at the end have equal content. After a dropped copy and the switch, `git status --porcelain` prints nothing for the config and nothing is staged.
 
 Any other uncommitted change to a tracked file is refused with `commit or stash your changes first`.
 
 ## What it reads and writes
 
-Reads the config, the local branches and origin. It fetches, then creates or checks out the branch. It asks the git host only for a `release` branch, or another branch of its slug's family, that holds its own commits. It writes no config; it restores `.slicekit/config.json` to the committed one only in the second row of the table above.
+Reads the config, the local branches and origin. It fetches, then creates or checks out the branch. It asks the git host only for a `release` branch, or another branch of its slug's family, that holds its own commits. It writes no config; it restores `.slicekit/config.json` to the committed one only in the second row of the table above, first to the current commit's and, after the switch, to the bytes the branch's commit holds.
 
 ## Exit codes
 

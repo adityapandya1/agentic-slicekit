@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildTestCommand } from '../config.js';
-import { GitError, assertRef, checkoutIndexTo, commitPaths, commitStaged, git, hasRemote, parseTrailers, stagedChanges } from '../git.js';
+import { GitError, assertRef, commitPaths, commitStaged, git, hasRemote, parseTrailers, stagedChanges } from '../git.js';
 import { configSubject, namesConfigAt } from './config.js';
 import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
@@ -45,6 +45,25 @@ const blobAt = (wt, rev, file) => {
     throw e;
   }
 };
+
+// The slice's own state file, judged before any test runs (issue #71): what is frozen and what is
+// unfrozen is read from it, so a copy git cannot see, or one that is not the committed one, decides
+// nothing. -> the refusal, saying which of the three it found, or null.
+// `held`: the state file is among the paths the commit would hold, so the line is the kit file refusal too.
+function stateFileProblem(wt, stateRel, held) {
+  const flag = git(wt, ['--literal-pathspecs', 'ls-files', '-v', '--', stateRel]).slice(0, 1);
+  const hidden = 'so git cannot see its changes; clear the mark and restore the file from the last commit';
+  // `ls-files -v`: S is skip-worktree, a lower-case letter is assume-unchanged (s is both).
+  if (flag === 'S' || flag === 's') return `state file ${stateRel} is marked skip-worktree, ${hidden}`;
+  if (flag !== '' && flag !== flag.toUpperCase()) return `state file ${stateRel} is marked assume-unchanged, ${hidden}`;
+  const atHead = blobAt(wt, 'HEAD', stateRel);
+  const onDisk = fs.existsSync(path.join(wt, ...stateRel.split('/'))) ? git(wt, ['--literal-pathspecs', 'hash-object', '--', stateRel]) : null;
+  if (onDisk !== atHead) {
+    const why = 'differs on disk from the file at HEAD; only build commands write it, and each commits what it wrote';
+    return held ? `${stateRel} is a kit file; build commit does not commit it: the state file ${why}` : `state file ${stateRel} ${why}`;
+  }
+  return null;
+}
 
 // The first frozen test (not unfrozen) that differs from the red commit, and how: hidden from git by
 // skip-worktree or assume-unchanged, different bytes or missing on disk (an edit through Bash never
@@ -203,23 +222,93 @@ function forgedKitChange(wt, cfg, id, current, slice) {
   return null;
 }
 
+// Makes the worktree's files the index does not hold readable in the run directory at the same
+// relative path (issue #107): the files git ignores or does not track, such as `.slice-tests` or
+// `node_modules`. A directory git holds nothing of is linked whole; a file is hard-linked, or copied
+// when a hard link cannot be made (another volume). -> the directory links made.
+function bringUntracked(wt, dir) {
+  const links = [];
+  // --directory: a directory with no tracked file is one entry, `name/`, and is not walked.
+  const others = git(wt, ['ls-files', '--others', '--directory', '-z']).split('\0').filter((e) => e !== '');
+  for (const entry of others) {
+    const rel = entry.replace(/\/$/, '');
+    if (rel === '' || rel.split('/').includes('.git')) continue;
+    const from = path.join(wt, ...rel.split('/'));
+    const to = path.join(dir, ...rel.split('/'));
+    if (fs.existsSync(to)) continue;
+    try {
+      const stat = fs.lstatSync(from);
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      if (stat.isDirectory()) {
+        fs.symlinkSync(from, to, 'junction');
+        links.push(to);
+      } else if (stat.isFile()) {
+        try {
+          fs.linkSync(from, to);
+        } catch {
+          fs.copyFileSync(from, to);
+        }
+      }
+    } catch {
+      // A file that went away or cannot be read is left out of the run.
+    }
+  }
+  return links;
+}
+
+// Makes git usable in the run directory (issue #107): a `.git` directory of its own that holds a
+// copy of the worktree's index and HEAD and names the repository's common directory for everything
+// else. A git command there sees every tracked file as staged and no unstaged change, and writes at
+// most that copy of the index. Nothing is registered in the repository, so removing the directory
+// leaves no trace of it.
+function gitIn(wt, dir) {
+  const own = path.join(dir, '.git');
+  if (fs.existsSync(own)) return;
+  const abs = (p) => path.resolve(wt, p);
+  const common = abs(git(wt, ['rev-parse', '--git-common-dir']));
+  const index = abs(git(wt, ['rev-parse', '--git-path', 'index']));
+  let head;
+  try {
+    head = `ref: ${git(wt, ['symbolic-ref', '-q', 'HEAD'])}`;
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    head = git(wt, ['rev-parse', 'HEAD']);
+  }
+  fs.mkdirSync(own);
+  fs.writeFileSync(path.join(own, 'HEAD'), `${head}\n`);
+  fs.writeFileSync(path.join(own, 'commondir'), `${common.split(path.sep).join('/')}\n`);
+  if (fs.existsSync(index)) fs.copyFileSync(index, path.join(own, 'index'));
+}
+
 // The test command run in a temporary directory holding the index as staged (git checkout-index),
-// never the worktree. The worktree's node_modules, when the index does not hold it, is linked in so
-// the run finds the installed packages. The directory is removed whether the run passes or fails.
+// never the worktree. The files of the worktree that git ignores or does not track are linked or
+// copied in, so the run finds the installed packages and a file such as `.slice-tests`, and git
+// answers there (issue #107). The directory is removed whether the run passes or fails.
 function runOnIndex(wt, command) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-index-'));
-  const modules = path.join(dir, 'node_modules');
+  const links = [];
   try {
-    checkoutIndexTo(wt, dir);
+    // The staged bytes as the index holds them: no line-ending conversion from this machine's git
+    // config, so the run reads what the commit will hold.
+    const prefix = `${path.resolve(dir).split(path.sep).join('/')}/`;
+    git(wt, ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'checkout-index', '-a', '-f', `--prefix=${prefix}`]);
+    links.push(...bringUntracked(wt, dir));
+    const modules = path.join(dir, 'node_modules');
     const installed = path.join(wt, 'node_modules');
-    if (fs.existsSync(installed) && !fs.existsSync(modules)) fs.symlinkSync(installed, modules, 'junction');
+    if (fs.existsSync(installed) && !fs.existsSync(modules)) {
+      fs.symlinkSync(installed, modules, 'junction');
+      links.push(modules);
+    }
+    gitIn(wt, dir);
     return runCommand(dir, command);
   } finally {
-    // The link first, so removing the directory never walks into the worktree's packages.
-    try {
-      if (fs.lstatSync(modules).isSymbolicLink()) fs.unlinkSync(modules);
-    } catch {
-      // no link was made
+    // The links first, so removing the directory never walks into the worktree.
+    for (const link of links) {
+      try {
+        if (fs.lstatSync(link).isSymbolicLink()) fs.unlinkSync(link);
+      } catch {
+        // the link is gone
+      }
     }
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -232,11 +321,14 @@ export function commitWork(root, cfg, id, { message, requireGreen = false, workt
   const slice = sliceIn(wt, cfg, id);
   const forged = forgedKitChange(wt, cfg, id, current, slice);
   if (forged) throw new BuildError(forged);
-  const frozen = frozenProblem(wt, current);
-  if (frozen) throw new BuildError(frozen);
+  const stateRel = posixRel(wt, path.join(kitPaths(wt, cfg).state, stateFileName(id)));
   // Paths staged: those alone are committed, as staged. Nothing staged: every changed path.
   const staged = stagedChanges(wt).map((c) => c.file);
   const paths = staged.length > 0 ? staged : changedPaths(wt);
+  const hidden = stateFileProblem(wt, stateRel, paths.includes(stateRel));
+  if (hidden) throw new BuildError(hidden);
+  const frozen = frozenProblem(wt, current);
+  if (frozen) throw new BuildError(frozen);
   const kit = paths.find((p) => isKitFile(wt, cfg, slice, p));
   if (kit) {
     const config = kit === posixRel(wt, kitPaths(wt, cfg).config) ? `; run slicekit build config ${id}` : '';

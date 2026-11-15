@@ -26,6 +26,10 @@ Each subcommand takes the slice ID, `P<n>/S-<nn>`. A slice's worktree is `.workt
 | `build finish <id> [--wait <s>]` | Waits for CI on the pull request's head. On green it marks the pull request ready for review and records `ci-green`, then `ready` when the ready-label decision passes. |
 | `build sync <id>` | Fast-forwards the worktree to its branch on origin and prints the new head. |
 
+`build commit` judges the slice's own state file before it runs a test. It refuses, with one line naming the state file, when the file is marked `skip-worktree`, when it is marked `assume-unchanged`, or when it differs on disk from the file at `HEAD`; the line says which of the three it found. No test runs and no commit is made. Clear the mark (`git update-index --no-skip-worktree` or `--no-assume-unchanged`) and restore the file from the last commit; only build commands write a state file, and each commits what it wrote.
+
+With paths staged, `build commit` runs the test command in a temporary directory that holds the index as staged, so the command sees every tracked file as staged and no unstaged change. The files of the worktree that git ignores or does not track, such as `node_modules` or a list of test files, are readable there at the same relative path: a directory is linked and a file is linked or copied. A git command the test command runs in that directory exits 0 and reads the staged files. The directory is removed whether the run passes or fails, and removing it never walks into the worktree.
+
 A machine that cannot run the whole test command at once can set `testCommand` in `.slicekit/local.json`. `build red`, `build commit` and `build pr` then use it and say so. CI never reads that file. <!-- slicekit:example -->
 
 ## What it reads and writes
@@ -37,7 +41,7 @@ Reads the slice file, the slice's state file, the config, git and, for `pr`, `ve
 | Exit | Meaning |
 |---|---|
 | 0 | done; `build commit` with `nothing to commit` is success |
-| 1 | refused: the slice's state, a failing command or check, a frozen test, git, the git host, the tracker or a held lock; `build next` when no slice is ready; `build verdict` on `next: stuck`; `build finish` when CI failed, is still running or has no run |
+| 1 | refused: the slice's state, a failing command or check, a frozen test, a state file hidden from git or changed on disk, git, the git host, the tracker or a held lock; `build next` when no slice is ready; `build verdict` on `next: stuck`; `build finish` when CI failed, is still running or has no run |
 | 2 | bad usage, an unknown slice ID, a missing required option, or a config problem |
 
 ## Example

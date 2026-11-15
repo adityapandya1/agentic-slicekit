@@ -831,7 +831,8 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
   assert.ok(sync.indexOf(`run: ${cfg.cli} status --sync --write\n`) < heads.index, 'after the state sync');
   assert.ok(heads.index < sync.indexOf(`run: ${cfg.cli} sync open\n`), 'before sync open');
 
-  // A merge that changed two journal files and left a third alone: one line for each changed file.
+  // A merge that changed two journal files and left a third alone. The heads log names no merge yet,
+  // so the first sync writes a line for every journal file the merge holds (P6/S-51, issue #129).
   const { root, cleanup } = makeRepo({ commits: 1 });
   try {
     const conf = path.join(root, '.slicekit', 'config.json');
@@ -853,7 +854,7 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
     const out = runCli(['journal', 'heads', merge], { cwd: root, env: s42RunEnv(merge) });
     assert.equal(out.code, 0, out.stderr + out.stdout);
     const lines = fs.readFileSync(path.join(root, '.slicekit', 'journal-heads.log'), 'utf8').trimEnd().split('\n');
-    assert.equal(lines.length, 2, lines.join('\n'));
+    assert.equal(lines.length, 3, lines.join('\n'));
     const rel = (branch) => path.relative(root, journalFile(root, branch)).split(path.sep).join('/');
     const lastHash = (branch) => parseLine(fs.readFileSync(journalFile(root, branch), 'utf8').trimEnd().split('\n').at(-1)).hash;
     for (const branch of ['slice/a', 'slice/b']) {
@@ -861,7 +862,7 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
       assert.ok(line, `${rel(branch)} in ${lines.join('\n')}`);
       for (const part of [lastHash(branch), merge.slice(0, 7), S42_RUN.id, S42_RUN.workflow, S42_RUN.actor]) assert.ok(line.includes(part), `${part} in ${line}`);
     }
-    assert.ok(!lines.some((l) => l.includes(rel('main'))), 'a journal file the merge did not change has no line');
+    assert.equal(lines.filter((l) => l.includes(rel('main'))).length, 1, 'at the first sync a journal file the merge did not change has its line too');
   } finally {
     cleanup();
   }

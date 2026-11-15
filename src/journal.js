@@ -387,12 +387,13 @@ function bytesAt(root, rev, rel) {
 // as {file, hash} with its last hash at the merge ('-' when it has none). A file is owed a line when its
 // last hash at the merge differs from the last hash the heads log `recorded` gives for it. A file the log
 // does not name is owed one when its last hash differs from its last hash at the newest merge the log
-// names (absent there counts as different). While the log names no merge yet, a merge commit with two
-// or more parents compares against its first parent, the default branch before the merge; any other
-// commit (a fast-forward, rebase or squash push, or a root commit) owes a line for every journal file it
-// holds, because git alone cannot say where its push began and check --ci must compute the same set.
-// So a push of several commits and a merge whose sync pull request was superseded before it merged both
-// get their lines from the next sync. `recorded`
+// names (absent there counts as different). While the log names no merge yet, the commit owes a line
+// for every journal file it holds: a merge commit with two or more parents as a fast-forward, rebase or
+// squash push or a root commit (issue #129). Git alone cannot say where the first recorded push began,
+// and a comparison against a merge's first parent left out the files of an earlier merge whose sync
+// pull request never merged; check --ci computes the same set. So a push of several commits and a merge
+// whose sync pull request was superseded before it merged both get their lines from the next sync, the
+// first one included. `recorded`
 // is the heads log text the lines will be appended to; it defaults to the log at the merge commit.
 // Computed from git alone. Throws GitError when `merge` is not a commit of this clone.
 export function headsFiles(root, cfg, merge, { recorded } = {}) {
@@ -407,11 +408,8 @@ export function headsFiles(root, cfg, merge, { recorded } = {}) {
     named.set(p.file, p.hash);
     lastMerge = p.merge;
   }
-  const base = lastMerge !== null
-    ? gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${lastMerge}^{commit}`], '')
-    : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^2`], '') === ''
-      ? ''
-      : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${sha}^1`], '');
+  // No merge named: nothing to compare against, so every journal file the commit holds is owed a line.
+  const base = lastMerge === null ? '' : gitOr(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${lastMerge}^{commit}`], '');
   const inDir = (listed) => (listed === '' ? [] : listed.split('\n'))
     .map((f) => f.replace(/\r$/, ''))
     .filter((f) => f.startsWith(`${relDir}/`) && f.endsWith('.log') && !f.slice(relDir.length + 1).includes('/'));

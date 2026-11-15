@@ -2,7 +2,7 @@
 // leaving a tracked path changed but not staged in the worktree (P4/S-45 r3 B-1, issue #69).
 // REQ-1.8: a slice-file-only build amend that wrote its record and stopped before committing it is
 // finished by a second run (P4/S-45 r3 H-5).
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,6 +11,13 @@ import { loadConfig } from '../src/config.js';
 import { git } from '../src/git.js';
 import { appendHistory } from '../src/state/index.js';
 import { IMPORTING, building, cli, commitWorkCli, green, red1, startedWithTest, stateIn, write } from './helpers/build-flow.js';
+
+// This file's process gets a temp folder of its own, so the leftover checks below list the run
+// folders of this file's staged commits alone, never those of a test file running at the same
+// moment. os.tmpdir() reads these variables at each call, and every child process inherits them.
+const PRIVATE_TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-staged-tmp-'));
+for (const name of ['TEMP', 'TMP', 'TMPDIR']) process.env[name] = PRIVATE_TMP;
+after(() => fs.rmSync(PRIVATE_TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 const indexDirs = () => new Set(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('slicekit-index-')));
 const newIndexDirs = (before) => [...indexDirs()].filter((n) => !before.has(n));
