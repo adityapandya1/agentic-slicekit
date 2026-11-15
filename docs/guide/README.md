@@ -1779,6 +1779,8 @@ Four commands differ on purpose: `ci bookkeeping` and `ready-label` exit 0 whate
 
 `.slicekit/config.json` carries `configVersion`. A config with an older one is migrated on the first command that is not `hook`: the file is written once and each change is printed on stderr. A hook reads the config as migrated and writes nothing. A `configVersion` newer than the kit's is refused with a message naming both versions.
 
+On a slice branch or a slice's review branch a command writes nothing either: it reads the config as migrated and prints one line on stderr saying the config is at the older version and is migrated on the default branch or on a plan branch. The slice whose Expected changes name `.slicekit/config.json` is the exception; its slice branch is written and `slicekit build config` commits the change. A team commits the migration on a plan branch, with `slicekit pr open --commit <message> --paths .slicekit/config.json`; the kit's runbook, under "Committing a config migration", gives the steps. A kit before config version 2 refuses a migrated config with `configVersion: must be 1`.
+
 ### Other conventions
 
 - Slice IDs are `P<n>/S-<nn>`, for example `P1/S-02`. Decisions are `D-<n>`, gaps `G-<n>`, blockers `B-<n>`, should-haves `H-<n>`, contracts `C-<n>`.

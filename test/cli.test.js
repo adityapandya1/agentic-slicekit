@@ -1,6 +1,7 @@
 // REQ-1.1, REQ-5.1: the command line the install layout puts on PATH, whose entry dispatches each subcommand; its help, its usage and its exit codes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -131,6 +132,55 @@ test('init rerun on an older config migrates it first', () => {
     const text = fs.readFileSync(repo.file, 'utf8');
     assert.ok(text.includes('\n  "configVersion": 2,\n'), text);
     assert.ok(!('repos' in JSON.parse(text)), text);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// Review r1, H-1: a slice or review worktree holds no change a build step cannot commit, so there an
+// older config is read migrated and left as it is; the slice that names the config is the one that writes.
+test('on a slice branch or its review branch an older config is read migrated and not written', () => {
+  const told = /^config: \.slicekit\/config\.json is at configVersion 1 and is read as 2 here, unwritten; it is migrated on the default branch or on a plan branch$/m;
+  const sliceFile = (changes) =>
+    `---\nslice: P1/S-01\nname: Zone\nrepo: .\ngroup: A\nrunbook: no\nrequirements: [REQ-1.1]\ndecisions: [D-01]\n---\n\n## Done when\n\n1. It works.\n\n## Evaluation set\n\n| Test | Kind | Covers |\n|---|---|---|\n| \`a.test.js » works\` | happy | REQ-1.1 |\n\n## Expected changes\n\n${changes}\n`;
+  const repo = repoWithConfig({ configVersion: 1, repos: [] });
+  const sliceMd = path.join(repo.root, 'docs', 'phases', 'P1-x', 'S-01-zone.md');
+  fs.mkdirSync(path.dirname(sliceMd), { recursive: true });
+  const on = (branch) => execFileSync('git', ['switch', '-q', '-C', branch], { cwd: repo.root, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    const before = fs.readFileSync(repo.file);
+    for (const [branch, changes] of [
+      ['slice/P1-S-01-zone', '`src/x/a.js`.'],
+      ['slice/P1-S-01-review', '`src/x/a.js`.'],
+      // The review worktree of the slice that names the config writes nothing either.
+      ['slice/P1-S-01-review', '`src/x/a.js`, `.slicekit/config.json`.'],
+    ]) {
+      fs.writeFileSync(sliceMd, sliceFile(changes));
+      on(branch);
+      for (let run = 1; run <= 2; run += 1) {
+        const r = runCli(['status'], { cwd: repo.root });
+        assert.ok(fs.readFileSync(repo.file).equals(before), `${branch}: the config was rewritten`);
+        assert.match(r.stderr, told, branch);
+        assert.equal(r.stderr.match(/^config: /gm).length, 1, r.stderr);
+        assert.doesNotMatch(r.stderr, /config: migrated|configVersion: must be/, branch);
+      }
+    }
+
+    // The slice whose Expected changes name the config writes it: build config commits it (D-53).
+    fs.writeFileSync(sliceMd, sliceFile('`src/x/a.js`, `.slicekit/config.json`.'));
+    on('slice/P1-S-01-zone');
+    const named = runCli(['status'], { cwd: repo.root });
+    assert.match(named.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.doesNotMatch(named.stderr, told);
+    assert.equal(JSON.parse(fs.readFileSync(repo.file, 'utf8')).configVersion, 2);
+
+    // Any other branch writes as before: a plan branch is where a team commits the migration.
+    fs.writeFileSync(repo.file, before);
+    on('plan/config-2');
+    const plan = runCli(['status'], { cwd: repo.root });
+    assert.match(plan.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.doesNotMatch(plan.stderr, told);
+    assert.equal(JSON.parse(fs.readFileSync(repo.file, 'utf8')).configVersion, 2);
   } finally {
     repo.cleanup();
   }

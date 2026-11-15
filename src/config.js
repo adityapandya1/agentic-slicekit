@@ -355,7 +355,8 @@ export function loadConfig(root) {
 // REQ-5.6, D-60: the config file of `root` moved to CONFIG_VERSION when it is older, written through
 // a temporary name and a rename. -> { from, to, changes }, or null when there is no config file, it
 // is not JSON, or it is current. A newer configVersion throws ConfigNewerError and writes nothing.
-export function migrateConfigFile(root) {
+// With `write` false the same answer is given and the file is left as it is.
+export function migrateConfigFile(root, { write = true } = {}) {
   const file = path.join(root, CONFIG_PATH);
   let raw;
   try {
@@ -365,6 +366,7 @@ export function migrateConfigFile(root) {
   }
   const { cfg, from, changes } = migrateConfig(raw);
   if (cfg === raw || from === CONFIG_VERSION) return null;
+  if (!write) return { from, to: CONFIG_VERSION, changes };
   const temporary = `${file}.${process.pid}.tmp`;
   try {
     fs.writeFileSync(temporary, `${JSON.stringify(cfg, null, 2)}
