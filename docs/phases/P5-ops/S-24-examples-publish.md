@@ -31,6 +31,8 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61]
 | `user-guide.test.js » the graph page says the graph is not a code graph and gives the graphify line` | happy | REQ-4.8 |
 | `readme.test.js » the status names Phase 5 as built and links the guide` | happy | REQ-5.7 |
 
+Amended (author's standing instruction, 2026-11-15): `test/examples.test.js`, whose helper `copyExample` stages the three hooks of a copied example as executable before its commit, as `init` does; without it the `hooks` rule reports them on Windows, where a plain add records them as not executable. No assertion changes.
+
 ## Expected changes
 
 `examples/fullstack/`, `examples/data/`, `examples/backend/.slicekit/config.json`, `src/config.js`, `src/cli/index.js`, `.slicekit/config.json`, `docs/guide/`, `README.md`, `.claude/`, tests.
