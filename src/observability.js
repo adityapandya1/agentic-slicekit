@@ -2,7 +2,7 @@
 // columns Step and Command under `## CI steps the monitoring setup requires`; each row renders as one
 // obs-<n> job of the generated workflow, after the jobs of ci.observabilitySteps.
 import { LINE_SEPARATOR, workflowTextErrors } from './config.js';
-import { headings, lines, tableCells } from './markdown.js';
+import { lines, tableCells } from './markdown.js';
 
 export const STEPS_HEADING = 'CI steps the monitoring setup requires';
 
@@ -38,60 +38,72 @@ function commandText(cell) {
 
 const opensWithBar = (line) => /^\s*\|/.test(line);
 const isDivider = (line) => opensWithBar(line) && tableCells(line).every((c) => /^:?-+:?$/.test(c));
-const FENCE = /^\s*(```|~~~)/;
+// A code fence opens on a run of three or more backticks or tildes; the text after a backtick run
+// holds no backtick.
+const FENCE_OPEN = /^\s*(?:(`{3,})[^`]*|(~{3,}).*)$/;
 const INDENTED = /^(?: {4}| {0,3}\t)/;
+const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 
-// The lines of the section between the lines `start` and `end`, each {line, n, hidden}. A line is
-// hidden when GitHub shows no table for it: a code fence and the lines inside it, a line indented
-// as code (four spaces or a tab), and an HTML comment that opens its line, up to and including the
-// line that closes it.
-function sectionLines(text, start, end) {
+// Every line of the file, each {line, n, hidden, heading}. The block state runs from the first line
+// of the file, so a block that opens above the steps section is followed into it. A line is hidden
+// when GitHub shows no table and no heading for it: a code fence and the lines inside it, a line
+// indented as code (four spaces or a tab), and an HTML comment that opens its line, up to and
+// including the line that closes it. A fence closes as CommonMark has it: on a line that is a run of
+// the opening character, at least as long as the opening run, with only spaces after it. `heading`
+// is {level, text} for a heading line that is not hidden, and null for any other line.
+function fileLines(text) {
   const out = [];
-  const all = lines(text);
-  let inFence = false;
+  // The opening run of the fence the line is inside, or null.
+  let fence = null;
   let inComment = false;
-  for (let i = 0; i < all.length && i + 1 < end; i++) {
-    const line = all[i];
+  lines(text).forEach((line, i) => {
     let hidden = false;
-    if (FENCE.test(line)) {
-      inFence = !inFence;
+    if (fence !== null) {
       hidden = true;
-    } else if (inFence) {
+      const run = /^\s*(`+|~+)[ \t]*$/.exec(line)?.[1];
+      if (run && run[0] === fence[0] && run.length >= fence.length) fence = null;
+    } else if (inComment) {
       hidden = true;
-    } else if (i + 1 > start) {
-      if (inComment) {
-        hidden = true;
-        inComment = !line.includes('-->');
-      } else if (/^ {0,3}<!--/.test(line)) {
-        hidden = true;
-        inComment = !line.slice(line.indexOf('<!--') + 4).includes('-->');
-      } else if (INDENTED.test(line) && line.trim() !== '') {
-        hidden = true;
-      }
+      inComment = !line.includes('-->');
+    } else if (FENCE_OPEN.test(line)) {
+      hidden = true;
+      const open = FENCE_OPEN.exec(line);
+      fence = open[1] ?? open[2];
+    } else if (/^ {0,3}<!--/.test(line)) {
+      hidden = true;
+      inComment = !line.slice(line.indexOf('<!--') + 4).includes('-->');
+    } else if (INDENTED.test(line) && line.trim() !== '') {
+      hidden = true;
     }
-    if (i + 1 > start) out.push({ line, n: i + 1, hidden });
-  }
+    const m = hidden ? null : HEADING.exec(line);
+    out.push({ line, n: i + 1, hidden, heading: m ? { level: m[1].length, text: m[2] } : null });
+  });
   return out;
 }
 
 // The steps table of one observability.md: `rel` is the file's path as the messages name it.
-// The section is read whole and fails closed. A hidden line is not read. Of the other lines, one
+// The file takes one steps heading that is not hidden; a second is an error naming its line. The
+// section is read whole and fails closed. A hidden line is not read. Of the other lines, one
 // that holds no vertical bar is no part of a table (prose, `Not yet known`, `None`), and one that
 // holds a bar is a line of the one steps table in its exact form or an error naming its line: no
 // line that could read as a step to a person is passed over without a message.
 export function docSteps(text, rel) {
   const out = { steps: [], warnings: [], errors: [] };
-  const all = headings(text);
-  const at = all.findIndex((h) => h.level === 2 && h.text === STEPS_HEADING);
-  if (at === -1) return out;
-  const start = all[at].line;
-  const end = all.slice(at + 1).find((h) => h.level <= 2)?.line ?? Infinity;
-  const headingLines = new Set(all.map((h) => h.line));
-  const body = sectionLines(text, start, end);
+  const all = fileLines(text);
   const refuse = (n, message) => {
     out.errors.push(`${rel}:${n}: ${message}`);
     return out;
   };
+  const sections = all.filter((l) => l.heading?.level === 2 && l.heading.text === STEPS_HEADING);
+  if (sections.length === 0) return out;
+  // Only one section is read, so a table under a second would be passed over.
+  if (sections.length > 1) {
+    return refuse(sections[1].n, `a second heading "## ${STEPS_HEADING}"; the first is at line ${sections[0].n}, and the file takes one steps section`);
+  }
+  const start = sections[0].n;
+  const end = all.find((l) => l.n > start && l.heading && l.heading.level <= 2)?.n ?? Infinity;
+  const headingLines = new Set(all.filter((l) => l.heading).map((l) => l.n));
+  const body = all.filter((l) => l.n > start && l.n < end);
 
   const seen = new Map();
   // 'before' the header, in the 'rows', or 'after' the table's end.

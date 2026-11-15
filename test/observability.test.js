@@ -331,3 +331,73 @@ test('a header whose cells are styled or differ in case is refused with its line
     assert.deepEqual(read.warnings, [], header);
   }
 });
+
+test('a steps section inside an HTML comment that opens above its heading renders no job (H-12)', () => {
+  const rows = table('| Test report as TAP | `node --test --test-reporter=tap` |');
+  const texts = {
+    'the comment opens on the line above the heading': `# Observability\n\n## Dashboards\n\nNone.\n\n<!--\n## ${STEPS_HEADING}\n\n${rows}\n-->\n\n## On-call contact\n\nNone.\n`,
+    'the comment opens in the section before': `# Observability\n\n## Dashboards\n\n<!-- not in use\n\n## ${STEPS_HEADING}\n\n${rows}\n\nuntil the runner is back -->\n\n## On-call contact\n\nNone.\n`,
+  };
+  for (const [label, text] of Object.entries(texts)) {
+    const read = docSteps(text, REL);
+    assert.deepEqual(read.steps, [], label);
+    assert.deepEqual(read.warnings, [], label);
+    assert.deepEqual(read.errors, [], label);
+  }
+
+  // A comment closed above the heading hides nothing of the section.
+  const open = docSteps(`# Observability\n\n<!--\nnote\n-->\n\n## ${STEPS_HEADING}\n\n${rows}\n`, REL);
+  assert.deepEqual(open.steps.map((s) => s.name), ['Test report as TAP']);
+  assert.deepEqual(open.errors, []);
+});
+
+test('a second steps heading in the file is refused with its line (H-13)', () => {
+  const rows = table('| Test report as TAP | `node --test --test-reporter=tap` |');
+  const text = `# Observability\n\n## ${STEPS_HEADING}\n\nNone.\n\n## Dashboards\n\nNone.\n\n## ${STEPS_HEADING}\n\n${rows}\n`;
+  const second = text.split('\n').lastIndexOf(`## ${STEPS_HEADING}`) + 1;
+  assert.equal(second, 11);
+  const read = docSteps(text, REL);
+  assert.equal(read.errors.length, 1, JSON.stringify(read));
+  assert.ok(read.errors[0].startsWith(`${REL}:${second}: `), read.errors[0]);
+  assert.ok(read.errors[0].includes(STEPS_HEADING), read.errors[0]);
+  assert.deepEqual(read.steps, []);
+  assert.deepEqual(read.warnings, []);
+
+  // A second heading in a code fence or an HTML comment is not a heading of the file.
+  for (const [open, close] of [['```', '```'], ['<!--', '-->']]) {
+    const one = `# Observability\n\n## ${STEPS_HEADING}\n\n${rows}\n\n## Dashboards\n\n${open}\n## ${STEPS_HEADING}\n${close}\n`;
+    const oneRead = docSteps(one, REL);
+    assert.deepEqual(oneRead.errors, [], open);
+    assert.deepEqual(oneRead.steps.map((s) => s.name), ['Test report as TAP'], open);
+  }
+});
+
+test('a code fence closes only on a run of its own character at least as long as its opening (H-14)', () => {
+  const row = '| Test report as TAP | `node --test --test-reporter=tap` |';
+  const rows = table(row);
+  // The fence has closed above the table, so the table is read.
+  const shown = {
+    'four backticks holding a line of three': ['````', '```', '````', '', rows].join('\n'),
+    'a tilde fence holding a line of backticks': ['~~~', '```', '~~~', '', rows].join('\n'),
+    'a backtick fence holding a line of tildes': ['```', '~~~', '```', '', rows].join('\n'),
+    'a fence closed by a longer run with spaces after it': ['```', 'text', '`````  ', '', rows].join('\n'),
+  };
+  for (const [label, body] of Object.entries(shown)) {
+    const read = docSteps(doc(body), REL);
+    assert.deepEqual(read.errors, [], label);
+    assert.deepEqual(read.warnings, [], label);
+    assert.deepEqual(read.steps, [{ name: 'Test report as TAP', run: 'node --test --test-reporter=tap', at: `${REL}:${lineOf(doc(body), row)}` }], label);
+  }
+  // The fence is still open at the table, so the table is not read.
+  const hidden = {
+    'a shorter run inside the fence': ['````', '```', rows, '````'].join('\n'),
+    'a run of the other character inside the fence': ['~~~', '```', rows, '~~~'].join('\n'),
+    'a run with text after it inside the fence': ['```', '``` js', rows, '```'].join('\n'),
+  };
+  for (const [label, body] of Object.entries(hidden)) {
+    const read = docSteps(doc(`None.\n\n${body}`), REL);
+    assert.deepEqual(read.steps, [], label);
+    assert.deepEqual(read.warnings, [], label);
+    assert.deepEqual(read.errors, [], label);
+  }
+});
