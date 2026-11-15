@@ -145,6 +145,13 @@ export function frozenTests(root, cfg) {
 // character. A leading `!` or `^` negates; a `]` that comes first is a member, as are `[` and `^`
 // elsewhere; `[:alpha:]` and the other POSIX class names are read. A reversed range (`[z-a]`) is kept
 // as written, so the expression that holds it does not compile and the caller knows.
+// As Bash reads them: a backslash makes the next character a member; a collating symbol of one
+// character (`[.d.]`) is that character; an equivalence class of one character (`[=d=]`) is that
+// character and, since a locale may add accented forms of it, any character outside ASCII.
+// `unsure` is set where what Bash matches cannot be told from the text: a collating symbol or an
+// equivalence class named by more than one character (`[.hyphen.]`), and an equivalence class in a
+// negated expression, where the added characters would be left out. A caller that judges a command
+// word then treats the word as one that may match any path; `src` is not to be relied on.
 const POSIX_CLASS = {
   alpha: 'a-zA-Z',
   digit: '0-9',
@@ -165,20 +172,38 @@ export function bracketClass(p, i) {
   const negated = p[j] === '!' || p[j] === '^';
   if (negated) j += 1;
   let body = '';
+  let unsure = false;
+  // One character as a member that is never a range's `-`, a negation or the closing bracket.
+  const member = (c) => (/[\\\][^-]/.test(c) ? `\\${c}` : c);
   for (let first = true; ; first = false) {
     if (j >= p.length) return null;
     const c = p[j];
     if (c === ']' && !first) break;
     const named = c === '[' && p[j + 1] === ':' ? /^\[:([a-z]+):\]/.exec(p.slice(j)) : null;
+    const kind = c === '[' && (p[j + 1] === '=' || p[j + 1] === '.') ? p[j + 1] : null;
+    // The name starts at j + 2 and holds at least one character, which may be `]` or the mark itself.
+    const close = kind === null ? -1 : p.indexOf(`${kind}]`, j + 3);
     if (named && POSIX_CLASS[named[1]] !== undefined) {
       body += POSIX_CLASS[named[1]];
       j += named[0].length;
+    } else if (close !== -1) {
+      const name = p.slice(j + 2, close);
+      if (name.length !== 1) unsure = true;
+      else {
+        body += member(name);
+        if (kind === '=' && negated) unsure = true;
+        else if (kind === '=') body += '\\u0080-\\uffff';
+      }
+      j = close + 2;
+    } else if (c === '\\' && j + 1 < p.length) {
+      body += member(p[j + 1]);
+      j += 2;
     } else {
       body += c === '\\' || c === ']' || c === '[' || c === '^' ? `\\${c}` : c;
       j += 1;
     }
   }
-  return { src: `[${negated ? '^' : ''}${body}]`, end: j };
+  return unsure ? { src: `[${negated ? '^' : ''}${body}]`, end: j, unsure: true } : { src: `[${negated ? '^' : ''}${body}]`, end: j };
 }
 
 // One gitignore-style pattern over repository-relative POSIX paths as an anchored regular expression:
@@ -211,6 +236,8 @@ function denyRe(pattern) {
     else if (c === '?') src += '[^/]';
     else if (c === '[' && bracketClass(p, i) !== null) {
       const cls = bracketClass(p, i);
+      // A pattern is not matched by a guess: validateConfig refuses it by name.
+      if (cls.unsure) throw new Error(`bracket expression ${p.slice(i, cls.end + 1)} holds a collating symbol or an equivalence class the guards cannot read`);
       src += cls.src;
       i = cls.end;
     } else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
