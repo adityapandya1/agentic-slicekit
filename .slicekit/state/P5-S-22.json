@@ -175,6 +175,16 @@
           "independent": true
         }
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T01:54:18.023Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "282cb216762429e159b971dde0fa736346cfed82",
+        "reason": "reviews H-8 to H-11: the steps section fails closed; three assertions added by earlier fixes change to expect the refusal"
+      }
     }
   ]
 }
