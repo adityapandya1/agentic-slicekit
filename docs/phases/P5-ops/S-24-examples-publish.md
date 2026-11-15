@@ -33,6 +33,8 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61]
 
 Amended (author's standing instruction, 2026-11-15): `test/examples.test.js`, whose helper `copyExample` stages the three hooks of a copied example as executable before its commit, as `init` does; without it the `hooks` rule reports them on Windows, where a plain add records them as not executable. No assertion changes.
 
+Amended (author's standing instruction, 2026-11-15): `test/readme.test.js`, whose `link` helper builds its pattern in a template literal and so loses its backslashes; as written it matches no Markdown link. The backslashes are doubled, and what the test asserts stays the same.
+
 ## Expected changes
 
 `examples/fullstack/`, `examples/data/`, `examples/backend/.slicekit/config.json`, `src/config.js`, `src/cli/index.js`, `.slicekit/config.json`, `docs/guide/`, `README.md`, `.claude/`, tests.
