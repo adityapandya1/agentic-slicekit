@@ -34,9 +34,11 @@ decisions: [D-12, D-19, D-21, D-54, D-55]
 | `check/ci-title.test.js » a [release] title is exempt` | happy | REQ-3.7 |
 | `briefs.test.js » the release procedure names no git or gh command` | negative | REQ-2.9 |
 
+Amended (author's standing instruction, 2026-11-15): `test/commands/release.test.js` gains tests for review round 1: a merged slice whose state records the merge commit as its head is judged by what that merge brought (H-1), and a failed state write leaves no release record (H-3). `docs/guide/README.md` joins the expected changes, since the guide says the release command is not built (H-2). No existing test changes.
+
 ## Expected changes
 
-`src/runbook.js`, `src/check/rules/runbook.js`, `src/build/pr.js`, `src/release.js`, `src/cli/release.js`, `src/cli/branch.js`, `src/cli/index.js`, `src/check/ci-event.js`, `templates/instructions/commands/release.md`, `docs/runbook.md`, tests.
+`src/runbook.js`, `src/check/rules/runbook.js`, `src/build/pr.js`, `src/release.js`, `src/cli/release.js`, `src/cli/branch.js`, `src/cli/index.js`, `src/check/ci-event.js`, `templates/instructions/commands/release.md`, `docs/runbook.md`, `docs/guide/README.md`, tests.
 
 ## Tasks
 
