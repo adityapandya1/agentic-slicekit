@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-50",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 169,
@@ -23,6 +23,13 @@
       "blockers": 0,
       "independent": false,
       "headSha": "84051b4ac299f803287780ad650adebb7ccd6cb8"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-50-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "380468dde7c2387dbc9510a6213a9ec037981cbb"
     }
   ],
   "ci": null,
@@ -96,6 +103,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/169",
           "headSha": "380468dde7c2387dbc9510a6213a9ec037981cbb",
           "title": "[P5/S-50] Examples follow the version, and the review leftovers of Phase 5"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T10:01:40.071Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-50-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
