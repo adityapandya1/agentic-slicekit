@@ -11,7 +11,9 @@
     "test/user-guide.test.js",
     "test/readme.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/examples.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -40,6 +42,17 @@
       "at": "2026-11-15T06:06:43.655Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T06:19:09.875Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/examples.test.js",
+        "amendCommit": "2f261586ff137ba39d8a88016e1a9bd981816bb3",
+        "reason": "copyExample stages a copied example's hooks as executable, as init does"
+      }
     }
   ]
 }
