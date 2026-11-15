@@ -29,6 +29,8 @@ decisions: [D-97, D-61]
 
 Amended (author's standing instruction, 2026-11-15): `test/guide-page.test.js`, where one comparison sorts the pages the index links and compares them with the page files in folder order, so the two lists hold the same pages in different orders and no index can pass. Both sides are sorted the same way; what the test asserts stays the same.
 
+Amended (author's standing instruction, 2026-11-15; review B-2 of round 2): `test/guide-page.test.js`, where the check that the page holds no absolute path looked for the system's temporary folder. On Linux that folder is `/tmp`, which two console examples of the guide's pages name, so the test failed there on text the pages hold. The check now looks for the folder the copied guide sits in; the repository root and the home folder are checked as before.
+
 ## Expected changes
 
 `scripts/guide-html.js`, `docs/guide/slicekit-guide.html`, `docs/guide/README.md`, `docs/guide/`, `docs/adapters.md`, `docs/runbook.md`, tests.
