@@ -36,6 +36,8 @@ decisions: [D-12, D-19, D-21, D-54, D-55]
 
 Amended (author's standing instruction, 2026-11-15): `test/commands/release.test.js` gains tests for review round 1: a merged slice whose state records the merge commit as its head is judged by what that merge brought (H-1), and a failed state write leaves no release record (H-3). `docs/guide/README.md` joins the expected changes, since the guide says the release command is not built (H-2). No existing test changes.
 
+Amended (author's standing instruction, 2026-11-15): `test/commands/release.test.js` also gains the test `a release not yet committed is undone by --undo and released again; a record in HEAD is not` (review H-5 of round 3), and a test for an open release pull request (H-9 of round 4). No existing test changes.
+
 ## Expected changes
 
 `src/runbook.js`, `src/check/rules/runbook.js`, `src/build/pr.js`, `src/release.js`, `src/cli/release.js`, `src/cli/branch.js`, `src/cli/index.js`, `src/check/ci-event.js`, `templates/instructions/commands/release.md`, `docs/runbook.md`, `docs/guide/README.md`, tests.
