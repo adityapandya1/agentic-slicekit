@@ -131,17 +131,18 @@ Enforced by: `slicekit update`; a test per config migration.
 
 The package SHALL be published to npm as `slicekit` (D-02, D-26), runnable as `npx slicekit init`
 with Node 22 or later (D-29). The repository is `github.com/adityapandya1/agentic-slicekit` under MIT
-(D-03). The README SHALL open with what the kit is in two sentences, then its status (preview or released),
-then a ten-minute walkthrough on `examples/backend`, then the scope line from 04 REQ-4.8. The repository
-stays private until the end of Phase 2, then goes public as a preview once the README walkthrough runs from a clone (D-28).
+(D-03). The README SHALL open with a banner image and one line saying what the kit is, then show the kit working: a
+Claude Code session from intake to release, before any install step; the status, the versions and the scope line from
+04 REQ-4.8 come after it (D-98). The ten-minute walkthrough on `examples/backend` is `docs/walkthrough.md`, which the README <!-- slicekit:pending P6/S-55 -->
+links. The repository stayed private until the end of Phase 2, then went public as a preview once the walkthrough ran from a clone (D-28).
 Preview versions are published to npm from the end of Phase 2, starting at 0.1.1 since npm already holds a 0.1.0 from the
 name's previous owner (D-40, D-41); the packed package SHALL hold only `bin`, `src`, `templates` and the files npm always adds,
 and SHALL install and run `init` in an empty project with no other file of the kit.
 
-Scenario: GIVEN the README WHEN the CI step runs the ten-minute walkthrough's commands verbatim on
+Scenario: GIVEN `docs/walkthrough.md` WHEN the CI step runs the ten-minute walkthrough's commands verbatim on <!-- slicekit:pending P6/S-55 -->
 `examples/backend` THEN every command exits 0.
 
-Cites: D-02, D-03, D-26, D-28, D-29, D-40, D-41.
+Cites: D-02, D-03, D-26, D-28, D-29, D-40, D-41, D-98.
 
 Enforced by: the release workflow; a CI step that runs the walkthrough's commands verbatim.
 
