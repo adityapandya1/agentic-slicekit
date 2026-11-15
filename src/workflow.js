@@ -58,7 +58,8 @@ export function runsOnValue(runsOn) {
 export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
 // The tool counts only where a shell runs it: as the first word of a simple command. The command is
-// split at line breaks and at ; & | ( ); in each part, NAME=value assignments and the wrapper words
+// split at line breaks and at ; & | ( ) outside quotes, and each part into words as a shell splits
+// them (shellCommands below); in each part, NAME=value assignments and the wrapper words
 // below (with the flags after them) and shell keywords such as then or do are skipped; a flag of a
 // wrapper that takes a value (sudo -u runner, nice -n 10, env -u FOO) has that value skipped with it,
 // so the value is never read as the command (issue #136); a shell started with a flag holding c (sh -c,
@@ -89,28 +90,115 @@ function takesNextWord(wrapper, word) {
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
 // Shell keywords that open a command position: if ...; then mvn verify; fi.
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{']);
-const unquote = (word) => word.replace(/^["']+|["']+$/g, '');
+// The simple commands of a shell command, each a list of words, read as a shell splits them (review H-1
+// of round 1 of P6/S-51): a word ends at unquoted white space; a line break or one of ; & | ( ) ends a
+// command only outside quotes; '...' is taken as written, "..." with a backslash before $, a backtick,
+// " or \ read as an escape, and a backslash outside quotes takes the next character as written (before
+// a line break it joins the two lines). Each word is { value, lead, known }: lead is the unquoted
+// text the word starts with, which is what makes it an assignment or a keyword.
+// Two cases cannot be split with certainty:
+// - an unclosed quote: the quoted text runs to the end of the command, as a shell reads on for the
+//   closing quote, so no word after the quote is read as a command;
+// - a command substitution, $(...) or a pair of backticks: its output is not known, so the word that
+//   holds it has known false and is never read as a tool, a wrapper, a keyword or a shell, though it
+//   is still one word; the command inside it is read as a command of its own, since the shell runs it.
+function shellCommands(command) {
+  const commands = [];
+  const script = (s, start, inSubstitution) => {
+    let words = [];
+    let word = null;
+    let depth = 0;
+    let i = start;
+    const open = () => { word ??= { value: '', lead: '', known: true, quoted: false }; return word; };
+    const add = (text, quoted) => {
+      const w = open();
+      if (quoted) w.quoted = true;
+      else if (!w.quoted) w.lead += text;
+      w.value += text;
+    };
+    const endWord = () => { if (word) { words.push({ value: word.value, lead: word.lead, known: word.known }); word = null; } };
+    const endCommand = () => { endWord(); if (words.length > 0) commands.push(words); words = []; };
+    // A substitution starting at s[i]: reads its commands, marks the word, and returns the index after it.
+    const substitution = () => {
+      const w = open();
+      w.known = false;
+      w.quoted = true;
+      if (s[i] === '$') return script(s, i + 2, true);
+      let inner = '';
+      let k = i + 1;
+      while (k < s.length && s[k] !== '`') {
+        if (s[k] === '\\' && k + 1 < s.length) k += 1;
+        inner += s[k];
+        k += 1;
+      }
+      script(inner, 0, false);
+      return k + 1;
+    };
+    while (i < s.length) {
+      const c = s[i];
+      if (c === '\\') {
+        if (s[i + 1] === '\n') { i += 2; continue; }
+        if (i + 1 < s.length) add(s[i + 1], true);
+        i += 2;
+      } else if (c === "'") {
+        const close = s.indexOf("'", i + 1);
+        add(s.slice(i + 1, close === -1 ? s.length : close), true);
+        i = close === -1 ? s.length : close + 1;
+      } else if (c === '"') {
+        add('', true);
+        i += 1;
+        while (i < s.length && s[i] !== '"') {
+          if (s[i] === '\\' && '$`"\\\n'.includes(s[i + 1] ?? ' ')) { if (s[i + 1] !== '\n') add(s[i + 1], true); i += 2; }
+          else if ((s[i] === '$' && s[i + 1] === '(') || s[i] === '`') i = substitution();
+          else { add(s[i], true); i += 1; }
+        }
+        i += 1;
+      } else if ((c === '$' && s[i + 1] === '(') || c === '`') {
+        i = substitution();
+      } else if (c === '\n' || ';&|()'.includes(c)) {
+        endCommand();
+        i += 1;
+        if (c === '(') depth += 1;
+        else if (c === ')') {
+          if (depth > 0) depth -= 1;
+          else if (inSubstitution) return i;
+        }
+      } else if (/\s/.test(c)) {
+        endWord();
+        i += 1;
+      } else {
+        add(c, false);
+        i += 1;
+      }
+    }
+    endCommand();
+    return i;
+  };
+  script(String(command), 0, false);
+  return commands;
+}
 function toolCalled(command) {
-  for (const part of String(command).split(/[\n;&|()]+/)) {
-    const words = part.trim().split(/\s+/).filter(Boolean);
+  for (const words of shellCommands(command)) {
+    const is = (w, set) => w.known && set.has(w.value);
     let i = 0;
     while (i < words.length) {
-      const word = unquote(words[i]);
-      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || KEYWORDS.has(word)) { i += 1; continue; }
-      if (WRAPPERS.has(word)) {
+      const word = words[i];
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word.lead) || (word.lead === word.value && is(word, KEYWORDS))) { i += 1; continue; }
+      if (is(word, WRAPPERS)) {
         i += 1;
-        while (i < words.length && words[i].startsWith('-')) i += takesNextWord(word, unquote(words[i])) ? 2 : 1;
+        while (i < words.length && words[i].value.startsWith('-')) i += words[i].known && takesNextWord(word.value, words[i].value) ? 2 : 1;
         continue;
       }
       break;
     }
     if (i >= words.length) continue;
-    const first = unquote(words[i]);
-    if (JAVA_TOOLS[first]) return JAVA_TOOLS[first];
-    if (SHELLS.has(first)) {
-      const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
-      if (flag !== -1) {
-        const inner = toolCalled(unquote(words.slice(flag + 1).join(' ')));
+    const first = words[i];
+    if (!first.known) continue;
+    if (JAVA_TOOLS[first.value]) return JAVA_TOOLS[first.value];
+    if (SHELLS.has(first.value)) {
+      const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w.value));
+      if (flag !== -1 && flag + 1 < words.length) {
+        const inner = toolCalled(words[flag + 1].value);
         if (inner) return inner;
       }
     }

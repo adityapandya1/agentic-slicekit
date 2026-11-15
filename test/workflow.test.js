@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
-import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { PINS_PATH, WORKFLOW_PATH, javaBuildTool, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
 import { allSteps, docSteps } from '../src/observability.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { CI_PULL_REQUEST, runCli } from './helpers/run-cli.js';
@@ -1195,4 +1195,26 @@ test('a header naming Step and Command with any other column set is refused with
     }
     assert.equal(fs.readFileSync(workflow, 'utf8'), before);
   });
+});
+
+// Review H-1 of round 1 of P6/S-51: a command's words are read as a shell splits them, so a quoted
+// value of a wrapper option that holds a space is one word and is skipped whole.
+test('a quoted wrapper option value that holds a space is skipped whole', () => {
+  assert.equal(javaBuildTool(null, ['xvfb-run -s "-screen 0 1024x768x24" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['sudo -u "build user" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["sudo -u 'build user' ./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ['sudo -u build\\ user mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['MAVEN_OPTS="-Xmx1g -Xss2m" mvn verify']), 'maven');
+  // The value of -u is a user named "mvn verify"; the command is ls.
+  assert.equal(javaBuildTool(null, ['sudo -u "mvn verify" ls']), null);
+  // A separator inside quotes ends no command.
+  assert.equal(javaBuildTool(null, ["echo 'done; mvn verify'"]), null);
+  // An unclosed quote holds the rest of the command.
+  assert.equal(javaBuildTool(null, ['sudo -u "build user mvn verify']), null);
+  assert.equal(javaBuildTool(null, ['mvn verify "-Dname=a b']), 'maven');
+  // A command substitution is one word of unknown value, and the command inside it is read as a command.
+  assert.equal(javaBuildTool(null, ['sudo -u "$(id -un)" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['$(which mvn) verify']), null);
+  assert.equal(javaBuildTool(null, ['echo "$(mvn -v)"']), 'maven');
+  assert.equal(javaBuildTool(null, ['echo `./gradlew -v`']), 'gradle');
 });
