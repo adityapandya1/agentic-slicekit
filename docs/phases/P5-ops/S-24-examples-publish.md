@@ -5,7 +5,7 @@ repo: .
 group: C
 runbook: yes
 requirements: [REQ-4.8, REQ-5.5, REQ-5.6, REQ-5.7, REQ-5.8]
-decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61]
+decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61, D-93]
 ---
 
 ## Done when
@@ -34,6 +34,8 @@ decisions: [D-28, D-33, D-41, D-47, D-53, D-59, D-60, D-61]
 Amended (author's standing instruction, 2026-11-15): `test/examples.test.js`, whose helper `copyExample` stages the three hooks of a copied example as executable before its commit, as `init` does; without it the `hooks` rule reports them on Windows, where a plain add records them as not executable. No assertion changes.
 
 Amended (author's standing instruction, 2026-11-15): `test/readme.test.js`, whose `link` helper builds its pattern in a template literal and so loses its backslashes; as written it matches no Markdown link. The backslashes are doubled, and what the test asserts stays the same.
+
+Amended (author's standing instruction, 2026-11-15): Done when 2 holds with the two exceptions of D-93 (reviews H-1 and B-1): on a slice branch or a slice's review branch whose slice does not name the config, and in `slicekit branch` of every kind, an older config is read migrated in memory and not written, and one line on stderr says so. No test of the evaluation set changes.
 
 ## Expected changes
 
