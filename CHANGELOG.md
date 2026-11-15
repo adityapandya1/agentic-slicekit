@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.5.1
+
+- P6/S-53 Jira tracker (#176)
+
 ## 0.5.0
 
 Phase 5: Ops.
