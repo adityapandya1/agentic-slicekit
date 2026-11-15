@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-51",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 179,
@@ -24,7 +24,15 @@
     "test/journal-heads.test.js",
     "test/build-commit-staged.test.js"
   ],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-51-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "06d47a8e6ebcf893520d228632c9320a06d3bba3"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -93,6 +101,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/179",
           "headSha": "06d47a8e6ebcf893520d228632c9320a06d3bba3",
           "title": "[P6/S-51] Versions and the build loop"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T14:50:59.775Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-51-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
