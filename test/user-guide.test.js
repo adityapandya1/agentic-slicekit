@@ -110,3 +110,24 @@ test('the graph page says the graph is not a code graph and gives the graphify l
   // The one line that runs both in one Claude Code session.
   assert.match(text, /`\/graphify [^`]*`[^\n]*`\/slicekit [^`]*`/);
 });
+
+// P6/S-51 (REQ-5.8, D-95, issue #172): the sync-release rule also judges the rendered files of each
+// folder under examples/. Its page says so, quotes the second half of the finding line an example
+// file gets, as the rule writes it, and names the command that clears it.
+test('the sync-release page says what a finding on an example file means', () => {
+  const EXAMPLE_HALF = 'a sync pull request changes an example file only to its fresh render at the version it sets';
+  // The rule still writes that half; the page quotes the rule, not a line of its own.
+  const rule = fs.readFileSync(fileURLToPath(new URL('../src/check/rules/sync-release.js', import.meta.url)), 'utf8');
+  assert.ok(rule.includes(EXAMPLE_HALF), 'src/check/rules/sync-release.js no longer writes this line');
+
+  assert.ok(fs.existsSync(pagePath('rules/sync-release')), 'docs/guide/rules/sync-release.md is missing');
+  const prose = readPage('rules/sync-release').replace(/\s+/g, ' ');
+  // The rendered files of each folder under examples/ are judged too.
+  assert.match(prose, /each folder under `examples\/`/);
+  assert.match(prose, /rendered files/);
+  // The second half of the finding line an example file gets.
+  assert.ok(prose.includes(EXAMPLE_HALF), `the page does not quote: ${EXAMPLE_HALF}`);
+  // The command that clears it, run in that folder.
+  assert.match(prose, /`slicekit update --yes`/);
+  assert.match(prose, /in that folder/);
+});

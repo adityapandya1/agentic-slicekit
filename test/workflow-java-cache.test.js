@@ -76,3 +76,13 @@ test('a call after then, do or else still counts', () => {
   assert.equal(javaBuildTool(null, ['if false; then true; else gradle check; fi']), 'gradle');
   assert.equal(javaBuildTool(null, ['if [ -f x ]; then echo mvn; fi']), null);
 });
+
+// P6/S-51 (REQ-3.11, issue #136): an option of a wrapper that takes a value has that value skipped
+// with it, so the word after the value is the command, and the value itself never is.
+test('a wrapper option that takes a value does not hide the Java call', () => {
+  assert.equal(javaBuildTool(null, ['sudo -u runner mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['nice -n 10 ./gradlew test']), 'gradle');
+  assert.equal(javaBuildTool(null, ['env -u FOO mvn test']), 'maven');
+  // The value of -u is a user named mvn; the command is ls.
+  assert.equal(javaBuildTool(null, ['sudo -u mvn ls']), null);
+});
