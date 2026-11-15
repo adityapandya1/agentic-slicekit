@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-21",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 150,
@@ -15,7 +15,8 @@
     "test/briefs.test.js"
   ],
   "unfrozen": [
-    "test/commands/release.test.js"
+    "test/commands/release.test.js",
+    "test/check/ci-title.test.js"
   ],
   "verdicts": [
     {
@@ -212,6 +213,17 @@
           "blockers": 0,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T03:01:44.631Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/ci-title.test.js",
+        "amendCommit": "edbdb441ffc01743536a8e0d8189ce8c2520465c",
+        "reason": "review H-8: the amendment record names every test added to the release test file"
       }
     }
   ]
