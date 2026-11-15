@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-21",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 150,
@@ -15,7 +15,15 @@
     "test/briefs.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-21-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "05cbed5227b2d12058295f548f13c5c7e59f24a6"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -56,6 +64,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/150",
           "headSha": "05cbed5227b2d12058295f548f13c5c7e59f24a6",
           "title": "[P5/S-21] Runbook rule and `/slicekit release`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:42:23.965Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-21-r1.md",
+          "blockers": 1,
+          "independent": false
         }
       }
     }
