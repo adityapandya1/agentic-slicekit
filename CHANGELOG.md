@@ -2,6 +2,15 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.6.0
+
+Phase 6: Polish.
+
+- P6/S-51 Versions and the build loop (#179)
+- P6/S-52 Guards (#177)
+- P6/S-53 Jira tracker (#176)
+- P6/S-54 One source for the guide (#186)
+
 ## 0.5.1
 
 - P6/S-53 Jira tracker (#176)

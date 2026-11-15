@@ -91,7 +91,7 @@
   },
   "_slicekit": {
     "managed": true,
-    "version": "0.5.1",
+    "version": "0.6.0",
     "cli": "slicekit"
   }
 }
