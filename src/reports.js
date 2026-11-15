@@ -62,10 +62,10 @@ export function reportSections(text) {
   return out;
 }
 
-const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
-const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
+export const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+export const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
 // A row's cells; a `\|` is a pipe inside its cell.
-const cellsOf = (row) =>
+export const cellsOf = (row) =>
   row
     .replace(/^\s*\|/, '')
     .replace(/(?<!\\)\|\s*$/, '')

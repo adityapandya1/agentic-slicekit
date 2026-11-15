@@ -8,7 +8,7 @@ import { indexGraph, loadGraph, normalisePath } from './graph/load.js';
 import { GraphError, cmp, keyOf } from './graph/schema.js';
 import { re } from './ids.js';
 import { kitPaths } from './paths.js';
-import { footerProblems, lineExists, nextReport, reportSections } from './reports.js';
+import { cellsOf, footerProblems, isDivider, isRow, lineExists, nextReport, reportSections } from './reports.js';
 
 // A word naming more files than this is too broad to expand.
 export const BROAD = 50;
@@ -91,28 +91,56 @@ const MARKED = /\((?:anyone|on-call|owner: [^()]*[^()\s][^()]*)\)[.\s]*$/;
 const PR_REF = /(?<![\w&/#.-])([A-Za-z0-9._-]+)?#(\d+)\b/g;
 const CITATION = /(?<![\w./-])([A-Za-z0-9_.][\w./-]*):(\d+)\b/g;
 
-// The list items of a section: each marker line with the lines that continue it, as {first, text},
-// `first` the item's first line number and `text` its lines joined.
-function listItems(ls) {
+const FENCE = /^\s*(```|~~~)/;
+const SUBHEADING = /^\s{0,3}#{3,6}\s/;
+const NO_MARK = 'who may take it: (anyone), (on-call) or (owner: <name>)';
+
+// The actions of the Proposed actions section, in each form the section can hold one, as
+// {first, marked, message}: `first` the action's first line number. A list item, with the lines that
+// continue it (indented, or right under it), and a paragraph of plain lines are each one action,
+// marked when the joined text ends with the mark. A table row is one action, marked when one of its
+// cells ends with the mark; the header row and the divider are none. A sub-heading and a fenced
+// block are no action. `ls` holds the section's lines that are not blank.
+function actions(ls) {
   const out = [];
   let open = null;
-  for (const { text, line } of ls) {
-    if (ITEM.test(text)) {
-      open = { first: line, text: text.trimEnd() };
-      out.push(open);
-    } else if (open && /^\s+\S/.test(text)) {
-      open.text += ` ${text.trim()}`;
-    } else {
+  let last = 0;
+  let fenced = false;
+  const start = (first, t) => {
+    open = { first, text: t.trimEnd(), item: ITEM.test(t) };
+    out.push(open);
+  };
+  ls.forEach(({ text: t, line }, i) => {
+    const adjacent = line === last + 1;
+    last = line;
+    if (FENCE.test(t)) {
+      fenced = !fenced;
       open = null;
+    } else if (fenced || SUBHEADING.test(t)) {
+      open = null;
+    } else if (isRow(t)) {
+      open = null;
+      const header = ls[i + 1] && ls[i + 1].line === line + 1 && isDivider(ls[i + 1].text);
+      if (!header && !isDivider(t)) out.push({ first: line, row: cellsOf(t) });
+    } else if (ITEM.test(t)) {
+      start(line, t);
+    } else if (open && (adjacent || (open.item && /^\s+\S/.test(t)))) {
+      open.text += ` ${t.trim()}`;
+    } else {
+      start(line, t);
     }
-  }
-  return out;
+  });
+  return out.map((a) =>
+    a.row
+      ? { first: a.first, marked: a.row.some((cell) => MARKED.test(cell)), message: `the action names in no cell ${NO_MARK}` }
+      : { first: a.first, marked: MARKED.test(a.text), message: `the action does not end with ${NO_MARK}` },
+  );
 }
 
 // What is wrong with an ops report, one `<rel>:<line> <message>` per problem (REQ-2.13): each of the
 // three sections present and holding a line; every slice and pull request named in the first one in
-// the graph; every `<file>:<line>` cited in First checks a line that exists; every proposed action
-// marked by who may take it; the two closing lines.
+// the graph; every `<file>:<line>` cited in First checks a line that exists; every proposed action,
+// whether a list item, a plain line or a table row, marked by who may take it; the two closing lines.
 export function opsReportProblems(root, index, rel, text) {
   const out = [];
   const sections = reportSections(text);
@@ -145,8 +173,8 @@ export function opsReportProblems(root, index, rel, text) {
     }
   }
 
-  for (const item of listItems(content(OPS_SECTIONS[2]))) {
-    if (!MARKED.test(item.text)) out.push(`${rel}:${item.first} the action does not end with who may take it: (anyone), (on-call) or (owner: <name>)`);
+  for (const action of actions(content(OPS_SECTIONS[2]))) {
+    if (!action.marked) out.push(`${rel}:${action.first} ${action.message}`);
   }
 
   return [...out, ...footerProblems(rel, text)];

@@ -1,7 +1,9 @@
-// slicekit audit context [area] [--json] and slicekit audit check <report> [area] (REQ-2.14, D-58):
+// slicekit audit context [area] [--json] and slicekit audit check <report> [area] [--every-claim]
+// (REQ-2.14, D-58):
 // the claims `/slicekit audit` hands the auditor, each with the files it names and its candidate
-// commits, and the check of the auditor's report against the claims of the same area. Neither
-// changes a tracked file.
+// commits, and the check of the auditor's report against the claims of the same area, which the
+// check reads from the spec and the runbook as the context does. With --every-claim a claim of the
+// area that has no row is a problem. Neither changes a tracked file.
 import { parseArgs } from 'node:util';
 import { auditClaims, auditContext, auditReportProblems } from '../audit.js';
 import { ConfigError, loadConfig } from '../config.js';
@@ -10,7 +12,7 @@ import { indexGraph, loadGraph } from '../graph/load.js';
 import { GraphError } from '../graph/schema.js';
 import { readReport } from '../reports.js';
 
-const USAGE = 'audit context [area] [--json]\n  audit check <report> [area]';
+const USAGE = 'audit context [area] [--json]\n  audit check <report> [area] [--every-claim]';
 const SUBCOMMANDS = ['context', 'check'];
 
 const usage = (io, why) => {
@@ -35,7 +37,7 @@ async function run(args, io) {
   let values;
   let positionals;
   try {
-    ({ values, positionals } = parseArgs({ args, options: { json: { type: 'boolean' } }, allowPositionals: true }));
+    ({ values, positionals } = parseArgs({ args, options: { json: { type: 'boolean' }, 'every-claim': { type: 'boolean' } }, allowPositionals: true }));
   } catch (e) {
     return usage(io, e.message);
   }
@@ -61,7 +63,7 @@ async function run(args, io) {
     const { rel, text } = readReport(root, rest[0]);
     if (text === null) return refuse(`${rel} is not a file`, 2);
     const claims = auditClaims(root, cfg, indexGraph(loadGraph(root, cfg)), areaOf(rest[1]));
-    const problems = auditReportProblems(root, rel, text, claims);
+    const problems = auditReportProblems(root, rel, text, claims, { everyClaim: Boolean(values['every-claim']) });
     if (json) io.stdout(`${JSON.stringify({ report: rel, problems }, null, 2)}\n`);
     else io.stdout(problems.length > 0 ? problems.map((p) => `${p}\n`).join('') : `ok ${rel}\n`);
     return problems.length > 0 ? 1 : 0;

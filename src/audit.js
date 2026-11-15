@@ -169,9 +169,10 @@ const bare = (cell) => cell.trim().replace(/^`+|`+$/g, '').trim();
 // What is wrong with an audit report, one `<rel>:<line> <message>` per problem (REQ-2.14): a table
 // under `## Claims` with the six columns; each row a claim of the area, written where the claim is,
 // with a status of the three; a drifted row naming one of its claim's candidate commits; an
-// unverifiable row saying why; a holds or drifted row naming where the evidence was found; the two
-// closing lines.
-export function auditReportProblems(root, rel, text, claims) {
+// unverifiable row saying why; a holds or drifted row naming where the evidence was found; no claim
+// with two rows; the two closing lines. With `everyClaim`, each of `claims` has a row: `claims` are
+// the claims of the area, as `auditClaims` reads them from the spec and the runbook.
+export function auditReportProblems(root, rel, text, claims, { everyClaim = false } = {}) {
   const out = [];
   const section = reportSections(text).get('claims');
   const table = sectionTable(text, 'Claims');
@@ -182,6 +183,7 @@ export function auditReportProblems(root, rel, text, claims) {
   } else if (table.rows.length === 0) out.push(`${rel}:${table.header.line} the Claims table holds no row`);
   else {
     const byId = new Map(claims.map((c) => [c.id, c]));
+    const rowOf = new Map();
     for (const { cells, line } of table.rows) {
       const at = `${rel}:${line}`;
       if (cells.length !== COLUMNS.length) {
@@ -196,6 +198,11 @@ export function auditReportProblems(root, rel, text, claims) {
         out.push(`${at} ${id === '' ? 'the row names no claim' : `${id} is not a claim of this audit`}`);
         continue;
       }
+      if (rowOf.has(id)) {
+        out.push(`${at} ${id} has a second row; its first is on line ${rowOf.get(id)}`);
+        continue;
+      }
+      rowOf.set(id, line);
       if (where !== claim.where) out.push(`${at} ${id} is written at ${claim.where}, not ${where === '' ? 'nowhere' : where}`);
       if (!STATUSES.includes(status)) {
         out.push(`${at} the status of ${id} is "${status}", not ${STATUSES.slice(0, 2).join(', ')} or ${STATUSES[2]}`);
@@ -217,6 +224,9 @@ export function auditReportProblems(root, rel, text, claims) {
       } else if (!/`[^`]+`/.test(foundAt)) {
         out.push(`${at} Found at of ${id} is neither a <file>:<line> nor a command in backticks`);
       }
+    }
+    if (everyClaim) {
+      for (const c of claims) if (!rowOf.has(c.id)) out.push(`${rel}:${table.header.line} no row for ${c.id}`);
     }
   }
   return [...out, ...footerProblems(rel, text)];

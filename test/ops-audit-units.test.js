@@ -8,6 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { auditReportProblems } from '../src/audit.js';
+import { init as initKit } from '../src/init.js';
+import { cli } from './helpers/build-flow.js';
+import { commitFixed } from './helpers/graph-fixture.js';
+import { makeRepo } from './helpers/tmp-repo.js';
 import { indexGraph } from '../src/graph/load.js';
 import { GraphError } from '../src/graph/schema.js';
 import { BROAD, opsReportProblems, symptomFiles } from '../src/ops.js';
@@ -112,6 +116,33 @@ test('opsReportProblems: who may take an action, wrapped items, and what counts 
   });
 });
 
+// P5/S-23 review H-1: an action is held to its mark in every form the section can hold one.
+test('opsReportProblems: an action written as a plain line or a table row is held to its mark', () => {
+  const index = indexOf(['src/a.js'], [
+    { id: 'slice:P1/S-01', kind: 'slice', label: 'x' },
+    { id: 'pull-request:1', kind: 'pull-request', label: 'x' },
+    { id: 'pull-request:api#4', kind: 'pull-request', label: 'x' },
+  ]);
+  const END = 'the action does not end with who may take it: (anyone), (on-call) or (owner: <name>)';
+  const CELL = 'the action names in no cell who may take it: (anyone), (on-call) or (owner: <name>)';
+  withDir({ 'docs/runbook.md': 'one\ntwo\n' }, (root) => {
+    const check = (text) => opsReportProblems(root, index, 'r.md', text);
+    // The only action is a plain line.
+    assert.deepEqual(check(OPS('Restart the billing service now')), [`r.md:11 ${END}`]);
+    // A table: the header and the divider are no action; a row with no mark in any cell is refused.
+    assert.deepEqual(check(OPS('| Action | Who |\n|---|---|\n| Read the log | (anyone) |\n| Restart it | |\n| Page them | on-call |')), [
+      `r.md:14 ${CELL}`,
+      `r.md:15 ${CELL}`,
+    ]);
+    // A paragraph is one action, named at its first line; so is each paragraph after a list.
+    assert.deepEqual(check(OPS('- Read the log (anyone)\n\nRestart it now\nand page them (on-call)\n\nThen wait\nfor the owner.')), [`r.md:16 ${END}`]);
+    // A line right under a list item continues it, indented or not.
+    assert.deepEqual(check(OPS('- Restart it\n(on-call)\n- Read the log (anyone)\nthen restart it')), [`r.md:13 ${END}`]);
+    // A sub-heading and a fenced block are no action; every form, marked, passes.
+    assert.deepEqual(check(OPS('### Now\n\nRead the log (anyone)\n\n```\ntail -f app.log\n```\n\n| Action | Who |\n|---|---|\n| Restart it | (owner: Dana) |\n\n1. Page them (on-call)')), []);
+  });
+});
+
 const CLAIMS = [
   { id: 'REQ-1.1', where: 'docs/spec/01-x.md:3', title: 'A', files: ['src/a.js'], since: null, candidates: [{ sha: 'a'.repeat(40), date: 'd', subject: 's' }] },
   { id: 'runbook#health', where: 'docs/runbook.md:1', title: 'Health', files: [], since: null, candidates: [] },
@@ -131,32 +162,24 @@ test('auditReportProblems names each row that is not in order', () => {
     const check = (text) => auditReportProblems(root, 'r.md', text, CLAIMS);
     assert.deepEqual(check(AUDIT([
       '| `REQ-1.1` | `docs/spec/01-x.md:3` | it does | `src/a.js:1` | `holds` | |',
-      '| REQ-1.1 | docs/spec/01-x.md:3 | it does not | `node --test` | drifted | AAAAAAA |',
       '| runbook#health | docs/runbook.md:1 | no test starts the service | | unverifiable | |',
     ])), []);
-    assert.deepEqual(check(AUDIT([
-      '| REQ-9.9 | docs/spec/01-x.md:3 | x | src/a.js:1 | holds | |',
-      '| REQ-1.1 | docs/spec/01-x.md:4 | x | src/a.js:1 | holds | |',
-      '| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:2 | holds | |',
-      '| REQ-1.1 | docs/spec/01-x.md:3 | x | somewhere in the code | holds | |',
-      '| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:1 | drifted | |',
-      '| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:1 | drifted | aaaaaa |',
-      '| runbook#health | docs/runbook.md:1 | x | src/a.js:1 | drifted | aaaaaaa |',
-      '| runbook#health | docs/runbook.md:1 | | | unverifiable | |',
-      '| runbook#health | docs/runbook.md:1 | x | src/a.js:1 | Holds | |',
-      '| runbook#health | docs/runbook.md:1 | x |',
-    ])), [
-      'r.md:5 REQ-9.9 is not a claim of this audit',
-      'r.md:6 REQ-1.1 is written at docs/spec/01-x.md:3, not docs/spec/01-x.md:4',
-      'r.md:7 src/a.js:2 is not a line of a file in the repository',
-      'r.md:8 Found at of REQ-1.1 is neither a <file>:<line> nor a command in backticks',
-      'r.md:9 drifted REQ-1.1 names no commit; name one that touched its files after it was written',
-      'r.md:10 drifted REQ-1.1 names aaaaaa, which is not a commit that touched its files after it was written',
-      'r.md:11 drifted runbook#health names aaaaaaa, which is not a commit that touched its files after it was written',
-      'r.md:12 unverifiable runbook#health does not say why in Evidence',
-      'r.md:13 the status of runbook#health is "Holds", not holds, drifted or unverifiable',
-      'r.md:14 the row holds 3 cells, not 6',
-    ]);
+    assert.deepEqual(check(AUDIT(['| REQ-1.1 | docs/spec/01-x.md:3 | it does not | `node --test` | drifted | AAAAAAA |'])), []);
+    // Each row alone, so that no claim has two rows.
+    for (const [row, problem] of [
+      ['| REQ-9.9 | docs/spec/01-x.md:3 | x | src/a.js:1 | holds | |', 'REQ-9.9 is not a claim of this audit'],
+      ['| REQ-1.1 | docs/spec/01-x.md:4 | x | src/a.js:1 | holds | |', 'REQ-1.1 is written at docs/spec/01-x.md:3, not docs/spec/01-x.md:4'],
+      ['| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:2 | holds | |', 'src/a.js:2 is not a line of a file in the repository'],
+      ['| REQ-1.1 | docs/spec/01-x.md:3 | x | somewhere in the code | holds | |', 'Found at of REQ-1.1 is neither a <file>:<line> nor a command in backticks'],
+      ['| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:1 | drifted | |', 'drifted REQ-1.1 names no commit; name one that touched its files after it was written'],
+      ['| REQ-1.1 | docs/spec/01-x.md:3 | x | src/a.js:1 | drifted | aaaaaa |', 'drifted REQ-1.1 names aaaaaa, which is not a commit that touched its files after it was written'],
+      ['| runbook#health | docs/runbook.md:1 | x | src/a.js:1 | drifted | aaaaaaa |', 'drifted runbook#health names aaaaaaa, which is not a commit that touched its files after it was written'],
+      ['| runbook#health | docs/runbook.md:1 | | | unverifiable | |', 'unverifiable runbook#health does not say why in Evidence'],
+      ['| runbook#health | docs/runbook.md:1 | x | src/a.js:1 | Holds | |', 'the status of runbook#health is "Holds", not holds, drifted or unverifiable'],
+      ['| runbook#health | docs/runbook.md:1 | x |', 'the row holds 3 cells, not 6'],
+    ]) {
+      assert.deepEqual(check(AUDIT([row])), [`r.md:5 ${problem}`]);
+    }
     // The table: missing, with other columns, or with no row; and the closing lines.
     assert.deepEqual(check('# Audit\n\nSkipped: nothing\nNot checked: nothing\n'), ['r.md:1 no "## Claims" section']);
     assert.deepEqual(check('## Claims\n\nNone.\n\nSkipped: nothing\nNot checked: nothing\n'), ['r.md:1 the "## Claims" section holds no table']);
@@ -167,4 +190,43 @@ test('auditReportProblems names each row that is not in order', () => {
       'r.md:5 no "Not checked:" line',
     ]);
   });
+});
+
+// P5/S-23 review H-2: a claim has one row, and with `everyClaim` every claim of the area has one.
+// `audit check` reads the area's claims as `audit context` does: from the spec and the runbook, by
+// the area it is given.
+test('auditReportProblems refuses a claim with two rows and, asked for every claim, a claim with none', async () => {
+  const HOLDS = '| REQ-1.1 | docs/spec/01-x.md:3 | it does | src/a.js:1 | holds | |';
+  withDir({ 'src/a.js': 'one\n' }, (root) => {
+    const check = (rows, opts) => auditReportProblems(root, 'r.md', AUDIT(rows), CLAIMS, opts);
+    // Two rows for one claim, with different statuses.
+    assert.deepEqual(check([HOLDS, '| REQ-1.1 | docs/spec/01-x.md:3 | no test reads it | | unverifiable | |']), ['r.md:6 REQ-1.1 has a second row; its first is on line 5']);
+    // One row for an area of two claims: a row is asked for each claim only with everyClaim.
+    assert.deepEqual(check([HOLDS]), []);
+    assert.deepEqual(check([HOLDS], { everyClaim: true }), ['r.md:3 no row for runbook#health']);
+    assert.deepEqual(check([HOLDS, '| runbook#health | docs/runbook.md:1 | no test starts it | | unverifiable | |'], { everyClaim: true }), []);
+    // A row that is refused still counts as its claim's row.
+    assert.deepEqual(check([HOLDS, '| runbook#health | docs/runbook.md:1 | x | src/a.js:1 | Holds | |'], { everyClaim: true }), [
+      'r.md:6 the status of runbook#health is "Holds", not holds, drifted or unverifiable',
+    ]);
+  });
+
+  // The command: `audit check <report> runbook --every-claim` on a runbook of two sections.
+  const repo = makeRepo();
+  try {
+    const { root } = repo;
+    initKit(root, { name: 'demo', shape: 'backend', commands: { test: 'node --test' }, cli: 'node bin/slicekit.js' });
+    commitFixed(root, 'plan', { 'docs/runbook.md': '# Runbook: demo\n\n## Health\n\nIt answers ok.\n\n## Rollback\n\nRevert it.\n' });
+    assert.equal((await cli(root, ['graph'])).code, 0);
+    const report = '.slicekit/reports/audit-1.md';
+    fs.mkdirSync(path.join(root, '.slicekit', 'reports'), { recursive: true });
+    fs.writeFileSync(path.join(root, report), AUDIT(['| runbook#health | docs/runbook.md:3 | no test starts it | | unverifiable | |']));
+    const rows = await cli(root, ['audit', 'check', report, 'runbook']);
+    assert.equal(rows.code, 0, `${rows.stdout}\n${rows.stderr}`);
+    const every = await cli(root, ['audit', 'check', report, 'runbook', '--every-claim']);
+    assert.equal(every.code, 1, `${every.stdout}\n${every.stderr}`);
+    assert.equal(every.stdout, `${report}:3 no row for runbook#rollback\n`);
+  } finally {
+    repo.cleanup();
+  }
 });

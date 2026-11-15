@@ -42,6 +42,8 @@ const IGNORE_RULES = [
 const UNIGNORE_RULES = ['!.slicekit/journal/', '!.slicekit/journal/*.log', '.slicekit/journal/*.lock', '!.slicekit/journal-heads.log'];
 const UNIGNORE_PROBES = ['.slicekit/journal-heads.log', '.slicekit/journal/main--00000000.log'];
 
+const REPORTS_RULE = '.slicekit/reports/';
+
 function ignoredByGit(root, rel) {
   try {
     git(root, ['check-ignore', '--quiet', '--no-index', rel]);
@@ -94,6 +96,21 @@ function reassertUnignores(root, file) {
   const lines = [...new Set(still.map((rel) => ignoringLine(root, rel)).filter(Boolean))];
   const note = `${still.join(' and ')} still ignored by git (${lines.join(', ')}); the un-ignores at the end of .gitignore cannot override that rule, so init does not append them again`;
   return { appended, note };
+}
+
+// The ignore rule for the reports directory when the project lacks it, else null. `update` never
+// writes the ignore file (REQ-5.6: managed blocks only), so it prints this line for a project
+// initialised before the rule existed (P5/S-23 review H-4). In a git repository git decides whether
+// a report is ignored; outside one, a line in any spelling init accepts counts.
+export function missingReportsRule(root, cfg) {
+  const paths = kitPaths(root, cfg);
+  if (isRepo(root)) {
+    const report = path.relative(root, path.join(paths.reports, 'ops-1.md')).split(path.sep).join('/');
+    return ignoredByGit(root, report) ? null : REPORTS_RULE;
+  }
+  const { forms } = IGNORE_RULES.find((r) => r.rule === REPORTS_RULE);
+  const present = exists(paths.gitignore) ? fs.readFileSync(paths.gitignore, 'utf8').split(/\r?\n/).map((l) => l.trim()) : [];
+  return present.some((l) => forms.has(l)) ? null : REPORTS_RULE;
 }
 
 // Hooks checked out with CRLF break sh (REQ-3.9).

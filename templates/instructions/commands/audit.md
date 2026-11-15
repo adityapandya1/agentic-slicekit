@@ -21,9 +21,11 @@ that reads the repository's history goes through `{{cli}}`; run no git or gh com
    it the whole output of step 2 and the report path, and tell it this is an audit, not a gap scan:
    the claims are the ones listed, and the evidence is the code, the tests and the CI history. The
    auditor writes the report at that path.
-4. Run `{{cli}} audit check <report> {{args}}`, with the same area as step 2 or none. It prints
+4. Run `{{cli}} audit check <report> {{args}} --every-claim`, with the same area as step 2 or none.
+   The check reads the area's claims from the spec and the runbook, as step 2 did. It prints
    `ok <report>`, or one `<report>:<line> <message>` line per problem: a missing `## Claims` table,
-   a row for a claim that is not in the area, a status that is not one of the three words, a
+   a row for a claim that is not in the area, a claim of the area with no row, a claim with two
+   rows, a status that is not one of the three words, a
    `drifted` row whose commit is not one of its claim's candidates. On findings, send them to the
    auditor once and run the check again. When the check still finds a problem, print the findings
    with the report path and go on to step 5.

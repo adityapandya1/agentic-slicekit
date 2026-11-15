@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { exists } from '../fs.js';
+import { missingReportsRule } from '../init.js';
 import { checkCli } from '../hook-cli.js';
 import { kitVersion, RENDERED } from '../render/index.js';
 import { applyUpdate, planUpdate } from '../render/update.js';
@@ -40,6 +41,9 @@ async function run(args, io) {
     io.stdout(`${status} ${dest}\n`);
     if (diff !== '') io.stdout(diff);
   }
+  // update never writes the ignore file (REQ-5.6): a project that lacks the rule is told the line.
+  const rule = missingReportsRule(root, cfg);
+  if (rule) io.stdout(`.gitignore has no rule for ${rule}, where /slicekit ops and /slicekit audit write their reports; add the line ${rule}\n`);
   if (values.check) {
     if (!exists(path.join(root, RENDERED))) io.stdout(`${RENDERED}/ is missing; commit it so drift can be told from kit changes\n`);
     return pending.some((p) => p.status === 'drifted' || p.status === 'missing') ? 1 : 0;
