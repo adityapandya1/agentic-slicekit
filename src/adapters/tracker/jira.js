@@ -4,11 +4,14 @@ import { TrackerError, assertFinding, assertIssueId, assertIssueTitle, assertLab
 // C-2 for Jira Cloud through its REST API v3 (D-74). The base URL, project key and issue type come from
 // config (`tracker.baseUrl`, `tracker.project`, `tracker.issueType`); the email and API token come from
 // JIRA_EMAIL and JIRA_API_TOKEN at each call and are never stored. `fetchImpl` is the test seam. Every
-// error is scrubbed of the token and the Authorization value before it leaves this file. Nothing here
-// closes an issue. The three operations return promises.
+// TrackerError is scrubbed of the token and the Authorization value before it leaves this file: the
+// adapter's config check and its three operations each run inside `scrubbed`. Nothing here closes an
+// issue. The three operations return promises.
 const SEARCH_LIMIT = 50;
 // The most pages one find reads. A search that still hands out a token after this many ends in an error.
 const PAGE_LIMIT = 200;
+// The most characters of a page token an error prints.
+const TOKEN_SHOWN = 40;
 
 // Throws a TrackerError naming the first config key that is missing or wrong.
 export function validate(cfg) {
@@ -57,20 +60,47 @@ export function searchValue(prefix) {
 }
 
 export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(...a)) {
-  const { base, project, issueType } = validate(cfg);
+  // The token and the two forms of the Authorization value, as far as the environment holds them.
+  function secrets() {
+    const token = typeof env?.JIRA_API_TOKEN === 'string' ? env.JIRA_API_TOKEN : '';
+    const email = typeof env?.JIRA_EMAIL === 'string' ? env.JIRA_EMAIL : '';
+    if (token === '') return [];
+    if (email === '') return [token];
+    const encoded = Buffer.from(`${email}:${token}`).toString('base64');
+    return [`Basic ${encoded}`, encoded, token];
+  }
+
+  function scrub(text) {
+    let out = String(text ?? '');
+    for (const s of secrets()) out = out.split(s).join('***');
+    return redact(out);
+  }
+
+  // The one way a TrackerError leaves this adapter: its message goes through scrub. Any other error
+  // passes as it is.
+  const clean = (e) => (e instanceof TrackerError ? new TrackerError(scrub(e.message)) : e);
+  const scrubbed = (fn) => async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (e) {
+      throw clean(e);
+    }
+  };
+
+  let checked;
+  try {
+    checked = validate(cfg);
+  } catch (e) {
+    throw clean(e);
+  }
+  const { base, project, issueType } = checked;
 
   function credentials() {
     for (const name of ['JIRA_EMAIL', 'JIRA_API_TOKEN']) {
       if (typeof env[name] !== 'string' || env[name] === '') throw new TrackerError(`${name} is not set; the jira tracker needs JIRA_EMAIL and JIRA_API_TOKEN`);
     }
     const encoded = Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64');
-    return { token: env.JIRA_API_TOKEN, encoded, header: `Basic ${encoded}` };
-  }
-
-  function scrub(text, secret) {
-    let out = String(text ?? '');
-    for (const s of [secret.header, secret.encoded, secret.token]) out = out.split(s).join('***');
-    return redact(out);
+    return { header: `Basic ${encoded}` };
   }
 
   async function call(op, method, path, body) {
@@ -84,7 +114,7 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
     try {
       res = await fetchImpl(`${base}${path}`, init);
     } catch (e) {
-      throw new TrackerError(`jira ${op} failed: ${scrub(e?.message ?? e, secret)}`);
+      throw new TrackerError(`jira ${op} failed: ${scrub(e?.message ?? e)}`);
     }
     let text = '';
     try {
@@ -101,13 +131,13 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
       } catch {
         // not JSON: keep the text
       }
-      throw new TrackerError(`jira ${op} failed: HTTP ${res.status}${detail ? `: ${scrub(detail, secret).slice(0, 500)}` : ''}`);
+      throw new TrackerError(`jira ${op} failed: HTTP ${res.status}${detail ? `: ${scrub(detail).slice(0, 500)}` : ''}`);
     }
     if (text === '') return {};
     try {
       return JSON.parse(text);
     } catch (e) {
-      throw new TrackerError(`jira ${op} answered with something that is not JSON: ${scrub(e.message, secret)}`);
+      throw new TrackerError(`jira ${op} answered with something that is not JSON: ${scrub(e.message)}`);
     }
   }
 
@@ -115,7 +145,7 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
 
   return {
     kind: 'jira',
-    async open({ title, body, labels = [], slice }) {
+    open: scrubbed(async ({ title, body, labels = [], slice }) => {
       assertIssueTitle(title);
       assertLabels(labels);
       assertSlice(slice);
@@ -124,16 +154,17 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
       const id = Number(made.id);
       if (!Number.isInteger(id) || id < 1 || typeof made.key !== 'string') throw new TrackerError('jira open answered with no issue id and key');
       return { id, url: browse(made.key) };
-    },
-    async comment(id, body) {
+    }),
+    comment: scrubbed(async (id, body) => {
       assertIssueId(id);
       await call('comment', 'POST', `/rest/api/3/issue/${id}/comment`, { body: adf(body) });
-    },
+    }),
     // Jira's text search is loose, so its hits, oldest first, are narrowed to a summary that begins
     // `[<slice>] <finding>:`. A status in the done category reads as closed. The pages are read in
     // order, following `nextPageToken`, until one holds such a summary or no token is left. A token
     // given twice ends the search with an error, so a faulty server cannot hold the command in a loop.
-    async find(slice, finding) {
+    // That error prints the token scrubbed and cut to TOKEN_SHOWN characters, the scrub before the cut.
+    find: scrubbed(async (slice, finding) => {
       assertSlice(slice);
       assertFinding(finding);
       const prefix = findingTitlePrefix(slice, finding);
@@ -154,11 +185,11 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
         if (hit) return hit;
         const next = out.nextPageToken;
         if (typeof next !== 'string' || next === '') return null;
-        if (given.has(next)) throw new TrackerError(`jira find failed: the search gave the page token ${JSON.stringify(next)} twice; stopped after ${page} pages`);
+        if (given.has(next)) throw new TrackerError(`jira find failed: the search gave the page token ${JSON.stringify(scrub(next).slice(0, TOKEN_SHOWN))} twice; stopped after ${page} pages`);
         if (page >= PAGE_LIMIT) throw new TrackerError(`jira find failed: the search still gave a page token after ${PAGE_LIMIT} pages; stopped`);
         given.add(next);
         token = next;
       }
-    },
+    }),
   };
 }
