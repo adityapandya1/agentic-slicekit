@@ -27,6 +27,8 @@ decisions: [D-97, D-61]
 | `user-guide.test.js » the guide index holds no command reference and links no PDF` | negative | REQ-5.8 |
 | `readme.test.js » docs/adapters.md names every slash command template in its commands row` | happy | REQ-5.8 |
 
+Amended (author's standing instruction, 2026-11-15): `test/guide-page.test.js`, where one comparison sorts the pages the index links and compares them with the page files in folder order, so the two lists hold the same pages in different orders and no index can pass. Both sides are sorted the same way; what the test asserts stays the same.
+
 ## Expected changes
 
 `scripts/guide-html.js`, `docs/guide/slicekit-guide.html`, `docs/guide/README.md`, `docs/guide/`, `docs/adapters.md`, `docs/runbook.md`, tests.
