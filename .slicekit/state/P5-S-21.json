@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-21",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 150,
@@ -14,7 +14,9 @@
     "test/check/ci-title.test.js",
     "test/briefs.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/commands/release.test.js"
+  ],
   "verdicts": [
     {
       "round": 1,
@@ -79,6 +81,17 @@
           "blockers": 1,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-15T01:42:39.331Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/commands/release.test.js",
+        "amendCommit": "abb6e7fc69903d90688f3c1c6daecb62758ad0ee",
+        "reason": "review round 1: tests for H-1 and H-3; the guide joins the expected changes for H-2"
       }
     }
   ]
