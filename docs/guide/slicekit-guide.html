@@ -314,8 +314,8 @@ article.cmd .note{background:var(--paper)}
       <p>In a new Claude Code session with no memory of the build. When it reports <code>ready</code>, a person merges. CI then runs <code>status --sync --write</code> and the slice becomes <code>merged</code>.</p>
       <div class="cli"><code>review start</code><code>instructions reviewer</code><code>build verdict --independent</code><code>build finish</code><code>status --sync</code></div></div></li>
     <li><div><b class="st">Release</b><span class="slash"><code>/slicekit release P&lt;n&gt;</code></span>
-      <p>Specified to write <code>releases/P&lt;n&gt;.md</code> and set each slice <code>released</code>. <b>Not built in 0.2.1:</b> the command prints that it is not built and exits 1.</p>
-      <div class="cli"><code>state set &lt;id&gt; released --release &lt;path&gt;</code></div></div></li>
+      <p>Once every slice of the phase is <code>merged</code>: writes the release record <code>releases/P&lt;n&gt;.md</code>, sets each slice <code>released</code>, rewrites <code>BUILD.md</code> and opens the <code>[release] P&lt;n&gt;</code> pull request. It does not deploy.</p>
+      <div class="cli"><code>release --dry-run</code><code>branch release</code><code>release</code><code>check</code><code>pr open</code></div></div></li>
     <li><div><b class="st">The graph and its queries</b><span class="slash">any time</span>
       <p>Build the traceability graph from the docs and git, then ask it questions.</p>
       <div class="cli"><code>graph</code><code>trace</code><code>impact</code><code>history</code><code>shipped</code><code>uncovered</code><code>visualize</code></div></div></li>
@@ -347,8 +347,9 @@ article.cmd .note{background:var(--paper)}
     <div class="card"><h3><code>/slicekit-review &lt;PR&gt;</code></h3>
       <p>The independent review: a reviewer in a fresh worktree of the pull request head writes a verdict marked independent. On blockers, it offers a fixer whose commits it pushes to the slice branch. This round does not count against the build's two.</p>
       <p class="when"><b>When:</b> in a new session, after <code>/slicekit build</code> reports <code>waiting for an independent review</code>.</p></div>
-    <div class="card"><h3><code>/slicekit-release P&lt;n&gt;</code> <span class="tag t-nb">Not built in 0.2.1</span></h3>
-      <p>Specified (REQ-2.9) to refuse unless every slice of the phase is <code>merged</code>, then write <code>releases/P&lt;n&gt;.md</code> and set each slice <code>released</code>. It does not deploy. Today it prints <code>the /slicekit release command is not built in this version</code> and exits 1.</p></div>
+    <div class="card"><h3><code>/slicekit-release P&lt;n&gt;</code></h3>
+      <p>Refuses, naming each slice, unless every slice of the phase is <code>merged</code> and passes the runbook judgement (REQ-2.9). Otherwise it puts you on <code>release/&lt;slug&gt;</code>, writes <code>releases/P&lt;n&gt;.md</code>, sets each slice <code>released</code>, rewrites <code>BUILD.md</code> and opens the <code>[release] P&lt;n&gt;</code> pull request. It does not deploy.</p>
+      <p class="when"><b>When:</b> after the last slice of a phase merges. Merging the pull request is the release.</p></div>
     <div class="card"><h3><code>/slicekit-ops &lt;symptom&gt;</code> <span class="tag t-nb">Not built in 0.2.1</span></h3>
       <p>Specified (REQ-2.13) to triage a symptom against the runbook and history and return proposed actions, changing nothing. Today it prints that it is not built and exits 1.</p></div>
     <div class="card"><h3><code>/slicekit-audit [area]</code> <span class="tag t-nb">Not built in 0.2.1</span></h3>
@@ -430,10 +431,10 @@ run again with --yes to apply</span>
 
   <article class="cmd" id="branch">
     <header><h4><code>branch</code></h4><span class="tag t-agent">Run by the agent</span></header>
-    <pre class="syn">slicekit branch &lt;spec|gaps|plan&gt; &lt;slug&gt;</pre>
+    <pre class="syn">slicekit branch &lt;spec|gaps|plan|release&gt; &lt;slug&gt;</pre>
     <dl class="facts">
       <dt>What</dt><dd>Puts you on the work branch <code>&lt;kind&gt;/&lt;slug&gt;</code> for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands. Untracked files go along; changes to tracked files are refused.</dd>
-      <dt>When</dt><dd>The first step of intake and specify (<code>spec</code>), gaps (<code>gaps</code>) and plan (<code>plan</code>). The slug is the program name, lower-cased, with other characters turned into dashes.</dd>
+      <dt>When</dt><dd>The first step of intake and specify (<code>spec</code>), gaps (<code>gaps</code>) and plan (<code>plan</code>), and the step of release that follows its dry run (<code>release</code>). The slug is the program name, lower-cased, with other characters turned into dashes; for <code>release</code> it is the phase in lower case.</dd>
       <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> prints the branch name</li><li><b>1</b> uncommitted changes to tracked files, or a git error</li><li><b>2</b> bad usage, a bad slug (lowercase letters, digits and dashes, at most 60, not starting with a dash), or config</li></ul></dd>
     </dl>
     <pre class="ex"><span class="p">$ </span>slicekit branch spec orders
@@ -727,7 +728,7 @@ slicekit instructions --command &lt;name&gt; [args...]</pre>
     <dl class="facts">
       <dt>What</dt><dd>The first form prints an agent's brief: its rules, the slice file, the cited requirements and decisions, the team's commands and the writing rules. Roles: <code>developer</code>, <code>reviewer</code>, <code>fixer</code>, <code>auditor</code>, <code>ops</code>, <code>designer</code>. Without a slice ID it takes the slice from the current branch. The second form prints a slash command's procedure; everything after the name is passed through unparsed.</dd>
       <dt>When</dt><dd>Before each agent is spawned: the brief is its whole prompt. Every slash command file runs the <code>--command</code> form.</dd>
-      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> printed</li><li><b>1</b> the template is not built (<code>release</code>, <code>ops</code> and <code>audit</code> in 0.2.1)</li><li><b>2</b> bad usage, an unknown role or an unknown command name</li></ul></dd>
+      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> printed</li><li><b>1</b> the template is not built (<code>ops</code> and <code>audit</code> in 0.2.1)</li><li><b>2</b> bad usage, an unknown role or an unknown command name</li></ul></dd>
     </dl>
     <table class="opts"><thead><tr><th>Option</th><th>What it does</th></tr></thead><tbody>
       <tr><td><code>--worktree &lt;path&gt;</code></td><td>The worktree the agent works in; the brief's Where section names it.</td></tr>
@@ -1055,7 +1056,7 @@ files:
     <pre class="syn">slicekit shipped P&lt;n&gt; [--json]</pre>
     <dl class="facts">
       <dt>What</dt><dd>A phase's release record: its path, the requirements it delivered and its pull requests with their URLs.</dd>
-      <dt>When</dt><dd>After a release. Release records come from <code>/slicekit release</code>, which is not built in 0.2.1, so today it answers <code>P&lt;n&gt; has no release record</code> unless one was written by hand.</dd>
+      <dt>When</dt><dd>After a release. Release records come from <code>/slicekit release</code>. For a phase with no record it answers <code>P&lt;n&gt; has no release record</code>.</dd>
     </dl>
     <pre class="ex"><span class="p">$ </span>slicekit shipped P1
 <span class="o">slicekit: P1 has no release record</span></pre>
