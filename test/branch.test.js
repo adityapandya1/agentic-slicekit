@@ -368,3 +368,61 @@ test('branch release cuts release/<slug> from the default branch as origin has i
     { remote: true },
   );
 });
+
+// P5/S-21 review round 3 (H-6): `release` runs only at the default branch's tip, so `branch release`
+// does not leave the session on a release branch that stands elsewhere.
+test('branch release moves a stale release branch to the tip, and refuses one that holds its own commits', async () => {
+  await withRepo(
+    async (root, remote) => {
+      // A release branch cut earlier, with no commit of its own; the default branch then moved.
+      assert.equal((await cli(root, ['branch', 'release', 'p1'])).code, 0);
+      const old = sha(root, 'HEAD');
+      pushFromElsewhere(remote, 'main');
+      // Run on the stale branch itself, it moves it and says so.
+      const moved = await cli(root, ['branch', 'release', 'p1']);
+      assert.equal(moved.code, 0, moved.stderr);
+      assert.equal(moved.stdout, 'release/p1\n');
+      assert.match(moved.stderr, /^slicekit: release\/p1 was behind main; moved to the tip of main$/m);
+      assert.equal(currentBranch(root), 'release/p1');
+      assert.notEqual(sha(root, 'HEAD'), old);
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+      // Run from another branch, the same.
+      git(root, ['switch', '-q', 'main']);
+      pushFromElsewhere(remote, 'main');
+      const fromMain = await cli(root, ['branch', 'release', 'p1']);
+      assert.equal(fromMain.code, 0, fromMain.stderr);
+      assert.match(fromMain.stderr, /release\/p1 was behind main; moved to the tip of main/);
+      assert.equal(currentBranch(root), 'release/p1');
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+
+      // A release branch with a commit the default branch lacks (a release pull request closed
+      // unmerged) is not moved and not taken up: the line names the next slug.
+      commit(root, 'docs(release): P1');
+      const own = sha(root, 'HEAD');
+      for (const start of ['release/p1', 'main']) {
+        git(root, ['switch', '-q', start]);
+        const r = await cli(root, ['branch', 'release', 'p1']);
+        assert.equal(r.code, 1, `${start}: ${r.stdout}`);
+        assert.equal(r.stdout, '');
+        assert.match(r.stderr, /^slicekit: release\/p1 holds commits main lacks, so no release runs on it; run slicekit branch release p1-2$/m);
+        assert.equal(currentBranch(root), start);
+        assert.equal(sha(root, 'refs/heads/release/p1'), own);
+      }
+      const next = await cli(root, ['branch', 'release', 'p1-2']);
+      assert.equal(next.code, 0, next.stderr);
+      assert.equal(next.stdout, 'release/p1-2\n');
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+
+      // The other kinds keep a branch that exists where it stands.
+      git(root, ['switch', '-q', 'main']);
+      assert.equal((await cli(root, ['branch', 'plan', 'p9'])).code, 0);
+      const planAt = sha(root, 'HEAD');
+      git(root, ['switch', '-q', 'main']);
+      pushFromElsewhere(remote, 'main');
+      const plan = await cli(root, ['branch', 'plan', 'p9']);
+      assert.deepEqual([plan.code, plan.stdout, plan.stderr], [0, 'plan/p9\n', '']);
+      assert.equal(sha(root, 'HEAD'), planAt);
+    },
+    { remote: true },
+  );
+});

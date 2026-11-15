@@ -436,3 +436,49 @@ test('a failed state write leaves no release record', async () => {
     p.cleanup();
   }
 });
+
+// Review round 3 (H-5): a release written and not yet committed is undone through the kit, with no
+// git command, and the phase is then released as on a first run; a record HEAD holds is not undone.
+test('a release not yet committed is undone by --undo and released again; a record in HEAD is not', async () => {
+  const p = releaseRepo();
+  try {
+    const { root } = p;
+    const before = snapshot(root);
+    const first = await p.run(['release', 'P1']);
+    assert.equal(first.code, 0, first.stderr);
+    const record = read(root, RECORD);
+
+    // The refusal of a second run names the way back.
+    const second = await p.run(['release', 'P1']);
+    assert.equal(second.code, 1, second.stdout);
+    assert.ok(second.stderr.includes('slicekit release P1 --undo'), second.stderr);
+
+    const undo = await p.run(['release', 'P1', '--undo']);
+    assert.equal(undo.code, 0, undo.stderr);
+    assert.equal(undo.stdout, `removed ${RECORD}\n`);
+    assert.deepEqual(snapshot(root), before, 'the record is gone; the state files and BUILD.md are as in HEAD');
+    assert.equal(gitIn(root, ['status', '--porcelain', '--untracked-files=no']), '', 'no tracked file is left changed');
+
+    // With no record there is nothing to undo, and nothing is written.
+    const none = await p.run(['release', 'P1', '--undo']);
+    assert.equal(none.code, 1, none.stdout);
+    assert.ok(none.stderr.includes(`${RECORD} is not written; nothing to undo`), none.stderr);
+    assert.deepEqual(snapshot(root), before);
+
+    const again = await p.run(['release', 'P1']);
+    assert.equal(again.code, 0, again.stderr);
+    assert.deepEqual(again.stdout.replace(/\n$/, '').split('\n'), [RECORD, 'released P1/S-01', 'released P1/S-02']);
+    assert.equal(read(root, RECORD), record);
+    for (const n of [1, 2]) assert.equal(stateOf(root, n).state, 'released', `P1/S-0${n}`);
+
+    // Once HEAD holds the record, the phase is released once.
+    commitFixed(root, 'docs(release): P1');
+    const committed = snapshot(root);
+    const held = await p.run(['release', 'P1', '--undo']);
+    assert.equal(held.code, 1, held.stdout);
+    assert.ok(held.stderr.includes(`${RECORD} exists; a phase is released once`), held.stderr);
+    assert.deepEqual(snapshot(root), committed);
+  } finally {
+    p.cleanup();
+  }
+});

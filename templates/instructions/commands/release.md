@@ -15,13 +15,22 @@ what merged; it does not deploy (D-12).
    section of the runbook nor gave a Runbook line that begins "no operational change", or a record
    that already exists. Print those lines to the human and stop: the release waits for each one.
 2. Run `{{cli}} branch release <slug>`, the slug being the phase in lower case (`p1` for `P1`). It
-   puts the session on `release/<slug>`, cut from the default branch as origin has it.
+   puts the session on `release/<slug>` at the tip of the default branch as origin has it; a
+   `release/<slug>` left behind that tip with no commit of its own is moved there, and the command
+   says so. When it exits 1 because `release/<slug>` holds commits the default branch lacks (an
+   earlier release pull request of this phase), its line names the next slug (`p1-2`): run the
+   command again with that slug.
 3. Run `{{cli}} release {{args}}`. It prints the record's path, `<docsRoot>/releases/{{args}}.md`,
    then one `released <slice>` line per slice, and rewrites `BUILD.md`. When it exits 1, print its
    lines to the human and stop.
-4. Run `{{cli}} check` and fix each finding it prints until it reports `0 findings`. Change the
-   record only by fixing what it quotes (the runbook, a decision row) on its own pull request and
-   releasing again; never edit the record by hand.
+4. Run `{{cli}} check` and fix each finding it prints until it reports `0 findings`. Never edit the
+   record by hand. A finding in the record points at text the record quotes, and is fixed there:
+   1. Run `{{cli}} release {{args}} --undo`. It removes the record, which is not committed yet, and
+      puts the state files and `BUILD.md` back as they were, so no change is left in the session.
+   2. A pull request title or body is corrected on the host. The runbook or a decision row is
+      corrected on its own pull request, which a human merges; tell the human what to correct, and
+      stop until it has merged.
+   3. Start again at step 1, with the same slug in step 2.
 5. Write the pull request body to a file outside the repository, with these three sections:
 
    ```

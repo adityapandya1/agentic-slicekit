@@ -4,6 +4,7 @@
 // (D-19: the procedure opens the `[release] P<n>` pull request through `pr open`) and deploys
 // nothing (D-12). The record is the same bytes from the same inputs: the default branch's commit,
 // the slice files, the spec, decisions.md, the runbook and what the git host says of each pull request.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { readDecisions } from './decisions.js';
@@ -213,7 +214,8 @@ export function renderRelease(root, cfg, phase, { host, sha }) {
   return `${out.join('\n')}\n`;
 }
 
-// -> {rel, text, slices}. With `dryRun` nothing is written and the branch is not judged, so the
+// -> {rel, text, slices}. A record that exists refuses; one HEAD does not hold was written by an
+// earlier run and not committed, and the refusal then names `--undo`. With `dryRun` nothing is written and the branch is not judged, so the
 // procedure can ask before it cuts the release branch; the text is then the record a release at the
 // default branch's tip would write.
 export function writeRelease(root, cfg, phase, { host, dryRun = false }) {
@@ -227,7 +229,10 @@ export function writeRelease(root, cfg, phase, { host, dryRun = false }) {
   }
   const file = path.join(kitPaths(root, cfg).releases, `${phase}.md`);
   const rel = posix(root, file);
-  if (exists(file)) throw new ReleaseError(1, `${rel} exists; a phase is released once`);
+  if (exists(file)) {
+    const way = blobAtHead(root, rel) === null ? `\n${rel} is not committed; slicekit release ${phase} --undo removes it and puts the state files and BUILD.md back` : '';
+    throw new ReleaseError(1, `${rel} exists; a phase is released once${way}`);
+  }
   const blockers = releaseBlockers(root, cfg, phase, host);
   if (blockers.length > 0) throw new ReleaseError(1, blockers.join('\n'));
   const text = renderRelease(root, cfg, phase, { host, sha: tip });
@@ -255,4 +260,37 @@ export function writeRelease(root, cfg, phase, { host, dryRun = false }) {
     throw e;
   }
   return { rel, text, slices };
+}
+
+// The bytes of `rel` in HEAD, or null when HEAD has no such file.
+function blobAtHead(root, rel) {
+  try {
+    return execFileSync('git', ['cat-file', 'blob', `HEAD:${rel}`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
+}
+
+// `release P<n> --undo`: takes back a release that was written and not committed, so the phase can
+// be released again with no git command. It removes the record and puts each state file of the phase
+// and BUILD.md back as HEAD has them, in the working tree and in the index. A record HEAD holds is
+// not undone: that phase is released. -> {rel}
+export function undoRelease(root, cfg, phase) {
+  const slices = phaseSlices(root, cfg, phase).map(({ slice }) => slice.id);
+  const paths = kitPaths(root, cfg);
+  const file = path.join(paths.releases, `${phase}.md`);
+  const rel = posix(root, file);
+  if (blobAtHead(root, rel) !== null) throw new ReleaseError(1, `${rel} exists; a phase is released once`);
+  if (!exists(file)) throw new ReleaseError(1, `${rel} is not written; nothing to undo`);
+  const back = [...slices.map((id) => path.join(paths.state, stateFileName(id))), paths.build];
+  const rels = [rel, ...back.map((f) => posix(root, f))];
+  // The index first: a pull request that failed after staging leaves these paths staged.
+  git(root, ['--literal-pathspecs', 'reset', '-q', '--', ...rels]);
+  for (const f of back) {
+    const bytes = blobAtHead(root, posix(root, f));
+    if (bytes === null) fs.rmSync(f, { force: true });
+    else if (!exists(f) || !fs.readFileSync(f).equals(bytes)) fs.writeFileSync(f, bytes);
+  }
+  fs.rmSync(file, { force: true });
+  return { rel };
 }
