@@ -533,3 +533,57 @@ test('branch release refuses a release branch with an open pull request, and nam
     p.cleanup();
   }
 });
+
+// P5/S-50 (issue #152, REQ-2.9): the phase's open release pull request may be on a numbered branch,
+// `release/<slug>-<n>`, taken after `release/<slug>` was closed unmerged. `branch release <slug>`
+// asks the git host about each of them: an open pull request on any refuses, naming it and its
+// branch, and names no further slug.
+test('branch release refuses when a numbered release branch has an open pull request', async () => {
+  const p = releaseRepo();
+  try {
+    const { root } = p;
+    // release/p1 holds its own commit; its pull request #3 was closed without merging.
+    const own = commitFixed(root, 'docs(release): P1', { [RECORD]: '# Release P1 — X\n' });
+    gitIn(root, ['push', '-q', 'origin', 'release/p1']);
+    // release/p1-2, cut from main, holds the release that is open as pull request #4.
+    gitIn(root, ['switch', '-q', '-c', 'release/p1-2', 'main']);
+    const second = commitFixed(root, 'docs(release): P1', { [RECORD]: '# Release P1 — X\n\nSecond.\n' });
+    gitIn(root, ['push', '-q', 'origin', 'release/p1-2']);
+    const raw = (number, head, sha, state) => ({ number, url: url(number), state, mergedAt: null, headRefOid: sha, headRefName: head, baseRefName: 'main', isDraft: false, title: '[release] P1', body: '', labels: [] });
+    const put = (pr) => fs.writeFileSync(path.join(p.fixture, `pr-${pr.number}.json`), `${JSON.stringify(pr, null, 2)}\n`);
+    put(raw(3, 'release/p1', own, 'CLOSED'));
+    put(raw(4, 'release/p1-2', second, 'OPEN'));
+    const unmoved = (start) => {
+      assert.equal(gitIn(root, ['rev-parse', '--abbrev-ref', 'HEAD']), start);
+      assert.equal(gitIn(root, ['rev-parse', 'refs/heads/release/p1']), own);
+      assert.equal(gitIn(root, ['rev-parse', 'refs/heads/release/p1-2']), second);
+      assert.throws(() => gitIn(root, ['rev-parse', '--verify', '--quiet', 'refs/heads/release/p1-3']));
+    };
+
+    // The numbered branch's pull request is open: the line names it and its branch, and no further slug.
+    for (const start of ['main', 'release/p1']) {
+      gitIn(root, ['switch', '-q', start]);
+      const r = await p.run(['branch', 'release', 'p1']);
+      assert.equal(r.code, 1, `${start}: ${r.stdout}${r.stderr}`);
+      assert.equal(r.stdout, '');
+      const lines = r.stderr.split('\n').filter((l) => l !== '');
+      assert.equal(lines.length, 1, r.stderr);
+      assert.ok(lines[0].startsWith('slicekit: '), r.stderr);
+      assert.ok(lines[0].includes('release/p1-2'), r.stderr);
+      assert.ok(lines[0].includes(`open pull request #4 (${url(4)})`), r.stderr);
+      assert.ok(!r.stderr.includes('p1-3'), r.stderr);
+      assert.ok(!r.stderr.includes('run slicekit branch release'), r.stderr);
+      unmoved(start);
+    }
+
+    // That pull request was closed without merging too: none is open, and the line names the next slug.
+    put(raw(4, 'release/p1-2', second, 'CLOSED'));
+    const closed = await p.run(['branch', 'release', 'p1']);
+    assert.equal(closed.code, 1, closed.stdout);
+    assert.ok(closed.stderr.includes('run slicekit branch release p1-3'), closed.stderr);
+    assert.ok(!closed.stderr.includes('open pull request'), closed.stderr);
+    unmoved('release/p1');
+  } finally {
+    p.cleanup();
+  }
+});

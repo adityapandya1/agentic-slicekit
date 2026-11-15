@@ -325,3 +325,66 @@ test('migrateConfig copies, names the version read, and leaves a version that is
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// P5/S-50 (issue #162, D-94): the branch `slicekit branch` switches to may already hold the migrated
+// config, committed there by an earlier `pr open`. With the migrated config as the only uncommitted
+// change, the command drops its own copy where the two contents are equal and switches; where they
+// are not, it refuses with one line naming the difference and leaves the change where it is.
+test('branch drops a migrated config that the target branch already holds, and refuses one that differs', () => {
+  const repo = repoWithConfig({ configVersion: 1, repos: ['api'] });
+  const gitOut = (args) => execFileSync('git', args, { cwd: repo.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  // On main, with the committed config at version 1: a command writes the migration. -> its bytes
+  const migrate = () => {
+    const r = runCli(['status'], { cwd: repo.root });
+    assert.match(r.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.equal(gitOut(['diff', '--name-only', 'HEAD']), '.slicekit/config.json');
+    return fs.readFileSync(repo.file);
+  };
+  // A plan branch that holds `content` as its committed config; the session is back on main after it.
+  const planBranch = (name, content) => {
+    gitOut(['switch', '-q', '-c', name]);
+    fs.writeFileSync(repo.file, content);
+    gitOut(['commit', '-q', '-am', 'chore: the migrated config']);
+    gitOut(['switch', '-q', 'main']);
+  };
+  try {
+    gitOut(['add', '-A']);
+    gitOut(['commit', '-q', '-m', 'config']);
+    const migrated = migrate();
+    assert.equal(JSON.parse(migrated.toString('utf8')).configVersion, 2);
+
+    // plan/config-2 holds the migrated config as the migration writes it.
+    planBranch('plan/config-2', migrated);
+    assert.ok(migrate().equals(migrated));
+    const cut = runCli(['branch', 'plan', 'config-2'], { cwd: repo.root });
+    assert.equal(cut.code, 0, cut.stdout + cut.stderr);
+    assert.equal(cut.stdout, 'plan/config-2\n');
+    assert.doesNotMatch(cut.stderr, /commit or stash|would be overwritten/);
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'plan/config-2');
+    assert.ok(fs.readFileSync(repo.file).equals(migrated), 'the config on the plan branch is not the migrated one');
+    assert.equal(gitOut(['status', '--porcelain', '--untracked-files=no']), '', 'the dropped copy left a change behind');
+    assert.equal(gitOut(['stash', 'list']), '', 'the change was stashed, not dropped');
+
+    // plan/config-3 holds a config at the newer version that is not what the migration writes.
+    gitOut(['switch', '-q', 'main']);
+    const other = Buffer.from(`${JSON.stringify({ ...JSON.parse(migrated.toString('utf8')), name: 'other-team' }, null, 2)}\n`);
+    assert.ok(migrate().equals(migrated));
+    planBranch('plan/config-3', other);
+    assert.ok(migrate().equals(migrated));
+    const refused = runCli(['branch', 'plan', 'config-3'], { cwd: repo.root });
+    assert.equal(refused.code, 1, refused.stdout + refused.stderr);
+    assert.equal(refused.stdout, '');
+    const lines = refused.stderr.split(/\r?\n/).filter((l) => l.trim() !== '');
+    assert.equal(lines.length, 1, refused.stderr);
+    assert.ok(lines[0].startsWith('slicekit: '), refused.stderr);
+    // The line names the two files and where they differ: the `name` field.
+    assert.ok(lines[0].includes('.slicekit/config.json') && lines[0].includes('plan/config-3'), refused.stderr);
+    assert.match(lines[0], /\bname\b/);
+    assert.doesNotMatch(refused.stderr, /would be overwritten/);
+    assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), 'main');
+    assert.ok(fs.readFileSync(repo.file).equals(migrated), 'a refusal changed the config');
+    assert.equal(gitOut(['diff', '--name-only', 'HEAD']), '.slicekit/config.json');
+  } finally {
+    repo.cleanup();
+  }
+});

@@ -309,7 +309,7 @@ test('audit context prints ten candidates per claim and counts the rest; audit c
     assert.equal(ctx.code, 0, `${ctx.stdout}\n${ctx.stderr}`);
     assert.deepEqual(candidatesOf(ctx.stdout), shas.slice(2).reverse().map(sha7), ctx.stdout);
     const lines = ctx.stdout.split('\n');
-    const more = lines.indexOf('  2 more candidates, each older: audit context runbook --all');
+    const more = lines.findIndex((l) => l.startsWith('  2 more candidates, each older: '));
     assert.ok(more > 0 && /^\s+candidate /.test(lines[more - 1]), ctx.stdout);
 
     const all = await cli(root, ['audit', 'context', 'runbook', '--all']);
@@ -322,6 +322,49 @@ test('audit context prints ten candidates per claim and counts the rest; audit c
     fs.writeFileSync(path.join(root, report), AUDIT([`| runbook#health | docs/runbook.md:3 | it answers 1 | src/a.js:1 | drifted | ${sha7(shas[0])} |`]));
     const checked = await cli(root, ['audit', 'check', report, 'runbook']);
     assert.equal(checked.code, 0, `${checked.stdout}\n${checked.stderr}`);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+// P5/S-50 (issue #157, REQ-2.14): the line `audit context` prints for the candidates it does not show
+// names a command that prints them and reserves no report file: `audit context <area> --all` with
+// `--no-report`, written with the kit's command prefix. That form prints the context alone.
+test('audit context with --all and --no-report prints every candidate and reserves no report', async () => {
+  const repo = makeRepo();
+  try {
+    const { root } = repo;
+    initKit(root, { name: 'demo', shape: 'backend', commands: { test: 'node --test' }, cli: 'node bin/slicekit.js' });
+    commitFixed(root, 'plan', { 'docs/runbook.md': '# Runbook: demo\n\n## Health\n\nIt answers ok (`src/a.js`).\n', 'src/a.js': '0\n' });
+    const shas = [];
+    for (let i = 1; i <= 12; i++) shas.push(commitFixed(root, `fix: change ${i}`, { 'src/a.js': `${i}\n` }));
+    assert.equal((await cli(root, ['graph'])).code, 0);
+    const candidatesOf = (out) => out.split('\n').filter((l) => /^\s+candidate /.test(l)).map((l) => l.trim().split(' ')[1]);
+    const sha7 = (s) => s.slice(0, 7);
+    const reports = path.join(root, '.slicekit', 'reports');
+    const reserved = () => (fs.existsSync(reports) ? fs.readdirSync(reports).sort() : []);
+
+    // Without --all: the line that counts the older candidates names the form that reserves no report.
+    const ctx = await cli(root, ['audit', 'context', 'runbook']);
+    assert.equal(ctx.code, 0, `${ctx.stdout}\n${ctx.stderr}`);
+    const hint = ctx.stdout.split('\n').filter((l) => /more candidates?\b/.test(l));
+    assert.equal(hint.length, 1, ctx.stdout);
+    assert.ok(hint[0].startsWith('  2 more candidates'), hint[0]);
+    assert.ok(hint[0].includes('node bin/slicekit.js audit context runbook --all --no-report'), hint[0]);
+    const before = reserved();
+    assert.equal(before.length, 1, `audit context reserves one report: ${before.join(', ')}`);
+    assert.equal(ctx.stdout.split('\n')[0], `.slicekit/reports/${before[0]}`);
+
+    // The form the line names: every candidate, the context alone, and no report reserved.
+    const all = await cli(root, ['audit', 'context', 'runbook', '--all', '--no-report']);
+    assert.equal(all.code, 0, `${all.stdout}\n${all.stderr}`);
+    assert.deepEqual(candidatesOf(all.stdout), [...shas].reverse().map(sha7), all.stdout);
+    assert.doesNotMatch(all.stdout, /more candidates?\b/);
+    const lines = all.stdout.split('\n');
+    assert.equal(lines[0], 'runbook#health docs/runbook.md:3 Health');
+    assert.ok(!lines.some((l) => l.includes('.slicekit/reports')), all.stdout);
+    assert.deepEqual(reserved(), before, 'audit context --all --no-report reserved a report');
+    assert.equal(all.stderr, '');
   } finally {
     repo.cleanup();
   }
