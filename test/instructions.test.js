@@ -226,6 +226,28 @@ test('instructions.test.js » a command whose procedure is not built exits 1', (
 
 // ---- further cases ----
 
+// P5/S-23, REQ-2.13, REQ-2.14: the last two procedures are built.
+test('instructions » --command ops and --command audit print their procedures', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const ops = await cli(root, ['instructions', '--command', 'ops', 'x']);
+    assert.equal(ops.code, 0, ops.stderr);
+    assert.ok(ops.stdout.startsWith('# /slicekit ops\n'), ops.stdout);
+    assert.ok(ops.stdout.includes('npx slicekit ops context "x"'), ops.stdout);
+    assert.ok(ops.stdout.includes('npx slicekit ops check <report>'), ops.stdout);
+    const audit = await cli(root, ['instructions', '--command', 'audit']);
+    assert.equal(audit.code, 0, audit.stderr);
+    assert.ok(audit.stdout.startsWith('# /slicekit audit\n'), audit.stdout);
+    assert.ok(audit.stdout.includes('npx slicekit audit context (none)'), audit.stdout);
+    assert.ok(audit.stdout.includes('leave it out'), 'the procedure says what to run for no area');
+    for (const r of [ops, audit]) assert.doesNotMatch(r.stdout, /\{\{(?:cli|args)\}\}/);
+    // Every procedure of the kit is built: none exits 1.
+    for (const name of PROCEDURES) assert.equal((await cli(root, ['instructions', '--command', name])).code, 0, name);
+  } finally {
+    cleanup();
+  }
+});
+
 test('instructions » PROCEDURES names the nine commands', () => {
   assert.deepEqual(PROCEDURES, ['intake', 'specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit']);
 });
@@ -244,10 +266,10 @@ test('instructions » a procedure has {{cli}} and {{args}} replaced', () => {
 test('instructions » --command passes everything after the name through unparsed', async () => {
   const { root, cleanup } = project('backend');
   try {
-    // An unbuilt command (audit, a Phase 4 procedure) exits 1, even with options after it.
+    // Options after the name are the procedure's arguments, not this command's (P5/S-23: audit is built).
     const r = await cli(root, ['instructions', '--command', 'audit', '--parallel', 'P2']);
-    assert.equal(r.code, 1);
-    assert.equal(r.stderr, 'slicekit: the /slicekit audit command is not built in this version\n');
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.includes('npx slicekit audit context --parallel P2'), r.stdout);
     const u = await cli(root, ['instructions', '--command', 'nosuch']);
     assert.equal(u.code, 2);
     assert.equal(u.stderr, "slicekit: unknown command 'nosuch'\n");

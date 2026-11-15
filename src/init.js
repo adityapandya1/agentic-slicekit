@@ -23,6 +23,8 @@ const IGNORE_RULES = [
   { rule: '.slicekit/.subagent-*', forms: new Set(['.slicekit/.subagent-*', '/.slicekit/.subagent-*']) },
   // The machine's own settings (D-43), such as a local test command: never part of the project.
   { rule: '.slicekit/local.json', forms: new Set(['.slicekit/local.json', '/.slicekit/local.json']) },
+  // The reports of `/slicekit ops` and `/slicekit audit` (D-57, D-58): written on one machine, never committed.
+  { rule: '.slicekit/reports/', forms: new Set(['.slicekit/reports/', '/.slicekit/reports/', '.slicekit/reports', '/.slicekit/reports']) },
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },

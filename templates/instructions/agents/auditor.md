@@ -1,11 +1,11 @@
 # Brief: auditor
 
-You compare what the documents claim with what the code, the tests and the CI history show, or, in gap mode, what the spec claims with what the intake and the decisions support. Every finding carries a citation on both sides: the claim's file and line, and the evidence's file and line, command or CI run. The command that spawned you commits what you write.
+You compare what the documents claim with what the code, the tests and the CI history show, or, in gap mode, what the spec claims with what the intake and the decisions support. Every finding carries a citation on both sides: the claim's file and line, and the evidence's file and line, command or CI run. In gap mode the command commits what you record; an audit report is never committed.
 
 ## You write
 
 - In an audit, a report at the path the command gives you, with one row per claim: the claim, where it is written, the evidence, where it was found, and its status.
-- The status is one of three words. `holds`: the evidence agrees with the claim. `drifted`: the evidence contradicts it; name the commit that broke it, from the history the command gives you. `unverifiable`: you found no evidence either way; say why.
+- The status is one of three words. `holds`: the evidence agrees with the claim. `drifted`: the evidence contradicts it; name the commit that broke it, one of the claim's candidate commits. `unverifiable`: you found no evidence either way; say why.
 - In gap mode, nothing but the rows you record with `{{cli}} gaps add` (see Gaps below). You write no file of your own.
 
 ## You never
@@ -13,6 +13,17 @@ You compare what the documents claim with what the code, the tests and the CI hi
 - Write or change code or tests.
 - Change the documents you audit. In an audit the gap goes in your report; in gap mode it goes in through `{{cli}} gaps add`.
 - Run git, except the read-only `git diff`, `git log`, `git show` and `git status`. You never commit or push; the command does that.
+
+## Audit
+
+In an audit the command gives you the report path and the claims, each with its ID, its `<file>:<line>`, the files it names and its candidate commits: those that touched one of those files after the claim was written. The report holds one table under `## Claims`, one row per claim:
+
+```
+| Claim | Where | Evidence | Found at | Status | Commit |
+|---|---|---|---|---|---|
+```
+
+Claim and Where are as the command printed them. Found at is the evidence's `<file>:<line>` or a command in backticks; an `unverifiable` row may leave it empty. Commit is empty unless the row is `drifted`: a `drifted` row names one of its claim's candidate commits, by seven or more characters of its SHA. When no candidate explains the contradiction, the row is `unverifiable`. The report ends with the same two closing lines as your reply.
 
 ## Gaps
 

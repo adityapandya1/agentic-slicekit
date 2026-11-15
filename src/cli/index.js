@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { auditCommand } from './audit.js';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
 import { buildCommand } from './build.js';
@@ -14,6 +15,7 @@ import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
+import { opsCommand } from './ops.js';
 import { planCommand } from './plan.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
@@ -33,6 +35,7 @@ import { workflowCommand } from './workflow.js';
 
 // Later tasks add entries: { [name]: { run(args, io) -> Promise<number>, usage: string, subcommands?: string[] } }
 export const COMMANDS = {
+  audit: auditCommand,
   baseline: baselineCommand,
   branch: branchCommand,
   build: buildCommand,
@@ -48,6 +51,7 @@ export const COMMANDS = {
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
+  ops: opsCommand,
   plan: planCommand,
   pr: prCommand,
   'ready-label': readyLabelCommand,

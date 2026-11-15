@@ -16,6 +16,7 @@ const KIT_RULES = [
   '.slicekit/graph/',
   '.slicekit/.subagent-*',
   '.slicekit/local.json',
+  '.slicekit/reports/',
   '!.slicekit/journal/',
   '!.slicekit/journal/*.log',
   '.slicekit/journal/*.lock',
