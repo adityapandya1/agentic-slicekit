@@ -105,7 +105,7 @@ adapter raises has the token and the `Authorization` value replaced by `***`.
 |---|---|
 | `open` | `POST /rest/api/3/issue` with the project key, issue type, summary, labels and the body as an Atlassian Document Format description; returns the numeric issue id and `<baseUrl>/browse/<key>` |
 | `comment` | `POST /rest/api/3/issue/{id}/comment` |
-| `find` | `GET /rest/api/3/search/jql` with `project = "<key>" AND summary ~ "<prefix>" ORDER BY created ASC`; keeps the oldest issue whose summary begins `[<slice>] <finding>:`, `closed` when its status category is done, else `open` |
+| `find` | `GET /rest/api/3/search/jql` with `project = "<key>" AND summary ~ "<words>" ORDER BY created ASC`, where `<words>` is the prefix `[<slice>] <finding>:` with the reserved characters of Jira's text search dropped; reads the pages in order, 50 issues each, following `nextPageToken`, until one holds an issue whose summary begins `[<slice>] <finding>:` or no token is left; keeps the oldest such issue, `closed` when its status category is done, else `open`; a token given twice, or a token still given after 200 pages, ends the search with an error |
 
 The Jira operations return promises; `slicekit build decline` awaits them. With `tracker.kind` unset
 or `github-issues`, the GitHub Issues adapter answers as before.

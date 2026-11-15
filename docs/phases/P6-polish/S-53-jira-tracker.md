@@ -25,6 +25,8 @@ decisions: [D-74]
 | `tracker.test.js » declineFinding with a jira tracker resolves to the issue and lists it in the pull request body` | happy | REQ-2.6 |
 | `tracker.test.js » build decline with a jira tracker prints already filed and opens no second issue` | negative | REQ-2.6 |
 
+Amended (author's standing instruction, 2026-11-15): `test/tracker.test.js`, in two places no code in the expected files can meet. The new search-value test asks `find` for a slice ID with a three-digit slice number, which the kit's slice address refuses before any request is made; it takes a two-digit one. The earlier test of the REST calls asserts that the query text holds the slice ID with its slash, which a search value free of reserved characters cannot hold; it asserts the slice ID's parts in the search value instead.
+
 ## Expected changes
 
 `src/adapters/tracker/jira.js`, `src/adapters/tracker/index.js`, `docs/runbook.md`, tests.
