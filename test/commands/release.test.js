@@ -155,8 +155,10 @@ function hostEnv(fixture) {
 //   state: S-01 merged with pull request 1, S-02 at `s2State` with pull request 2;
 //   the fixture host holds pr-1.json and pr-2.json, each body with `**Decisions:** D-02` and a
 //   Runbook line (`pr1Runbook` for pull request 1).
+// `s1Files` are more files of slice 1's commit; with `s1Head: 'merge'` the state of P1/S-01 records
+// the merge commit of pull request 1 as its head, as backfill does, where the host has the branch's.
 // -> {root, remote, fixture, env, tip, run(args), cleanup}
-function releaseRepo({ s2State = 'merged', s1Runbook = 'no', pr1Runbook = 'no operational change: docs only' } = {}) {
+function releaseRepo({ s2State = 'merged', s1Runbook = 'no', pr1Runbook = 'no operational change: docs only', s1Files = {}, s1Head = 'branch' } = {}) {
   const repo = makeRepo();
   const { root } = repo;
   initKit(root, { name: 'demo', shape: 'backend', commands: { test: 'node --test' }, cli: 'node bin/slicekit.js' });
@@ -171,19 +173,21 @@ function releaseRepo({ s2State = 'merged', s1Runbook = 'no', pr1Runbook = 'no op
   });
 
   const heads = {};
+  const merges = {};
   for (const [n, letter] of [[1, 'a'], [2, 'b']]) {
     const branch = `slice/P1-S-0${n}-${letter}`;
     gitIn(root, ['switch', '-q', '-c', branch]);
-    heads[n] = commitFixed(root, `feat(P1/S-0${n}): ${letter}\n\nSlice: P1/S-0${n}`, { [`src/${letter}.js`]: `export const ${letter} = ${n};\n` });
+    heads[n] = commitFixed(root, `feat(P1/S-0${n}): ${letter}\n\nSlice: P1/S-0${n}`, { [`src/${letter}.js`]: `export const ${letter} = ${n};\n`, ...(n === 1 ? s1Files : {}) });
     gitIn(root, ['switch', '-q', 'main']);
     mergePr(root, n, branch);
+    merges[n] = gitIn(root, ['rev-parse', 'HEAD']);
     gitIn(root, ['branch', '-q', '-D', branch]);
   }
 
   const merged = (n) => ({
     state: 'merged',
     branch: `slice/P1-S-0${n}-${n === 1 ? 'a' : 'b'}`,
-    pr: { number: n, url: url(n), headSha: heads[n] },
+    pr: { number: n, url: url(n), headSha: n === 1 && s1Head === 'merge' ? merges[n] : heads[n] },
     mergedAt: MERGED_AT[n],
     history: [{ from: 'ready', to: 'merged', at: MERGED_AT[n], by: 'sync', evidence: { source: 'host', mergedAt: MERGED_AT[n] } }],
   });
@@ -391,6 +395,44 @@ test("the graph's shipped answers from the record", async () => {
     assert.deepEqual(out.slice(reqs + 1, prs).map((l) => l.trim().split(' ')[0]), ['REQ-1.1', 'REQ-1.2', 'REQ-1.3']);
     assert.deepEqual(out.slice(prs + 1).map((l) => l.trim()), [`#1 ${title(1)} ${url(1)}`, `#2 ${title(2)} ${url(2)}`]);
   } finally {
+    p.cleanup();
+  }
+});
+
+// D-55, review round 1 (H-1): backfill records the merge commit as the head of a merged pull request.
+// The slice is then judged by what that merge brought to the default branch.
+test('a merged slice whose state records the merge commit as its head is judged by what that merge brought', async () => {
+  const p = releaseRepo({
+    s1Runbook: 'yes',
+    pr1Runbook: 'see below',
+    s1Head: 'merge',
+    s1Files: { 'docs/runbook.md': RUNBOOK.replace('Run it with node.', 'Run it with node 22.') },
+  });
+  try {
+    const head = stateOf(p.root, 1).pr.headSha;
+    assert.equal(gitIn(p.root, ['rev-list', '--parents', '-n', '1', head]).split(' ').length, 3, 'the recorded head is the merge commit');
+    const r = await p.run(['release', 'P1']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(stateOf(p.root, 1).state, 'released');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// Review round 1 (H-3): a state write that fails after the record is written (here the lock of
+// P1/S-02 is held) leaves no record and no slice released, so the next run is not refused.
+test('a failed state write leaves no release record', async () => {
+  const p = releaseRepo();
+  const lock = path.join(p.root, '.slicekit', 'state', 'P1-S-02.json.lock');
+  try {
+    fs.writeFileSync(lock, '');
+    await refused(p, 'slicekit: could not lock P1/S-02');
+    fs.rmSync(lock);
+    const again = await p.run(['release', 'P1']);
+    assert.equal(again.code, 0, again.stderr);
+    for (const n of [1, 2]) assert.equal(stateOf(p.root, n).state, 'released', `P1/S-0${n}`);
+  } finally {
+    fs.rmSync(lock, { force: true });
     p.cleanup();
   }
 });

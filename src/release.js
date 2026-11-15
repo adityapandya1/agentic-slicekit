@@ -9,6 +9,7 @@ import path from 'node:path';
 import { readDecisions } from './decisions.js';
 import { exists, readText, writeText } from './fs.js';
 import { commitExists, currentBranch, git } from './git.js';
+import { stateFileName } from './ids.js';
 import { headings, lines } from './markdown.js';
 import { kitPaths } from './paths.js';
 import { getSection } from './prbody.js';
@@ -46,15 +47,22 @@ function phaseSlices(root, cfg, phase) {
 // into the default branch, the merge base of the two is the head itself; the base is then the merge
 // base of the head and the first parent of the commit that brought it in. A head that was
 // fast-forwarded or rebased in has no such parent, and its base stays the head.
+// A state written by backfill records the merge commit itself as the head: the head is then a
+// commit of the default branch's own line with two parents, and what it brought is the diff from
+// its first parent.
 function baseOfMerged(root, cfg, head) {
   const base = mergeBase(root, cfg, head);
   const full = git(root, ['rev-parse', '--verify', `${head}^{commit}`]);
   if (base !== full) return base;
+  const parentsOf = (sha) => git(root, ['rev-list', '--parents', '-n', '1', sha]).split(' ').slice(1);
   const later = git(root, ['rev-list', '--first-parent', '--ancestry-path', `${full}..${defaultRef(root, cfg)}`]);
   const merge = later === '' ? null : later.split('\n').at(-1);
-  if (!merge) return base;
-  const parents = git(root, ['rev-list', '--parents', '-n', '1', merge]).split(' ').slice(1);
-  if (parents.length < 2 || parents[0] === full) return base;
+  const parents = merge ? parentsOf(merge) : [];
+  if (!merge || parents[0] === full) {
+    const own = parentsOf(full);
+    return own.length >= 2 ? own[0] : base;
+  }
+  if (parents.length < 2) return base;
   return git(root, ['merge-base', parents[0], full]);
 }
 
@@ -225,10 +233,26 @@ export function writeRelease(root, cfg, phase, { host, dryRun = false }) {
   const text = renderRelease(root, cfg, phase, { host, sha: tip });
   if (dryRun) return { rel, text, slices };
 
-  // Through a temporary name and a rename: a reader never sees half a record.
-  writeText(file, text);
-  for (const id of slices) setState(root, cfg, id, 'released', { release: rel });
-  const build = kitPaths(root, cfg).build;
-  writeText(build, renderBuild(root, cfg, exists(build) ? readText(build) : ''));
+  // Through a temporary name and a rename: a reader never sees half a record. The record comes
+  // first because the move to released reads it. When a later write fails, the record is removed
+  // and each state file is put back as it was, so the next run is not refused by this one's remains.
+  const stateDir = kitPaths(root, cfg).state;
+  const before = slices.map((id) => {
+    const stateFile = path.join(stateDir, stateFileName(id));
+    return { stateFile, bytes: exists(stateFile) ? fs.readFileSync(stateFile) : null };
+  });
+  try {
+    writeText(file, text);
+    for (const id of slices) setState(root, cfg, id, 'released', { release: rel });
+    const build = kitPaths(root, cfg).build;
+    writeText(build, renderBuild(root, cfg, exists(build) ? readText(build) : ''));
+  } catch (e) {
+    fs.rmSync(file, { force: true });
+    for (const { stateFile, bytes } of before) {
+      if (bytes === null) fs.rmSync(stateFile, { force: true });
+      else if (!fs.readFileSync(stateFile).equals(bytes)) fs.writeFileSync(stateFile, bytes);
+    }
+    throw e;
+  }
   return { rel, text, slices };
 }

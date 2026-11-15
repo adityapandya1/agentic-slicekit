@@ -49,7 +49,7 @@ A program moves through these stages in this order. Each stage command refuses t
 | 5. Plan | `/slicekit plan` | The stack, the phases and the slice files, then `BUILD.md` and the plan pull request. | `branch plan`, `plan check`, `decide add`, `status --write`, `check`, `pr open` |
 | 6. Build | `/slicekit build [P<n>/S-<nn>]` | One slice: start, failing tests, code until green, a draft pull request, at most two review rounds, green CI. Side by side: `/slicekit build --parallel P<n>` uses `build parallel`. Occasional: `build amend`, `build render`, `build sync`. | `stage require plan`, `build next`, `build start`, `instructions developer`, `build red`, `build commit`, `build pr`, `instructions reviewer`, `build verdict`, `instructions fixer`, `build decline`, `build finish` |
 | 7. Independent review, then merge | `/slicekit review <PR>` | In a new Claude Code session with no memory of the build. When it reports `ready`, a person merges. CI then runs `status --sync --write` and the slice becomes `merged`. | `review start`, `instructions reviewer`, `build verdict --independent`, `build finish`, `status --sync` |
-| 8. Release | `/slicekit release P<n>` | Specified to write `releases/P<n>.md` and set each slice `released`. **Not built in 0.2.1:** the command prints that it is not built and exits 1. | `state set <id> released --release <path>` |
+| 8. Release | `/slicekit release P<n>` | Once every slice of the phase is `merged`: writes the release record `releases/P<n>.md`, sets each slice `released`, rewrites `BUILD.md` and opens the `[release] P<n>` pull request. It does not deploy. | `release --dry-run`, `branch release`, `release`, `check`, `pr open` |
 | 9. The graph and its queries | any time | Build the traceability graph from the docs and git, then ask it questions. | `graph`, `trace`, `impact`, `history`, `shipped`, `uncovered`, `visualize` |
 
 ## Slash commands
@@ -96,9 +96,11 @@ The independent review: a reviewer in a fresh worktree of the pull request head 
 
 **When:** in a new session, after `/slicekit build` reports `waiting for an independent review`.
 
-### `/slicekit-release P<n>` (not built yet)
+### `/slicekit-release P<n>`
 
-Specified (REQ-2.9) to refuse unless every slice of the phase is `merged`, then write `releases/P<n>.md` and set each slice `released`. It does not deploy. Today it prints `the /slicekit release command is not built in this version` and exits 1.
+Refuses, naming each slice, unless every slice of the phase is `merged` and passes the runbook judgement (REQ-2.9). Otherwise it puts you on `release/<slug>`, writes `releases/P<n>.md`, sets each slice `released`, rewrites `BUILD.md` and opens the `[release] P<n>` pull request. It does not deploy.
+
+**When:** after the last slice of a phase merges. Merging the pull request is the release.
 
 ### `/slicekit-ops <symptom>` (not built yet)
 
@@ -225,12 +227,12 @@ The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`. The a
 *put you on the work branch for a document pull request* (run by the agent)
 
 ```text
-slicekit branch <spec|gaps|plan> <slug>
+slicekit branch <spec|gaps|plan|release> <slug>
 ```
 
 Puts you on the work branch `<kind>/<slug>` for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands. Untracked files go along; changes to tracked files are refused.
 
-**When to use it:** The first step of intake and specify (`spec`), gaps (`gaps`) and plan (`plan`). The slug is the program name, lower-cased, with other characters turned into dashes.
+**When to use it:** The first step of intake and specify (`spec`), gaps (`gaps`) and plan (`plan`), and the step of release that follows its dry run (`release`). The slug is the program name, lower-cased, with other characters turned into dashes; for `release` it is the phase in lower case.
 
 | Exit | Meaning |
 |---|---|
@@ -771,7 +773,7 @@ The first form prints an agent's brief: its rules, the slice file, the cited req
 | Exit | Meaning |
 |---|---|
 | 0 | printed |
-| 1 | the template is not built (`release`, `ops` and `audit` in 0.2.1) |
+| 1 | the template is not built (`ops` and `audit` in 0.2.1) |
 | 2 | bad usage, an unknown role or an unknown command name |
 
 **Example:**
@@ -1319,7 +1321,7 @@ slicekit shipped P<n> [--json]
 
 A phase's release record: its path, the requirements it delivered and its pull requests with their URLs.
 
-**When to use it:** After a release. Release records come from `/slicekit release`, which is not built in 0.2.1, so today it answers `P<n> has no release record` unless one was written by hand.
+**When to use it:** After a release. Release records come from `/slicekit release`. For a phase with no record it answers `P<n> has no release record`.
 
 **Example:**
 
