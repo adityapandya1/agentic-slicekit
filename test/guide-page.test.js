@@ -151,7 +151,7 @@ test('the page has a section for every command, slash command and rule page, and
   for (const m of index.matchAll(/\]\((?:\.\/)?((?:commands|slash|rules)\/[a-z0-9-]+\.md)\)/g)) {
     if (!linked.includes(m[1])) linked.push(m[1]);
   }
-  assert.deepEqual([...linked].sort(), files, 'the index links every page file, and no page that is not a file');
+  assert.deepEqual([...linked].sort(), [...files].sort(), 'the index links every page file, and no page that is not a file');
   const positions = linked.map((file) => html.indexOf(`<section id="${sectionId(file)}"`));
   for (let i = 1; i < positions.length; i++) {
     assert.ok(positions[i - 1] < positions[i], `the section of ${linked[i]} comes before the section of ${linked[i - 1]}`);

@@ -214,3 +214,20 @@ If a command other than `slicekit branch` ran on the default branch first, for e
 When the branch `slicekit branch` switches to already holds a config other than the one the current commit holds, for example a plan branch where an earlier `pr open` committed the migration, the command compares that config with the migrated one here. Where the two are equal it drops its own copy of the change and switches. Two configs that differ only in their line endings or in whitespace at the end are equal; after the switch the file holds the bytes the branch's commit holds, and `git status --porcelain` prints nothing for it (issue #171). Where they differ it exits 1 with `.slicekit/config.json is migrated here and not committed, and .slicekit/config.json on <branch> differs from it in the field <name>; the change is left here and no branch is switched to`. First check: `git diff <branch> -- .slicekit/config.json`. A human decides which config stands: commit the migration on a plan branch of its own, or bring the other branch's config in step through its pull request.
 
 An open slice receives the migrated config when the default branch is merged into its branch. Until then each command in its worktree prints the second line above.
+
+## Regenerating the guide's web page
+
+The pages under `docs/guide/` are the one source of the user guide (D-97). `docs/guide/slicekit-guide.html` is generated from the index `docs/guide/README.md` and the pages it links under `docs/guide/commands/`, `docs/guide/slash/` and `docs/guide/rules/`. Nobody edits the web page by hand.
+
+- When: after a change to the index or to a page under `docs/guide/`, and after a change to `scripts/guide-html.js`, in the same pull request.
+- The command, from the repository root: `node scripts/guide-html.js`. It prints `wrote docs/guide/slicekit-guide.html`. The page holds no version or date, so a version change alone needs no run.
+- The check: `node scripts/guide-html.js --check` writes nothing. It exits 0 when the page on disk is what the script writes, reading CRLF as LF, and exits 1 with one line naming the page and the command otherwise.
+
+What a failure of `test/guide-page.test.js` means, by its line:
+
+- `docs/guide/slicekit-guide.html differs from what the script writes; run node scripts/guide-html.js to regenerate it (line <n>: …)`: a page, the index or the script changed and the web page was not written again. The line number is the first line of the web page that differs. First check: `git status docs/guide/` shows which source changed. Run the command and commit the web page with the source.
+- `<folder>/<name>.md: the page is not listed under "## Pages" of README.md`: a page file exists that the index does not link, so the web page would have no section for it. Add its row to the table of its group in `docs/guide/README.md`, then run the command.
+- `<file>:<line>: … is a Markdown construct this script does not convert`: the line holds an image, a block quote, raw HTML or another construct outside what the pages use (headings, paragraphs, lists, tables, fenced code, code spans, links, emphasis). Nothing is written. Rewrite the line with those, then run the command.
+- `<file>:<line>: the link "<target>" leads to nothing in the guide`: a link names a page or a heading that does not exist. Correct the target.
+
+The PDF copies of the guide are rendered from the web page outside the repository and are not kept in it.
