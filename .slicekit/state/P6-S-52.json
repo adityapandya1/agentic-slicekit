@@ -1,8 +1,12 @@
 {
   "slice": "P6/S-52",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 177,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+    "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26"
+  },
   "redCommit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
   "frozenTests": [
     "test/hooks/pre-bash.test.js",
@@ -40,6 +44,22 @@
       "at": "2026-11-15T12:14:31.019Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T12:39:55.365Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 177,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
+          "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26",
+          "title": "[P6/S-52] Guards"
+        }
+      }
     }
   ]
 }
