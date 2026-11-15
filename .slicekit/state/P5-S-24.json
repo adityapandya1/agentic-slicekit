@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-24",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 161,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/161",
-    "headSha": "72ef5fd3202b4a57718aa24fb5f40454ad15a83a"
+    "headSha": "98f05eefe5efe221c6a3e9a19f037d00b5a846e2"
   },
   "redCommit": "426666f48ed310b1991d0e6b3f9324cb3b3d554f",
   "frozenTests": [
@@ -190,6 +190,22 @@
         "unfreeze": "test/walkthrough.test.js",
         "amendCommit": "f8e67a5c4976a02426dd00b7a0db922d2f058e92",
         "reason": "D-94 joins the slice's decisions (reviews B-1, H-3 of round 3)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T07:12:43.412Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 161,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/161",
+          "headSha": "98f05eefe5efe221c6a3e9a19f037d00b5a846e2",
+          "title": "[P5/S-24] Examples, walkthrough, user guide"
+        }
       }
     }
   ]
