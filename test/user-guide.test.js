@@ -131,3 +131,62 @@ test('the sync-release page says what a finding on an example file means', () =>
   assert.match(prose, /`slicekit update --yes`/);
   assert.match(prose, /in that folder/);
 });
+
+// P6/S-54 (REQ-5.8, D-97, D-61): docs/guide/README.md is the index of pages. The sections Slash
+// commands and Command reference written for version 0.2.1 are gone, since every command, slash
+// command and rule has its page; the PDF copies are rendered from the web page outside the
+// repository, so docs/guide holds none and no file of the repository links one.
+test('the guide index holds no command reference and links no PDF', () => {
+  const index = fs.readFileSync(path.join(GUIDE, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  // The headings outside code blocks, as `<hashes> <text>`.
+  const headings = [];
+  let open = false;
+  for (const line of index.split('\n')) {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) open = !open;
+    else if (!open && /^#{1,6}\s/.test(line)) headings.push(line.trim());
+  }
+
+  // The older reference is gone: its two sections, each command's entry, and its version.
+  assert.ok(!headings.includes('## Command reference'), 'the index still has ## Command reference');
+  assert.ok(!headings.includes('## Slash commands'), 'the index still has the older ## Slash commands section');
+  const entries = headings.filter((h) => /^#{2,6}\s+`?\/?slicekit\b/.test(h));
+  assert.deepEqual(entries, [], 'the index still holds these entries of the older reference');
+  assert.doesNotMatch(index, /\(#command-reference\)/, 'the index still links #command-reference');
+  assert.doesNotMatch(index, /0\.2\.1/, 'the index still names version 0.2.1');
+
+  // What the index keeps: the tables of pages, and what the pages do not hold.
+  for (const kept of ['## Pages', '### Slash commands', '### Commands', '### Check rules', '## Overview', '## Stages', '## Conventions']) {
+    assert.ok(headings.includes(kept), `the index has no ${kept}`);
+  }
+
+  // The introduction, before the first section, says where the web page and the PDF copies come from.
+  const intro = index.slice(0, index.search(/^## /m)).replace(/\s+/g, ' ');
+  assert.match(intro, /slicekit-guide\.html/);
+  assert.match(intro, /generated from/);
+  assert.ok(intro.includes('`node scripts/guide-html.js`'), 'the introduction does not name the command that writes the web page');
+  assert.match(intro, /PDF/);
+  assert.match(intro, /outside the repository/);
+
+  // The index links no PDF, and docs/guide holds none.
+  assert.doesNotMatch(index, /\.pdf\b/i, 'the index names a PDF file');
+  const kitRoot = fileURLToPath(new URL('../', import.meta.url));
+  const walk = (dir, keep, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (!['node_modules', '.git', '.worktrees'].includes(e.name)) walk(path.join(dir, e.name), keep, out);
+      } else if (keep(e.name)) out.push(path.relative(kitRoot, path.join(dir, e.name)).split(path.sep).join('/'));
+    }
+    return out;
+  };
+  assert.deepEqual(walk(GUIDE, (name) => /\.pdf$/i.test(name)), [], 'docs/guide still holds these PDF copies');
+
+  // No Markdown or HTML file of the repository links a PDF of the guide.
+  const linking = [];
+  for (const file of walk(kitRoot, (name) => /\.(md|html)$/i.test(name))) {
+    const lines = fs.readFileSync(path.join(kitRoot, file), 'utf8').split(/\r?\n/);
+    lines.forEach((line, i) => {
+      if (/\]\([^)\s]*\.pdf(#[^)\s]*)?\)|(?:href|src)="[^"]*\.pdf(#[^"]*)?"/i.test(line)) linking.push(`${file}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(linking, [], 'these lines link a PDF file');
+});

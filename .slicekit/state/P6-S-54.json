@@ -1,0 +1,275 @@
+{
+  "slice": "P6/S-54",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 186,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+    "headSha": "d84f18338c21c7aa79929e0d0d6f5589bdb6d042"
+  },
+  "redCommit": "a7bf945fbbf2bf33de7179d8a558263251dc704a",
+  "frozenTests": [
+    "test/guide-page.test.js",
+    "test/user-guide.test.js",
+    "test/readme.test.js"
+  ],
+  "unfrozen": [
+    "test/guide-page.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-54-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "35a51ee63bfc5404be5dd165cc4fab1ba3db1ca5"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P6-S-54-r2.md",
+      "blockers": 2,
+      "independent": false,
+      "headSha": "bddde861e3a4bc6a59d41308fd6aa1c0875c37e2"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P6-S-54i-r3.md",
+      "blockers": 4,
+      "independent": true,
+      "headSha": "088525b02b3a8031f67fbf5195930a2c59097b48"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P6-S-54i-r4.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "9cab72d849fb6d45e6ea3a8950d3629a95db6fdb"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P6-S-54i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "d84f18338c21c7aa79929e0d0d6f5589bdb6d042"
+    }
+  ],
+  "ci": {
+    "sha": "1f4e2845b686bae5a6a45b2db7c6013218dc1fbd",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43768631118"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T16:22:45.782Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "a7bf945fbbf2bf33de7179d8a558263251dc704a",
+        "testExit": 1,
+        "tests": [
+          "test/guide-page.test.js",
+          "test/user-guide.test.js",
+          "test/readme.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T16:22:46.236Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T16:30:08.341Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/guide-page.test.js",
+        "amendCommit": "39becb4839f6b0ffc1e6159c62fb59c0ca58befa",
+        "reason": "one comparison sorts one side only, so no index can pass"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T16:31:50.793Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "35a51ee63bfc5404be5dd165cc4fab1ba3db1ca5",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T16:42:31.868Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-54-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T16:54:10.387Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "bddde861e3a4bc6a59d41308fd6aa1c0875c37e2",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T17:05:10.836Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P6-S-54-r2.md",
+          "blockers": 2,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-15T17:05:11.335Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-15T17:17:06.924Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "088525b02b3a8031f67fbf5195930a2c59097b48",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T17:34:36.793Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P6-S-54i-r3.md",
+          "blockers": 4,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T17:51:26.157Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "9cab72d849fb6d45e6ea3a8950d3629a95db6fdb",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T18:12:06.138Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P6-S-54i-r4.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T22:08:33.703Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 186,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/186",
+          "headSha": "d84f18338c21c7aa79929e0d0d6f5589bdb6d042",
+          "title": "[P6/S-54] One source for the guide"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T22:18:36.209Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P6-S-54i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T22:32:54.920Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "1f4e2845b686bae5a6a45b2db7c6013218dc1fbd",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43768631118"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T22:32:57.223Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

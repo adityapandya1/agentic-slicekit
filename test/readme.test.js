@@ -171,3 +171,27 @@ test('the status names Phase 5 as built and links the guide', () => {
   assert.match(about, /command/);
   assert.match(about, /check rule/);
 });
+
+// P6/S-54 (REQ-5.8, issue #113): the row of docs/adapters.md for the command files names every
+// template under templates/claude-code/commands/, `audit` and the bare `/slicekit` command included.
+// A template the row leaves out is named.
+test('docs/adapters.md names every slash command template in its commands row', () => {
+  const adapters = fs.readFileSync(new URL('../docs/adapters.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const rows = adapters.split('\n').filter((l) => l.trim().startsWith('|') && l.includes('`templates/claude-code/commands/`'));
+  assert.equal(rows.length, 1, `docs/adapters.md has ${rows.length} table rows naming templates/claude-code/commands/`);
+  const row = rows[0];
+
+  const templates = fs.readdirSync(new URL('../templates/claude-code/commands/', import.meta.url)).filter((f) => f.endsWith('.md')).sort();
+  assert.ok(templates.length >= 10 && templates.includes('slicekit.md') && templates.includes('slicekit-audit.md'), templates.join(' '));
+
+  // `slicekit-<stage>.md` is named by its stage as a word; `slicekit.md` by the bare `/slicekit`, which
+  // the file pattern `.claude/commands/slicekit*.md` in the row's first cell does not count as.
+  const named = (file) => {
+    const stage = /^slicekit-([a-z-]+)\.md$/.exec(file);
+    if (stage) return new RegExp(`(^|[^a-z-])${stage[1]}([^a-z-]|$)`).test(row);
+    if (file === 'slicekit.md') return /(^|[^\w/.-])\/slicekit(?![\w*-])/.test(row);
+    return row.includes(file);
+  };
+  const leftOut = templates.filter((file) => !named(file));
+  assert.deepEqual(leftOut, [], 'the commands row of docs/adapters.md leaves out these templates');
+});
