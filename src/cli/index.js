@@ -1,4 +1,9 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { CONFIG_PATH, ConfigNewerError, loadConfig, migrateConfigFile } from '../config.js';
+import { currentBranch } from '../git.js';
+import { sliceFromBranch } from '../ids.js';
+import { findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { auditCommand } from './audit.js';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
@@ -118,7 +123,74 @@ export async function main(argv, io) {
     io.stdout(commandUsage(command));
     return 0;
   }
+  // REQ-5.6, D-60, D-93: an older config is migrated before the command reads it. A hook never
+  // writes the team's tracked file mid-turn; it reads the config migrated in memory (loadConfig).
+  // D-93 names two more cases that read it migrated, write nothing and print one line: a slice
+  // branch or a slice's review branch (writesMigration), and `slicekit branch` of every kind, which
+  // refuses a changed tracked file; the branch is cut first and the next command writes on it. A
+  // migration an earlier command already wrote is carried by `slicekit branch` itself (D-94).
+  if (command !== COMMANDS.hook && typeof io.cwd === 'string') {
+    try {
+      // The branch is asked about only when the config is older, so a current one costs no git call.
+      const older = migrateConfigFile(io.cwd, { write: false });
+      const here = older !== null && writesMigration(io.cwd);
+      const write = here && command !== COMMANDS.branch;
+      const migrated = write ? migrateConfigFile(io.cwd) : older;
+      if (migrated && !write) {
+        const where = here
+          ? 'slicekit branch writes nothing, and the next command writes it on the branch it runs on'
+          : 'it is migrated on the default branch or on a plan branch';
+        io.stderr(`config: ${CONFIG_FILE} is at configVersion ${migrated.from} and is read as ${migrated.to} here, unwritten; ${where}
+`);
+      } else if (migrated) {
+        io.stderr(`config: migrated ${CONFIG_FILE} from configVersion ${migrated.from} to ${migrated.to}
+`);
+        for (const change of migrated.changes) io.stderr(`  - ${change}
+`);
+      }
+    } catch (e) {
+      if (!(e instanceof ConfigNewerError)) throw e;
+      io.stderr(`slicekit: ${e.message}
+`);
+      return 2;
+    }
+  }
   return command.run(rest, io);
+}
+
+const CONFIG_FILE = CONFIG_PATH.split(path.sep).join('/');
+
+// Whether a command run in `cwd` may write the migrated config (review r1, H-1; D-93). On a slice branch
+// or a slice's review branch no build step commits a changed config (`build commit` refuses a kit
+// file, `build pr` an uncommitted change), so there the config is read migrated and left as it is.
+// The exception is the slice whose Expected changes name the config: its slice branch and its review
+// branch both write, since a review branch's commits go to the slice branch and `build config`
+// commits the file (D-53, D-94). Anything unreadable on the way (no slice file, a config that does
+// not load) is no reason to write.
+function writesMigration(cwd) {
+  let branch;
+  try {
+    branch = currentBranch(cwd);
+  } catch {
+    return true;
+  }
+  const id = branch === null ? null : sliceFromBranch(branch);
+  if (id === null) return true;
+  try {
+    const cfg = loadConfig(cwd);
+    for (const f of findSliceFiles(cwd, cfg)) {
+      let slice;
+      try {
+        slice = parseSliceFile(fs.readFileSync(f.path, 'utf8'), f.path);
+      } catch {
+        continue;
+      }
+      if (slice.id === id) return slice.expectedChanges.includes(CONFIG_FILE);
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function commandUsage(command) {

@@ -9,8 +9,8 @@ what merged; it does not deploy (D-12).
 
 ## Steps
 
-1. Run `{{cli}} release {{args}} --dry-run`. It writes nothing. When it exits 0 it prints the record
-   it would write. When it exits 1 it prints one line per reason: a slice that is not merged, a
+1. Run `{{cli}} release {{args}} --dry-run`. It writes nothing but the migration of an older config,
+   which step 2 carries to the release branch. When it exits 0 it prints the record it would write. When it exits 1 it prints one line per reason: a slice that is not merged, a
    slice with no recorded pull request, a slice that says `runbook: yes` and neither changed a
    section of the runbook nor gave a Runbook line that begins "no operational change", or a record
    that already exists. Print those lines to the human and stop: the release waits for each one.

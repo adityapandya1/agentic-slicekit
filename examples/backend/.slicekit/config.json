@@ -1,5 +1,5 @@
 {
-  "configVersion": 1,
+  "configVersion": 2,
   "name": "greeting",
   "shape": "backend",
   "docsRoot": "docs",
@@ -13,7 +13,6 @@
     "build": "",
     "e2e": ""
   },
-  "repos": [],
   "gitHost": {
     "kind": "github"
   },

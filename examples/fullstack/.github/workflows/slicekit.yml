@@ -1,0 +1,208 @@
+# slicekit: the pull request gate and the state sync (REQ-3.11). Every action is pinned by SHA.
+# A run started with workflow_dispatch (the sync pull request's checks, D-80) runs the gate, the
+# command jobs and checks on the branch's head; check --ci reads the branch's open pull request.
+name: slicekit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+  # The sync job starts the workflow on its sync branch this way (D-80): a pull request opened with
+  # the workflow's own token starts no run, so its checks would never report.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slicekit-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      kind: ${{ steps.bookkeeping.outputs.kind }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The default branch is present
+        run: git rev-parse --verify --quiet refs/remotes/origin/main
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Bookkeeping or code (D-49)
+        id: bookkeeping
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # With no pull request event (a push, or a dispatched run on a sync branch, D-80) the head is
+          # empty and the decision is code, so every team command job runs.
+          SLICEKIT_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          SLICEKIT_PR_BASE_BRANCH: ${{ github.base_ref }}
+        run: slicekit ci bookkeeping --head "$SLICEKIT_PR_HEAD" --base-branch "$SLICEKIT_PR_BASE_BRANCH" --output "$GITHUB_OUTPUT"
+      - name: Use the repository's git hooks
+        run: git config core.hooksPath .githooks
+      # The pull request cache (D-52): only a merged answer is final, so a run fetches only open,
+      # closed and new pull requests. A pull request run saves only to its own branch's cache.
+      - name: Restore the pull request cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+          restore-keys: slicekit-pr-cache-
+      - name: Build the graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: slicekit graph
+      - name: Save the pull request cache
+        if: always()
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .slicekit/graph/cache
+          key: slicekit-pr-cache-${{ github.run_id }}
+      - name: slicekit check
+        run: slicekit check --ci
+        # The host-rules rule reads the default branch's rulesets and CODEOWNERS (REQ-3.14). gh reads
+        # GH_TOKEN on github.com and GH_ENTERPRISE_TOKEN on a GitHub Enterprise Server host (D-70).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ENTERPRISE_TOKEN: ${{ github.token }}
+      - name: The workflow matches the generator
+        run: slicekit workflow --check
+      - name: Upload the graph
+        if: always() && hashFiles('.slicekit/graph/graph.json') != ''
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: slicekit-graph
+          path: .slicekit/graph/graph.json
+
+  cmd-test:
+    needs: [gate]
+    if: ${{ !cancelled() && !(needs.gate.outputs.kind == 'bookkeeping') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: test
+        run: node --test
+
+  obs-1:
+    name: Test report as TAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Test report as TAP
+        run: node --test --test-reporter=tap
+
+  # The one check the default branch's ruleset requires besides the gate (REQ-3.14). A job skipped
+  # by its own if, such as a test matrix on a bookkeeping push (D-49), reports no matrix names, so
+  # the ruleset names this job instead: it always runs, and passes when every job a merge waits on
+  # passed or was skipped because the gate said bookkeeping.
+  checks:
+    if: ${{ always() }}
+    needs: [gate, cmd-test, obs-1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every job a merge waits on passed
+        env:
+          SLICEKIT_CHECKS_OK: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && needs.gate.result == 'success' && (needs.cmd-test.result == 'success' || (needs.cmd-test.result == 'skipped' && needs.gate.outputs.kind == 'bookkeeping')) && needs.obs-1.result == 'success' }}
+        run: test "$SLICEKIT_CHECKS_OK" = true
+
+  ready-label:
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
+    needs: [checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Ready label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLICEKIT_CHECKS_OK: ${{ needs.checks.result == 'success' }}
+        run: slicekit ready-label
+
+  # After a merge (D-78, D-80): the state change goes up as a [sync] pull request on
+  # sync/<short sha>, never onto the default branch, and the workflow is started on that branch so its
+  # checks run. sync open pushes only the sync branch; nothing here commits or pushes.
+  sync:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Use the repository's git hooks
+        run: git config core.hooksPath .githooks
+      - name: Sync state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: slicekit status --sync --write
+      # One line per journal file the merge changed, with this run's id, workflow and actor (REQ-3.8);
+      # check --ci on the sync pull request recomputes each line from git and the host (D-89).
+      - name: Record the journal heads
+        run: slicekit journal heads "$GITHUB_SHA"
+      - name: Commit identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Open the sync pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: slicekit sync open
