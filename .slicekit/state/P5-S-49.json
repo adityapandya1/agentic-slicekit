@@ -235,6 +235,16 @@
           "independent": true
         }
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:20:16.294Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "0d21b3c4e8b6b1940c6e14a344bae4904f46beb7",
+        "reason": "reviews B-5 and H-2 of round 4: two more tests, and Done when 3 says at which commit a version is set"
+      }
     }
   ]
 }
