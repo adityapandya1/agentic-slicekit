@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-55",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "d9c7d72257d6443b1f417894ccba850fa77edfef",
@@ -29,6 +29,13 @@
           "test/user-guide.test.js"
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T23:33:05.021Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
