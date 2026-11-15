@@ -1,8 +1,12 @@
 {
   "slice": "P6/S-51",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 179,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/179",
+    "headSha": "06d47a8e6ebcf893520d228632c9320a06d3bba3"
+  },
   "redCommit": "829e0aaab523d9a6625e413ee58fa0e9b2a20a2c",
   "frozenTests": [
     "test/release-version-phase.test.js",
@@ -74,6 +78,22 @@
         "unfreeze": "test/build-commit-staged.test.js",
         "amendCommit": "64f614a870c4639533286245f4c932a998ba50d9",
         "reason": "its leftover checks list the temp folder all test processes share; the file takes a private temp folder"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T14:35:05.819Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 179,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/179",
+          "headSha": "06d47a8e6ebcf893520d228632c9320a06d3bba3",
+          "title": "[P6/S-51] Versions and the build loop"
+        }
       }
     }
   ]
