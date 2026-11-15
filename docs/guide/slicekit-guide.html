@@ -234,6 +234,7 @@ article.cmd .note{background:var(--paper)}
     <li><a href="#review">Review</a>
       <ol>
         <li><a href="#review-start"><code>review start</code></a></li>
+        <li><a href="#release"><code>release</code></a></li>
       </ol></li>
     <li><a href="#ci">CI and hooks</a>
       <ol>
@@ -433,9 +434,9 @@ run again with --yes to apply</span>
     <header><h4><code>branch</code></h4><span class="tag t-agent">Run by the agent</span></header>
     <pre class="syn">slicekit branch &lt;spec|gaps|plan|release&gt; &lt;slug&gt;</pre>
     <dl class="facts">
-      <dt>What</dt><dd>Puts you on the work branch <code>&lt;kind&gt;/&lt;slug&gt;</code> for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands. Untracked files go along; changes to tracked files are refused.</dd>
+      <dt>What</dt><dd>Puts you on the work branch <code>&lt;kind&gt;/&lt;slug&gt;</code> for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands, except a <code>release</code> branch: one that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so; one that holds its own commits is refused. Untracked files go along; changes to tracked files are refused.</dd>
       <dt>When</dt><dd>The first step of intake and specify (<code>spec</code>), gaps (<code>gaps</code>) and plan (<code>plan</code>), and the step of release that follows its dry run (<code>release</code>). The slug is the program name, lower-cased, with other characters turned into dashes; for <code>release</code> it is the phase in lower case.</dd>
-      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> prints the branch name</li><li><b>1</b> uncommitted changes to tracked files, or a git error</li><li><b>2</b> bad usage, a bad slug (lowercase letters, digits and dashes, at most 60, not starting with a dash), or config</li></ul></dd>
+      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> prints the branch name</li><li><b>1</b> uncommitted changes to tracked files, or a git error; for <code>release</code>, a branch that holds commits the default branch lacks: the line names its open pull request (the phase's release is already open), or says the git host could not be asked, or, when no pull request is open, names the next slug to run the command with (<code>&lt;slug&gt;-2</code>)</li><li><b>2</b> bad usage, a bad slug (lowercase letters, digits and dashes, at most 60, not starting with a dash), or config</li></ul></dd>
     </dl>
     <pre class="ex"><span class="p">$ </span>slicekit branch spec orders
 <span class="o">spec/orders</span></pre>
@@ -907,6 +908,24 @@ ready: waiting for an independent review; run /slicekit review 14 in a new sessi
 worktree C:/work/orders/.worktrees/review-P1-S-02
 round 2
 verdict C:/work/orders/P1-S-02-r2.md</span></pre>
+  </article>
+
+  <article class="cmd" id="release">
+    <header><h4><code>release</code></h4><span class="tag t-agent">Run by the agent</span></header>
+    <pre class="syn">slicekit release P&lt;n&gt; [--dry-run | --undo]</pre>
+    <dl class="facts">
+      <dt>What</dt><dd>Writes the release record <code>&lt;docsRoot&gt;/releases/P&lt;n&gt;.md</code>, sets each slice of the phase <code>released</code> and rewrites <code>BUILD.md</code>. It prints the record's path, then one <code>released &lt;slice&gt;</code> line per slice. It commits nothing and deploys nothing: <a href="#pr-open"><code>pr open</code></a> commits the three and opens the <code>[release] P&lt;n&gt;</code> pull request. It refuses, with one line per reason and nothing written, a slice that is not <code>merged</code>, a slice with no recorded pull request, a <code>runbook: yes</code> slice that fails the runbook rule, a record that exists, and a run that is not on a <code>release/&lt;slug&gt;</code> branch at the tip of the default branch.</dd>
+      <dt>When</dt><dd>Steps 1 and 3 of <code>/slicekit release</code>, once every slice of the phase is <code>merged</code>: first with <code>--dry-run</code>, then, after <a href="#branch"><code>branch release &lt;slug&gt;</code></a>, without it. <code>--undo</code> when <code>check</code> finds a fault in a record that is not committed yet.</dd>
+      <dt>Exit codes</dt><dd><ul class="exits"><li><b>0</b> the record written, printed (<code>--dry-run</code>) or removed (<code>--undo</code>)</li><li><b>1</b> refused, one line per reason; or a git or git host error</li><li><b>2</b> bad usage, both flags, a phase that is not one, or config</li></ul></dd>
+    </dl>
+    <table class="opts"><thead><tr><th>Option</th><th>What it does</th></tr></thead><tbody>
+      <tr><td><code>--dry-run</code></td><td>Prints the record it would write, and writes nothing. It runs on any branch.</td></tr>
+      <tr><td><code>--undo</code></td><td>Releases nothing. Removes a record that is not committed, puts the phase's state files and <code>BUILD.md</code> back as the last commit has them, and prints <code>removed &lt;record&gt;</code>. It refuses a record the last commit holds, and when there is no record. It cannot be given with <code>--dry-run</code>.</td></tr>
+    </tbody></table>
+    <pre class="ex"><span class="p">$ </span>slicekit release P1
+<span class="o">docs/releases/P1.md
+released P1/S-01
+released P1/S-02</span></pre>
   </article>
 
 </section>

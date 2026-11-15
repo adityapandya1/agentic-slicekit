@@ -230,14 +230,14 @@ The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`. The a
 slicekit branch <spec|gaps|plan|release> <slug>
 ```
 
-Puts you on the work branch `<kind>/<slug>` for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands. Untracked files go along; changes to tracked files are refused.
+Puts you on the work branch `<kind>/<slug>` for a document pull request. A new branch is cut from the default branch as origin has it, after a fetch. A branch that exists here or on origin is taken up where it stands, except a `release` branch: one that is behind the default branch's tip and holds no commit of its own is moved to that tip, and the command says so; one that holds its own commits is refused. Untracked files go along; changes to tracked files are refused.
 
 **When to use it:** The first step of intake and specify (`spec`), gaps (`gaps`) and plan (`plan`), and the step of release that follows its dry run (`release`). The slug is the program name, lower-cased, with other characters turned into dashes; for `release` it is the phase in lower case.
 
 | Exit | Meaning |
 |---|---|
 | 0 | prints the branch name |
-| 1 | uncommitted changes to tracked files, or a git error |
+| 1 | uncommitted changes to tracked files, or a git error; for `release`, a branch that holds commits the default branch lacks: the line names its open pull request (the phase's release is already open), or says the git host could not be asked, or, when no pull request is open, names the next slug to run the command with (`<slug>-2`) |
 | 2 | bad usage, a bad slug (lowercase letters, digits and dashes, at most 60, not starting with a dash), or config |
 
 **Example:**
@@ -1083,6 +1083,38 @@ slice P1/S-02
 worktree C:/work/orders/.worktrees/review-P1-S-02
 round 2
 verdict C:/work/orders/P1-S-02-r2.md
+```
+
+#### slicekit release
+
+*write a phase's release record and set its slices released* (run by the agent)
+
+```text
+slicekit release P<n> [--dry-run | --undo]
+```
+
+Writes the release record `<docsRoot>/releases/P<n>.md`, sets each slice of the phase `released` and rewrites `BUILD.md`. It prints the record's path, then one `released <slice>` line per slice. It commits nothing and deploys nothing: [`pr open`](#slicekit-pr-open) commits the three and opens the `[release] P<n>` pull request. It refuses, with one line per reason and nothing written, a slice that is not `merged`, a slice with no recorded pull request, a `runbook: yes` slice that fails the runbook rule, a record that exists, and a run that is not on a `release/<slug>` branch at the tip of the default branch.
+
+**When to use it:** Steps 1 and 3 of `/slicekit release`, once every slice of the phase is `merged`: first with `--dry-run`, then, after [`branch release <slug>`](#slicekit-branch), without it. `--undo` when `check` finds a fault in a record that is not committed yet.
+
+**What it does:**
+
+- `--dry-run`: Prints the record it would write, and writes nothing. It runs on any branch.
+- `--undo`: Releases nothing. Removes a record that is not committed, puts the phase's state files and `BUILD.md` back as the last commit has them, and prints `removed <record>`. It refuses a record the last commit holds, and when there is no record. It cannot be given with `--dry-run`.
+
+| Exit | Meaning |
+|---|---|
+| 0 | the record written, printed (`--dry-run`) or removed (`--undo`) |
+| 1 | refused, one line per reason; or a git or git host error |
+| 2 | bad usage, both flags, a phase that is not one, or config |
+
+**Example:**
+
+```console
+$ slicekit release P1
+docs/releases/P1.md
+released P1/S-01
+released P1/S-02
 ```
 
 ### CI and hooks

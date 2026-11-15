@@ -17,9 +17,15 @@ what merged; it does not deploy (D-12).
 2. Run `{{cli}} branch release <slug>`, the slug being the phase in lower case (`p1` for `P1`). It
    puts the session on `release/<slug>` at the tip of the default branch as origin has it; a
    `release/<slug>` left behind that tip with no commit of its own is moved there, and the command
-   says so. When it exits 1 because `release/<slug>` holds commits the default branch lacks (an
-   earlier release pull request of this phase), its line names the next slug (`p1-2`): run the
-   command again with that slug.
+   says so. When `release/<slug>` holds commits the default branch lacks, it asks the git host for
+   an open pull request of that branch and exits 1 with one of three lines:
+   1. `release/<slug> is the branch of open pull request #<n> (<url>); the phase's release is
+      already open`: print the line to the human and stop. Take no other slug: merging or closing
+      that pull request is the human's.
+   2. A line saying the git host could not be asked: print it to the human and stop. Take no other
+      slug.
+   3. A line that names the next slug (`p1-2`): no pull request of that branch is open, so run the
+      command again with that slug.
 3. Run `{{cli}} release {{args}}`. It prints the record's path, `<docsRoot>/releases/{{args}}.md`,
    then one `released <slice>` line per slice, and rewrites `BUILD.md`. When it exits 1, print its
    lines to the human and stop.

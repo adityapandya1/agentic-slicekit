@@ -2,7 +2,11 @@
 // work branch of a document pull request, cut from the default branch as origin has it. The command owns git
 // (D-19). A change to a tracked file (staged or not) is refused, so no edit is carried across;
 // untracked files go along as git carries them, so a source dropped in for intake survives.
-// A `release/<slug>` branch that exists away from the default branch's tip is moved there or refused.
+// A `release/<slug>` branch that exists away from the default branch's tip is moved there or refused;
+// one that holds its own commits is refused with its open pull request, read through the git host
+// (C-1 pullRequestForBranch), or with the next free slug when the host says none is open.
+import { getHost } from '../adapters/githost/index.js';
+import { GitHostError } from '../adapters/githost/errors.js';
 import { ConfigError, loadConfig } from '../config.js';
 import { GitError, assertRef, currentBranch, git, hasRemote, switchBranch } from '../git.js';
 
@@ -47,9 +51,12 @@ async function run(args, io) {
     }
     // The full ref: a tag named like the default branch must not be what the branch is cut from.
     let from = `refs/heads/${base}`;
-    if (hasRemote(root, 'origin')) {
+    const origin = hasRemote(root, 'origin');
+    let fetched = false;
+    if (origin) {
       try {
         git(root, ['fetch', '-q', 'origin', base]);
+        fetched = true;
         if (resolves(root, `refs/remotes/origin/${base}`)) from = `refs/remotes/origin/${base}`;
         // The work branch too, so one pushed from another clone is found; origin not having it is
         // the usual case for a new branch, not an error.
@@ -71,11 +78,31 @@ async function run(args, io) {
     if (kind === 'release') {
       // `slicekit release` runs only at the default branch's tip. A release branch that stands
       // elsewhere, here or on origin, is moved to the tip when it holds no commit the default
-      // branch lacks; one that does is refused, and the line names the next free slug.
+      // branch lacks; one that does is refused: with its open pull request when the host has one,
+      // else with the next free slug.
       const tip = git(root, ['rev-parse', '--verify', `${from}^{commit}`]);
       const copies = [`refs/heads/${target}`, remote].filter((ref) => resolves(root, ref));
       const stale = copies.filter((ref) => git(root, ['rev-parse', '--verify', `${ref}^{commit}`]) !== tip);
       if (stale.some((ref) => git(root, ['rev-list', '--count', `${from}..${ref}`]) !== '0')) {
+        // The branch may be that of the phase's open release pull request; a second slug would then
+        // open a second one beside it. A pull request needs its branch on origin, so the host is
+        // asked unless a fetch that worked found no such branch there.
+        if (origin && (!fetched || resolves(root, remote))) {
+          let open;
+          try {
+            open = getHost(cfg, io.env ?? process.env, root).pullRequestForBranch(target, { base });
+          } catch (e) {
+            if (!(e instanceof GitHostError)) throw e;
+            io.stderr(`slicekit: ${target} holds commits ${base} lacks, and the git host could not be asked for its open pull request (${e.message}); no branch is cut
+`);
+            return 1;
+          }
+          if (open) {
+            io.stderr(`slicekit: ${target} is the branch of open pull request #${open.number} (${open.url}); the phase's release is already open
+`);
+            return 1;
+          }
+        }
         let n = 2;
         while (resolves(root, `refs/heads/${target}-${n}`) || resolves(root, `refs/remotes/origin/${target}-${n}`)) n += 1;
         io.stderr(`slicekit: ${target} holds commits ${base} lacks, so no release runs on it; run slicekit branch release ${slug}-${n}\n`);

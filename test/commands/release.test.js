@@ -482,3 +482,54 @@ test('a release not yet committed is undone by --undo and released again; a reco
     p.cleanup();
   }
 });
+
+// Review round 4 (H-9): a release branch that holds its own commits may be the branch of the
+// phase's open release pull request. `branch release` then names that pull request and no second
+// slug; it names the next slug only when the host says none is open, and refuses when the host
+// cannot be asked.
+test('branch release refuses a release branch with an open pull request, and names the next slug only when none is open', async () => {
+  const p = releaseRepo();
+  try {
+    const { root } = p;
+    const own = commitFixed(root, 'docs(release): P1', { [RECORD]: '# Release P1 — X\n' });
+    gitIn(root, ['push', '-q', 'origin', 'release/p1']);
+    const prFile = path.join(p.fixture, 'pr-3.json');
+    const pr = { number: 3, url: url(3), state: 'OPEN', mergedAt: null, headRefOid: own, headRefName: 'release/p1', baseRefName: 'main', isDraft: false, title: '[release] P1', body: '', labels: [] };
+    const next = 'run slicekit branch release p1-2';
+    const unmoved = (start) => {
+      assert.equal(gitIn(root, ['rev-parse', '--abbrev-ref', 'HEAD']), start);
+      assert.equal(gitIn(root, ['rev-parse', 'refs/heads/release/p1']), own);
+      assert.throws(() => gitIn(root, ['rev-parse', '--verify', '--quiet', 'refs/heads/release/p1-2']));
+    };
+
+    // The pull request is open: the line names it, and no second slug.
+    fs.writeFileSync(prFile, `${JSON.stringify(pr, null, 2)}\n`);
+    for (const start of ['release/p1', 'main']) {
+      gitIn(root, ['switch', '-q', start]);
+      const r = await p.run(['branch', 'release', 'p1']);
+      assert.equal(r.code, 1, `${start}: ${r.stdout}`);
+      assert.equal(r.stdout, '');
+      assert.ok(r.stderr.includes(`slicekit: release/p1 is the branch of open pull request #3 (${url(3)}); the phase's release is already open`), r.stderr);
+      assert.ok(!r.stderr.includes('p1-2'), r.stderr);
+      unmoved(start);
+    }
+
+    // The host cannot be asked: refused, and no slug is guessed.
+    fs.writeFileSync(prFile, '{');
+    const unknown = await p.run(['branch', 'release', 'p1']);
+    assert.equal(unknown.code, 1, unknown.stdout);
+    assert.equal(unknown.stdout, '');
+    assert.ok(unknown.stderr.includes('the git host could not be asked'), unknown.stderr);
+    assert.ok(!unknown.stderr.includes('p1-2'), unknown.stderr);
+    unmoved('main');
+
+    // The pull request was closed without merging: none is open, and the line names the next slug.
+    fs.writeFileSync(prFile, `${JSON.stringify({ ...pr, state: 'CLOSED' }, null, 2)}\n`);
+    const closed = await p.run(['branch', 'release', 'p1']);
+    assert.equal(closed.code, 1, closed.stdout);
+    assert.ok(closed.stderr.includes(`slicekit: release/p1 holds commits main lacks, so no release runs on it; ${next}`), closed.stderr);
+    unmoved('main');
+  } finally {
+    p.cleanup();
+  }
+});
