@@ -11,7 +11,9 @@
 // slices this run of the sync moved to `merged`. A sync with no such slice, and a config without
 // `release.auto`, set none. The version counts from package.json at the merge commit, never from
 // one an open sync pull request proposes. The rendered files follow the version (`update --yes`),
-// as `build render` would commit them.
+// as `build render` would commit them. So do the rendered files of each folder under `examples/`
+// that holds a rendered directory (D-95): the sync renders each one at the same version, as
+// `update --yes` would in that folder, and its pull request carries those files.
 //
 // Where a slice begins: the oldest commit of the default branch's first-parent history that brings
 // its state file. For a merge commit or a squash merge that is the merge itself; for a rebase merge
@@ -35,7 +37,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_PATH, ConfigError, releaseAutoError } from './config.js';
+import { CONFIG_PATH, ConfigError, loadConfig, releaseAutoError } from './config.js';
 import { GitError, git } from './git.js';
 import { readText, writeText } from './fs.js';
 import { ID, stateFileName } from './ids.js';
@@ -271,14 +273,86 @@ function sliceBegins(root, cfg, merge) {
   return begins;
 }
 
-// The paths the release step may write: package.json, CHANGELOG.md and the files `update` renders.
-export function releasePaths(cfg) {
-  return [PACKAGE, CHANGELOG, ...new Set([...entriesForShape(cfg.shape).map((e) => e.dest), SETTINGS]), RENDERED];
+// The files `update` renders for a config, and the directory of their reference copies.
+const renderPaths = (cfg) => [...new Set([...entriesForShape(cfg.shape).map((e) => e.dest), SETTINGS]), RENDERED];
+
+export const EXAMPLES = 'examples';
+
+// The folders under `examples/` that hold rendered files (D-95): each one with a directory of
+// reference copies, `.slicekit/rendered`, and a config. As POSIX paths from the root, sorted. A
+// folder before init, such as one a walkthrough starts from, holds neither and is not one of them.
+export function exampleDirs(root) {
+  const dir = path.join(root, EXAMPLES);
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
+  const isDir = (p) => fs.existsSync(p) && fs.statSync(p).isDirectory();
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && isDir(path.join(dir, e.name, RENDERED)) && fs.existsSync(path.join(dir, e.name, CONFIG_PATH)))
+    .map((e) => `${EXAMPLES}/${e.name}`)
+    .sort();
 }
-export const isReleasePath = (cfg) => {
-  const dests = new Set(releasePaths(cfg));
-  return (f) => dests.has(f) || f.startsWith(`${RENDERED}/`);
+
+// The paths of the examples the release step may write: for each example, the files `update`
+// renders for that example's own config and its reference copies. An example whose config cannot
+// be read gives the paths every shape renders, so a file of it is still judged.
+function examplePaths(root) {
+  const out = [];
+  for (const example of exampleDirs(root)) {
+    let paths;
+    try {
+      paths = renderPaths(loadExampleConfig(root, example));
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      paths = [SETTINGS, RENDERED];
+    }
+    for (const p of paths) out.push(`${example}/${p}`);
+  }
+  return out;
+}
+
+// An example's config, read as it stands and migrated in memory (loadConfig writes nothing): the
+// sync writes an example's rendered files and nothing else of it.
+const loadExampleConfig = (root, example) => loadConfig(path.join(root, ...example.split('/')));
+
+// The paths the release step may write: package.json, CHANGELOG.md, the files `update` renders
+// and, given the root, the rendered files of each example under it (D-95).
+export function releasePaths(cfg, root = null) {
+  return [PACKAGE, CHANGELOG, ...renderPaths(cfg), ...(root === null ? [] : examplePaths(root))];
+}
+export const isReleasePath = (cfg, root = null) => {
+  const paths = releasePaths(cfg, root);
+  const dests = new Set(paths);
+  const dirs = paths.filter((p) => p === RENDERED || p.endsWith(`/${RENDERED}`)).map((p) => `${p}/`);
+  return (f) => dests.has(f) || dirs.some((d) => f.startsWith(d));
 };
+
+// The config of each example, read before the release step writes a file: [{ example, cfg }]. An
+// example whose config does not load stops the step with one line naming its folder and the config
+// problem, so the reader of the sync job's log knows which file to mend.
+function exampleConfigs(root) {
+  return exampleDirs(root).map((example) => {
+    try {
+      return { example, cfg: loadExampleConfig(root, example) };
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      throw new ReleaseError(`${example}: its config does not load (${e.message}); no version is set and no file is written`);
+    }
+  });
+}
+
+// Renders each example at `version`, as `update --yes` would in that folder: the files whose plan
+// is changed or missing are written, an edited one is left, and the reference copies are that
+// version's alone. Every example's config is read before the first one is rendered. Returns the
+// examples rendered.
+export function renderExamples(root, version, configs = exampleConfigs(root)) {
+  const out = [];
+  for (const { example, cfg } of configs) {
+    const dir = path.join(root, ...example.split('/'));
+    applyUpdate(dir, cfg, planUpdate(dir, cfg, { version }), { version });
+    out.push(example);
+  }
+  return out;
+}
 
 function phaseName(phaseDir, phaseId) {
   for (const f of fs.readdirSync(phaseDir).filter((n) => n.endsWith('.md') && !/^S-\d+/.test(n)).sort()) {
@@ -349,9 +423,12 @@ export function onDefaultTip(root, cfg) {
 }
 
 // Writes what releaseFor computed: package.json's version, the changelog section, and the render at
-// that version (the kit's own checkout) or at the running kit's version (any other). `isKit` says
+// that version (the kit's own checkout) or at the running kit's version (any other), of the
+// repository's own files and then of each example under `examples/` (D-95). `isKit` says
 // which; it defaults to whether `root` is the kit's checkout. Returns the release, or null when
-// there is none or the files on disk already hold it (a second run on the same commit).
+// there is none or the files on disk already hold it (a second run on the same commit). Every
+// example's config is read first; one that does not load throws a ReleaseError naming the example,
+// and package.json, CHANGELOG.md and every rendered file are left as they were.
 export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root) } = {}) {
   const release = releaseFor(root, cfg, { merge });
   if (release === null) return null;
@@ -363,9 +440,12 @@ export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root
   // the version computed and CHANGELOG.md on disk holds its section, an earlier run on this commit
   // wrote them: this run writes nothing and sets no version.
   if (versionOf(pkgText) === release.version && holdsSection(logText, release.version)) return null;
+  // Before the first write: an example whose config does not load refuses the release (ReleaseError).
+  const examples = exampleConfigs(root);
   writeText(pkg, setVersion(pkgText, release.version));
   writeText(log, prependSection(logText, release.section));
   const version = isKit ? release.version : kitVersion();
   applyUpdate(root, cfg, planUpdate(root, cfg, { version }), { version });
+  renderExamples(root, version, examples);
   return release;
 }

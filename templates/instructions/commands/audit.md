@@ -16,8 +16,10 @@ that reads the repository's history goes through `{{cli}}`; run no git or gh com
    of the spec, each `##` section of the runbook), it prints the claim's ID, its `<file>:<line>` and
    its title, the files the claim names, and one `candidate` line for each commit that touched one of
    those files after the claim's heading was last changed. It prints at most ten `candidate` lines
-   for a claim, the newest, then one line that counts the older ones and names the area to run with
-   `--all` to print them. On exit 2 the area names no claim: print what it says and ask the human
+   for a claim, the newest, then one line that counts the older ones and names the command that
+   prints them: `{{cli}} audit context <area> --all --no-report`. That form prints the context
+   alone, with every candidate and no report path, and reserves no report file, so the report of
+   this step stays the one the auditor writes. On exit 2 the area names no claim: print what it says and ask the human
    for another area.
 3. Spawn the auditor in audit mode. Its brief is the output of `{{cli}} instructions auditor`. Give
    it the whole output of step 2 and the report path, and tell it this is an audit, not a gap scan:

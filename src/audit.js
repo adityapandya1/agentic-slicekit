@@ -157,11 +157,12 @@ export function auditClaims(root, cfg, index, area) {
 }
 
 // What `/slicekit audit` hands the auditor. The report path is reserved after the claims are read,
-// so an area that names no claim leaves no empty report behind.
-export function auditContext(root, cfg, area) {
+// so an area that names no claim leaves no empty report behind. With `report` false no report is
+// reserved and `report` is null: the context alone, for a second look at an area (issue #157).
+export function auditContext(root, cfg, area, { report = true } = {}) {
   const index = indexGraph(loadGraph(root, cfg));
   const claims = auditClaims(root, cfg, index, area);
-  return { report: nextReport(root, cfg, 'audit'), claims };
+  return { report: report ? nextReport(root, cfg, 'audit') : null, claims };
 }
 
 const bare = (cell) => cell.trim().replace(/^`+|`+$/g, '').trim();

@@ -74,7 +74,7 @@ export function syncFromHost(root, cfg, host) {
 // `slicekit sync open` (03 REQ-3.11, D-78, D-80): after status --sync --write on the default branch's
 // merge commit, the state change goes up for review instead of onto the default branch. The paths it
 // may carry are the state directory, BUILD.md and the journal heads log, and with release.auto the
-// files the release step writes (syncPaths, D-90); nothing else is staged. When
+// files the release step writes, those of the examples included (syncPaths, D-90, D-95); nothing else is staged. When
 // none of them changed it opens nothing. Otherwise it commits them on `sync/<short sha>` (a new branch
 // from the merge commit), pushes that branch alone, opens `[sync] state after <short sha>` into the
 // default branch through C-1, and starts the kit's workflow on the branch with workflow_dispatch, since
@@ -98,11 +98,12 @@ export const syncTitle = (short) => `[sync] state after ${short}`;
 const posix = (p) => p.split(path.sep).join('/');
 
 // The paths a sync commit may carry, relative to the repository root. With release.auto, also the
-// files the release step writes: package.json, CHANGELOG.md and the rendered files (D-90).
+// files the release step writes: package.json, CHANGELOG.md, the rendered files (D-90) and the
+// rendered files of each example under examples/ (D-95).
 export function syncPaths(root, cfg) {
   const p = kitPaths(root, cfg);
   const state = [p.build, p.state, path.join(p.kit, 'journal-heads.log')].map((f) => posix(path.relative(root, f)));
-  return cfg.release?.auto === true ? [...state, ...releasePaths(cfg)] : state;
+  return cfg.release?.auto === true ? [...state, ...releasePaths(cfg, root)] : state;
 }
 
 // git with ALLOW_PROTECTED_COMMIT taken out of the environment (REQ-3.11: the sync never sets it).

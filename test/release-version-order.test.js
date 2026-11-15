@@ -15,6 +15,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { init } from '../src/init.js';
 import { CONFIG_PATH, loadConfig } from '../src/config.js';
+import { applyUpdate, planUpdate } from '../src/render/update.js';
 import { readSlice, writeSlice } from '../src/state/index.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
@@ -609,5 +610,47 @@ test('a second status --sync --write on the same tip adds no second section', ()
     assert.equal(j.code, 0, j.stderr + j.stdout);
     assert.equal(JSON.parse(j.stdout).version, undefined, j.stdout);
     assert.equal(read(root, 'CHANGELOG.md'), log);
+  }, { release: { auto: true } });
+});
+
+// P5/S-50 review round 1 (H-1), D-95: an example whose config does not load is found before the
+// release step writes a file. The refusal is one line naming the example folder and the config
+// problem; package.json, CHANGELOG.md and every rendered file stay as they were.
+test('a sync refuses an example whose config does not load, naming the folder, and writes no release file', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    const OLD = '0.0.1';
+    // examples/alpha: an initialised kit rendered at an older version, which a sync would re-render.
+    const alpha = path.join(root, 'examples', 'alpha');
+    fs.mkdirSync(alpha, { recursive: true });
+    init(alpha, { name: 'alpha', shape: 'backend' });
+    const alphaCfg = loadConfig(alpha);
+    applyUpdate(alpha, alphaCfg, planUpdate(alpha, alphaCfg, { version: OLD }), { version: OLD });
+    // examples/broken: rendered files, and a config that is not valid JSON.
+    const broken = path.join(root, 'examples', 'broken');
+    fs.mkdirSync(broken, { recursive: true });
+    init(broken, { name: 'broken', shape: 'backend' });
+    fs.writeFileSync(path.join(broken, CONFIG_PATH), '{ "name": "broken",\n');
+    mergeCommit(root, 'examples');
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+
+    const pkg = read(root, 'package.json');
+    const log = read(root, 'CHANGELOG.md');
+    const r = runCli(['status', '--sync', '--write'], { cwd: root, env: cliEnv(fixture) });
+    assert.equal(r.code, 2, r.stderr + r.stdout);
+    const lines = r.stderr.split('\n').filter((l) => l !== '');
+    assert.equal(lines.length, 1, r.stderr);
+    assert.ok(lines[0].startsWith('slicekit: '), r.stderr);
+    assert.ok(lines[0].includes('examples/broken'), r.stderr);
+    assert.ok(lines[0].includes('is not valid JSON'), r.stderr);
+    assert.doesNotMatch(r.stdout, /^version /m);
+
+    assert.equal(read(root, 'package.json'), pkg);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+    // The only files changed are the slice states the host sync wrote: no rendered file of the
+    // repository or of either example.
+    const list = (args) => gitIn(root, args).split('\n').filter(Boolean);
+    const changed = [...list(['diff', '--name-only', 'HEAD']), ...list(['ls-files', '--others', '--exclude-standard'])];
+    assert.deepEqual(changed.filter((f) => !f.startsWith('.slicekit/state/')), [], changed.join(', '));
+    assert.deepEqual(fs.readdirSync(path.join(alpha, '.slicekit', 'rendered')), [OLD]);
   }, { release: { auto: true } });
 });

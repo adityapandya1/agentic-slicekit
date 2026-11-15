@@ -1,7 +1,7 @@
 ---
 description: "Run a slicekit command: intake, specify, gaps, plan, build, review, release, ops or audit. /slicekit <command> [args]"
 argument-hint: "<command> [args]"
-slicekit-managed: v0.3.4
+slicekit-managed: v0.4.0
 ---
 Run `slicekit instructions --command $ARGUMENTS` and follow the procedure it prints. The procedure is the only source of this command's rules.
 

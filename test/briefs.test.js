@@ -274,3 +274,29 @@ test('briefs » the lint reads never per sentence and the footer from the report
     'brief does not require "Not checked:"',
   ]);
 });
+
+// P5/S-50 (issue #164, REQ-2.9, D-94): `release --dry-run` may write the migration of an older config,
+// which `branch release` carries to the release branch. The procedure's `pr open` step names the
+// config in its paths in that case, so the release pull request commits it.
+test('briefs.test.js » the release procedure commits a carried config', () => {
+  const template = read(path.join(TEMPLATES, 'commands', 'release.md'));
+  assert.deepEqual(briefProblems(template, { kind: 'command' }), []);
+
+  const cfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
+  try {
+    const text = renderProcedure(root, cfg, 'release', ['P1']);
+    assert.deepEqual(briefProblems(text, { kind: 'command' }), []);
+    // The numbered steps of the procedure, each from its number to the next step's.
+    const steps = text.slice(text.indexOf('## Steps')).split(/^(?=\d+\. )/m).filter((s) => /^\d+\. /.test(s));
+    const open = steps.filter((s) => s.includes('npx slicekit pr open --title "[release] P1"'));
+    assert.equal(open.length, 1, 'one step runs pr open');
+    const [step] = open;
+    assert.ok(step.includes('--paths'), step);
+    // With a migrated config on the release branch, the step names the config among the paths.
+    assert.ok(step.includes('.slicekit/config.json'), `the pr open step does not name .slicekit/config.json:\n${step}`);
+    assert.match(step, /migrat/i, `the pr open step does not say when the config is carried:\n${step}`);
+  } finally {
+    cleanup();
+  }
+});
