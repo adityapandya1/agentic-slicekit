@@ -191,7 +191,7 @@ test('the page has a section for every command, slash command and rule page, and
   // No absolute path: the same pages in another folder give the same bytes.
   const copy = copyGuide(t);
   assert.ok(guidePage(copy) === html, 'the page differs when the guide sits in another folder');
-  for (const place of [ROOT, os.homedir(), os.tmpdir()]) {
+  for (const place of [ROOT, os.homedir(), copy]) {
     const trimmed = place.replace(/[\\/]+$/, '');
     assert.ok(!slashes(html).includes(slashes(trimmed)), `the page holds the path ${trimmed}`);
   }
