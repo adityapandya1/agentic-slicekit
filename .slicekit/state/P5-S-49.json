@@ -188,6 +188,16 @@
         "amendCommit": "37232690e9a0e49fa66404943dd1a94162733d8f",
         "reason": "reviews B-3 and B-4 of round 3: the evaluation set gains a test for a rebase-merged version-setting slice and one for a hand-set section holding a slice line"
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T00:09:58.220Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "014c5ce7b3c0b3b28d435eada47d5c4a0f2c1e41",
+        "reason": "Done when 3 states how a hand-set version and the slices before it are told (reviews B-3, B-4)"
+      }
     }
   ]
 }
