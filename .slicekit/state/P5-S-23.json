@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-23",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 156,
@@ -22,6 +22,13 @@
       "blockers": 1,
       "independent": false,
       "headSha": "35c731d776921118cc44be3959b1dc604d79d426"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-23-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "c4a6ad382beb5cb8d076c659764b9b1706a9531e"
     }
   ],
   "ci": null,
@@ -94,6 +101,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
           "headSha": "c4a6ad382beb5cb8d076c659764b9b1706a9531e",
           "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T04:42:24.699Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-23-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
