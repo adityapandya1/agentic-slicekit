@@ -35,9 +35,9 @@ test('the README opens with two sentences, then Status: preview, the walkthrough
   assert.doesNotMatch(first, /^#/, 'the title is followed by a paragraph');
   const sentences = first.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+(?=[A-Z`])/);
   assert.equal(sentences.length, 2, first);
-  assert.deepEqual(headings(), ['Status: preview', 'Walkthrough', 'Scope', 'How the hooks find slicekit']);
+  assert.deepEqual(headings(), ['Status: preview', 'Walkthrough', 'Scope', 'User guide', 'How the hooks find slicekit']);
   const status = section('Status: preview');
-  assert.match(status, /Phases 1 to 3 work/);
+  assert.match(status, /Phases 1 to 5 work/);
   assert.match(status, /Phase 4/);
   assert.match(status, /git clone https:\/\/github\.com\/adityapandya1\/agentic-slicekit/);
   assert.match(status, /node bin\/slicekit\.js --version/);
@@ -87,10 +87,11 @@ test('the status section gives the npm install and says the walkthrough runs fro
 test("the status names Phase 3's commands and the install uses --save-dev", () => {
   const status = section('Status: preview');
   const prose = status.replace(/\s+/g, ' ');
-  assert.match(prose, /Phases 1 to 3 work/);
+  assert.match(prose, /Phases 1 to 5 work/);
   for (const c of ['graph', 'trace', 'impact', 'history', 'uncovered', 'shipped', 'visualize']) assert.ok(status.includes(`\`${c}\``), c);
   assert.match(prose, /workspaces/);
-  assert.match(prose, /Phase 4 \(hardening: host rules, guards, the journal, Jira\) and Phase 5 \(release, ops, audit and the other examples\) are not built yet/);
+  assert.match(prose, /Phase 5 is /);
+  assert.doesNotMatch(prose, /not built yet/);
   assert.doesNotMatch(prose, /Phase 3 will add|Phases 3 and 4 are not built/);
   assert.match(status, /```sh\nnpm install --save-dev slicekit\n/);
   assert.match(section('How the hooks find slicekit'), /`npm install --save-dev slicekit`/);
@@ -141,4 +142,32 @@ test('docs/adapters.md names every hook subcommand in its exit path', () => {
   assert.match(exit, /deny/i, 'the exit path names the deny rules');
   assert.match(exit, /tool-neutral/i, 'the exit path names the parts already tool-neutral');
   assert.match(adapters, /^##\s.*Jira/m, 'docs/adapters.md has a Jira section');
+});
+
+// P5/S-24 (REQ-5.7, REQ-5.8, D-41, D-61): all five phases are built, versions are published from CI
+// with provenance, and the README links the user guide from a section of its own after the scope line.
+test('the status names Phase 5 as built and links the guide', () => {
+  const status = section('Status: preview');
+  const prose = status.replace(/\s+/g, ' ');
+  assert.match(prose, /Phases 1 to 5 work/);
+  assert.doesNotMatch(prose, /not built yet|will add|still to come/);
+  // Phase 5's commands, each named as code.
+  assert.match(prose, /Phase 5 is /);
+  for (const c of ['release', 'ops', 'audit']) assert.ok(status.includes(`\`${c}\``), c);
+  // Versions come from CI, not from the author's machine, and carry provenance.
+  assert.match(prose, /published from CI/);
+  assert.match(prose, /provenance/);
+  assert.doesNotMatch(prose, /published by hand/);
+
+  // The guide's section follows the scope line.
+  const names = headings();
+  assert.equal(names.indexOf('User guide'), names.indexOf('Scope') + 1, names.join(' | '));
+  const guide = section('User guide');
+  const link = (file) => new RegExp(`\]\((https://github\.com/adityapandya1/agentic-slicekit/blob/main/)?${file.replace(/[.]/g, '\.')}\)`);
+  assert.match(guide, link('docs/guide/README.md'));
+  assert.match(guide, link('docs/adapters.md'));
+  // What the guide holds: a page per command, per slash command and per check rule.
+  const about = guide.replace(/\s+/g, ' ');
+  assert.match(about, /command/);
+  assert.match(about, /check rule/);
 });
