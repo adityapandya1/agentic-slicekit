@@ -1,6 +1,6 @@
 {
   "slice": "P5/S-22",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 149,
@@ -23,6 +23,13 @@
       "blockers": 2,
       "independent": false,
       "headSha": "e0cd33d825ddfcb564a5ba5dab789155ee145924"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-22-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061"
     }
   ],
   "ci": null,
@@ -115,6 +122,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
           "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061",
           "title": "[P5/S-22] Observability steps in CI"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T01:31:58.464Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-22-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
