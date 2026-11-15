@@ -86,9 +86,9 @@ Amended (author's standing instruction, 2026-11-15): D-94 joins the slice's deci
 **Files:** Create `docs/guide/`, `test/user-guide.test.js`. Modify `README.md`, `test/readme.test.js`.
 
 **Interfaces:**
-- Pages: `docs/guide/README.md` linking every page; `docs/guide/commands/<name>.md` for each key of `COMMANDS` in `src/cli/index.js`; `docs/guide/slash/<name>.md` for each name in `PROCEDURES` of `src/instructions.js`, plus `slash/slicekit.md` for `/slicekit` itself; `docs/guide/rules/<id>.md` for each rule in `ALL_RULES` of `src/check/index.js`. <!-- slicekit:pending P5/S-24 -->
+- Pages: `docs/guide/README.md` linking every page; `docs/guide/commands/<name>.md` for each key of `COMMANDS` in `src/cli/index.js`; `docs/guide/slash/<name>.md` for each name in `PROCEDURES` of `src/instructions.js`, plus `docs/guide/slash/slicekit.md` for `/slicekit` itself; `docs/guide/rules/<id>.md` for each rule in `ALL_RULES` of `src/check/index.js`.
 - A command page: the usage line as `--help` prints it, what it reads and writes, its exit codes, one example. A slash command page: what the human types, which agents it spawns, which `slicekit` commands its procedure runs, what it leaves behind. A rule page: what fails, and a section `## The failure it prevents` naming the failure the rule exists for, in one paragraph.
-- `docs/guide/commands/graph.md` holds the README's scope line: the graph is built from the kit's IDs and git, is not a code graph, and the graphify line. <!-- slicekit:pending P5/S-24 -->
+- `docs/guide/commands/graph.md` holds the README's scope line: the graph is built from the kit's IDs and git, is not a code graph, and the graphify line.
 - The README gains a `## User guide` section after `## Scope` linking the guide's README and `docs/adapters.md`.
 
 - [ ] **Step 1: Failing tests** — `a command or check rule with no guide page fails, naming it`: the test's `missingPages()` lists `commands/<name>`, `slash/<name>` or `rules/<id>` for each one with no page; it is empty for the kit, and a fake entry added to a copy of the lists is named. `every rule page says the failure it prevents`. `the graph page says the graph is not a code graph and gives the graphify line`. `the status names Phase 5 as built and links the guide` in `test/readme.test.js`, with the status change of Task 4.
