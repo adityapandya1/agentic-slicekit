@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-50",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 169,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/169",
-    "headSha": "84051b4ac299f803287780ad650adebb7ccd6cb8"
+    "headSha": "380468dde7c2387dbc9510a6213a9ec037981cbb"
   },
   "redCommit": "bd2fd0e2427dcfc12a690270bab03fa28bbff4f9",
   "frozenTests": [
@@ -80,6 +80,22 @@
           "path": ".slicekit/reviews/P5-S-50-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T09:50:05.012Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 169,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/169",
+          "headSha": "380468dde7c2387dbc9510a6213a9ec037981cbb",
+          "title": "[P5/S-50] Examples follow the version, and the review leftovers of Phase 5"
         }
       }
     }
