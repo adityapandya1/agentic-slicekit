@@ -185,6 +185,16 @@
         "amendCommit": "282cb216762429e159b971dde0fa736346cfed82",
         "reason": "reviews H-8 to H-11: the steps section fails closed; three assertions added by earlier fixes change to expect the refusal"
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-15T01:57:16.921Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "e326cfabc2c384f7a4715f25f1b95e2f2f574a8f",
+        "reason": "Task 1's interface text gives the table's exact form (reviews H-8 to H-11)"
+      }
     }
   ]
 }
