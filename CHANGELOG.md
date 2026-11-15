@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.3.2
+
+- P5/S-49 Release version fixes (#147)
+
 ## 0.3.1
 
 - P5/S-48 Versions follow the plan, published from CI (#139)
