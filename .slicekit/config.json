@@ -1,5 +1,5 @@
 {
-  "configVersion": 1,
+  "configVersion": 2,
   "name": "slicekit",
   "cli": "node bin/slicekit.js",
   "shape": "backend",
@@ -14,7 +14,6 @@
     "build": "",
     "e2e": ""
   },
-  "repos": [],
   "gitHost": {
     "kind": "github"
   },
