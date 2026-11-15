@@ -9,7 +9,9 @@
     "test/user-guide.test.js",
     "test/readme.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/guide-page.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -36,6 +38,17 @@
       "at": "2026-11-15T16:22:46.236Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T16:30:08.341Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/guide-page.test.js",
+        "amendCommit": "39becb4839f6b0ffc1e6159c62fb59c0ca58befa",
+        "reason": "one comparison sorts one side only, so no index can pass"
+      }
     }
   ]
 }
