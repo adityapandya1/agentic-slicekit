@@ -129,3 +129,77 @@ test("the backend example's step renders as a job", () => {
     repo.cleanup();
   }
 });
+
+// Review round 1 of P5/S-22.
+
+test('a row holding a line separator is refused with its file and line', () => {
+  for (const [label, sep] of [['U+2028', '\u2028'], ['U+2029', '\u2029']]) {
+    for (const row of [`| Split | echo a${sep}echo b |`, `| Sp${sep}lit | echo a |`, `| Split | \`echo a${sep}\` |`]) {
+      const text = doc(table('| Trace check | npm run trace-check |', row, '| Smoke | npm run smoke |'));
+      const line = lineOf(text, 'echo a');
+      const read = docSteps(text, REL);
+      assert.equal(read.errors.length, 1, `${label}: ${JSON.stringify(read)}`);
+      assert.ok(read.errors[0].startsWith(`${REL}:${line}: `), read.errors[0]);
+      assert.match(read.errors[0], /contains a line separator YAML cannot carry/);
+      // The rows around it are still read.
+      assert.deepEqual(read.steps.map((s) => s.name), ['Trace check', 'Smoke'], label);
+    }
+  }
+
+  // `slicekit workflow --write` refuses it and writes nothing.
+  const repo = makeRepo();
+  try {
+    init(repo.root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js', commands: { test: 'node --test' } });
+    const text = doc(table('| Trace check | npm run trace-check |', '| Split | echo a\u2028echo b |'));
+    fs.writeFileSync(path.join(repo.root, 'docs', 'observability.md'), text);
+    const workflow = path.join(repo.root, WORKFLOW_PATH);
+    const before = fs.readFileSync(workflow, 'utf8');
+    const r = runCli(['workflow', '--write'], { cwd: repo.root });
+    assert.notEqual(r.code, 0, r.stdout);
+    assert.ok(r.stderr.includes(`${REL}:${lineOf(text, '| Split |')}: `), r.stderr);
+    assert.equal(fs.readFileSync(workflow, 'utf8'), before);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a bare pipe in a command and a row with more cells than the header are refused', () => {
+  // A bare pipe inside a code span still ends the cell.
+  const piped = doc(table('| Trace check | npm run trace-check |', '| Count | `cat a | wc -l` |'));
+  const pipedRead = docSteps(piped, REL);
+  assert.equal(pipedRead.errors.length, 1, JSON.stringify(pipedRead));
+  assert.ok(pipedRead.errors[0].startsWith(`${REL}:${lineOf(piped, '| Count |')}: `), pipedRead.errors[0]);
+  assert.ok(pipedRead.errors[0].includes('\\|'), pipedRead.errors[0]);
+  assert.deepEqual(pipedRead.steps.map((s) => s.name), ['Trace check']);
+
+  const wide = doc(table('| Count | cat a | wc -l |'));
+  const wideRead = docSteps(wide, REL);
+  assert.equal(wideRead.errors.length, 1, JSON.stringify(wideRead));
+  assert.ok(wideRead.errors[0].startsWith(`${REL}:${lineOf(wide, '| Count |')}: `), wideRead.errors[0]);
+  assert.deepEqual(wideRead.steps, []);
+
+  // Written as the intake procedure says, the whole command is read.
+  const escaped = doc(table('| Count | `cat a \\| wc -l` |'));
+  const escapedRead = docSteps(escaped, REL);
+  assert.deepEqual(escapedRead.errors, []);
+  assert.deepEqual(escapedRead.steps.map((s) => s.run), ['cat a | wc -l']);
+});
+
+test('two rows with one Step name are refused, naming both lines', () => {
+  const text = doc(table('| Smoke | npm run smoke |', '| Trace check | npm run trace-check |', '| Smoke | npm run smoke-two |'));
+  const first = lineOf(text, 'npm run smoke |');
+  const second = lineOf(text, 'npm run smoke-two');
+  const read = docSteps(text, REL);
+  assert.equal(read.errors.length, 1, JSON.stringify(read));
+  assert.ok(read.errors[0].startsWith(`${REL}:${second}: `), read.errors[0]);
+  assert.ok(read.errors[0].includes('"Smoke"'), read.errors[0]);
+  assert.ok(read.errors[0].includes(`${REL}:${first}`), read.errors[0]);
+  assert.deepEqual(read.steps.map((s) => s.run), ['npm run smoke', 'npm run trace-check']);
+});
+
+test('a command in a double-backtick span keeps its inner backtick only', () => {
+  const text = doc(table('| Echo | `` echo `x` `` |', '| Plain | `npm run plain` |', '| Open | `echo a` && echo `b` |'));
+  const read = docSteps(text, REL);
+  assert.deepEqual(read.errors, []);
+  assert.deepEqual(read.steps.map((s) => s.run), ['echo `x`', 'npm run plain', '`echo a` && echo `b`']);
+});

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
 import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { allSteps, docSteps } from '../src/observability.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { CI_PULL_REQUEST, runCli } from './helpers/run-cli.js';
 import { appendJournal, journalFile, parseLine } from '../src/journal.js';
@@ -1127,4 +1128,17 @@ test('a new row in observability.md is workflow drift', () => {
     assert.equal(drift.code, 1, drift.stderr);
     assert.match(drift.stderr, /\.github\/workflows\/slicekit\.yml differs from the generator/);
   });
+});
+
+// Review round 1 of P5/S-22: the golden file of a config step and a doc step.
+test('golden workflow for a config step and a step of observability.md (REQ-3.11)', () => {
+  const file = fileURLToPath(new URL('./fixtures/golden/workflow/backend-doc-step.yml', import.meta.url));
+  const golden = fs.readFileSync(file, 'utf8');
+  assert.ok(!golden.includes('\r'), 'golden is LF');
+  const cfg = exampleConfig();
+  const read = docSteps(s22Doc('| Trace check | `npm run trace-check` |'), 'docs/observability.md');
+  const all = allSteps(cfg, read);
+  assert.deepEqual(all.errors, []);
+  assert.deepEqual(all.warnings, []);
+  assert.equal(renderWorkflow(cfg, loadPins(), { steps: all.steps }), golden);
 });

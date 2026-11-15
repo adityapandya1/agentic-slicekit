@@ -65,7 +65,8 @@ export const tableCells = (row) =>
     .split(/(?<!\\)\|/)
     .map((c) => c.trim().replace(/\\\|/g, '|'));
 const cells = tableCells;
-const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+// U+2028 and U+2029 are inside a row, not its end: `.` would stop at them and the row would go unread.
+const isRow = (l) => /^\s*\|[^\r\n]*\|\s*$/.test(l);
 const isDivider = (l) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l);
 
 export function tables(text) {

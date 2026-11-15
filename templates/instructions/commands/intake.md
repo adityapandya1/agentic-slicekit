@@ -82,7 +82,7 @@ Write the answer to `CI steps the monitoring setup requires` as a table with the
 | Trace check | `npm run trace-check` |
 ```
 
-Each row becomes one job of the generated workflow, named by its Step and running its Command. A command is one line and holds no secret and no `${{ … }}` expression; a pipe inside a command is written `|`. A step that needs a secret does not go in the table: tell the human to add it to `ci.observabilitySteps` in `.slicekit/config.json` with the secret under `env`. When the monitoring setup asks nothing of CI, write `None` and no table. After the table changes, run `{{cli}} workflow --write`.
+Each row becomes one job of the generated workflow, named by its Step and running its Command. A command is one line and holds no secret and no `${{ … }}` expression; a pipe inside a command is written `\|`, inside a code span too, and a row with a bare pipe is refused. A step that needs a secret does not go in the table: tell the human to add it to `ci.observabilitySteps` in `.slicekit/config.json` with the secret under `env`. When the monitoring setup asks nothing of CI, write `None` and no table. After the table changes, run `{{cli}} workflow --write`.
 
 ## 6. Finish
 
