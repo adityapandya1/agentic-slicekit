@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-52",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 177,
@@ -16,7 +16,15 @@
     "test/config.test.js"
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-52-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -58,6 +66,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/177",
           "headSha": "5244e0e652bb9dd23939dd1a24a95f139bacbf26",
           "title": "[P6/S-52] Guards"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T13:04:28.823Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-52-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
