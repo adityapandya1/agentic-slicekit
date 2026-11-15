@@ -33,6 +33,7 @@ In a Java repository (`pom.xml`, `build.gradle` or `build.gradle.kts` at the roo
 - The full test suite runs out of memory on a developer machine: run the targeted test files and let CI run the full suite (D-43).
 - A command that reaches the host fails: check `gh auth status`.
 - `slicekit check` fails the hooks rule: run `git config core.hooksPath .githooks` (03 REQ-3.9).
+- An `obs-<n>` job fails: it runs one observability step, and the job's name is the step's name. The step comes from `ci.observabilitySteps` in `.slicekit/config.json` or from the Step and Command table under `## CI steps the monitoring setup requires` in `observability.md`; config's steps are numbered first, then the table's rows (03 REQ-3.11, D-56). Find the step by its name in those two places and run its command locally. After any change to either, run `slicekit workflow --write`; until then `slicekit workflow --check` reports drift.
 
 (D-82)
 

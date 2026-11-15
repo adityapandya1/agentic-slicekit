@@ -29,6 +29,9 @@ async function run(args, io) {
     io.stderr(`slicekit: ${e.message}\n`);
     return 2;
   }
+  // D-56: a row of observability.md with no command renders no job.
+  for (const w of state.warnings) io.stderr(`slicekit: warning: ${w}
+`);
   if (values.check) {
     if (state.current === state.expected) return 0;
     io.stderr(`slicekit: ${state.current === null ? `${WORKFLOW_PATH} is missing; run slicekit workflow --write to create it` : WORKFLOW_DRIFT}\n`);

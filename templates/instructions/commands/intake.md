@@ -74,6 +74,16 @@ The sections of `<docsRoot>/observability.md`:
 
 After each answer step, write the answer into its section of the file, followed by the D-ID in brackets, for example `One Postgres on Fly (D-07).`. Leave the single line "Not yet known" in each section the human cannot answer, and record that question with `--open`. Change nothing else in these two files.
 
+Write the answer to `CI steps the monitoring setup requires` as a table with the two columns Step and Command, one command per row, and the D-ID on a line of its own below the table:
+
+```
+| Step | Command |
+|---|---|
+| Trace check | `npm run trace-check` |
+```
+
+Each row becomes one job of the generated workflow, named by its Step and running its Command. A command is one line and holds no secret and no `${{ … }}` expression; a pipe inside a command is written `|`. A step that needs a secret does not go in the table: tell the human to add it to `ci.observabilitySteps` in `.slicekit/config.json` with the secret under `env`. When the monitoring setup asks nothing of CI, write `None` and no table. After the table changes, run `{{cli}} workflow --write`.
+
 ## 6. Finish
 
 `{{cli}} intake done`
