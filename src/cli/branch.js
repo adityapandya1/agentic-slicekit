@@ -14,9 +14,12 @@
 // may be on one of them, taken after `release/<slug>` was closed unmerged (issue #152). A slug
 // given numbered, `<base>-<n>` with <n> 2 or more (the numbers the command itself names), belongs
 // to the family of `release/<base>`: the host is asked about that branch and each
-// `release/<base>-<n>` too, so an open release pull request on any of them refuses.
+// `release/<base>-<n>` too, so an open release pull request on any of them refuses. The next free
+// slug is the family's too: `<base>-<n+1>` or the first number after it that no branch here or on
+// origin has, never `<base>-<n>-2` (issue #170).
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, ConfigError, loadConfig, migrateConfig } from '../config.js';
@@ -66,6 +69,15 @@ function configAt(root, ref) {
   } catch (e) {
     if (e instanceof GitError) return null;
     throw e;
+  }
+}
+
+// The bytes of the config the commit `ref` holds, or null when it holds none.
+function configBytesAt(root, ref) {
+  try {
+    return execFileSync('git', ['cat-file', 'blob', `${ref}:${CONFIG_FILE}`], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch {
+    return null;
   }
 }
 
@@ -148,9 +160,11 @@ async function run(args, io) {
     const dirty = changed && !migrated;
     // Moves the session to the commit `ref` with `go`. The migrated config is carried, dropped
     // first where `ref` holds it already, or the move is refused. -> false when refused, with the
-    // line printed. A dropped copy is put back when the move fails. After the move the file holds
-    // the bytes the migration wrote: a checkout that converts line endings writes the same config
-    // with other ones, which git reads as no change.
+    // line printed. A dropped copy is put back when the move fails. After the move of a dropped copy
+    // the file holds the bytes the branch's commit holds (issue #171): the commit may hold the same
+    // config with other line endings or other whitespace at its end than the migration writes, and
+    // a checkout that converts line endings writes other bytes again. Writing the migration's bytes
+    // back would leave a change behind in the first case.
     const move = (ref, label, go) => {
       const file = path.join(root, CONFIG_PATH);
       let kept = null;
@@ -172,12 +186,16 @@ async function run(args, io) {
         throw e;
       }
       if (kept !== null) {
-        const now = fs.readFileSync(file);
-        if (!now.equals(kept) && sameText(now.toString('utf8'), kept.toString('utf8'))) {
-          fs.writeFileSync(file, kept);
+        const committed = configBytesAt(root, 'HEAD');
+        if (committed !== null && !fs.readFileSync(file).equals(committed)) {
+          fs.writeFileSync(file, committed);
           // The file's size changed, which git takes for a change until the index entry is read
-          // again; the add stages nothing, since the content is the commit's.
-          git(root, ['--literal-pathspecs', 'add', '--', CONFIG_FILE]);
+          // again. The refresh stages nothing: it reads the file, which is the commit's.
+          try {
+            git(root, ['--literal-pathspecs', 'update-index', '-q', '--refresh', '--', CONFIG_FILE]);
+          } catch (e) {
+            if (!(e instanceof GitError)) throw e;
+          }
         }
       }
       return true;
@@ -261,9 +279,13 @@ async function run(args, io) {
         }
       }
       if (own) {
-        let n = 2;
-        while (resolves(root, `refs/heads/${target}-${n}`) || resolves(root, `refs/remotes/origin/${target}-${n}`)) n += 1;
-        io.stderr(`slicekit: ${target} holds commits ${base} lacks, so no release runs on it; run slicekit branch release ${slug}-${n}\n`);
+        // The next free number of the family: after the slug's own number when it has one, from 2
+        // when it has none; the first that no branch here or on origin has.
+        const numbered = family !== target;
+        const stem = numbered ? numberedSlug[1] : slug;
+        let n = numbered ? Number(numberedSlug[2]) + 1 : 2;
+        while (resolves(root, `refs/heads/${kind}/${stem}-${n}`) || resolves(root, `refs/remotes/origin/${kind}/${stem}-${n}`)) n += 1;
+        io.stderr(`slicekit: ${target} holds commits ${base} lacks, so no release runs on it; run slicekit branch release ${stem}-${n}\n`);
         return 1;
       }
       if (onTarget && stale.length === 0) {

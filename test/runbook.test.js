@@ -101,3 +101,18 @@ test('the runbook says how to record a release, and its Rollback section is fill
   assert.match(rollback, /revert/i);
   assert.match(rollback, /Rolling back a bad version on npm/);
 });
+
+// P6/S-51, REQ-3.11, D-80, issue #127: a sync pull request carries a `pull_request` run that waits
+// for approval. No change to the workflow keeps that run from being created, so the runbook says it
+// is expected, which run the ruleset reads, and that the waiting run is left as it is.
+test('the runbook says the waiting pull request run on a sync pull request is expected', () => {
+  const sync = section('The state sync pull request').replace(/\s+/g, ' ');
+  // The run that waits: a `pull_request` run in `action_required`.
+  assert.match(sync, /`pull_request` run/);
+  assert.match(sync, /`action_required`/);
+  assert.match(sync, /expected/);
+  // The run the ruleset reads is the `workflow_dispatch` one.
+  assert.match(sync, /`workflow_dispatch` run is the one the ruleset reads/);
+  // Nobody approves, cancels or re-runs the waiting run.
+  assert.match(sync, /waiting run is left as it is/);
+});

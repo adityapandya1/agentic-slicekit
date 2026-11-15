@@ -488,3 +488,77 @@ test('branch release with a numbered slug asks the host about the base branch an
     { remote: true },
   );
 });
+
+// P6/S-51 (issue #170, REQ-2.9): a numbered slug whose branch holds its own commits belongs to the
+// family of its base slug, so the next slug is the family's next free number, `<slug>-<n+1>` or the
+// first one after it that no local or origin branch has, and never `<slug>-<n>-2`.
+test('branch release given a numbered slug names the next free number of its family', async () => {
+  await withRepo(
+    async (root) => {
+      const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-branch-host-'));
+      const env = { ...process.env, SLICEKIT_GITHOST_FIXTURE: fixture };
+      const run = async (args) => {
+        let stdout = '';
+        let stderr = '';
+        const code = await main(args, { cwd: root, env, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } });
+        return { code, stdout, stderr };
+      };
+      const closed = (number, head) =>
+        fs.writeFileSync(
+          path.join(fixture, `pr-${number}.json`),
+          `${JSON.stringify({ number, url: `https://github.com/acme/demo/pull/${number}`, state: 'CLOSED', mergedAt: null, headRefOid: sha(root, `refs/heads/${head}`), headRefName: head, baseRefName: 'main', isDraft: false, title: '[release] P1', body: '', labels: [] }, null, 2)}\n`,
+        );
+      try {
+        // release/p1 and release/p1-2 each hold a commit main lacks, both are on origin, and the
+        // release pull request of each was closed unmerged: no branch of the family has one open.
+        for (const name of ['release/p1', 'release/p1-2']) {
+          git(root, ['switch', '-q', '-c', name, 'main']);
+          commit(root, `docs(release): P1 on ${name}`);
+          git(root, ['push', '-q', 'origin', name]);
+        }
+        closed(3, 'release/p1');
+        closed(4, 'release/p1-2');
+        const own = sha(root, 'refs/heads/release/p1-2');
+        // Refused from the default branch and from the branch itself, with one line naming `next`.
+        const refused = async (next) => {
+          for (const start of ['main', 'release/p1-2']) {
+            git(root, ['switch', '-q', start]);
+            const r = await run(['branch', 'release', 'p1-2']);
+            assert.equal(r.code, 1, `${start}: ${r.stdout}${r.stderr}`);
+            assert.equal(r.stdout, '');
+            const lines = r.stderr.split('\n').filter((l) => l !== '');
+            assert.equal(lines.length, 1, r.stderr);
+            assert.ok(lines[0].startsWith('slicekit: release/p1-2 holds commits main lacks'), lines[0]);
+            assert.ok(lines[0].endsWith(`; run slicekit branch release ${next}`), `${start}: ${lines[0]}`);
+            assert.ok(!r.stderr.includes('p1-2-2'), r.stderr);
+            assert.equal(currentBranch(root), start);
+            assert.equal(sha(root, 'refs/heads/release/p1-2'), own);
+            assert.throws(() => sha(root, 'refs/heads/release/p1-2-2'), GitError);
+          }
+        };
+
+        // The family holds release/p1 and release/p1-2: the next free number is 3.
+        await refused('p1-3');
+
+        // release/p1-3 exists on origin only, pushed from elsewhere: the next free number is 4.
+        git(root, ['push', '-q', 'origin', 'refs/remotes/origin/main:refs/heads/release/p1-3']);
+        git(root, ['update-ref', '-d', 'refs/remotes/origin/release/p1-3']);
+        assert.throws(() => sha(root, 'refs/heads/release/p1-3'), GitError);
+        await refused('p1-4');
+
+        // release/p1-4 exists here only: the next free number is 5.
+        git(root, ['branch', '-q', '--no-track', 'release/p1-4', 'refs/remotes/origin/main']);
+        await refused('p1-5');
+
+        // The slug the line names is cut from the default branch.
+        git(root, ['switch', '-q', 'main']);
+        const cut = await run(['branch', 'release', 'p1-5']);
+        assert.deepEqual([cut.code, cut.stdout], [0, 'release/p1-5\n'], cut.stderr);
+        assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+      } finally {
+        fs.rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+    { remote: true },
+  );
+});

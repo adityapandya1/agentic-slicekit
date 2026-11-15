@@ -80,12 +80,14 @@ test('headsFiles gives the first sync of a multi-commit push a line for every jo
   }
 });
 
-// REQ-3.8 (H-2): the first sync of a merge commit compares against its first parent.
-test('headsFiles gives the first sync of a merge commit a line only for the files the merge changed', () => {
+// REQ-3.8 (H-2), changed by P6/S-51 (issue #129): while the log names no merge, a merge commit is
+// owed a line for every journal file it holds, as any other commit is. Before, it compared against
+// its first parent and got a line only for the files the merge changed.
+test('headsFiles gives the first sync of a merge commit a line for every journal file it holds', () => {
   const r = repo();
   try {
     const merge = mergeOf(r.root, 'slice/a', ['slice/a']);
-    assert.deepEqual(files(r.root, merge, { recorded: '' }), [rel(r.root, 'slice/a')]);
+    assert.deepEqual(files(r.root, merge, { recorded: '' }), [rel(r.root, 'main'), rel(r.root, 'slice/a')].sort());
   } finally {
     r.cleanup();
   }
@@ -97,7 +99,8 @@ test('headsFiles over a multi-commit push after a recorded merge names every fil
   try {
     const m1 = mergeOf(r.root, 'slice/a', ['slice/a']);
     const recorded = recordedFor(r.root, m1);
-    assert.equal(recorded.split('\n').filter(Boolean).length, 1, recorded);
+    // The first sync of a two-parent merge records every journal file it holds: main's and slice/a's.
+    assert.equal(recorded.split('\n').filter(Boolean).length, 2, recorded);
     const tip = fastForward(r.root, 'slice/ff', ['slice/x', 'slice/y']);
     assert.deepEqual(files(r.root, tip, { recorded }), [rel(r.root, 'slice/x'), rel(r.root, 'slice/y')].sort());
   } finally {
@@ -149,9 +152,13 @@ test('a sync pull request that adds no heads line for a merge that changed a jou
     git(r.root, ['add', '-A']);
     git(r.root, ['commit', '--quiet', '-m', 'state only']);
     const found = ruleCi(r.root, prEnv(r.root, dir, { branch, title: `[sync] state after ${merge.slice(0, 7)}` }));
-    const lacks = found.filter((f) => f.file === HEADS && f.message.includes('lacks a line for'));
+    // P6/S-51 (issue #129): the heads log names no merge yet, so the merge owes a line for every
+    // journal file it holds; the file of main, which the merge left alone, is owed one too.
+    const all = found.filter((f) => f.file === HEADS && f.message.includes('lacks a line for'));
+    assert.equal(all.length, 2, JSON.stringify(found));
+    assert.equal(all.filter((f) => f.message.includes(rel(r.root, 'main'))).length, 1, JSON.stringify(found));
+    const lacks = all.filter((f) => f.message.includes(rel(r.root, 'slice/a')));
     assert.equal(lacks.length, 1, JSON.stringify(found));
-    assert.ok(lacks[0].message.includes(rel(r.root, 'slice/a')), lacks[0].message);
     assert.ok(lacks[0].message.includes(`hash=${lastHash(r.root, 'slice/a')}`), lacks[0].message);
     assert.ok(lacks[0].message.includes(merge.slice(0, 7)), lacks[0].message);
   } finally {
@@ -215,6 +222,56 @@ test('a heads line records the actor who started the run, and a re-run by someon
       triggering_actor: { login: 'carol' }, // a third attempt, re-run by carol, while check runs
     });
     assert.deepEqual(ruleCi(r.root, prEnv(r.root, dir, { branch, title: `[sync] state after ${merge.slice(0, 7)}` })), []);
+  } finally {
+    r.cleanup();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- P6/S-51 (REQ-3.8, issue #129): the first sync that merges records every journal file ----
+
+test('the first sync on a two-parent merge records every journal file the merge holds', () => {
+  const r = repo();
+  const dir = hostDir();
+  try {
+    // The sync pull request of the first merge never merged, so the heads log still names no merge
+    // when the second merge's sync runs.
+    mergeOf(r.root, 'slice/a', ['slice/a']);
+    const merge = mergeOf(r.root, 'slice/b', ['slice/b']);
+    assert.notEqual(git(r.root, ['rev-parse', '--verify', '--quiet', `${merge}^2`]), '', 'a merge commit with two parents');
+    const held = git(r.root, ['ls-tree', '-r', '--name-only', merge, '--', '.slicekit/journal/']).split('\n').sort();
+    assert.deepEqual(held, [rel(r.root, 'main'), rel(r.root, 'slice/a'), rel(r.root, 'slice/b')].sort());
+
+    // A line for every journal file the merge holds, each with the file's last hash: the file of
+    // the earlier merge and the file of main, which this merge left alone, with the one it changed.
+    const owed = J.headsFiles(r.root, cfg, merge, { recorded: '' });
+    assert.deepEqual(owed.map((f) => f.file), held);
+    for (const b of ['main', 'slice/a', 'slice/b']) assert.equal(owed.find((f) => f.file === rel(r.root, b))?.hash, lastHash(r.root, b), b);
+    // The same with the log read from the merge commit, which holds none.
+    assert.deepEqual(files(r.root, merge), held);
+
+    // The sync job writes those lines, and check --ci on the sync pull request recomputes the same set.
+    const out = runCli(['journal', 'heads', merge], { cwd: r.root, env: runEnv(merge, { actor: 'alice', triggering: 'alice' }) });
+    assert.equal(out.code, 0, out.stderr + out.stdout);
+    const written = fs.readFileSync(path.join(r.root, HEADS), 'utf8');
+    const lines = written.trimEnd().split('\n');
+    assert.equal(lines.length, 3, written);
+    for (const file of held) assert.equal(lines.filter((l) => l.includes(file)).length, 1, `${file} in ${written}`);
+    const branch = `sync/${merge.slice(0, 7)}`;
+    const pr = { branch, title: `[sync] state after ${merge.slice(0, 7)}` };
+    git(r.root, ['checkout', '--quiet', '-b', branch]);
+    git(r.root, ['add', '-A']);
+    git(r.root, ['commit', '--quiet', '-m', 'heads']);
+    writeJson(dir, 'run-987654321.json', { id: 987654321, name: 'kitflow', head_sha: merge, conclusion: null, actor: { login: 'alice' }, triggering_actor: { login: 'alice' } });
+    assert.deepEqual(ruleCi(r.root, prEnv(r.root, dir, pr)), []);
+
+    // A sync pull request that carries only the line of the file the merge changed, as the
+    // first-parent comparison wrote it, lacks the two other lines.
+    fs.writeFileSync(path.join(r.root, HEADS), `${lines.find((l) => l.includes(rel(r.root, 'slice/b')))}\n`);
+    git(r.root, ['add', '-A']);
+    git(r.root, ['commit', '--quiet', '-m', 'heads of the changed file only']);
+    const found = ruleCi(r.root, prEnv(r.root, dir, pr)).filter((f) => f.file === HEADS);
+    for (const b of ['main', 'slice/a']) assert.ok(found.some((f) => f.message.includes(rel(r.root, b))), `${rel(r.root, b)} in ${JSON.stringify(found)}`);
   } finally {
     r.cleanup();
     fs.rmSync(dir, { recursive: true, force: true });

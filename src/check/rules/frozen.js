@@ -5,8 +5,13 @@
 // with `assume-unchanged` or `skip-worktree` is judged by its committed content (issue #71).
 //
 // The tip is HEAD, or under --ci on a pull request the pull request's head (branchTip). No branch, a
-// branch that is not a slice branch, no state file at the tip, no red commit recorded in any version
-// of it (a slice before tests-red), or freezeTests set to false in the config (D-10): nothing to judge.
+// branch that is not a slice branch, no red commit recorded in any version of the state file (a slice
+// before tests-red, or one that never had a state file), or freezeTests set to false in the config
+// (D-10): nothing to judge.
+//
+// A tip that has no state file is judged by the versions of the file in its history (issue #100):
+// when one of them recorded a red commit, the removal is one finding naming the state file, and the
+// frozen tests are judged as before. Removing the file does not lift the freeze.
 //
 // The red commit and the frozen list are those of the first version of the state file, in the history
 // of the tip, that records a red commit; frozen paths of later versions are added to that list. A later
@@ -85,8 +90,7 @@ export function run(ctx) {
   const paths = kitPaths(root, cfg);
   const stateRel = `${posixRel(root, paths.state)}/${stateFileName(slice)}`;
   const text = showAt(root, tip, stateRel);
-  if (text === null) return [];
-  if (parse(text) === undefined) {
+  if (text !== null && parse(text) === undefined) {
     return [{ file: stateRel, line: 0, message: `state file ${stateRel} is not valid JSON at ${tip}` }];
   }
   // The first recorded red commit; every frozen path listed from then on.
@@ -102,14 +106,19 @@ export function run(ctx) {
     if (Array.isArray(state?.frozenTests)) listed.push(...state.frozenTests);
   }
   if (red === null) return [];
+  // The tip holds no state file, and an earlier version of it recorded a red commit.
+  const removed =
+    text === null
+      ? [{ file: stateRel, line: 0, message: `state file ${stateRel} was removed after it recorded the red commit ${red.slice(0, 7)}; only the CLI writes it, and removing it does not lift the freeze` }]
+      : [];
   if (!/^[0-9a-f]{7,40}$/.test(red) || !resolveCommit(root, red)) {
-    return [{ file: stateRel, line: 0, message: `red commit ${red} of ${slice} is not in this repository` }];
+    return [...removed, { file: stateRel, line: 0, message: `red commit ${red} of ${slice} is not in this repository` }];
   }
 
   const tests = [...new Set(listed)];
   const bad = tests.filter((t) => !validTest(t));
-  if (bad.length > 0) return [{ file: stateRel, line: 0, message: `frozen tests of ${slice} name a path that is not a repository path: ${bad.map(String).join(', ')}` }];
-  if (tests.length === 0) return [];
+  if (bad.length > 0) return [...removed, { file: stateRel, line: 0, message: `frozen tests of ${slice} name a path that is not a repository path: ${bad.map(String).join(', ')}` }];
+  if (tests.length === 0) return removed;
 
   // An amendment of the slice file after the red commit lifts the freeze (REQ-3.3). Only the slice
   // branch's own commits count: --first-parent --no-merges leaves out a change to the slice file made on
@@ -117,11 +126,11 @@ export function run(ctx) {
   const sliceFiles = sliceFilesAt(root, tip, posixRel(root, paths.phases), addr);
   if (sliceFiles.length > 0) {
     const amended = git(root, ['--literal-pathspecs', 'log', '--first-parent', '--no-merges', '--format=%H', `${red}..${tip}`, '--', ...sliceFiles]);
-    if (amended !== '') return [];
+    if (amended !== '') return removed;
   }
 
   const changed = new Set(lines(git(root, ['--literal-pathspecs', 'diff', '--name-only', '--no-renames', red, tip, '--', ...tests])));
-  return tests.filter((t) => changed.has(t)).map((t) => ({ file: t, line: 0, message: `frozen test changed after red: ${t}` }));
+  return [...removed, ...tests.filter((t) => changed.has(t)).map((t) => ({ file: t, line: 0, message: `frozen test changed after red: ${t}` }))];
 }
 
 export default { id, blocking, ratchet, run };

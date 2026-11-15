@@ -2,7 +2,7 @@
 // leaving a tracked path changed but not staged in the worktree (P4/S-45 r3 B-1, issue #69).
 // REQ-1.8: a slice-file-only build amend that wrote its record and stopped before committing it is
 // finished by a second run (P4/S-45 r3 H-5).
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -10,7 +10,14 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { git } from '../src/git.js';
 import { appendHistory } from '../src/state/index.js';
-import { building, cli, commitWorkCli, green, stateIn, write } from './helpers/build-flow.js';
+import { IMPORTING, building, cli, commitWorkCli, green, red1, startedWithTest, stateIn, write } from './helpers/build-flow.js';
+
+// This file's process gets a temp folder of its own, so the leftover checks below list the run
+// folders of this file's staged commits alone, never those of a test file running at the same
+// moment. os.tmpdir() reads these variables at each call, and every child process inherits them.
+const PRIVATE_TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-staged-tmp-'));
+for (const name of ['TEMP', 'TMP', 'TMPDIR']) process.env[name] = PRIVATE_TMP;
+after(() => fs.rmSync(PRIVATE_TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 const indexDirs = () => new Set(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('slicekit-index-')));
 const newIndexDirs = (before) => [...indexDirs()].filter((n) => !before.has(n));
@@ -140,5 +147,75 @@ test('build amend with no test named finishes a run that wrote its record but di
     assert.equal(git(p.wt, ['status', '--porcelain']), '');
   } finally {
     p.cleanup();
+  }
+});
+
+// ---- P6/S-51 (REQ-2.6, D-43, issue #107): the staged run reads untracked files and runs git ----
+
+// A test command as a team's local one is (D-43): it reads the test files to run from `.slice-tests`,
+// a file git ignores, in its working directory, and asks git where it is. It writes what it saw to
+// `probe`, then runs the listed tests and exits as they do.
+const listRunner = (probe) => `import fs from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+const listed = fs.readFileSync('.slice-tests', 'utf8').split(String.fromCharCode(10)).map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const seen = {
+  listed,
+  toplevel: git('rev-parse', '--show-toplevel').trim(),
+  unstaged: git('diff', '--name-only').trim(),
+  t2: fs.existsSync('src/t2.js') ? fs.readFileSync('src/t2.js', 'utf8') : null,
+};
+fs.writeFileSync(${JSON.stringify(probe)}, JSON.stringify(seen));
+const run = spawnSync(process.execPath, ['--test', ...listed], { stdio: 'inherit' });
+process.exit(run.status ?? 1);
+`;
+
+test('with paths staged the test command reads an ignored file and runs git', async () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-staged-probe-'));
+  const probe = path.join(scratch, 'seen.json');
+  const seen = () => JSON.parse(fs.readFileSync(probe, 'utf8'));
+  const LIST = '# the tests of this slice\ntest/a.test.js\n';
+  const p = await startedWithTest(IMPORTING, {
+    test: 'node tools/run-listed.mjs',
+    files: { 'tools/run-listed.mjs': listRunner(probe), '.gitignore': '.slice-tests\n' },
+  });
+  try {
+    write(p.wt, '.slice-tests', LIST);
+    assert.equal(git(p.wt, ['status', '--porcelain', '--', '.slice-tests']), '', 'git ignores .slice-tests');
+    const red = await red1(p, 'test/a.test.js');
+    assert.equal(red.code, 0, red.stderr);
+    // Task 1 committed with nothing staged, so the run is in the worktree; then Task 2's edit to
+    // src/t2.js, tracked and not staged, on which the test fails.
+    write(p.wt, 'src/t1.js', T1_RED);
+    write(p.wt, 'src/t2.js', T2);
+    const first = await commitWorkCli(p, '--message', 'feat(P1/S-01): start');
+    assert.equal(first.code, 0, first.stderr);
+    write(p.wt, 'src/t2.js', T2_TASK2);
+    write(p.wt, 'src/t1.js', T1_GREEN);
+    git(p.wt, ['add', '--', 'src/t1.js']);
+    fs.rmSync(probe, { force: true });
+    const before = indexDirs();
+
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): task 1', '--require-green');
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /exit 0/);
+    // The command read the ignored file at the same relative path, and git answered it with exit 0.
+    assert.ok(fs.existsSync(probe), 'the test command stopped before it wrote what it saw');
+    assert.deepEqual(seen().listed, ['test/a.test.js']);
+    assert.notEqual(seen().toplevel, '');
+    // It still saw every tracked file as staged, and no unstaged change: the committed src/t2.js.
+    assert.equal(seen().t2, T2);
+    assert.equal(seen().unstaged, '');
+    // The staged path alone is committed; the unstaged edit and the ignored file stay in the worktree.
+    assert.deepEqual(committedFiles(p.wt, 'HEAD'), ['M src/t1.js']);
+    assert.match(git(p.wt, ['log', '-1', '--format=%B', 'HEAD']), /→ exit 0/);
+    assert.equal(fs.readFileSync(path.join(p.wt, 'src', 't2.js'), 'utf8'), T2_TASK2);
+    assert.equal(git(p.wt, ['status', '--porcelain']), 'M src/t2.js');
+    assert.equal(fs.readFileSync(path.join(p.wt, '.slice-tests'), 'utf8'), LIST);
+    // The run's directory is removed, and removing it did not walk into the worktree.
+    assert.deepEqual(newIndexDirs(before), []);
+  } finally {
+    p.cleanup();
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
 });

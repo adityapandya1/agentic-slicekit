@@ -120,3 +120,61 @@ test('a branch with no red commit reports nothing', () => {
     assert.deepEqual(messages(root), []);
   });
 });
+
+// ---- P6/S-51 (REQ-3.15, D-10, issues #100 and #101) ----
+
+// One commit on the slice branch that removes the slice's state file.
+const removeState = (root) => {
+  git(root, ['rm', '-q', '--', STATE]);
+  commit(root, `chore: drop the state file\n\nSlice: ${SLICE}`, { allowEmpty: false });
+};
+
+// Issue #100: a tip with no state file is judged by the versions of the file in its history.
+test('a tip that removed the state file after red is a finding and its frozen tests are still judged', () => {
+  const FROZEN = `frozen test changed after red: ${TEST}`;
+  // The removal alone: one finding, naming the state file.
+  withSlice((root) => {
+    red(root);
+    removeState(root);
+    const found = run(root);
+    assert.equal(found.length, 1, JSON.stringify(found));
+    assert.equal(found[0].file, STATE);
+    assert.ok(found[0].message.includes(STATE), found[0].message);
+    assert.notEqual(found[0].message, FROZEN);
+  });
+  // The frozen test changed after red, then the state file removed: the removal and the test.
+  withSlice((root) => {
+    red(root);
+    changeTest(root);
+    removeState(root);
+    const found = run(root);
+    assert.equal(found.length, 2, JSON.stringify(found));
+    const removal = found.filter((f) => f.file === STATE);
+    assert.equal(removal.length, 1, JSON.stringify(found));
+    assert.ok(removal[0].message.includes(STATE), removal[0].message);
+    assert.deepEqual(found.filter((f) => f.file === TEST).map((f) => f.message), [FROZEN]);
+  });
+  // A state file that never recorded a red commit, removed: nothing to judge.
+  withSlice((root) => {
+    commitFiles(root, { [STATE]: stateJson('todo', null) }, `chore(slicekit): ${SLICE} started`);
+    commitFiles(root, { [TEST]: 'one\n' }, 'test: draft');
+    removeState(root);
+    commitFiles(root, { [TEST]: 'two\n' }, 'test: draft again');
+    assert.deepEqual(messages(root), []);
+  });
+});
+
+// Issue #101: freezeTests set to false in the config turns the rule off (D-10).
+test('with freezeTests false a changed frozen test is no finding', () => {
+  withSlice((root) => {
+    red(root);
+    changeTest(root);
+    assert.deepEqual(messages(root), [`frozen test changed after red: ${TEST}`]);
+    const file = path.join(root, '.slicekit', 'config.json');
+    const conf = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.notEqual(conf.freezeTests, false);
+    fs.writeFileSync(file, `${JSON.stringify({ ...conf, freezeTests: false }, null, 2)}\n`);
+    assert.equal(loadConfig(root).freezeTests, false);
+    assert.deepEqual(messages(root), []);
+  });
+});

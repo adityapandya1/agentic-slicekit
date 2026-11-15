@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
-import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { PINS_PATH, WORKFLOW_PATH, javaBuildTool, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
 import { allSteps, docSteps } from '../src/observability.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { CI_PULL_REQUEST, runCli } from './helpers/run-cli.js';
@@ -831,7 +831,8 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
   assert.ok(sync.indexOf(`run: ${cfg.cli} status --sync --write\n`) < heads.index, 'after the state sync');
   assert.ok(heads.index < sync.indexOf(`run: ${cfg.cli} sync open\n`), 'before sync open');
 
-  // A merge that changed two journal files and left a third alone: one line for each changed file.
+  // A merge that changed two journal files and left a third alone. The heads log names no merge yet,
+  // so the first sync writes a line for every journal file the merge holds (P6/S-51, issue #129).
   const { root, cleanup } = makeRepo({ commits: 1 });
   try {
     const conf = path.join(root, '.slicekit', 'config.json');
@@ -853,7 +854,7 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
     const out = runCli(['journal', 'heads', merge], { cwd: root, env: s42RunEnv(merge) });
     assert.equal(out.code, 0, out.stderr + out.stdout);
     const lines = fs.readFileSync(path.join(root, '.slicekit', 'journal-heads.log'), 'utf8').trimEnd().split('\n');
-    assert.equal(lines.length, 2, lines.join('\n'));
+    assert.equal(lines.length, 3, lines.join('\n'));
     const rel = (branch) => path.relative(root, journalFile(root, branch)).split(path.sep).join('/');
     const lastHash = (branch) => parseLine(fs.readFileSync(journalFile(root, branch), 'utf8').trimEnd().split('\n').at(-1)).hash;
     for (const branch of ['slice/a', 'slice/b']) {
@@ -861,7 +862,7 @@ test('the sync job writes a journal-heads line per changed journal file', () => 
       assert.ok(line, `${rel(branch)} in ${lines.join('\n')}`);
       for (const part of [lastHash(branch), merge.slice(0, 7), S42_RUN.id, S42_RUN.workflow, S42_RUN.actor]) assert.ok(line.includes(part), `${part} in ${line}`);
     }
-    assert.ok(!lines.some((l) => l.includes(rel('main'))), 'a journal file the merge did not change has no line');
+    assert.equal(lines.filter((l) => l.includes(rel('main'))).length, 1, 'at the first sync a journal file the merge did not change has its line too');
   } finally {
     cleanup();
   }
@@ -1194,4 +1195,58 @@ test('a header naming Step and Command with any other column set is refused with
     }
     assert.equal(fs.readFileSync(workflow, 'utf8'), before);
   });
+});
+
+// Review H-1 of round 1 of P6/S-51: a command's words are read as a shell splits them, so a quoted
+// value of a wrapper option that holds a space is one word and is skipped whole.
+test('a quoted wrapper option value that holds a space is skipped whole', () => {
+  assert.equal(javaBuildTool(null, ['xvfb-run -s "-screen 0 1024x768x24" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['sudo -u "build user" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["sudo -u 'build user' ./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ['sudo -u build\\ user mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['MAVEN_OPTS="-Xmx1g -Xss2m" mvn verify']), 'maven');
+  // The value of -u is a user named "mvn verify"; the command is ls.
+  assert.equal(javaBuildTool(null, ['sudo -u "mvn verify" ls']), null);
+  // A separator inside quotes ends no command.
+  assert.equal(javaBuildTool(null, ["echo 'done; mvn verify'"]), null);
+  // An unclosed quote holds the rest of the command.
+  assert.equal(javaBuildTool(null, ['sudo -u "build user mvn verify']), null);
+  assert.equal(javaBuildTool(null, ['mvn verify "-Dname=a b']), 'maven');
+  // A command substitution is one word of unknown value, and the command inside it is read as a command.
+  assert.equal(javaBuildTool(null, ['sudo -u "$(id -un)" mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['$(which mvn) verify']), null);
+  assert.equal(javaBuildTool(null, ['echo "$(mvn -v)"']), 'maven');
+  assert.equal(javaBuildTool(null, ['echo `./gradlew -v`']), 'gradle');
+});
+
+// Review H-4 of round 2 of P6/S-51: a comment and a here-document body are text the shell does not
+// split, so a quote character in one opens no quote; and the reader finds every call the line-by-line
+// reading before it found.
+test('a quote character in a comment or a here-document body hides no later Java call', () => {
+  // The three commands of the verdict.
+  assert.equal(javaBuildTool(null, ["# don't skip the tests\nmvn verify"]), 'maven');
+  assert.equal(javaBuildTool(null, ["npm ci # don't cache\n./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ["cat <<EOF\nit's\nEOF\nmvn verify"]), 'maven');
+  // Two quote characters that would pair across the call, so no quote is open at the end.
+  assert.equal(javaBuildTool(null, ["# don't skip the tests\nmvn verify\n# it's done"]), 'maven');
+  assert.equal(javaBuildTool(null, ['npm ci # say "hi\n./gradlew test # and "bye']), 'gradle');
+  assert.equal(javaBuildTool(null, ["cat <<A\nit's\nA\nmvn verify\ncat <<B\nit's\nB"]), 'maven');
+  // <<-WORD takes a delimiter line indented with tabs; a quoted delimiter names the same line.
+  assert.equal(javaBuildTool(null, ["cat <<-EOF\n\tit's\n\tEOF\nmvn verify\ncat <<-EOF\n\tit's\n\tEOF"]), 'maven');
+  assert.equal(javaBuildTool(null, ["cat <<'EOF'\nsay \"hi\n EOF\nEOF\n./gradlew test\ncat << \"END\"\nsay \"bye\nEND"]), 'gradle');
+  // A # inside a word, a quoted # and a here-string start no comment and no here-document.
+  assert.equal(javaBuildTool(null, ['echo a#b; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["echo '#'; mvn verify"]), 'maven');
+  assert.equal(javaBuildTool(null, ['echo $#; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['cat <<<"a b"\nmvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['echo $((1<<2))\nmvn verify']), 'maven');
+  // A call inside a comment is no call.
+  assert.equal(javaBuildTool(null, ['echo a # ; mvn verify']), null);
+  assert.equal(javaBuildTool(null, ['npm test # then mvn verify\n# ./gradlew test']), null);
+  // A quote still open at the end: the command is read again line by line, and a tool that reading finds counts.
+  assert.equal(javaBuildTool(null, ['echo "unterminated; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["echo it's\n./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ['sudo -u "build user mvn verify']), null);
+  // A here-document a shell reads as its script.
+  assert.equal(javaBuildTool(null, ['bash <<EOF\n./gradlew test\nEOF']), 'gradle');
 });

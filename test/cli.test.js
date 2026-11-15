@@ -388,3 +388,61 @@ test('branch drops a migrated config that the target branch already holds, and r
     repo.cleanup();
   }
 });
+
+// P6/S-51 (REQ-5.6, issue #171, D-94): the target branch holds the migrated config with other line endings,
+// or with other whitespace at its end, than the migration writes. The two are the same config, so
+// the command drops its own copy and switches; afterwards the file on disk is the branch's committed
+// bytes and git has nothing staged and nothing changed.
+test("branch leaves no staged config when the branch's config differs only in its line endings", () => {
+  const repo = repoWithConfig({ configVersion: 1, repos: ['api'] });
+  const gitOut = (args) => execFileSync('git', args, { cwd: repo.root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  // The bytes of the config a branch holds, as committed.
+  const committedOn = (branch) => execFileSync('git', ['cat-file', 'blob', `${branch}:.slicekit/config.json`], { cwd: repo.root, stdio: ['ignore', 'pipe', 'pipe'] });
+  // On main, with the committed config at version 1: a command writes the migration. -> its bytes
+  const migrate = () => {
+    const r = runCli(['status'], { cwd: repo.root });
+    assert.match(r.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.equal(gitOut(['diff', '--name-only', 'HEAD']), '.slicekit/config.json');
+    return fs.readFileSync(repo.file);
+  };
+  // A plan branch that holds `content` as its committed config; the session is back on main after it.
+  const planBranch = (name, content) => {
+    gitOut(['switch', '-q', '-c', name]);
+    fs.writeFileSync(repo.file, content);
+    gitOut(['commit', '-q', '-am', 'chore: the migrated config']);
+    gitOut(['switch', '-q', 'main']);
+  };
+  try {
+    // A blob holds the bytes written and a checkout writes the blob's bytes, whatever this machine's git converts.
+    gitOut(['config', 'core.autocrlf', 'false']);
+    gitOut(['add', '-A']);
+    gitOut(['commit', '-q', '-m', 'config']);
+    const migrated = migrate();
+    const text = migrated.toString('utf8');
+    assert.ok(!text.includes('\r') && text.endsWith('}\n'), 'the migration writes LF lines and one newline at the end');
+    const variants = [
+      ['plan/config-crlf', 'CRLF line endings', Buffer.from(text.replace(/\n/g, '\r\n'))],
+      ['plan/config-blank', 'a blank line and spaces at its end', Buffer.from(`${text}  \n\n`)],
+    ];
+    for (const [name, what, content] of variants) {
+      planBranch(name, content);
+      assert.ok(committedOn(name).equals(content), `${what}: the branch does not hold the bytes written`);
+      assert.ok(!content.equals(migrated), what);
+      assert.ok(migrate().equals(migrated), what);
+
+      const cut = runCli(['branch', 'plan', name.slice('plan/'.length)], { cwd: repo.root });
+      assert.equal(cut.code, 0, `${what}: ${cut.stdout}${cut.stderr}`);
+      assert.equal(cut.stdout, `${name}\n`, what);
+      assert.doesNotMatch(cut.stderr, /commit or stash|would be overwritten/, what);
+      assert.equal(gitOut(['rev-parse', '--abbrev-ref', 'HEAD']), name, what);
+      // The config on disk is the branch's committed bytes; nothing is staged, nothing is changed.
+      assert.ok(fs.readFileSync(repo.file).equals(committedOn(name)), `${what}: the config on disk is not the branch's committed bytes`);
+      assert.equal(gitOut(['status', '--porcelain']), '', `${what}: the dropped copy left a change behind`);
+      assert.equal(gitOut(['diff', '--cached', '--name-only']), '', `${what}: the config is staged`);
+      assert.equal(gitOut(['stash', 'list']), '', `${what}: the change was stashed, not dropped`);
+      gitOut(['switch', '-q', 'main']);
+    }
+  } finally {
+    repo.cleanup();
+  }
+});

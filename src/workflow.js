@@ -58,24 +58,202 @@ export function runsOnValue(runsOn) {
 export const DEFAULT_JAVA = 25;
 const BUILD_FILES = { 'pom.xml': 'maven', 'build.gradle': 'gradle', 'build.gradle.kts': 'gradle' };
 // The tool counts only where a shell runs it: as the first word of a simple command. The command is
-// split at line breaks and at ; & | ( ); in each part, NAME=value assignments and the wrapper words
-// below (with the flags after them) and shell keywords such as then or do are skipped; a shell started with a flag holding c (sh -c,
+// split at line breaks and at ; & | ( ) outside quotes, and each part into words as a shell splits
+// them (shellCommands below); in each part, NAME=value assignments and the wrapper words
+// below (with the flags after them) and shell keywords such as then or do are skipped; a flag of a
+// wrapper that takes a value (sudo -u runner, nice -n 10, env -u FOO) has that value skipped with it,
+// so the value is never read as the command (issue #136); a shell started with a flag holding c (sh -c,
 // bash -lc) has its script read the same way. A mention such as echo "mvn test" or rg 'gradle' docs
 // is an argument, not a call.
 const JAVA_TOOLS = { mvn: 'maven', gradle: 'gradle', './gradlew': 'gradle' };
-const WRAPPERS = new Set(['env', 'time', 'nice', 'nohup', 'exec', 'command', 'sudo', 'xvfb-run']);
+// Each wrapper word, with its options that take a value in the next word: the letters of the short
+// ones and the names of the long ones. `--user=runner` and `-urunner` hold their value themselves.
+const WRAPPER_VALUES = {
+  env: { short: 'uC', long: ['unset', 'chdir'] },
+  time: { short: 'fo', long: ['format', 'output'] },
+  nice: { short: 'n', long: ['adjustment'] },
+  nohup: { short: '', long: [] },
+  exec: { short: 'a', long: [] },
+  command: { short: '', long: [] },
+  sudo: { short: 'CDghpRrTtUu', long: ['close-from', 'chdir', 'group', 'host', 'prompt', 'chroot', 'role', 'command-timeout', 'type', 'other-user', 'user'] },
+  'xvfb-run': { short: 'efnpsw', long: ['error-file', 'auth-file', 'server-num', 'xauth-protocol', 'server-args', 'wait'] },
+};
+const WRAPPERS = new Set(Object.keys(WRAPPER_VALUES));
+// Whether the flag `word` of `wrapper` takes its value from the next word. In a cluster of short
+// flags the first one that takes a value ends the flags: what follows it in the word is its value.
+function takesNextWord(wrapper, word) {
+  const { short, long } = WRAPPER_VALUES[wrapper];
+  if (word.startsWith('--')) return long.includes(word.slice(2));
+  const at = [...word.slice(1)].findIndex((c) => short.includes(c));
+  return at !== -1 && at === word.length - 2;
+}
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash']);
 // Shell keywords that open a command position: if ...; then mvn verify; fi.
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{']);
+// The simple commands of a shell command, each a list of words, read as a shell splits them (review H-1
+// of round 1 of P6/S-51): a word ends at unquoted white space; a line break or one of ; & | ( ) ends a
+// command only outside quotes; '...' is taken as written, "..." with a backslash before $, a backtick,
+// " or \ read as an escape, and a backslash outside quotes takes the next character as written (before
+// a line break it joins the two lines). Each word is { value, lead, known }: lead is the unquoted
+// text the word starts with, which is what makes it an assignment or a keyword.
+// Text the shell does not split is not split here either (review H-4 of round 2 of P6/S-51), so a
+// quote character in it opens no quote:
+// - a comment: a # that begins a word, to the end of its line;
+// - a here-document body: after <<WORD or <<-WORD (WORD quoted or not), the lines that follow the line
+//   of the operator, up to the line that is WORD (after its leading tabs for <<-). <<< is a here-string,
+//   not a here-document. When no line is WORD, no body is held back and the lines are read as commands.
+// The result is { commands, open, bodies }: open says a quote was still open at the end, bodies holds
+// the here-document bodies; toolCalled reads both again line by line (see there).
+// Two cases cannot be split with certainty:
+// - an unclosed quote: the quoted text runs to the end of the command, as a shell reads on for the
+//   closing quote, so no word after the quote is read as a command;
+// - a command substitution, $(...) or a pair of backticks: its output is not known, so the word that
+//   holds it has known false and is never read as a tool, a wrapper, a keyword or a shell, though it
+//   is still one word; the command inside it is read as a command of its own, since the shell runs it.
+// The delimiter of a here-document whose operator << ends before s[at]: { word, tabs, next }, with the
+// quotes of the word removed, tabs true for <<-, and next the index after the word. null when no word follows.
+function hereDelimiter(s, at) {
+  let i = at;
+  const tabs = s[i] === '-';
+  if (tabs) i += 1;
+  while (s[i] === ' ' || s[i] === '\t') i += 1;
+  const from = i;
+  let word = '';
+  while (i < s.length && !/[\s;&|()<>]/.test(s[i])) {
+    if (s[i] === "'" || s[i] === '"') {
+      const close = s.indexOf(s[i], i + 1);
+      if (close === -1) return null;
+      word += s.slice(i + 1, close);
+      i = close + 1;
+    } else {
+      if (s[i] === '\\' && i + 1 < s.length) i += 1;
+      word += s[i];
+      i += 1;
+    }
+  }
+  return i > from ? { word, tabs, next: i } : null;
+}
+function shellCommands(command) {
+  const commands = [];
+  const bodies = [];
+  let open = false;
+  const script = (s, start, inSubstitution) => {
+    let words = [];
+    let word = null;
+    let depth = 0;
+    let i = start;
+    let pending = [];
+    // Skips the bodies of the here-documents named on the line that ended just before s[i].
+    const hereBodies = () => {
+      for (const h of pending) {
+        let k = i;
+        while (k < s.length) {
+          const nl = s.indexOf('\n', k);
+          const end = nl === -1 ? s.length : nl;
+          const line = s.slice(k, end).replace(/\r$/, '');
+          if ((h.tabs ? line.replace(/^\t+/, '') : line) === h.word) {
+            bodies.push(s.slice(i, k));
+            i = Math.min(end + 1, s.length);
+            break;
+          }
+          k = end + 1;
+        }
+      }
+      pending = [];
+    };
+    const begin = () => { word ??= { value: '', lead: '', known: true, quoted: false }; return word; };
+    const add = (text, quoted) => {
+      const w = begin();
+      if (quoted) w.quoted = true;
+      else if (!w.quoted) w.lead += text;
+      w.value += text;
+    };
+    const endWord = () => { if (word) { words.push({ value: word.value, lead: word.lead, known: word.known }); word = null; } };
+    const endCommand = () => { endWord(); if (words.length > 0) commands.push(words); words = []; };
+    // A substitution starting at s[i]: reads its commands, marks the word, and returns the index after it.
+    const substitution = () => {
+      const w = begin();
+      w.known = false;
+      w.quoted = true;
+      if (s[i] === '$') return script(s, i + 2, true);
+      let inner = '';
+      let k = i + 1;
+      while (k < s.length && s[k] !== '`') {
+        if (s[k] === '\\' && k + 1 < s.length) k += 1;
+        inner += s[k];
+        k += 1;
+      }
+      script(inner, 0, false);
+      return k + 1;
+    };
+    while (i < s.length) {
+      const c = s[i];
+      if (c === '\\') {
+        if (s[i + 1] === '\n') { i += 2; continue; }
+        if (i + 1 < s.length) add(s[i + 1], true);
+        i += 2;
+      } else if (c === "'") {
+        const close = s.indexOf("'", i + 1);
+        if (close === -1) open = true;
+        add(s.slice(i + 1, close === -1 ? s.length : close), true);
+        i = close === -1 ? s.length : close + 1;
+      } else if (c === '"') {
+        add('', true);
+        i += 1;
+        while (i < s.length && s[i] !== '"') {
+          if (s[i] === '\\' && '$`"\\\n'.includes(s[i + 1] ?? ' ')) { if (s[i + 1] !== '\n') add(s[i + 1], true); i += 2; }
+          else if ((s[i] === '$' && s[i + 1] === '(') || s[i] === '`') i = substitution();
+          else { add(s[i], true); i += 1; }
+        }
+        if (i >= s.length) open = true;
+        i += 1;
+      } else if ((c === '$' && s[i + 1] === '(') || c === '`') {
+        i = substitution();
+      } else if (c === '#' && word === null) {
+        while (i < s.length && s[i] !== '\n') i += 1;
+      } else if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<' && s[i - 1] !== '<' && hereDelimiter(s, i + 2)) {
+        const here = hereDelimiter(s, i + 2);
+        endWord();
+        pending.push(here);
+        i = here.next;
+      } else if (c === '\n' || ';&|()'.includes(c)) {
+        endCommand();
+        i += 1;
+        if (c === '\n') hereBodies();
+        if (c === '(') depth += 1;
+        else if (c === ')') {
+          if (depth > 0) depth -= 1;
+          else if (inSubstitution) return i;
+        }
+      } else if (/\s/.test(c)) {
+        endWord();
+        i += 1;
+      } else {
+        add(c, false);
+        i += 1;
+      }
+    }
+    endCommand();
+    return i;
+  };
+  script(String(command), 0, false);
+  return { commands, open, bodies };
+}
+// The reading before review H-1 of round 1 of P6/S-51: each line and each part between ; & | ( ) on its
+// own, split at white space, with no quote read. It is the floor under the word reader (toolCalled).
 const unquote = (word) => word.replace(/^["']+|["']+$/g, '');
-function toolCalled(command) {
+function toolCalledByLine(command) {
   for (const part of String(command).split(/[\n;&|()]+/)) {
     const words = part.trim().split(/\s+/).filter(Boolean);
     let i = 0;
     while (i < words.length) {
       const word = unquote(words[i]);
       if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || KEYWORDS.has(word)) { i += 1; continue; }
-      if (WRAPPERS.has(word)) { i += 1; while (i < words.length && words[i].startsWith('-')) i += 1; continue; }
+      if (WRAPPERS.has(word)) {
+        i += 1;
+        while (i < words.length && words[i].startsWith('-')) i += takesNextWord(word, unquote(words[i])) ? 2 : 1;
+        continue;
+      }
       break;
     }
     if (i >= words.length) continue;
@@ -84,7 +262,49 @@ function toolCalled(command) {
     if (SHELLS.has(first)) {
       const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
       if (flag !== -1) {
-        const inner = toolCalled(unquote(words.slice(flag + 1).join(' ')));
+        const inner = toolCalledByLine(unquote(words.slice(flag + 1).join(' ')));
+        if (inner) return inner;
+      }
+    }
+  }
+  return null;
+}
+// The tool the word reader finds. When it finds none, the floor (review H-4 of round 2 of P6/S-51):
+// - a quote was still open at the end, so the words after it were held as quoted text: the whole
+//   command is read again line by line, and a tool that reading finds counts;
+// - a here-document body was held back as text: each body is read line by line, since a body can be
+//   the script of a shell (bash <<EOF) and the reader does not know which command reads it.
+// In these two cases the reader finds no less than the line-by-line reading did, at the cost of a JDK
+// step for a mention after an unclosed quote or in a here-document that no shell runs.
+function toolCalled(command) {
+  const { commands, open, bodies } = shellCommands(command);
+  const read = toolRead(commands);
+  if (read) return read;
+  if (open) return toolCalledByLine(command);
+  return bodies.map(toolCalledByLine).find(Boolean) ?? null;
+}
+function toolRead(commands) {
+  for (const words of commands) {
+    const is = (w, set) => w.known && set.has(w.value);
+    let i = 0;
+    while (i < words.length) {
+      const word = words[i];
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word.lead) || (word.lead === word.value && is(word, KEYWORDS))) { i += 1; continue; }
+      if (is(word, WRAPPERS)) {
+        i += 1;
+        while (i < words.length && words[i].value.startsWith('-')) i += words[i].known && takesNextWord(word.value, words[i].value) ? 2 : 1;
+        continue;
+      }
+      break;
+    }
+    if (i >= words.length) continue;
+    const first = words[i];
+    if (!first.known) continue;
+    if (JAVA_TOOLS[first.value]) return JAVA_TOOLS[first.value];
+    if (SHELLS.has(first.value)) {
+      const flag = words.findIndex((w, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w.value));
+      if (flag !== -1 && flag + 1 < words.length) {
+        const inner = toolCalled(words[flag + 1].value);
         if (inner) return inner;
       }
     }
