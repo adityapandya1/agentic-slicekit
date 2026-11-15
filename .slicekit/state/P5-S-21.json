@@ -1,0 +1,36 @@
+{
+  "slice": "P5/S-21",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "3c89ffcae7ebcdfa6c0134bf0595cb6dff8a6216",
+  "frozenTests": [
+    "test/check/runbook.test.js",
+    "test/commands/release.test.js",
+    "test/check/ci-title.test.js",
+    "test/briefs.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T01:04:05.826Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "3c89ffcae7ebcdfa6c0134bf0595cb6dff8a6216",
+        "testExit": 1,
+        "tests": [
+          "test/check/runbook.test.js",
+          "test/commands/release.test.js",
+          "test/check/ci-title.test.js",
+          "test/briefs.test.js"
+        ]
+      }
+    }
+  ]
+}
