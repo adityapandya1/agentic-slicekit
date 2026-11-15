@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultConfig, loadConfig, validateConfig } from '../src/config.js';
 import { init } from '../src/init.js';
 import { PINS_PATH, WORKFLOW_PATH, loadPins, renderWorkflow, yamlScalar } from '../src/workflow.js';
+import { allSteps, docSteps } from '../src/observability.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { CI_PULL_REQUEST, runCli } from './helpers/run-cli.js';
 import { appendJournal, journalFile, parseLine } from '../src/journal.js';
@@ -1044,4 +1045,153 @@ test('a repository with no Java build renders as before', () => {
   const own = renderWorkflow(loadConfig(kitRoot), loadPins(), { root: kitRoot });
   assert.ok(!own.includes('setup-java'));
   assert.equal(fs.readFileSync(path.join(kitRoot, WORKFLOW_PATH), 'utf8'), own);
+});
+
+// P5/S-22 (REQ-3.11, D-56): the Step and Command table under `## CI steps the monitoring setup
+// requires` in observability.md renders as obs-<n> jobs, after the jobs of ci.observabilitySteps.
+
+const s22Doc = (...rows) =>
+  ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command |', '|---|---|', ...rows, '', '## On-call contact', '', 'None.', ''].join('\n');
+const s22DocFile = (root) => path.join(root, 'docs', 'observability.md');
+const s22ObsIds = (yml) => jobIds(yml).filter((id) => id.startsWith('obs-'));
+
+function s22SetConfigSteps(root, steps) {
+  const file = path.join(root, '.slicekit', 'config.json');
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.ci.observabilitySteps = steps;
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+}
+
+test('observability steps from observability.md and config become jobs', () => {
+  withKitRepo((root) => {
+    s22SetConfigSteps(root, [{ name: 'Smoke', run: 'curl -fsS "$URL"', env: { URL: 'https://x.example.com' } }]);
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | `npm run trace-check` |', '| Log shape | npm run log-shape |'));
+
+    const printed = runCli(['workflow'], { cwd: root });
+    assert.equal(printed.code, 0, printed.stderr);
+    const yml = printed.stdout;
+    // Config's step first, then the doc's rows in their order.
+    assert.deepEqual(s22ObsIds(yml), ['obs-1', 'obs-2', 'obs-3']);
+    const one = jobBlock(yml, 'obs-1');
+    assert.ok(one.includes('name: Smoke\n'), one);
+    assert.ok(one.includes('run: curl -fsS "$URL"\n'), one);
+    const two = jobBlock(yml, 'obs-2');
+    assert.ok(two.includes('name: Trace check\n'), two);
+    assert.ok(two.includes('run: npm run trace-check\n'), two);
+    const three = jobBlock(yml, 'obs-3');
+    assert.ok(three.includes('name: Log shape\n'), three);
+    assert.ok(three.includes('run: npm run log-shape\n'), three);
+
+    // Each is needed by the checks job and required by SLICEKIT_CHECKS_OK.
+    const checks = jobBlock(yml, 'checks');
+    assert.ok(checks.includes('needs: [gate, cmd-test, obs-1, obs-2, obs-3]'), checks);
+    const okLine = /^ {10}SLICEKIT_CHECKS_OK: (.*)$/m.exec(checks);
+    assert.ok(okLine, checks);
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) assert.ok(okLine[1].includes(`needs.${id}.result == 'success'`), `${id}: ${okLine[1]}`);
+
+    // --write puts the same render in the file, and --check accepts it.
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.equal(fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8'), yml);
+    assert.equal(runCli(['workflow', '--check'], { cwd: root }).code, 0);
+  });
+});
+
+test('an observability step with an empty command renders no job', () => {
+  withKitRepo((root) => {
+    s22SetConfigSteps(root, [{ name: 'Smoke', run: 'npm run smoke' }]);
+    const text = s22Doc('| Trace check | npm run trace-check |', '| Log shape | |');
+    fs.writeFileSync(s22DocFile(root), text);
+    const line = text.split('\n').findIndex((l) => l.startsWith('| Log shape |')) + 1;
+
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.ok(wrote.stderr.includes(`docs/observability.md:${line}: step "Log shape" has no command; no job rendered`), wrote.stderr);
+    const yml = fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8');
+    assert.deepEqual(s22ObsIds(yml), ['obs-1', 'obs-2']);
+    assert.ok(jobBlock(yml, 'obs-2').includes('name: Trace check\n'));
+    assert.ok(!yml.includes('Log shape'), 'the row with no command leaves nothing in the workflow');
+    assert.ok(jobBlock(yml, 'checks').includes('needs: [gate, cmd-test, obs-1, obs-2]'));
+  });
+});
+
+test('a new row in observability.md is workflow drift', () => {
+  withKitRepo((root) => {
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | npm run trace-check |'));
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.deepEqual(s22ObsIds(fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8')), ['obs-1']);
+    assert.equal(runCli(['workflow', '--check'], { cwd: root }).code, 0);
+
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | npm run trace-check |', '| Log shape | npm run log-shape |'));
+    const drift = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(drift.code, 1, drift.stderr);
+    assert.match(drift.stderr, /\.github\/workflows\/slicekit\.yml differs from the generator/);
+  });
+});
+
+// Review round 1 of P5/S-22: the golden file of a config step and a doc step.
+test('golden workflow for a config step and a step of observability.md (REQ-3.11)', () => {
+  const file = fileURLToPath(new URL('./fixtures/golden/workflow/backend-doc-step.yml', import.meta.url));
+  const golden = fs.readFileSync(file, 'utf8');
+  assert.ok(!golden.includes('\r'), 'golden is LF');
+  const cfg = exampleConfig();
+  const read = docSteps(s22Doc('| Trace check | `npm run trace-check` |'), 'docs/observability.md');
+  const all = allSteps(cfg, read);
+  assert.deepEqual(all.errors, []);
+  assert.deepEqual(all.warnings, []);
+  assert.equal(renderWorkflow(cfg, loadPins(), { steps: all.steps }), golden);
+});
+
+// Review round 2 of P5/S-22.
+test('a header naming Step and Command with any other column set is refused with its line (H-7)', () => {
+  const withHeader = (header, ...rows) =>
+    ['# Observability', '', '## CI steps the monitoring setup requires', '', header, '|---|---|---|', ...rows, '', '## On-call contact', '', 'None.', ''].join('\n');
+  const rel = 'docs/observability.md';
+
+  for (const [header, row] of [
+    ['| Step | Command | Note |', '| Trace check | npm run trace-check | nightly |'],
+    ['| Command | Step |', '| npm run trace-check | Trace check |'],
+    ['| Owner | Step | Command |', '| ada | Trace check | npm run trace-check |'],
+  ]) {
+    const read = docSteps(withHeader(header, row), rel);
+    assert.equal(read.errors.length, 1, `${header}: ${JSON.stringify(read)}`);
+    assert.ok(read.errors[0].startsWith(`${rel}:5: `), read.errors[0]);
+    assert.deepEqual(read.steps, [], header);
+  }
+
+  // A header of the two columns with no divider line under it is refused, not skipped.
+  const bare = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command |', '| Trace check | npm run trace-check |', ''].join('\n');
+  const bareRead = docSteps(bare, rel);
+  assert.equal(bareRead.errors.length, 1, JSON.stringify(bareRead));
+  assert.ok(bareRead.errors[0].startsWith(`${rel}:5: `), bareRead.errors[0]);
+
+  // A header with no closing bar is the steps table's header, and its rows are read.
+  const open = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command', '|---|---', '| Trace check | npm run trace-check |', ''].join('\n');
+  const openRead = docSteps(open, rel);
+  assert.deepEqual(openRead.errors, []);
+  assert.deepEqual(openRead.steps.map((s) => s.name), ['Trace check']);
+
+  // A table of other columns before the steps table is refused at its header: the section takes the one steps table.
+  const stepsTable = ['| Step | Command |', '|---|---|', '| Trace check | npm run trace-check |', ''];
+  const other = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Owner | Contact |', '|---|---|', '| ada | ada@example.com |', '', ...stepsTable].join('\n');
+  const otherRead = docSteps(other, rel);
+  assert.equal(otherRead.errors.length, 1, JSON.stringify(otherRead));
+  assert.ok(otherRead.errors[0].startsWith(`${rel}:5: `), otherRead.errors[0]);
+  // Without that table, the steps table is read.
+  const alone = docSteps(['# Observability', '', '## CI steps the monitoring setup requires', '', ...stepsTable].join('\n'), rel);
+  assert.deepEqual(alone.steps.map((s) => s.name), ['Trace check']);
+
+  // `slicekit workflow --write` and `--check` refuse the third column, name the file and line, and write nothing.
+  withKitRepo((root) => {
+    const workflow = path.join(root, WORKFLOW_PATH);
+    const before = fs.readFileSync(workflow, 'utf8');
+    fs.writeFileSync(s22DocFile(root), withHeader('| Step | Command | Note |', '| Trace check | npm run trace-check | nightly |'));
+    for (const mode of ['--write', '--check']) {
+      const r = runCli(['workflow', mode], { cwd: root });
+      assert.notEqual(r.code, 0, `${mode}: ${r.stdout}`);
+      assert.ok(r.stderr.includes(`${rel}:5: `), `${mode}: ${r.stderr}`);
+    }
+    assert.equal(fs.readFileSync(workflow, 'utf8'), before);
+  });
 });

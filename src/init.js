@@ -9,7 +9,7 @@ import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
-import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState } from './workflow.js';
+import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState, workflowSteps } from './workflow.js';
 import { getHost } from './adapters/githost/index.js';
 import { actionsPullRequestSetting, hasSyncJob, missingRules, requiredChecks } from './check/rules/host-rules.js';
 
@@ -255,6 +255,7 @@ function resolveConfig(root, { name, shape, docsRoot, commands, cli, defaultBran
     if (!raw) return { cfg, cliWarning: null, cliFilled: false };
     const errors = validateConfig(raw);
     if (errors.length > 0) throw new ConfigError(errors);
+    workflowSteps(root, raw); // as in init(): refused before the config is written back
     writeText(file, `${JSON.stringify(raw, null, 2)}\n`);
     return { cfg: loadConfig(root), cliWarning: probed.warning, cliFilled: true };
   }
@@ -356,6 +357,7 @@ export function protect(root, { env = process.env } = {}) {
 export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultBranch, env = process.env }) {
   const { cfg, cliWarning, cliFilled } = resolveConfig(root, { name, shape, docsRoot, commands, cli, defaultBranch, env });
   readSettings(root); // a corrupt .claude/settings.json stops init before anything is written
+  workflowSteps(root, cfg); // so does a step of observability.md the workflow cannot carry (D-56)
 
   const paths = kitPaths(root, cfg);
   const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
@@ -386,6 +388,7 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultB
   }
   // The CI workflow (REQ-3.11): written when absent; an existing one is the team's and stays as is.
   const workflow = workflowState(root, cfg);
+  warnings.push(...workflow.warnings);
   if (workflow.current === null) {
     writeText(workflow.file, workflow.expected);
     lists.created.push(WORKFLOW_PATH);

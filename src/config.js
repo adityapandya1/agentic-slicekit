@@ -84,7 +84,7 @@ export const GITHUB_EXPRESSION = /\$\{\{/;
 export const LINE_SEPARATOR = /[\u0085\u2028\u2029]/;
 
 // Errors for text that lands in the generated workflow; expression false where ${{ … }} is the intended use (env).
-function workflowTextErrors(at, value, { expression = true } = {}) {
+export function workflowTextErrors(at, value, { expression = true } = {}) {
   if (typeof value !== 'string') return [];
   const errors = [];
   if (expression && GITHUB_EXPRESSION.test(value)) errors.push(`${at}: contains a GitHub expression; pass values through env:`);
