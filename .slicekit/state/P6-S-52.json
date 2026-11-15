@@ -1,0 +1,38 @@
+{
+  "slice": "P6/S-52",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
+  "frozenTests": [
+    "test/hooks/pre-bash.test.js",
+    "test/hooks/pre-bash-redirect.test.js",
+    "test/hooks/pre-bash-deny.test.js",
+    "test/hooks/pre-edit.test.js",
+    "test/config.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T12:14:29.828Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "520fc24f7cbf5d24fc82a4cee17864194938e8c1",
+        "testExit": 1,
+        "tests": [
+          "test/hooks/pre-bash.test.js",
+          "test/hooks/pre-bash-redirect.test.js",
+          "test/hooks/pre-bash-deny.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/config.test.js"
+        ]
+      }
+    }
+  ]
+}
