@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.3.4
+
+- P5/S-23 `/slicekit ops` and `/slicekit audit` (#156)
+
 ## 0.3.3
 
 - P5/S-22 Observability steps in CI (#149)
