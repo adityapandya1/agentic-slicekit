@@ -137,20 +137,36 @@ function actions(ls) {
   );
 }
 
+// A Proposed actions section that proposes no action is this one line.
+const NONE = 'None.';
+
+// The lines of a section above its first closing line, `Skipped:` or `Not checked:`, outside a fenced
+// block. The closing lines end the section: a closing line that wraps, or a list under it, is no action.
+function beforeFooter(ls) {
+  let fenced = false;
+  for (let i = 0; i < ls.length; i++) {
+    if (FENCE.test(ls[i].text)) fenced = !fenced;
+    else if (!fenced && FOOTER.test(ls[i].text)) return ls.slice(0, i);
+  }
+  return ls;
+}
+
 // What is wrong with an ops report, one `<rel>:<line> <message>` per problem (REQ-2.13): each of the
 // three sections present and holding a line; every slice and pull request named in the first one in
 // the graph; every `<file>:<line>` cited in First checks a line that exists; every proposed action,
-// whether a list item, a plain line or a table row, marked by who may take it; the two closing lines.
+// whether a list item, a plain line or a table row, marked by who may take it, up to the first closing
+// line, or the one line `None.` for no action; the two closing lines.
 export function opsReportProblems(root, index, rel, text) {
   const out = [];
   const sections = reportSections(text);
-  const content = (name) => {
+  const content = (name, closed = false) => {
     const section = sections.get(name.toLowerCase());
     if (!section) {
       out.push(`${rel}:1 no "## ${name}" section`);
       return [];
     }
-    const held = section.lines.filter((l) => l.text.trim() !== '' && !FOOTER.test(l.text));
+    const upTo = closed ? beforeFooter(section.lines) : section.lines;
+    const held = upTo.filter((l) => l.text.trim() !== '' && !FOOTER.test(l.text));
     if (held.length === 0) out.push(`${rel}:${section.line} the "## ${name}" section is empty`);
     return held;
   };
@@ -173,8 +189,11 @@ export function opsReportProblems(root, index, rel, text) {
     }
   }
 
-  for (const action of actions(content(OPS_SECTIONS[2]))) {
-    if (!action.marked) out.push(`${rel}:${action.first} ${action.message}`);
+  const proposed = content(OPS_SECTIONS[2], true);
+  if (!(proposed.length === 1 && proposed[0].text.trim() === NONE)) {
+    for (const action of actions(proposed)) {
+      if (!action.marked) out.push(`${rel}:${action.first} ${action.message}`);
+    }
   }
 
   return [...out, ...footerProblems(rel, text)];

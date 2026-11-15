@@ -143,6 +143,38 @@ test('opsReportProblems: an action written as a plain line or a table row is hel
   });
 });
 
+// P5/S-23 review H-5: the closing lines end the Proposed actions section, and a section that proposes
+// no action is the one line `None.`.
+test('opsReportProblems: the closing lines end the actions, and a section of no action is the line None.', () => {
+  const index = indexOf(['src/a.js'], [
+    { id: 'slice:P1/S-01', kind: 'slice', label: 'x' },
+    { id: 'pull-request:1', kind: 'pull-request', label: 'x' },
+    { id: 'pull-request:api#4', kind: 'pull-request', label: 'x' },
+  ]);
+  const END = 'the action does not end with who may take it: (anyone), (on-call) or (owner: <name>)';
+  withDir({ 'docs/runbook.md': 'one\ntwo\n' }, (root) => {
+    const check = (text) => opsReportProblems(root, index, 'r.md', text);
+    // A closing line that wraps onto a second line.
+    assert.deepEqual(check(OPS('- Read the log (anyone)\n\nSkipped: nothing\nNot checked: the CI history, since no tool\nreads it.')), []);
+    // A closing line followed by a list.
+    assert.deepEqual(check(OPS('- Read the log (anyone)\n\nSkipped: nothing\nNot checked:\n- the CI history\n- the log')), []);
+    // The first of the two, wrapped and followed by a list, with a paragraph after the second.
+    assert.deepEqual(check(OPS('- Read the log (anyone)\nSkipped: the release record, which\nnames no service\n- and the dashboard\n\nNot checked: nothing\n\nRestart it now')), []);
+    // An unmarked action above the closing lines is still refused.
+    assert.deepEqual(check(OPS('- Read the log (anyone)\n- Restart it\n\nSkipped: nothing\nNot checked:\n- the CI history')), [`r.md:12 ${END}`]);
+    // A closing label inside a fenced block ends nothing: the action under the block is still read.
+    assert.deepEqual(check(OPS('```\nSkipped: 2 files\n```\n\n- Restart it')), [`r.md:15 ${END}`]);
+    // No action: the one line `None.`, alone in the section.
+    assert.deepEqual(check(OPS('None.')), []);
+    assert.deepEqual(check(OPS('None.\n\nSkipped: nothing\nNot checked:\n- the CI history')), []);
+    assert.deepEqual(check(OPS('None.\n- Restart it')), [`r.md:11 ${END}`, `r.md:12 ${END}`]);
+    assert.deepEqual(check(OPS('- None.')), [`r.md:11 ${END}`]);
+    assert.deepEqual(check(OPS('Nothing to do')), [`r.md:11 ${END}`]);
+    // A section holding the closing lines alone is empty.
+    assert.deepEqual(check(OPS('').replace('\n\n\n', '\n\n')), ['r.md:9 the "## Proposed actions" section is empty']);
+  });
+});
+
 const CLAIMS = [
   { id: 'REQ-1.1', where: 'docs/spec/01-x.md:3', title: 'A', files: ['src/a.js'], since: null, candidates: [{ sha: 'a'.repeat(40), date: 'd', subject: 's' }] },
   { id: 'runbook#health', where: 'docs/runbook.md:1', title: 'Health', files: [], since: null, candidates: [] },
