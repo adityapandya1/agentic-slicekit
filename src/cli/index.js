@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { CONFIG_PATH, ConfigNewerError, migrateConfigFile } from '../config.js';
 import { auditCommand } from './audit.js';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
@@ -117,6 +119,24 @@ export async function main(argv, io) {
   if ((end === -1 ? rest : rest.slice(0, end)).includes('--help')) {
     io.stdout(commandUsage(command));
     return 0;
+  }
+  // REQ-5.6, D-60: an older config is migrated before the command reads it. A hook never writes the
+  // team's tracked file mid-turn; it reads the config migrated in memory (loadConfig).
+  if (command !== COMMANDS.hook && typeof io.cwd === 'string') {
+    try {
+      const migrated = migrateConfigFile(io.cwd);
+      if (migrated) {
+        io.stderr(`config: migrated ${CONFIG_PATH.split(path.sep).join('/')} from configVersion ${migrated.from} to ${migrated.to}
+`);
+        for (const change of migrated.changes) io.stderr(`  - ${change}
+`);
+      }
+    } catch (e) {
+      if (!(e instanceof ConfigNewerError)) throw e;
+      io.stderr(`slicekit: ${e.message}
+`);
+      return 2;
+    }
   }
   return command.run(rest, io);
 }

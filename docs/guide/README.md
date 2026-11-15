@@ -1,13 +1,14 @@
 # SliceKit documentation
 
-Version 0.2.1. A Node.js command-line tool for spec-driven agentic delivery, driven from Claude Code through its slash commands.
+A Node.js command-line tool for spec-driven agentic delivery, driven from Claude Code through its slash commands.
 
 slicekit is a Node.js command-line tool for spec-driven agentic delivery. A requirement document goes in and is snapshotted; an interview turns the answers into numbered decisions; those become a spec in which every requirement cites its source, then a plan of phases and slices. Each slice is then built to a reviewed pull request: failing tests first, then code, a reviewer's verdict and green CI. The rules live in the kit, not in a prompt: each slash command prints its procedure from the CLI, and the CLI, not the agent, runs git.
 
-The same guide is also a web page with a contents sidebar and a dark theme: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it. For print or offline reading there are A4 PDFs: [light](slicekit-documentation-v0.2.1-light.pdf) and [dark](slicekit-documentation-v0.2.1-dark.pdf).
+The reference of version 0.2.1 is also a web page with a contents sidebar and a dark theme, without the pages added since: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it. For print or offline reading there are A4 PDFs: [light](slicekit-documentation-v0.2.1-light.pdf) and [dark](slicekit-documentation-v0.2.1-dark.pdf).
 
 ## Contents
 
+- [Pages](#pages)
 - [Overview](#overview)
 - [Stages](#stages)
 - [Slash commands](#slash-commands)
@@ -21,6 +22,86 @@ The same guide is also a web page with a contents sidebar and a dark theme: [ope
   - [The graph and queries](#the-graph-and-queries)
   - [Maintenance](#maintenance)
 - [Conventions](#conventions)
+
+## Pages
+
+Every `slicekit` command, every `/slicekit` slash command and every rule of `slicekit check` has a page of its own. A test of the kit fails, naming the page, when a command, a slash command or a rule has none. The pages are written from the current CLI. The sections after this one are the reference written for version 0.2.1, kept as one page; where the two differ, the page linked here is the current one.
+
+### Slash commands
+
+| Page | What it does |
+|---|---|
+| [`/slicekit`](slash/slicekit.md) | Runs any of the nine procedures by name. It is the one slash command a person needs to remember. |
+| [`/slicekit intake`](slash/intake.md) | Brings a requirement document into the project and interviews the person about it. |
+| [`/slicekit specify`](slash/specify.md) | Writes the spec from the intake snapshots and the decisions, then opens the spec pull request. |
+| [`/slicekit gaps`](slash/gaps.md) | Finds each place where the spec is silent, vague or in conflict with the intake, asks the person about each, and closes every row. |
+| [`/slicekit plan`](slash/plan.md) | Writes the stack, the phases and the slice files from the spec, then opens the plan pull request. |
+| [`/slicekit build`](slash/build.md) | Builds one slice from `todo` to a pull request ready for a person to merge: failing tests first, then code, at most two review rounds, then green CI. |
+| [`/slicekit review`](slash/review.md) | Gives a slice pull request its independent verdict, from a session that holds no context of the build. |
+| [`/slicekit release`](slash/release.md) | Writes the release record of a phase whose slices are all merged, and opens the release pull request. It deploys nothing. |
+| [`/slicekit ops`](slash/ops.md) | Triages one symptom: the slices and pull requests that touched the files it names, the runbook's first checks, and the actions someone could take. It takes no action. |
+| [`/slicekit audit`](slash/audit.md) | Compares what the spec and the runbook claim with what the code, the tests and the CI history show. |
+
+### Commands
+
+| Page | What it does |
+|---|---|
+| [`slicekit audit`](commands/audit.md) | The two steps of `/slicekit audit` that the CLI takes: the claims handed to the auditor, and the check of the report it writes. |
+| [`slicekit baseline`](commands/baseline.md) | Shows the ratchet baselines, or lowers them to today's counts. |
+| [`slicekit branch`](commands/branch.md) | Puts the session on the work branch of a document pull request. |
+| [`slicekit build`](commands/build.md) | The steps of `/slicekit build` and `/slicekit review` that the CLI takes for one slice. The agent runs each; a person types one only to resume or inspect. |
+| [`slicekit check`](commands/check.md) | The kit's one gate: runs every check rule and prints each finding. |
+| [`slicekit ci`](commands/ci.md) | Decides whether a push changes only the kit's bookkeeping, so CI can skip the team's commands. |
+| [`slicekit decide`](commands/decide.md) | Writes a decision row outside the interview, or settles an open one. |
+| [`slicekit gaps`](commands/gaps.md) | The steps of `/slicekit gaps` that the CLI takes: find gaps, record them, close them and verify the file. |
+| [`slicekit graph`](commands/graph.md) | Builds the traceability graph that the queries read. |
+| [`slicekit history`](commands/history.md) | Lists the slices whose commits touched the given paths. |
+| [`slicekit hook`](commands/hook.md) | Runs one Claude Code hook handler. Claude Code calls it; a person pipes JSON into it only to test a guard. |
+| [`slicekit impact`](commands/impact.md) | Lists what shares files or contracts with a target. |
+| [`slicekit init`](commands/init.md) | Adds the kit to a repository. Run it once at the repository root; running it again is safe. |
+| [`slicekit instructions`](commands/instructions.md) | Prints an agent's brief or a slash command's procedure. The rules of every agent and command live here, not in a prompt. |
+| [`slicekit intake`](commands/intake.md) | The steps of `/slicekit intake` that the CLI takes: freeze the source document, then record each interview question and its answer. |
+| [`slicekit journal`](commands/journal.md) | Verifies or prints the session journal, and records the journal heads after a merge. |
+| [`slicekit ops`](commands/ops.md) | The two steps of `/slicekit ops` that the CLI takes: what the ops agent is handed for a symptom, and the check of the report it replies with. |
+| [`slicekit plan`](commands/plan.md) | Says whether planning may start. |
+| [`slicekit pr`](commands/pr.md) | Commits, pushes and opens or updates a document pull request. |
+| [`slicekit ready-label`](commands/ready-label.md) | Decides whether a slice pull request gets the `ready` label, and sets it. The generated workflow runs it. |
+| [`slicekit release`](commands/release.md) | Writes a phase's release record and sets its slices released. It commits nothing and deploys nothing. |
+| [`slicekit review`](commands/review.md) | Checks out a pull request's head for an independent review. |
+| [`slicekit shipped`](commands/shipped.md) | Prints a phase's release record. |
+| [`slicekit spec`](commands/spec.md) | Checks that every requirement and interface in the spec is grounded. |
+| [`slicekit stage`](commands/stage.md) | Checks, from the files, that a stage and every stage before it are complete. |
+| [`slicekit state`](commands/state.md) | Reads or writes one slice's state file. The build commands call it; a person types it rarely. |
+| [`slicekit status`](commands/status.md) | Lists every slice's state, syncs merges from the git host and regenerates `BUILD.md`. |
+| [`slicekit sync`](commands/sync.md) | Opens the pull request that carries the state change after a merge. The CI sync job runs it; a person does not type it. |
+| [`slicekit trace`](commands/trace.md) | Traces a requirement down to its commits and tests, or a file up to its requirements. |
+| [`slicekit uncovered`](commands/uncovered.md) | Lists untested requirements, unlinked tests and commits outside a slice. |
+| [`slicekit update`](commands/update.md) | Compares the files the kit renders with what the installed version would write, and updates them. |
+| [`slicekit visualize`](commands/visualize.md) | Shows the graph as one self-contained page. |
+| [`slicekit workflow`](commands/workflow.md) | Prints, writes or checks the GitHub Actions workflow that the config renders. |
+
+### Check rules
+
+| Page | What it checks | The failure it prevents |
+|---|---|---|
+| [`ci-body`](rules/ci-body.md) | Under `--ci`, the pull request's body carries the sections the kit requires. | A pull request reaches review with no proof of what was run, no steps to try it and no word on what was skipped, so the reviewer and the person who merges cannot tell what the slice claims or what nobody checked. |
+| [`ci-title`](rules/ci-title.md) | Under `--ci`, the pull request's title begins with the slice it delivers, and that slice was opened through the build loop. | A pull request opened by hand skips the red tests, the frozen tests and the recorded verdicts, and once it merges no state file or graph edge links its commits to a slice or a requirement. |
+| [`citations`](rules/citations.md) | Every requirement cites a source that exists, every slice file names requirements and decisions that exist, and no ID is defined twice. | A requirement appears in the spec with nothing behind it, so nobody can say who asked for it or why, and a test exists that covers no requirement, so the graph cannot say what the test proves. |
+| [`commands`](rules/commands.md) | Every command the team declared in the config can be found on this machine. | A typo in the test command, or a tool that is not installed, makes every build step and CI job fail at its first run, long after the config was written, with an error that does not point back at the config. |
+| [`coverage`](rules/coverage.md) | Once a program is planned, every requirement belongs to a slice and every slice can be built and judged. | A requirement is planned into no slice and is never built, or two slices built side by side change the same file and the second one to merge overwrites or conflicts with the first. |
+| [`frozen`](rules/frozen.md) | On a slice branch, a test of the evaluation set stays as it was at the red commit. | An agent that cannot make a failing test pass edits the test until it does, and the slice merges green while the behaviour the evaluation set asked for was never built. |
+| [`hooks`](rules/hooks.md) | The git hooks the kit installs are present, executable and the ones git runs. | Git hooks do not survive a clone, so in a fresh clone nothing refuses a commit on the protected branch or adds the slice trailer, and nobody notices until the trailer rule fails in CI. |
+| [`host-rules`](rules/host-rules.md) | The git host's rulesets on the default branch hold every rule the kit relies on. | The default branch accepts a direct push or a merge with red CI, so every check the kit runs on a pull request can be bypassed by anyone with write access, and the kit's gate is advice only. |
+| [`journal`](rules/journal.md) | The session journal is an unbroken, append-only record, and under `--ci` its commits are signed. | Someone edits or deletes the record of what a session did, such as a declined finding or an amended test, and nothing shows the record was changed after the fact. |
+| [`layout`](rules/layout.md) | Every file and folder `slicekit init` lays down is still there, and `.claude/` holds no file of another shape. | A deleted or renamed part of the layout, such as the decisions file or the state folder, makes a later command fail in the middle of a build or read an empty folder as "nothing planned". |
+| [`managed`](rules/managed.md) | Every file the kit renders still holds the block the kit wrote. | Someone weakens a hook command, an agent's tool list or a slash command by editing the rendered file, and every later session runs with the weaker rule while the kit still appears installed. |
+| [`queue`](rules/queue.md) | `BUILD.md` reads exactly as the slice files and their state say. | The build queue a person reads says a slice is still to do when it is merged, or the reverse, so work is started twice or a release is planned on slices that are not done. |
+| [`references`](rules/references.md) | Every path, anchor and ID a doc names exists. | A spec, a runbook or a slice file points at a file that was renamed or a decision that was never recorded, and the person or agent who follows the reference at the moment it matters finds nothing there. |
+| [`runbook`](rules/runbook.md) | A slice that says it changes operations changes the runbook, or says why not. | A slice adds a queue, a migration or an alert and merges with the runbook unchanged, so the person on call meets the new failure with no first check written down. |
+| [`style`](rules/style.md) | No doc uses a phrase from the team's filler list. | Specs, verdicts and runbooks fill with phrases that state no fact, and a reader cannot tell a checked claim from decoration. |
+| [`sync-release`](rules/sync-release.md) | Under `--ci` on a sync pull request, the version, the changelog and the rendered files are exactly what CI computes for that merge. | A sync pull request, which a person approves as routine bookkeeping, carries a hand-set version number or an edited rendered hook, and that change ships in the next published version without a slice or a review. |
+| [`trailer`](rules/trailer.md) | On a slice branch, every commit the branch adds names the slice in a `Slice:` trailer. | A commit lands on the default branch that belongs to no slice, so `trace`, `history` and `uncovered` cannot say which requirement it serves or whether anyone reviewed it. |
+| [`workspace`](rules/workspace.md) | A slice names a repository the workspace lists, and a contract names both of its parties. | A slice is planned for a repository the graph never walks, or a contract has no named consumer, so `impact` reports that a change to the interface affects nobody. |
 
 ## Overview
 
@@ -48,9 +129,10 @@ A program moves through these stages in this order. Each stage command refuses t
 | 4. Gaps | `/slicekit gaps` | After the spec merges: every place the spec is silent, vague or in conflict with intake becomes a G row, and each row is closed by a decision or a requirement change. | `branch gaps`, `stage require spec-review`, `gaps scan`, `instructions auditor`, `gaps add`, `decide settle`, `gaps close`, `gaps verify`, `pr open` |
 | 5. Plan | `/slicekit plan` | The stack, the phases and the slice files, then `BUILD.md` and the plan pull request. | `branch plan`, `plan check`, `decide add`, `status --write`, `check`, `pr open` |
 | 6. Build | `/slicekit build [P<n>/S-<nn>]` | One slice: start, failing tests, code until green, a draft pull request, at most two review rounds, green CI. Side by side: `/slicekit build --parallel P<n>` uses `build parallel`. Occasional: `build amend`, `build render`, `build sync`. | `stage require plan`, `build next`, `build start`, `instructions developer`, `build red`, `build commit`, `build pr`, `instructions reviewer`, `build verdict`, `instructions fixer`, `build decline`, `build finish` |
-| 7. Independent review, then merge | `/slicekit review <PR>` | In a new Claude Code session with no memory of the build. When it reports `ready`, a person merges. CI then runs `status --sync --write` and the slice becomes `merged`. | `review start`, `instructions reviewer`, `build verdict --independent`, `build finish`, `status --sync` |
+| 7. Independent review, then merge | `/slicekit review <PR>` | In a new Claude Code session with no memory of the build. When it reports `ready`, a person merges. CI then runs `status --sync --write` and opens a `[sync]` pull request; when a person merges that one, the slice is `merged` on the default branch. | `review start`, `instructions reviewer`, `build verdict --independent`, `build finish`, `status --sync`, `sync open` |
 | 8. Release | `/slicekit release P<n>` | Once every slice of the phase is `merged`: writes the release record `releases/P<n>.md`, sets each slice `released`, rewrites `BUILD.md` and opens the `[release] P<n>` pull request. It does not deploy. | `release --dry-run`, `branch release`, `release`, `check`, `pr open` |
 | 9. The graph and its queries | any time | Build the traceability graph from the docs and git, then ask it questions. | `graph`, `trace`, `impact`, `history`, `shipped`, `uncovered`, `visualize` |
+| 10. Ops and audit | `/slicekit ops <symptom>`, `/slicekit audit [area]` | Any time after the first merge. Ops triages a symptom; audit compares the spec and runbook claims with the code. Each writes a report and changes no tracked file. | `graph`, `ops context`, `ops check`, `audit context`, `audit check` |
 
 ## Slash commands
 
@@ -102,13 +184,17 @@ Refuses, naming each slice, unless every slice of the phase is `merged` and pass
 
 **When:** after the last slice of a phase merges. Merging the pull request is the release.
 
-### `/slicekit-ops <symptom>` (not built yet)
+### `/slicekit-ops <symptom>`
 
-Specified (REQ-2.13) to triage a symptom against the runbook and history and return proposed actions, changing nothing. Today it prints that it is not built and exits 1.
+Triages one symptom: builds the graph, hands the ops agent the files the symptom names with their history, the runbook and the last release record, and checks the report the agent replies with. The report goes under the kit's reports folder, which the repository's ignore rules cover. It takes no action. See [its page](slash/ops.md).
 
-### `/slicekit-audit [area]` (not built yet)
+**When:** when something is wrong in a running system and you want the slices, the first checks and the possible actions.
 
-Specified (REQ-2.14) to check the spec and runbook claims against the code, tests and CI history. Today it prints that it is not built and exits 1.
+### `/slicekit-audit [area]`
+
+Lists each claim of the spec and the runbook in the area as `holds`, `drifted` or `unverifiable`, from the code, the tests and the CI history. The auditor agent writes the report and the CLI checks it. It changes no tracked file. See [its page](slash/audit.md).
+
+**When:** before a release, or when you doubt the spec still describes the code.
 
 ## Command reference
 
@@ -122,7 +208,7 @@ Adding the kit to a repository and keeping its own files current.
 
 ```text
 slicekit init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cli <command>]
-    [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>]
+    [--default-branch <name>] [--test <cmd>] [--lint <cmd>] [--build <cmd>] [--e2e <cmd>] [--protect]
 ```
 
 Adds the kit to the repository: `.slicekit/config.json`, the docs layout, the Claude Code commands, agents and hooks, the git hooks (it sets `core.hooksPath` to `.githooks`) and the CI workflow when there is none yet. It prints `created`, `updated` or `skipped` for each file, then `hooks run: <cli>`.
@@ -135,6 +221,8 @@ Adds the kit to the repository: `.slicekit/config.json`, the docs layout, the Cl
 - `--name <n>`: The program name. Default: the folder's name.
 - `--docs <dir>`: The docs root (`docsRoot`). Default: `docs`.
 - `--cli <command>`: How the hooks and the workflow run the kit. Default: `node node_modules/slicekit/bin/slicekit.js` with a local install, else `slicekit`. Init warns when the command does not answer `--version`.
+- `--default-branch <name>`: The default branch of a new config, in place of the one init would find.
+- `--protect`: Sets on the host each rule the default branch lacks, as one ruleset named `slicekit`. Needs admin rights. See [the init page](commands/init.md).
 - `--test`, `--lint`, `--build`, `--e2e <cmd>`: The team's commands. CI runs one job per declared command; `build pr` runs test, lint and build. No defaults.
 
 A new config's `defaultBranch`, which is also its protected branch, is the repository's own: the branch origin's HEAD points at when it still exists; else the first of `main`, `master` and git's `init.defaultBranch` that is a local branch; else, in an empty repository, the branch it is on when it has one of those names; else `main`. An existing config is left as it is.
@@ -773,7 +861,7 @@ The first form prints an agent's brief: its rules, the slice file, the cited req
 | Exit | Meaning |
 |---|---|
 | 0 | printed |
-| 1 | the template is not built (`ops` and `audit` in 0.2.1) |
+| 1 | a template the kit does not ship |
 | 2 | bad usage, an unknown role or an unknown command name |
 
 **Example:**
@@ -1129,7 +1217,7 @@ The gate, and the commands the generated workflow and Claude Code's hooks call. 
 slicekit check [--ci] [--json]
 ```
 
-The kit's one gate. It runs every rule: `references`, `style`, `queue`, `citations`, `coverage`, `trailer`, `commands`, `hooks`, `journal`, `layout`, `managed` and `workspace`, plus `ci-title` and `ci-body` under `--ci`. It prints each finding, then a summary line such as `check: 0 findings, 0 over baseline, 0 blocking, 14 rules`.
+The kit's one gate. It runs every rule: [citations](rules/citations.md), [commands](rules/commands.md), [coverage](rules/coverage.md), [frozen](rules/frozen.md), [hooks](rules/hooks.md), [host-rules](rules/host-rules.md), [journal](rules/journal.md), [layout](rules/layout.md), [managed](rules/managed.md), [queue](rules/queue.md), [references](rules/references.md), [runbook](rules/runbook.md), [style](rules/style.md), [trailer](rules/trailer.md) and [workspace](rules/workspace.md), plus [ci-body](rules/ci-body.md), [ci-title](rules/ci-title.md) and [sync-release](rules/sync-release.md), which judge only under `--ci`. It prints each finding, then a summary line such as `check: 0 findings, 0 over baseline, 0 blocking, 18 rules`.
 
 **When to use it:** Any time. The Stop hook runs it when the agent tries to end a turn, and blocks the turn while it is red. CI runs `check --ci` on every pull request. `build pr` runs it before every push.
 
@@ -1149,7 +1237,7 @@ The kit's one gate. It runs every rule: `references`, `style`, `queue`, `citatio
 ```console
 $ slicekit check
 references docs/spec/refunds.md:9 missing file docs/spec/07-nothing.md
-check: 1 findings, 1 over baseline, 1 blocking, 14 rules
+check: 1 findings, 1 over baseline, 1 blocking, 18 rules
 ```
 
 #### slicekit ci bookkeeping
@@ -1417,7 +1505,7 @@ graph.html
 
 ### Maintenance
 
-The slices' state, the ratchet baselines and the session journal.
+The slices' state, the ratchet baselines and the session journal. Three commands added after version 0.2.1 have no entry in this section and a page of their own: [ops](commands/ops.md), [audit](commands/audit.md) and [sync](commands/sync.md).
 
 #### slicekit status
 
@@ -1429,7 +1517,7 @@ slicekit status [--json] [--write] [--sync]
 
 Lists every slice as `<id>  <state>  PR <#n|->  <name>`. `--sync` first asks the git host which pull requests merged and moves those slices to `merged`. `--write` regenerates `BUILD.md` from the state files and prints `BUILD.md updated` or `unchanged` in place of the list.
 
-**When to use it:** Any time, to see where slices stand. `--write` after editing slice files. `--sync` after a merge; the generated workflow runs `status --sync --write` on every merge to the default branch and commits the result.
+**When to use it:** Any time, to see where slices stand. `--write` after editing slice files. `--sync` after a merge; the generated workflow runs `status --sync --write` on every merge to the default branch, and [sync open](commands/sync.md) puts the result up as a pull request.
 
 **What it does:**
 
@@ -1606,6 +1694,8 @@ $ slicekit baseline show
 slicekit journal verify [--against <ref>]
 ```
 
+A third subcommand, `journal heads <merge sha>`, is a step of the CI sync job; see [the journal page](commands/journal.md).
+
 Checks the session journal in `.slicekit/journal/`: each file's hash chain, no unexpected entries, and no committed journal file shortened or removed since the merge base. It never writes. The session-end hook appends one line per session. <!-- slicekit:example -->
 
 **When to use it:** When you suspect a journal was edited. `check`'s journal rule makes the same checks.
@@ -1684,6 +1774,10 @@ $ slicekit decide settle D-09 --answer="-1 means no limit" --type Decision
 | 2 | Cannot run: bad usage, an unknown ID, slice, stage or role, or a missing or invalid `.slicekit/config.json`. |
 
 Four commands differ on purpose: `ci bookkeeping` and `ready-label` exit 0 whatever they decide, `hook` exits 0 for every known hook and puts its decision in the JSON, and `baseline show` exits 0 even when a baseline file is damaged.
+
+### Config version
+
+`.slicekit/config.json` carries `configVersion`. A config with an older one is migrated on the first command that is not `hook`: the file is written once and each change is printed on stderr. A hook reads the config as migrated and writes nothing. A `configVersion` newer than the kit's is refused with a message naming both versions.
 
 ### Other conventions
 

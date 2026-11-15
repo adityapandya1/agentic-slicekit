@@ -3,8 +3,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { CONFIG_VERSION, ConfigNewerError, defaultConfig, migrateConfig, migrateConfigFile, validateConfig } from '../src/config.js';
 import { main, COMMANDS } from '../src/cli/index.js';
 import { runCli } from './helpers/run-cli.js';
+import { makeRepo } from './helpers/tmp-repo.js';
 
 test('unknown subcommand exits 2 with usage', () => {
   const r = runCli(['nope'], { cwd: os.tmpdir() });
@@ -103,5 +106,82 @@ test('main dispatches to a registered command with its args and io', async () =>
     assert.equal(received.ioArg, io);
   } finally {
     delete COMMANDS.tmp;
+  }
+});
+
+// ---- P5/S-24 (REQ-5.6, D-60): the migration runs before the command, init included ----
+
+// A repository whose config a version 1 kit wrote: today's defaults at configVersion 1, holding repos.
+function repoWithConfig(change) {
+  const repo = makeRepo({ commits: 1 });
+  const file = path.join(repo.root, '.slicekit', 'config.json');
+  fs.mkdirSync(path.dirname(file));
+  const cfg = { ...defaultConfig({ name: 'demo', shape: 'backend' }), ...change };
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+  return { ...repo, file };
+}
+
+test('init rerun on an older config migrates it first', () => {
+  const repo = repoWithConfig({ configVersion: 1, repos: [] });
+  try {
+    const r = runCli(['init', '--shape', 'backend'], { cwd: repo.root });
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stderr, /^config: migrated \.slicekit\/config\.json from configVersion 1 to 2$/m);
+    assert.ok(r.stderr.split(/\r?\n/).includes('  - removed repos, unread since D-47'), r.stderr);
+    const text = fs.readFileSync(repo.file, 'utf8');
+    assert.ok(text.includes('\n  "configVersion": 2,\n'), text);
+    assert.ok(!('repos' in JSON.parse(text)), text);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('a version 2 config holding repos is refused naming repos', () => {
+  const error = 'repos: removed in configVersion 2; list repositories in .slicekit/workspace.json';
+  const cfg = { ...defaultConfig({ name: 'demo', shape: 'backend' }), repos: [] };
+  assert.equal(cfg.configVersion, 2);
+  assert.deepEqual(validateConfig(cfg), [error]);
+  const repo = repoWithConfig({ repos: ['api'] });
+  try {
+    const before = fs.readFileSync(repo.file);
+    const r = runCli(['check'], { cwd: repo.root });
+    assert.notEqual(r.code, 0, r.stdout + r.stderr);
+    assert.ok(`${r.stdout}${r.stderr}`.includes(error), r.stdout + r.stderr);
+    assert.doesNotMatch(r.stderr, /config: migrated/);
+    assert.ok(fs.readFileSync(repo.file).equals(before), 'a refused config was rewritten');
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('migrateConfig copies, names the version read, and leaves a version that is no integer to validateConfig', () => {
+  const old = { ...defaultConfig({ name: 'demo', shape: 'backend' }), configVersion: 1, repos: [{ name: 'api' }, 'web'] };
+  const { cfg, from, changes } = migrateConfig(old);
+  assert.equal(from, 1);
+  assert.equal(cfg.configVersion, CONFIG_VERSION);
+  assert.ok(!('repos' in cfg));
+  assert.deepEqual(old.repos, [{ name: 'api' }, 'web'], 'the config passed in is not changed');
+  assert.deepEqual(changes, ['removed repos, unread since D-47', 'repos held api, web; list them in .slicekit/workspace.json']);
+  assert.deepEqual(validateConfig(cfg), []);
+
+  const current = defaultConfig({ name: 'demo', shape: 'backend' });
+  assert.deepEqual(migrateConfig(current), { cfg: current, from: CONFIG_VERSION, changes: [] });
+  for (const bad of ['1', 0, 1.5, null, undefined]) {
+    const odd = { ...current, configVersion: bad };
+    assert.deepEqual(migrateConfig(odd).changes, []);
+    assert.ok(validateConfig(migrateConfig(odd).cfg).includes(`configVersion: must be ${CONFIG_VERSION}`), String(bad));
+  }
+  assert.throws(() => migrateConfig({ ...current, configVersion: CONFIG_VERSION + 1 }), ConfigNewerError);
+
+  // No config file, or one that is not JSON, is not this function's to report.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-migrate-'));
+  try {
+    assert.equal(migrateConfigFile(dir), null);
+    fs.mkdirSync(path.join(dir, '.slicekit'));
+    fs.writeFileSync(path.join(dir, '.slicekit', 'config.json'), '{not json');
+    assert.equal(migrateConfigFile(dir), null);
+    assert.equal(fs.readFileSync(path.join(dir, '.slicekit', 'config.json'), 'utf8'), '{not json');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

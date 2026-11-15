@@ -7,16 +7,22 @@ agent finishes a turn and again in CI, not because anyone remembers to update it
 
 ## Status: preview
 
-Phases 1 to 3 work. Phases 1 and 2 are intake, specify, the gap scan, plan, the build from red
+Phases 1 to 5 work. Phases 1 and 2 are intake, specify, the gap scan, plan, the build from red
 tests to green, the review loop, the independent review and `/slicekit build --parallel`. Phase 3
 is the traceability graph (`graph`), its queries (`trace`, `impact`, `history`, `uncovered` and
 `shipped`), its views (`visualize`), and workspaces that let the graph span several repositories;
-a slice is still built in one repository. Phase 4 (hardening: host rules, guards, the journal, Jira)
-and Phase 5 (release, ops, audit and the other examples) are not built yet. [CHANGELOG.md](https://github.com/adityapandya1/agentic-slicekit/blob/main/CHANGELOG.md) lists what each
+a slice is still built in one repository. Phase 4 is hardening: `check` reads the git host's rules
+on the default branch and `init --protect` sets the missing ones, the guards refuse what they
+cannot judge, commits to the session journal must be signed, the state change after a merge goes
+up as a pull request, and declined should-haves can go to Jira. Phase 5 is `release` (the release
+record of a phase), `ops` (the triage of a symptom), `audit` (the claims of the spec and the
+runbook against the code), observability steps in CI, and two more examples, `examples/fullstack`
+and `examples/data`. [CHANGELOG.md](https://github.com/adityapandya1/agentic-slicekit/blob/main/CHANGELOG.md) lists what each
 version changed.
 
-The kit is on npm as a preview from 0.1.1. It needs Node 22 or later and git, and it has no
-dependencies of its own. In your project:
+The kit is on npm as a preview from 0.1.1. Versions from 0.3.0 are published from CI, each with a
+provenance attestation; the versions before it carry none. It needs Node 22 or later and git, and
+it has no dependencies of its own. In your project:
 
 ```sh
 npm install --save-dev slicekit
@@ -26,10 +32,6 @@ npx slicekit init --shape backend --name <your-project>
 Each change to the kit ships as the next 0.x version, and a 0.x version may change how a command
 works. After an upgrade, `npx slicekit update` shows what would change in each of the kit's files,
 and `npx slicekit update --yes` writes the changes.
-
-The [user guide](https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/README.md)
-explains the stages and the slash commands, and gives every command's syntax, options, exit codes
-and an example.
 
 The walkthrough below runs from a clone instead, because it copies files only the repository
 holds (`examples/backend` and `examples/walkthrough`):
@@ -244,6 +246,15 @@ pip install graphifyy && graphify install
 ```
 
 Then one Claude Code session runs both: `/graphify .` for the code graph, then `/slicekit build`.
+
+## User guide
+
+The [user guide](https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/README.md)
+explains the stages and has a page for every `slicekit` command, every `/slicekit` slash command
+and every check rule. A command's page gives its usage, what it reads and writes, its exit codes
+and an example. A check rule's page says what fails and the failure the rule prevents.
+[docs/adapters.md](https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/adapters.md)
+describes the contracts for anyone adding a git host, a tracker or an agent tool.
 
 ## How the hooks find slicekit
 

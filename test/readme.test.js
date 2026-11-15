@@ -163,7 +163,7 @@ test('the status names Phase 5 as built and links the guide', () => {
   const names = headings();
   assert.equal(names.indexOf('User guide'), names.indexOf('Scope') + 1, names.join(' | '));
   const guide = section('User guide');
-  const link = (file) => new RegExp(`\]\((https://github\.com/adityapandya1/agentic-slicekit/blob/main/)?${file.replace(/[.]/g, '\.')}\)`);
+  const link = (file) => new RegExp(`\\]\\((https://github\\.com/adityapandya1/agentic-slicekit/blob/main/)?${file.replace(/[.]/g, '\\.')}\\)`);
   assert.match(guide, link('docs/guide/README.md'));
   assert.match(guide, link('docs/adapters.md'));
   // What the guide holds: a page per command, per slash command and per check rule.

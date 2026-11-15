@@ -61,6 +61,8 @@ function copyExample(name) {
     }
     git(root, ['config', 'core.hooksPath', '.githooks']);
     git(root, ['add', '-A']);
+    // As init does: on Windows a plain add records the hooks as not executable, which the hooks rule reports.
+    git(root, ['add', '--chmod=+x', '--', '.githooks/pre-commit', '.githooks/pre-merge-commit', '.githooks/prepare-commit-msg']);
     git(root, ['commit', '-q', '-m', 'chore: slicekit init'], { ALLOW_PROTECTED_COMMIT: '1' });
   } catch (e) {
     cleanup();
