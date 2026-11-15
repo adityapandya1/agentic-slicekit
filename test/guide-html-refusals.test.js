@@ -158,6 +158,21 @@ const REFUSED = [
   // A heading that has no place or gives no id.
   ['a heading two levels below the one before it', '## Usage\n\n#### Deep', 2],
   ['a heading with no letter or digit', '## \\*\\*\\*', 0],
+  // An emoji short code, judged by its shape alone (H-8).
+  ['an emoji short code', 'A :tada: moment.', 0],
+  ['an emoji short code with a plus', 'A :+1: vote.', 0],
+  ['an emoji short code between a scope and a name', 'The name @scope:package:name is installed.', 0],
+  ['a time of three parts, which has the shape of a short code', 'It ran at 10:30:00 today.', 0],
+  ['an emoji short code in a list item', '- first\n- a :smile: here', 1],
+  // A table whose header row or delimiter line is indented (H-9).
+  ['a table delimiter line indented four spaces', '| a | b |\n    |---|---|\n| 1 | 2 |', 1],
+  ['a table delimiter line indented one space', '| a | b |\n |---|---|\n| 1 | 2 |', 1],
+  ['a table header row indented four spaces', '    | a | b |\n|---|---|\n| 1 | 2 |', 0],
+  // A numbered marker of nine digits is a marker (H-9).
+  ['a numbered list of nine digits that does not start at 1', '123456789. first', 0],
+  // A comment inside a link target is no comment (H-9).
+  ['a comment inside a link target', 'See [the page](init.md<!--x-->).', 0],
+  ['a comment with spaces inside a link target', 'See [the page](init.md<!-- x -->).', 0],
 ];
 
 // What Markdown reads as the start of a block when it stands straight after a list marker:
@@ -257,6 +272,12 @@ const CONVERTED = [
   ['one space at each end of a code span, taken off', 'The span ` a ` stays.', '<code>a</code>'],
   ['an @ that stands alone or begins a word', 'Meet @ noon, and ask @someone.', '<p>Meet @ noon, and ask @someone.</p>'],
   ['a table after a list and a blank line', '- first\n\n| a | b |\n|---|---|\n| 1 | 2 |', '<td>1</td><td>2</td>'],
+  // A number of ten digits with a dot is text, not a list marker (H-9).
+  ['a ten-digit number with a dot after a numbered item, as text of the item', '1. first\n1234567890. more', '<li>first 1234567890. more</li>'],
+  ['a ten-digit number with a dot at the start of a paragraph', '1234567890. text', '<p>1234567890. text</p>'],
+  // Colons that make no short code (H-8).
+  ['colons that hold no word between them', 'Note: a :: b and a : b.', '<p>Note: a :: b and a : b.</p>'],
+  ['a short code inside a code span', 'Write `:tada:` for it.', '<code>:tada:</code>'],
 ];
 
 for (const [name, md, holds] of CONVERTED) {
@@ -323,7 +344,13 @@ test('converted: emphasis, a link and an escaped character in the first heading 
 
 test('converted: a code span in the first heading of a page, and the words Check rule as a tag', (t) => {
   const html = written(t, { init: ['# Check rule: `layout` & more', '', 'Checks the layout.'] });
-  assert.ok(html.includes('<h4><code><code>layout</code> &amp; more</code></h4><span class="tag t-rare">Check rule</span>'));
+  assert.ok(html.includes('<h4><code>layout &amp; more</code></h4><span class="tag t-rare">Check rule</span>'));
+});
+
+test('converted: a first heading of a page written as one code span gives one code element', (t) => {
+  const html = written(t, { init: ['# `slicekit init`', '', 'Adds the kit.'] });
+  assert.ok(html.includes('<h4><code>slicekit init</code></h4>'));
+  assert.doesNotMatch(html, /<code>[^<]*<code>/, 'a code element opens inside another');
 });
 
 test('refused: a link to a missing page in the first heading of a page', (t) => {
@@ -376,6 +403,37 @@ test('converted: emphasis in the heading of a group of pages', (t) => {
   const html = written(t, { index: indexOf({ group: '### The *commands*' }) });
   assert.ok(html.includes('<h2>The <em>commands</em></h2>'));
   assert.ok(html.includes('<a href="#the-commands">The <em>commands</em></a>'));
+});
+
+// B-8: the one paragraph of the index left out is the one that links the web page itself.
+for (const [name, target] of [['a source file two folders up', '../../src/cli.js'], ['a folder of the guide', 'commands/'],
+  ['a file beside the index that is no page', 'notes.txt']]) {
+  test(`refused: a paragraph of the index that links ${name}`, (t) => {
+    const index = indexOf({ before: ['## Conventions', '', 'The first paragraph.', '', `See [the file](${target}) for more.`, '', 'The third paragraph.', ''] });
+    const guide = refusedAt(t, { index }, 'README.md', index, target);
+    assert.match(run(['--guide', guide]).out, /leads to nothing in the guide/);
+  });
+}
+
+test('converted: the paragraph of the index that links the web page itself is left out, and only it', (t) => {
+  const html = written(t, { index: indexOf({ before: ['## Conventions', '', 'The first paragraph.', '', 'Open [`slicekit-guide.html`](slicekit-guide.html) in a browser.', '', 'The third paragraph.', ''] }) });
+  assert.ok(html.includes('<p>The first paragraph.</p>') && html.includes('<p>The third paragraph.</p>'));
+  assert.ok(!html.includes('in a browser'), 'the paragraph that links the web page is in the page');
+});
+
+test('refused: a paragraph that links the web page itself and a file that is no page', (t) => {
+  const index = indexOf({ before: ['## Conventions', '', 'Open [it](slicekit-guide.html) or [the source](../../src/cli.js).', ''] });
+  refusedAt(t, { index }, 'README.md', index, '../../src/cli.js');
+});
+
+test('refused: a paragraph under the Contents section of the index', (t) => {
+  const index = indexOf({ before: ['## Contents', '', '- [Pages](#pages)', '', 'A paragraph the page would leave out.', ''] });
+  refusedAt(t, { index }, 'README.md', index, 'A paragraph the page');
+});
+
+test('refused: a list under the Pages section of the index', (t) => {
+  const index = [...indexOf(), '- an item the page would leave out', ''];
+  refusedAt(t, { index }, 'README.md', index, 'an item the page');
 });
 
 test('refused: a ### heading of the index before its first ## heading', (t) => {

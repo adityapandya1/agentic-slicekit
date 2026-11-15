@@ -11,9 +11,13 @@
 // Contents and Pages, then one section per group of `## Pages`, each holding one section per page
 // in the order of the group's table. The section of `<folder>/<name>.md` has the id
 // `<folder>-<name>`. A link to a page, or to a heading of a page, becomes a link inside the page.
-// Left out of the index: its Contents section, its Pages section but for the group headings and the
-// link in the first cell of each row (the contents list of the web page replaces both) and a
-// paragraph that links a file beside the index that is no Markdown page.
+// Left out of the index, and nothing else of it: the list of its Contents section (any other block
+// there is refused); the paragraphs of its Pages section and the cells of a Pages row after the
+// first (a list or a code block there is refused; the group headings and the link in the first cell
+// of each row are kept, and the contents list of the web page replaces the rest); a paragraph that
+// links the web page itself, `slicekit-guide.html` beside the index, whose other links are judged as
+// every link is. Any other link to a file that is no page of the guide, a folder included, is
+// refused with the file and line, in a paragraph, a list item, a table cell or a heading.
 //
 // The bytes depend only on the files read and on this script: no version, date, user name or path of
 // this machine, and every line ends in LF. `node:fs` and `node:path` only.
@@ -31,7 +35,8 @@
 //   - a code block between two fence lines of ``` or ~~~ that start in the first column, the first
 //     with nothing or one language name after the marks, the second of the same mark and at least
 //     as many of them; its text is literal, a fence-mark line four or more spaces in included;
-//   - a list of - * or + items, or of numbered items that start at 1, each item's text on one or
+//   - a list of - * or + items, or of numbered items that start at 1 (a marker of one to nine
+//     digits; a longer number with a dot or bracket is text), each item's text on one or
 //     more lines, the later ones indented or not, with or without blank lines between items, however
 //     many (the list is written without them), and a list inside an item at any depth, its items
 //     starting where the text of that item starts or up to three spaces further in;
@@ -45,7 +50,8 @@
 //   - an HTML comment that begins and ends on one line, which is left out, in two places only: as
 //     the whole of a line in the first column (it ends the paragraph, list or table before it), and
 //     after other text of a heading, a paragraph line or a list item, where it holds no two dashes
-//     together, begins with no > or -> and ends with no dash;
+//     together, begins with no > or -> and ends with no dash, and stands in no link target (there
+//     it is kept and the link is refused);
 //   - as the character itself: an underscore inside a word or between two spaces, a star between two
 //     spaces, a < that no letter, /, ! or ? follows, an & that begins no entity, an @ that does not
 //     stand between two words.
@@ -70,7 +76,8 @@
 // marker changes, a numbered list that does not start at 1. Straight after a line of a list item,
 // with no blank line between, only the next item, an item of a list inside the item and more text
 // of the item are read; a table, a heading, a code block and a comment line are refused there,
-// indented or not (Markdown reads such a table as text of the item). Also refused: a table straight
+// indented or not (Markdown reads such a table as text of the item). The delimiter line of a table
+// is judged by where it stands as its header row is: indented, it is refused. Also refused: a table straight
 // after a line of a paragraph, a table row with no leading bar or text straight after a table, a
 // table row or delimiter line with the wrong number of cells, a column alignment, an HTML comment
 // in a line that starts with a bar, a line break made by two trailing spaces or a trailing
@@ -84,7 +91,9 @@
 // any name, an HTML comment that is not left out by the rule above, a link in angle brackets, an
 // HTML entity, a web address written bare (http, https, ftp, www., mailto: or xmpp:), an e-mail
 // address written bare, judged broadly: an @ with a letter, a digit, a dot, a plus or a dash before
-// it and a letter, a digit, a dash or an underscore after it; a code span that is not closed on the
+// it and a letter, a digit, a dash or an underscore after it; an emoji short code (a colon, one or
+// more letters, digits, _ + or -, a colon), judged by that shape alone, so a time such as 10:30:00
+// is refused too; a code span that is not closed on the
 // line it opens on (one that runs over two lines included), a link that leads nowhere in the guide.
 //
 // Refused in the files as a whole: a page file the index does not list, or a listed page that is
@@ -128,6 +137,8 @@ const isSpace = (c) => c === undefined || /\s/.test(c);
 const ODD_SPACE = /[^\S \t\n]/;
 // What Markdown and the git host turn into a link with no brackets round it.
 const BARE_ADDRESS = /^(?:https?:\/\/|ftp:\/\/|www\.|mailto:|xmpp:)\S/i;
+// The shape of an emoji short code on the git host: a colon, letters, digits, _ + or -, a colon.
+const EMOJI = /^:[A-Za-z0-9_+-]+:/;
 const isPunct = (c) => c !== undefined && /[\p{P}\p{S}]/u.test(c);
 const isWord = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
 
@@ -254,6 +265,8 @@ function tokens(text, base = 0, inLink = false) {
       // Judged broadly: an @ with a letter, a digit, a dot, a plus or a dash before it and a letter,
       // a digit, a dash or an underscore after it, whatever follows.
       refuse('an e-mail address written bare, or an @ between two words (write it as a code span)', at);
+    } else if (c === ':' && EMOJI.test(text.slice(i))) {
+      refuse('an emoji short code, a word between two colons (write it as a code span, or \\: for the colon)', at);
     } else if (ODD_SPACE.test(c)) {
       refuse('white space that is no space or tab, such as a no-break space,', at);
     } else {
@@ -281,17 +294,18 @@ const codeText = (s) => (s.length > 1 && s.startsWith(' ') && s.endsWith(' ') &&
 // The one writer of a text: every heading, paragraph, list item, table cell, title and contents
 // entry of the page is written here from tokens, and from nothing else. `link` turns a link target
 // into an href, or null for none; with no `link` at all a link is written as its text (a contents
-// entry, which stands inside a link of its own).
-function render(toks, link, where) {
+// entry, which stands inside a link of its own). `inCode` is for a text the caller writes inside a
+// code element: a code span is written as its text, with no second code element.
+function render(toks, link, where, inCode = false) {
   return toks.map((k) => {
     if (k.t === 'text') return esc(k.s);
-    if (k.t === 'code') return `<code>${esc(codeText(k.s))}</code>`;
+    if (k.t === 'code') return inCode ? esc(codeText(k.s)) : `<code>${esc(codeText(k.s))}</code>`;
     if (k.t === 'link') {
       const href = link ? link(k.url, lineAt(where, k.at)) : null;
-      const body = render(k.body, link, where);
+      const body = render(k.body, link, where, inCode);
       return href === null ? body : `<a href="${esc(href)}">${body}</a>`;
     }
-    return `<${k.t}>${render(k.body, link, where)}</${k.t}>`;
+    return `<${k.t}>${render(k.body, link, where, inCode)}</${k.t}>`;
   }).join('');
 }
 
@@ -309,7 +323,8 @@ const plain = (toks) => toks.map((k) => (k.t === 'text' ? k.s : k.t === 'code' ?
 // name is a space or a tab; any other is refused by `look` before they are asked.
 const FENCE = /^(`{3,}|~{3,})[ \t]*([\w-]*)$/;
 const HEADING = /^(#{1,6})[ \t]+(.+)$/;
-const ITEM = /^([-*+]|\d+[.)])([ \t]+)(.*)$/;
+// A numbered marker has one to nine digits, as in Markdown; a longer number with a dot is text.
+const ITEM = /^([-*+]|\d{1,9}[.)])([ \t]+)(.*)$/;
 const DELIM = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 
 // Where a line outside a code block holds white space that is no space or tab, outside a code span;
@@ -351,7 +366,9 @@ function clean(line) {
       i = span.end;
       continue;
     }
-    if (line.startsWith('<!--', i) && !/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+$/.test(out)) {
+    // Not straight after a list marker, and not inside a link target: Markdown reads no comment
+    // there, so the comment stays and `tokens` refuses the link.
+    if (line.startsWith('<!--', i) && !/^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+$/.test(out) && !/\]\([^)]*$/.test(out)) {
       const close = line.indexOf('-->', i + 4);
       if (close >= 0 && !/^>|^->|--|-$/.test(line.slice(i + 4, close))) { cut = true; i = close + 3; continue; }
     }
@@ -390,8 +407,8 @@ function shape(text, next) {
     if (/(?:^|[ \t])#+$/.test(m[2])) return { no: 'a heading closed by # marks' };
     return { t: 'heading', m };
   }
-  if (/^(?:[-*+]|\d+[.)])$/.test(text)) return { no: 'an empty list item' };
-  if (/^(?:[-*+]|\d+[.)])[ \t]+\[[ xX]\](?:[ \t]|$)/.test(text)) return { no: 'a task item' };
+  if (/^(?:[-*+]|\d{1,9}[.)])$/.test(text)) return { no: 'an empty list item' };
+  if (/^(?:[-*+]|\d{1,9}[.)])[ \t]+\[[ xX]\](?:[ \t]|$)/.test(text)) return { no: 'a task item' };
   const item = ITEM.exec(text);
   if (item) return { t: 'item', m: item };
   if (/^\[\^[^\]]*\]:/.test(text)) return { no: 'a footnote' };
@@ -545,6 +562,9 @@ function parse(md, file) {
     if (L.t === 'table') {
       const start = i + 1;
       const rows = [];
+      // The delimiter line is judged where it stands, as every line outside a list is: indented, it
+      // is refused (four or more spaces in, Markdown reads it as text of a paragraph).
+      if (/^[ \t]/.test(lines[i + 1])) no(i + 2, INDENTED);
       const delim = cells(lines[i + 1]);
       const width = cells(L.line).length;
       if (delim.length !== width) fail(`${file}:${i + 2}: a table's delimiter line has ${delim.length} cells, its header has ${width}`);
@@ -903,6 +923,7 @@ export function guidePage(guideDir) {
   const groups = []; // from "## Pages": {title, id, pages:[{page,label}]}
   const intro = []; // blocks before the first ## heading
   const parts = []; // {title, id, blocks, group}
+  const dropped = []; // paragraphs that link the web page itself
   {
     const github = slugger();
     const mine = slugger();
@@ -927,8 +948,15 @@ export function guidePage(guideDir) {
         b.id = claim(mine(b.toks), INDEX, b.line);
         readmeAnchor.set(anchor, b.id);
         if (b.level === 2) { part = { toks: b.toks, id: b.id, line: b.line, blocks: [] }; parts.push(part); continue; }
-      } else if (skip) continue;
+      } else if (skip) {
+        // The contents list of the web page replaces the index's; any other text there is refused.
+        if (b.t !== 'list') fail(`${INDEX}:${b.line}: ${b.t === 'p' ? 'a paragraph' : b.t === 'code' ? 'a code block' : 'a table'} under "## Contents"; the section holds the list of contents and nothing else`);
+        continue;
+      }
       if (inPages) {
+        // Kept from the section: the group headings and the first cell of each row. Its paragraphs
+        // and the later cells of a row are left out; a list or a code block there is refused.
+        if (b.t === 'list' || b.t === 'code') fail(`${INDEX}:${b.line}: ${b.t === 'list' ? 'a list' : 'a code block'} under "## Pages"; the section holds paragraphs, ### headings and tables of pages`);
         if (b.t === 'table') {
           if (!groups.length) fail(`${INDEX}:${b.line}: a table of pages comes before the first ### heading of "## Pages"`);
           b.rows.forEach((row, k) => {
@@ -946,9 +974,9 @@ export function guidePage(guideDir) {
         }
         continue;
       }
-      // A paragraph that links a file beside the index that is no Markdown page (the web page
-      // itself) says where this page comes from; the page does not repeat it.
-      if (b.t === 'p' && linkTokens(b.toks).some((k) => !/^(#|[a-z][a-z0-9+.-]*:)/i.test(k.url) && !/\.md(#.*)?$/.test(k.url))) continue;
+      // A paragraph that links the web page itself, the file beside the index, says where this page
+      // comes from; the page does not repeat it. Its other links are judged as every link is.
+      if (b.t === 'p' && linkTokens(b.toks).some((k) => k.url === PAGE)) { dropped.push(b); continue; }
       (part ? part.blocks : intro).push(b);
     }
   }
@@ -984,13 +1012,14 @@ export function guidePage(guideDir) {
     const RULE = 'Check rule: ';
     const rule = first.toks[0]?.t === 'text' && first.toks[0].s.startsWith(RULE) && plain(first.toks).length > RULE.trim().length;
     const toks = rule ? [{ t: 'text', s: first.toks[0].s.slice(RULE.length) }, ...first.toks.slice(1)] : first.toks;
-    const head = `<h4><code>${render(toks, link, first.line)}</code></h4>${rule ? '<span class="tag t-rare">Check rule</span>' : ''}`;
+    const head = `<h4><code>${render(toks, link, first.line, true)}</code></h4>${rule ? '<span class="tag t-rare">Check rule</span>' : ''}`;
     return [`  <section id="${page.id}" class="cmd" data-page="${page.rel}">`, `    <header>${head}</header>`,
       ...blocksHtml(page.blocks.slice(1), { file: page.rel, link, ind: '    ', headings: { 2: 'h5', 3: 'h6', 4: 'h6', 5: 'h6', 6: 'h6' }, firstClass: 'sum' }),
       '  </section>', ''];
   }
 
   const readmeLink = linker(INDEX, null);
+  for (const b of dropped) for (const k of linkTokens(b.toks)) if (k.url !== PAGE) readmeLink(k.url, lineAt(b.marks, k.at));
   const H = [];
   const p = (...x) => H.push(...x);
 
