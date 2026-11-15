@@ -7,7 +7,9 @@
   "frozenTests": [
     "test/tracker.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/tracker.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -32,6 +34,17 @@
       "at": "2026-11-15T12:12:07.835Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T12:15:56.749Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/tracker.test.js",
+        "amendCommit": "56e4616c8967c954158866323be3193b19e98da9",
+        "reason": "two lines of the test no code can meet: a three-digit slice number, and a query text asserted to hold a slash"
+      }
     }
   ]
 }
