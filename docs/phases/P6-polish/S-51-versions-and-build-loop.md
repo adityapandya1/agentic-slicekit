@@ -33,6 +33,8 @@ decisions: [D-96, D-90, D-92, D-94, D-10, D-43, D-80]
 | `cli.test.js » branch leaves no staged config when the branch's config differs only in its line endings` | happy | REQ-5.6 |
 | `user-guide.test.js » the sync-release page says what a finding on an example file means` | happy | REQ-5.8 |
 
+Amended (author's standing instruction, 2026-11-15): `test/journal-heads.test.js`, where an older test in the frozen file pins the rule this slice replaces: `headsFiles over a multi-commit push after a recorded merge names every file the push changed` expects the first sync of a two-parent merge that holds two journal files to record one line, and under the new rule it records two. That one count changes; the rest of the test stands.
+
 ## Expected changes
 
 `src/release-version.js`, `src/check/rules/sync-release.js`, `src/build/commit.js`, `src/check/rules/frozen.js`, `src/journal.js`, `src/workflow.js`, `src/cli/branch.js`, `docs/guide/rules/sync-release.md`, `docs/guide/rules/frozen.md`, `docs/guide/commands/branch.md`, `docs/guide/commands/build.md`, `docs/runbook.md`, tests.
