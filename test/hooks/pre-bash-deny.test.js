@@ -369,3 +369,103 @@ test('deny » bash -O globstar -c runs its body with ** recursive', () => {
     cleanup();
   }
 });
+
+// ---- P6/S-52 (REQ-3.13) ----
+
+const reasonOf = (r) => r.hookSpecificOutput?.permissionDecisionReason ?? '';
+
+// Issue #118.
+test('a cd to a glob is refused and a cd to a directory the command creates is followed', () => {
+  const { root, cleanup } = repo();
+  try {
+    const globs = ['cd da* && cat x.xml', 'cd da*; cat x.xml', 'cd d?ta && ls', 'cd [d]ata && ls', 'pushd da* && ls', 'cd s* && cat ../data/x.xml'];
+    for (const command of globs) {
+      const r = decide(root, command);
+      assert.equal(decision(r), 'deny', command);
+      assert.match(reasonOf(r), /cannot tell where/, command);
+      assert.match(reasonOf(r), /REQ-3\.13/, command);
+    }
+    const created = decide(root, 'mkdir x && cd x && cat ../data/x.xml');
+    assert.equal(decision(created), 'deny', 'mkdir x && cd x && cat ../data/x.xml');
+    assert.ok(reasonOf(created).includes('data/x.xml') && reasonOf(created).includes('agents.denyPaths pattern data/**'), reasonOf(created));
+    assert.equal(decision(decide(root, 'mkdir -p x/y && cd x/y && cat ../../data/x.xml')), 'deny');
+    for (const command of ['mkdir x && cd x && ls', 'mkdir x && cd x && cat ../src/a.js', 'mkdir -p x/y && cd x/y && cat ../../src/a.js']) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+    for (const command of [...globs, 'mkdir x && cd x && cat ../data/x.xml']) {
+      assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// Issue #121: a command substitution runs in a subshell, so its cd ends with it.
+test('a cd inside a backtick substitution ends at the closing backtick', () => {
+  const { root, cleanup } = repo();
+  try {
+    const forms = [
+      'echo `cd src && pwd`; cat data/x.xml',
+      'echo `cd src && pwd` && cat data/x.xml',
+      'echo `cd src`\ncat data/x.xml',
+      'X=`cd src && pwd`; cat data/x.xml',
+      // Inside the substitution the cd still holds.
+      'echo `cd src && cat ../data/x.xml`',
+    ];
+    for (const command of forms) {
+      const r = decide(root, command);
+      assert.equal(decision(r), 'deny', command);
+      assert.ok(reasonOf(r).includes('data/x.xml') && reasonOf(r).includes('agents.denyPaths pattern data/**'), `${command}: ${reasonOf(r)}`);
+    }
+    for (const command of ['echo `cd src && pwd`; cat src/a.js', 'echo `cd src && cat a.js`', 'echo `cd src && pwd`; ls']) {
+      assert.equal(decision(decide(root, command)), 'allow', command);
+    }
+    for (const command of forms) assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+  } finally {
+    cleanup();
+  }
+});
+
+// Issue #119: Bash passes on a glob it cannot match as the literal word, and the guard judges that word.
+test('a glob with a reversed range is allowed with no error', () => {
+  const { root, cleanup } = repo();
+  try {
+    for (const command of ['cat src/[z-a].js', 'ls [z-a]*', 'cat src/[z-a]*.js', 'cd src && cat [9-0].js']) {
+      let r;
+      assert.doesNotThrow(() => { r = decide(root, command); }, command);
+      assert.equal(decision(r), 'allow', command);
+      assert.equal(withList(root, [], command), 'allow', `${command} with no list`);
+    }
+    // The literal word still names a listed path when it lies under one.
+    let listed;
+    assert.doesNotThrow(() => { listed = decide(root, 'cat data/[z-a].xml'); });
+    assert.equal(decision(listed), 'deny', 'cat data/[z-a].xml');
+    assert.ok(reasonOf(listed).includes('agents.denyPaths pattern data/**'), reasonOf(listed));
+  } finally {
+    cleanup();
+  }
+});
+
+// Issue #123: `..` leaves the repository only as a whole path component.
+test('a name beginning with two dots is judged inside the repository', () => {
+  const r = makeRepo({ branch: 'slice/P6-S-52-x', files: { 'data/x.xml': '<x/>', 'src/a.js': 'x', '..secret': 's', '..other': 'o' } });
+  const root = r.root;
+  try {
+    const list = ['data/**', '**/*.pem', '..secret'];
+    const run = (command, cwd = root) => handle({ session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd }, { root, cfg: { ...cfg, agents: { denyPaths: list } }, env: {} });
+    for (const command of ['cat ..secret', 'cat ./..secret', 'cd src && cat ../..secret', 'echo x > ..secret']) {
+      const out = run(command);
+      assert.equal(decision(out), 'deny', command);
+      assert.ok(reasonOf(out).includes('agents.denyPaths pattern ..secret'), `${command}: ${reasonOf(out)}`);
+    }
+    const fromSrc = run('cat ../..secret', path.join(root, 'src'));
+    assert.equal(decision(fromSrc), 'deny', 'cat ../..secret from src');
+    // A name that only begins with two dots and is not listed, and a path really outside, are allowed.
+    for (const command of ['cat ..other', 'cat ../outside.txt', 'cat ..', 'ls ../']) {
+      assert.equal(decision(run(command)), 'allow', command);
+    }
+    assert.equal(withList(root, [], 'cat ..secret'), 'allow', 'with no list');
+  } finally {
+    r.cleanup();
+  }
+});

@@ -17,7 +17,9 @@
 // The file's own root is the nearest directory above it holding `.slicekit/config.json`, else its git
 // top level, else the session's root: a session in the main checkout editing a nested worktree is
 // judged by the worktree's branch, state and config. Paths are canonicalised through the real path of
-// their deepest existing ancestor, so 8.3 short names and links resolve; on win32 a `:` after the drive
+// their deepest existing ancestor, so 8.3 short names and links resolve; for rule (4) the path is also
+// judged as named, with a leading link or junction that reaches the root or a directory in it read as
+// that directory, and a relative name against the working directory as given; on win32 a `:` after the drive
 // (an NTFS stream name) is refused outright.
 //
 // Limits: a Bash command that writes the same file is pre-bash's business.
@@ -29,7 +31,7 @@ import { parseSliceAddr } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { phaseOfDir } from '../slicefile.js';
 import { allow, deny } from './io.js';
-import { activeSlice, denyPaths, existingAncestor, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
+import { activeSlice, denyPaths, existingAncestor, fromGitBash, leaves, matchesDeny, namesUnder, real, toPosix } from './paths.js';
 
 const WIN = process.platform === 'win32';
 const GUARDED_STATES = new Set(['tests-red', 'building']);
@@ -41,25 +43,29 @@ const under = (p, dir) => same(p, dir) || key(p).startsWith(`${key(dir)}/`);
 
 function relInside(root, abs) {
   const rel = path.relative(root, abs);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  if (rel === '' || leaves(rel)) return null;
   return toPosix(rel);
 }
 
 // -> the canonical absolute path. Accepts absolute Windows paths with either slash, Git Bash `/c/...`
 // on win32, and relative paths (against cwd, else root). Throws on a win32 stream name.
 function absolute(filePath, root, cwd) {
-  return real(written(filePath, root, cwd));
+  return real(written(filePath, root, cwd)[0]);
 }
 
-// -> the absolute path as named, its symlinks not followed: the directory it is named from is
-// canonical, the rest is the text (`data/link.txt` stays under data even when it points outside).
+// -> the absolute paths as named, their symlinks not followed (`data/link.txt` stays under data even
+// when it points outside): a relative name against the canonical directory it is named from and
+// against that directory as given, which differ when the working directory is itself a link.
 function written(filePath, root, cwd) {
   const p = fromGitBash(String(filePath).replace(/\\/g, '/'));
   if (WIN && p.replace(/^[A-Za-z]:/, '').includes(':')) {
     throw new Error(`${filePath}: a stream name is not a file path`);
   }
   const base = typeof cwd === 'string' && cwd !== '' ? path.resolve(root, fromGitBash(cwd.replace(/\\/g, '/'))) : root;
-  return path.isAbsolute(p) ? path.resolve(p) : path.resolve(real(base), p);
+  if (path.isAbsolute(p)) return [path.resolve(p)];
+  const canonical = path.resolve(real(base), p);
+  const given = path.resolve(base, p);
+  return given === canonical ? [canonical] : [canonical, given];
 }
 
 // -> the POSIX path relative to root, or null when it is outside root.
@@ -136,11 +142,16 @@ function judge(filePath, input, hookRoot, hookCfg) {
 
   // (4), the path as named: a symlink under a listed directory that points out of the repository
   // resolves outside it, and its listed name must still count.
-  const lex = written(filePath, hookRoot, input.cwd);
-  for (const [r, c] of [[hookCanon, hookCfg], [root, cfg]]) {
-    const named = relInside(r, lex);
-    const hit = named === null ? null : matchesDeny(named, denyPaths(c));
-    if (hit !== null) return deny(`${named} matches agents.denyPaths pattern ${hit}; agents may not read or change it (REQ-3.13)`);
+  // A name that reaches the root, or a directory in it, by a link is read from there too (issue #122).
+  for (const lex of written(filePath, hookRoot, input.cwd)) {
+    for (const [r, c] of [[hookCanon, hookCfg], [root, cfg]]) {
+      if (!denyPaths(c).length) continue;
+      for (const p of namesUnder(r, lex)) {
+        const named = relInside(r, p);
+        const hit = named === null ? null : matchesDeny(named, denyPaths(c));
+        if (hit !== null) return deny(`${named} matches agents.denyPaths pattern ${hit}; agents may not read or change it (REQ-3.13)`);
+      }
+    }
   }
   if (rel === null) return allow();
 

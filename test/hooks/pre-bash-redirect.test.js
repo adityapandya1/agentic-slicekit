@@ -44,3 +44,80 @@ test('a redirection written against the preceding word to a frozen test is denie
     cleanup();
   }
 });
+
+// P6/S-52. Each write is denied in the main session and from a subagent, naming the test and the slice;
+// each of `allowed` is the same command on a file that is not frozen.
+function assertFrozenWrites(root, writes, allowed) {
+  for (const cmd of writes) {
+    for (const agent of [undefined, 'a1']) {
+      const r = decide(root, cmd, agent);
+      assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `${cmd}: expected a deny, got ${JSON.stringify(r)}`);
+      const text = r.hookSpecificOutput.permissionDecisionReason;
+      assert.ok(text.includes(FROZEN) && text.includes(SLICE), `${cmd}: ${text}`);
+    }
+  }
+  for (const cmd of allowed) assert.deepEqual(decide(root, cmd), {}, cmd);
+}
+
+// REQ-3.2, REQ-3.3: issue #106
+test('the clobber redirection to a frozen test is denied', () => {
+  const { root, cleanup } = frozenSliceRepo();
+  try {
+    assertFrozenWrites(root, [
+      `echo x>|${FROZEN}`,
+      `echo x >|${FROZEN}`,
+      `echo x >| ${FROZEN}`,
+      `echo x 1>|${FROZEN}`,
+      `printf x>|"${FROZEN}"`,
+      `echo "x">|${FROZEN}`,
+      `echo x >| ./${FROZEN}`,
+    ], ['echo x>|test/other.js', 'echo x >|test/other.js', 'echo x >| test/other.js', `cat ${FROZEN}>|test/copy.js`, `cat ${FROZEN} >| test/copy.js`]);
+    for (const cmd of ['echo x>|test/other.js', 'echo x >| test/other.js', `cat ${FROZEN} >| test/copy.js`]) {
+      assert.deepEqual(decide(root, cmd, 'a1'), {}, cmd);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.2, REQ-3.3: issue #105
+test('perl -i, dd, install, ln, git checkout and git restore on a frozen test are denied', () => {
+  const { root, cleanup } = frozenSliceRepo();
+  try {
+    assertFrozenWrites(root, [
+      `perl -pi -e 's/x/y/' ${FROZEN}`,
+      `perl -i -pe 's/x/y/' ${FROZEN}`,
+      `perl -i.bak -pe 's/x/y/' ${FROZEN}`,
+      `perl -p -i -e 's/x/y/' ${FROZEN}`,
+      `perl -ni -e 'print' ${FROZEN}`,
+      `dd if=test/other.js of=${FROZEN}`,
+      `dd of=${FROZEN} bs=1 count=0`,
+      `install test/other.js ${FROZEN}`,
+      `install -m 644 test/other.js ${FROZEN}`,
+      `ln -sf other.js ${FROZEN}`,
+      `ln -f test/other.js ${FROZEN}`,
+      `git checkout -- ${FROZEN}`,
+      `git checkout ${FROZEN}`,
+      `git checkout HEAD -- ${FROZEN}`,
+      `git restore ${FROZEN}`,
+      `git restore --source=HEAD -- ${FROZEN}`,
+      `git restore --staged --worktree ${FROZEN}`,
+    ], [
+      "perl -pi -e 's/x/y/' test/other.js",
+      "perl -i.bak -pe 's/x/y/' test/other.js",
+      `perl -ne 'print' ${FROZEN}`,
+      `dd if=${FROZEN} of=test/copy.js`,
+      `install ${FROZEN} test/copy.js`,
+      'install -m 644 test/other.js test/copy.js',
+      'ln -sf a.test.js test/link.js',
+      'git checkout -- test/other.js',
+      'git restore test/other.js',
+    ]);
+    // A subagent may run the writers that are not git on a file that is not frozen.
+    for (const cmd of ["perl -pi -e 's/x/y/' test/other.js", `dd if=${FROZEN} of=test/copy.js`, `install ${FROZEN} test/copy.js`, 'ln -sf a.test.js test/link.js']) {
+      assert.deepEqual(decide(root, cmd, 'a1'), {}, cmd);
+    }
+  } finally {
+    cleanup();
+  }
+});

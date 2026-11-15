@@ -229,6 +229,20 @@ test('agents.denyPaths that is not a list of strings is refused', () => {
   assert.deepEqual(validateConfig({ ...cfg, agents: ['data/**'] }), ['agents: must be an object']);
 });
 
+// P6/S-52 (REQ-3.13, D-72), issue #120
+test('a deny pattern the guards cannot compile is refused, naming its index', () => {
+  const cfg = base();
+  const errors = validateConfig({ ...cfg, agents: { denyPaths: ['data/**', '[z-a]'] } });
+  assert.equal(errors.length, 1, JSON.stringify(errors));
+  assert.match(errors[0], /^agents\.denyPaths\[1\]: \S.*$/);
+  const two = validateConfig({ ...cfg, agents: { denyPaths: ['src/[9-0].js', 'data/**', 'keys/[z-a]*.pem'] } });
+  assert.equal(two.length, 2, JSON.stringify(two));
+  assert.match(two[0], /^agents\.denyPaths\[0\]: \S.*$/);
+  assert.match(two[1], /^agents\.denyPaths\[2\]: \S.*$/);
+  // Patterns the guards compile, classes among them, give no error.
+  assert.deepEqual(validateConfig({ ...cfg, agents: { denyPaths: ['data/**', '**/*.pem', '.env', 'secrets/', 'data/[a-z].xml', 'data/[!a].xml', 'data/[^a].xml', '..secret'] } }), []);
+});
+
 // P4/S-43, REQ-3.11, D-67, D-85: ci.runsOn is a runner label or a list of them (absent is
 // ubuntu-latest); ci.java is a JDK version (absent is 25).
 test('ci.runsOn or ci.java of the wrong type is refused', () => {

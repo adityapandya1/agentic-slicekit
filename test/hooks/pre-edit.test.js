@@ -519,3 +519,56 @@ test('an edit to a listed symlink that points out of the repository is denied', 
     fs.rmSync(outside, { recursive: true, force: true });
   }
 });
+
+// P6/S-52 (REQ-3.13), issue #122: `data/out` links out of the repository and `alias` links to its root
+// from outside it. Links are made as the test above makes them.
+test('a listed path named through a link to the repository root, or from inside a linked directory, is denied', (t) => {
+  const { root, cleanup } = makeRepo({ files: { 'data/x.xml': '<x/>', 'src/a.js': 'x' } });
+  const outside = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-out-')));
+  const aliasHome = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-alias-')));
+  const alias = path.join(aliasHome, 'alias');
+  const linked = path.join(root, 'data', 'out');
+  try {
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 's');
+    const type = process.platform === 'win32' ? 'junction' : 'dir';
+    try {
+      fs.symlinkSync(outside, linked, type);
+      fs.symlinkSync(root, alias, type);
+    } catch {
+      t.skip('no symlink right on this machine');
+      return;
+    }
+    const cfg = cfgFor({ agents: { denyPaths: ['data/**'] } });
+    const none = cfgFor({ agents: { denyPaths: [] } });
+    const denied = (r, label) => {
+      assert.equal(r.hookSpecificOutput?.permissionDecision, 'deny', `${label}: ${JSON.stringify(r)}`);
+      assert.ok(reason(r).includes('agents.denyPaths pattern data/**'), `${label}: ${reason(r)}`);
+    };
+    for (const tool of ['Edit', 'Write']) {
+      // An absolute path that reaches the root through the alias.
+      for (const name of ['data/out/secret.txt', 'data/out/new.txt', 'data/x.xml', 'data/new.xml']) {
+        const file = path.join(alias, ...name.split('/'));
+        denied(decide(root, file, { tool, cfg }), `${tool} ${file}`);
+        denied(decide(root, backslashed(file.replace(/\\/g, '/')), { tool, cfg }), `${tool} ${file} with backslashes`);
+        assertAllow(decide(root, file, { tool, cfg: none }));
+      }
+      // A relative name given while the working directory is inside the listed, linked directory.
+      for (const name of ['secret.txt', 'new.txt', './secret.txt', 'sub/new.txt']) {
+        denied(decide(root, name, { tool, cfg, cwd: linked }), `${tool} ${name} from data/out`);
+        denied(decide(root, name, { tool, cfg, cwd: path.join(alias, 'data', 'out') }), `${tool} ${name} from the alias's data/out`);
+        assertAllow(decide(root, name, { tool, cfg: none, cwd: linked }));
+      }
+    }
+    // A path that is not listed is allowed through the alias, and from a directory that is not listed.
+    assertAllow(decide(root, path.join(alias, 'src', 'a.js'), { tool: 'Edit', cfg }));
+    assertAllow(decide(root, 'a.js', { tool: 'Edit', cfg, cwd: path.join(alias, 'src') }));
+    assertAllow(decide(root, 'a.js', { tool: 'Edit', cfg, cwd: path.join(root, 'src') }));
+    // A path really outside the repository is still not the list's business.
+    assertAllow(decide(root, path.join(outside, 'secret.txt'), { cfg }));
+    assertAllow(decide(root, 'secret.txt', { cfg, cwd: outside }));
+  } finally {
+    cleanup();
+    fs.rmSync(aliasHome, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
