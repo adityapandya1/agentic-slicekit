@@ -61,6 +61,58 @@ test('briefs.test.js » the release procedure names no git or gh command', () =>
   }
 });
 
+// P5/S-23, REQ-2.13, REQ-2.14, D-19, D-57: the ops and audit procedures run the kit's own commands
+// and no git; the ops agent replies with its report and holds no Write tool.
+test('briefs.test.js » the ops and audit procedures name no git or gh command', () => {
+  for (const name of ['ops', 'audit']) {
+    const file = path.join(TEMPLATES, 'commands', `${name}.md`);
+    assert.ok(fs.existsSync(file), `templates/instructions/commands/${name}.md is not written`);
+    assert.deepEqual(briefProblems(read(file), { kind: 'command' }), [], name);
+  }
+  const ops = read(path.join(TEMPLATES, 'agents', 'ops.md'));
+  const auditor = read(path.join(TEMPLATES, 'agents', 'auditor.md'));
+  assert.deepEqual(briefProblems(ops, { kind: 'agent' }), []);
+  assert.deepEqual(briefProblems(auditor, { kind: 'agent' }), []);
+
+  // The ops brief: the report is the reply, in three sections, each action marked by who may take it.
+  for (const s of ['## Likely slices and pull requests', '## First checks', '## Proposed actions', '(anyone)', '(on-call)', '(owner: <name>)']) {
+    assert.ok(ops.includes(s), `the ops brief does not name: ${s}`);
+  }
+  assert.doesNotMatch(ops, /\bWrite tool\b|`Write`/, 'the ops brief names the Write tool');
+  // The auditor brief: the Claims table, its six columns, and a drifted row's candidate commit.
+  assert.ok(auditor.includes('## Claims'), 'the auditor brief does not name the Claims table');
+  for (const column of ['Claim', 'Where', 'Evidence', 'Found at', 'Status', 'Commit']) {
+    assert.match(auditor, new RegExp(`(?:^|[\\s|\`,])${column}(?:$|[\\s|\`,.])`, 'm'), `the auditor brief does not name the column ${column}`);
+  }
+  assert.match(auditor, /`drifted`[^\n]*\bcandidate/, 'the auditor brief does not say a drifted row names a candidate commit');
+
+  const cfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
+  try {
+    const rendered = {
+      ops: renderProcedure(root, cfg, 'ops', ['billing returns 500']),
+      audit: renderProcedure(root, cfg, 'audit', ['runbook']),
+    };
+    for (const [name, text] of Object.entries(rendered)) {
+      assert.doesNotMatch(text, /\{\{(?:cli|args)\}\}/, `${name}: every placeholder is filled`);
+      assert.deepEqual(briefProblems(text, { kind: 'command' }), [], name);
+      // Every command the procedure names is the kit's own.
+      const spans = [...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
+      for (const s of spans) assert.doesNotMatch(s, /^\s*(?:git|gh)\s/, `${name}: ${s}`);
+      for (const want of ['npx slicekit graph', `npx slicekit ${name} context`, `npx slicekit ${name} check`]) {
+        assert.ok(text.includes(want), `the ${name} procedure does not name: ${want}`);
+      }
+    }
+    assert.ok(rendered.ops.includes('billing returns 500'), 'the ops procedure carries the symptom');
+    assert.ok(rendered.ops.includes('--path'), 'the ops procedure names --path for a symptom that names no file');
+    assert.ok(rendered.audit.includes('npx slicekit audit context runbook'), 'the audit procedure carries the area');
+    // With no area the audit procedure still renders.
+    assert.doesNotMatch(renderProcedure(root, cfg, 'audit', []), /\{\{(?:cli|args)\}\}/);
+  } finally {
+    cleanup();
+  }
+});
+
 // ---- further cases ----
 
 test('briefs » each pointer names its own command', () => {
@@ -199,10 +251,11 @@ test('briefs » the reviewer brief gives one verdict rule per sentence', () => {
 });
 
 // The agent definitions: the no-git sentence names the git a subagent may not run, and every role
-// that writes a file holds the Write tool.
+// that writes a file holds the Write tool. The ops agent writes nothing and the command commits
+// nothing of its work (P5/S-23, D-57): render-all.test.js holds its tools.
 test('briefs » the agent definitions carry the no-git sentence and the tools their role needs', () => {
   assert.equal(NO_GIT, 'You never run a git command that commits, pushes or moves a branch; report and the command commits.');
-  for (const r of ROLES) {
+  for (const r of ROLES.filter((role) => role !== 'ops')) {
     const t = read(path.join(KIT, 'claude-code', 'agents', `${r}.md`));
     assert.ok(t.includes(NO_GIT), r);
     const tools = /^tools: (.*)$/m.exec(t)[1].split(',').map((s) => s.trim());

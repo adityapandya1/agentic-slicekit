@@ -23,6 +23,8 @@ const IGNORE_RULES = [
   { rule: '.slicekit/.subagent-*', forms: new Set(['.slicekit/.subagent-*', '/.slicekit/.subagent-*']) },
   // The machine's own settings (D-43), such as a local test command: never part of the project.
   { rule: '.slicekit/local.json', forms: new Set(['.slicekit/local.json', '/.slicekit/local.json']) },
+  // The reports of `/slicekit ops` and `/slicekit audit` (D-57, D-58): written on one machine, never committed.
+  { rule: '.slicekit/reports/', forms: new Set(['.slicekit/reports/', '/.slicekit/reports/', '.slicekit/reports', '/.slicekit/reports']) },
   { rule: '!.slicekit/journal/', forms: new Set(['!.slicekit/journal/', '!/.slicekit/journal/']) },
   { rule: '!.slicekit/journal/*.log', forms: new Set(['!.slicekit/journal/*.log', '!/.slicekit/journal/*.log']) },
   { rule: '.slicekit/journal/*.lock', forms: new Set(['.slicekit/journal/*.lock', '/.slicekit/journal/*.lock']) },
@@ -39,6 +41,8 @@ const IGNORE_RULES = [
 // still ignores either path after init: a present rule counts only when a later rule does not override it.
 const UNIGNORE_RULES = ['!.slicekit/journal/', '!.slicekit/journal/*.log', '.slicekit/journal/*.lock', '!.slicekit/journal-heads.log'];
 const UNIGNORE_PROBES = ['.slicekit/journal-heads.log', '.slicekit/journal/main--00000000.log'];
+
+const REPORTS_RULE = '.slicekit/reports/';
 
 function ignoredByGit(root, rel) {
   try {
@@ -92,6 +96,21 @@ function reassertUnignores(root, file) {
   const lines = [...new Set(still.map((rel) => ignoringLine(root, rel)).filter(Boolean))];
   const note = `${still.join(' and ')} still ignored by git (${lines.join(', ')}); the un-ignores at the end of .gitignore cannot override that rule, so init does not append them again`;
   return { appended, note };
+}
+
+// The ignore rule for the reports directory when the project lacks it, else null. `update` never
+// writes the ignore file (REQ-5.6: managed blocks only), so it prints this line for a project
+// initialised before the rule existed (P5/S-23 review H-4). In a git repository git decides whether
+// a report is ignored; outside one, a line in any spelling init accepts counts.
+export function missingReportsRule(root, cfg) {
+  const paths = kitPaths(root, cfg);
+  if (isRepo(root)) {
+    const report = path.relative(root, path.join(paths.reports, 'ops-1.md')).split(path.sep).join('/');
+    return ignoredByGit(root, report) ? null : REPORTS_RULE;
+  }
+  const { forms } = IGNORE_RULES.find((r) => r.rule === REPORTS_RULE);
+  const present = exists(paths.gitignore) ? fs.readFileSync(paths.gitignore, 'utf8').split(/\r?\n/).map((l) => l.trim()) : [];
+  return present.some((l) => forms.has(l)) ? null : REPORTS_RULE;
 }
 
 // Hooks checked out with CRLF break sh (REQ-3.9).

@@ -10,6 +10,7 @@ import { applyUpdate, diffLines, planUpdate } from '../src/render/update.js';
 import { wrapManaged } from '../src/render/managed.js';
 import { TEMPLATES, installedVersion } from '../src/render/entry.js';
 import { runCli } from './helpers/run-cli.js';
+import { makeRepo } from './helpers/tmp-repo.js';
 
 const cfg = { name: 'demo', shape: 'backend', docsRoot: 'docs', cli: 'npx --no-install slicekit' };
 
@@ -482,4 +483,45 @@ test('installedVersion picks the newest by semver, a prerelease before its relea
   assert.equal(pick(['2.0.0-rc.2', '2.0.0-rc.10']), '2.0.0-rc.10');
   assert.equal(pick(['2.0.0-alpha', '2.0.0-1']), '2.0.0-alpha');
   assert.equal(pick(['2.0.0-rc', '2.0.0-rc.1']), '2.0.0-rc.1');
+});
+
+// P5/S-23 review H-4: update re-renders managed files only (REQ-5.6) and never writes .gitignore, so a
+// project initialised before the reports directory existed is told the line to add.
+test('update names the ignore rule for .slicekit/reports when the project lacks it', () => {
+  const NOTE = '.gitignore has no rule for .slicekit/reports/, where /slicekit ops and /slicekit audit write their reports; add the line .slicekit/reports/';
+  const notes = (r) => r.stdout.split('\n').filter((l) => l === NOTE).length;
+  const MODES = [['update', '--check'], ['update'], ['update', '--yes']];
+  const root = initRepo();
+  const ignore = path.join(root, '.gitignore');
+  const rules = fs.readFileSync(ignore, 'utf8');
+  assert.ok(rules.split('\n').includes('.slicekit/reports/'));
+  for (const args of MODES) assert.equal(notes(runCli(args, { cwd: root })), 0, args.join(' '));
+
+  const without = rules.split('\n').filter((l) => l !== '.slicekit/reports/').join('\n');
+  fs.writeFileSync(ignore, without);
+  for (const args of MODES) {
+    const r = runCli(args, { cwd: root });
+    assert.equal(notes(r), 1, `${args.join(' ')}: ${r.stdout}`);
+    assert.equal(r.code, 0, r.stderr);
+  }
+  assert.equal(fs.readFileSync(ignore, 'utf8'), without, 'update does not write the ignore file');
+  // Any spelling init accepts counts; a project with no ignore file is told too.
+  fs.appendFileSync(ignore, '/.slicekit/reports\n');
+  assert.equal(notes(runCli(['update', '--check'], { cwd: root })), 0);
+  fs.rmSync(ignore);
+  assert.equal(notes(runCli(['update', '--check'], { cwd: root })), 1);
+
+  // In a git repository git decides: a rule that covers the reports in another way counts.
+  const repo = makeRepo();
+  try {
+    assert.equal(runCli(['init', '--shape', 'backend', '--name', 'demo'], { cwd: repo.root }).code, 0);
+    const file = path.join(repo.root, '.gitignore');
+    const kept = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l !== '.slicekit/reports/').join('\n');
+    fs.writeFileSync(file, kept);
+    assert.equal(notes(runCli(['update', '--check'], { cwd: repo.root })), 1);
+    fs.writeFileSync(file, `${kept}.slicekit/reports/*.md\n`);
+    assert.equal(notes(runCli(['update', '--check'], { cwd: repo.root })), 0);
+  } finally {
+    repo.cleanup();
+  }
 });

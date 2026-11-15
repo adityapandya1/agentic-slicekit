@@ -186,6 +186,20 @@ test('an edited managed file is left untouched with a warning; a pristine one up
   assert.equal(fs.readFileSync(edited, 'utf8'), before);
 });
 
+// P5/S-23, REQ-2.13, D-57: the ops agent reads and replies; its tool list lets it write no file and
+// run no command, and its definition no longer says the command commits its work.
+test("render-all.test.js » the ops agent's tools are Read, Grep and Glob", () => {
+  for (const shape of SHAPES) {
+    const root = tmp();
+    renderAll(root, cfgFor(shape), { version: VERSION });
+    const text = fs.readFileSync(path.join(root, '.claude/agents/ops.md'), 'utf8');
+    const tools = text.split(/\r?\n/).filter((l) => l.startsWith('tools:'));
+    assert.deepEqual(tools, ['tools: Read, Grep, Glob'], shape);
+    assert.ok(!text.includes('report and the command commits'), `${shape}: the ops definition says the command commits`);
+    assert.match(text, /^Brief: run `npx --no-install slicekit instructions ops` and follow it\./m, shape);
+  }
+});
+
 // M3: pre-edit covers every tool that writes a file, NotebookEdit included.
 test('the rendered pre-edit hook matches Edit, Write, MultiEdit and NotebookEdit', () => {
   const root = tmp();

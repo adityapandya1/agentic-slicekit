@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { handle, roleOf, BRIEF_MAX, NO_GIT } from '../../src/hooks/subagent-start.js';
+import { handle, roleOf, BRIEF_MAX, NO_GIT, OPS_REPLY } from '../../src/hooks/subagent-start.js';
 import { agentsPath, hasAgent } from '../../src/hooks/subagent-marker.js';
 import { defaultConfig } from '../../src/config.js';
 import { makeRepo } from '../helpers/tmp-repo.js';
@@ -209,7 +209,7 @@ test('subagent-start » a long brief from instructions is cut and still ends wit
 });
 
 // REQ-2.12: the hook injects the summary form of the kit's own brief: the rules once, the no-git
-// sentence last, and a line naming the full brief.
+// sentence last (for ops, the sentence that its reply is the report), and a line naming the full brief.
 test('subagent-start » the kit brief is injected in its summary form with the rules once and the no-git rule last', async () => {
   const kitCfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
   const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(kitCfg, null, 2)}\n` } });
@@ -223,8 +223,29 @@ test('subagent-start » the kit brief is injected in its summary form with the r
       assert.match(t, new RegExp(`^Full brief: npx slicekit instructions ${role}$`, 'm'));
       assert.doesNotMatch(t, /brief truncated/);
       assert.ok(t.length < BRIEF_MAX, String(t.length));
-      assert.ok(t.endsWith(`\n${NO_GIT}`), t.slice(-200));
+      assert.ok(t.endsWith(`\n${role === 'ops' ? OPS_REPLY : NO_GIT}`), t.slice(-200));
     }
+  } finally {
+    cleanup();
+  }
+});
+
+// P5/S-23 review H-3, D-57: the ops agent runs no command and writes no file; its reply is the report,
+// which the main session writes under .slicekit/reports and which is never committed.
+test('subagent-start » the ops agent is told its reply is the report, not that the command commits', async () => {
+  const kitCfg = defaultConfig({ name: 'demo', shape: 'backend', cli: 'npx slicekit' });
+  const { root, cleanup } = makeRepo({ commits: 1, files: { '.slicekit/config.json': `${JSON.stringify(kitCfg, null, 2)}\n` } });
+  try {
+    assert.equal(OPS_REPLY, 'You run no command and write no file. Your reply is the report: the main session writes it under .slicekit/reports/ and checks it, and it is never committed.');
+    const placeholder = text(await start(root, { agent_type: 'ops' }));
+    const kit = text(await start(root, { agent_type: 'ops', agent_id: 'a2' }, { commands: COMMANDS, cfg: kitCfg }));
+    for (const t of [placeholder, kit]) {
+      assert.ok(t.endsWith(`\n\n${OPS_REPLY}`), t.slice(-300));
+      assert.doesNotMatch(t, /the command commits/);
+      assert.ok(!t.includes(NO_GIT), t.slice(-300));
+    }
+    // Every other role is still told that the command commits.
+    assert.ok(text(await start(root, { agent_type: 'auditor', agent_id: 'a3' })).endsWith(`\n${NO_GIT}`));
   } finally {
     cleanup();
   }

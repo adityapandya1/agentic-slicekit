@@ -15,6 +15,10 @@ import { addAgent, usableId } from './subagent-marker.js';
 export { roleOf };
 export const BRIEF_MAX = 8000;
 export const NO_GIT = 'You never run a git command that commits, pushes or moves a branch; report and the command commits.';
+// The ops agent holds no tool that runs a command or writes a file, and nothing of its work is
+// committed (D-57): it is told what becomes of its reply instead.
+export const OPS_REPLY = 'You run no command and write no file. Your reply is the report: the main session writes it under .slicekit/reports/ and checks it, and it is never committed.';
+const closing = (role) => (role === 'ops' ? OPS_REPLY : NO_GIT);
 const SKILL = path.join('.claude', 'skills', 'slicekit-writing', 'SKILL.md');
 const KIT_SKILL = fileURLToPath(new URL('../../templates/claude-code/skills/slicekit-writing/SKILL.md', import.meta.url));
 
@@ -74,11 +78,11 @@ function withoutRules(text) {
   return out.join('\n').trim();
 }
 
-// The brief, the rules and the no-git sentence in at most BRIEF_MAX characters, the rules and the
-// sentence always last and whole. A brief that does not fit is cut from its end and followed by a
+// The brief, the rules and the role's closing sentence (the no-git sentence; for ops, OPS_REPLY) in
+// at most BRIEF_MAX characters, the rules and the sentence always last and whole. A brief that does not fit is cut from its end and followed by a
 // line naming where the full text is. Only when the rules alone do not fit are they cut too.
 function assemble(brief, rules, role, cli) {
-  const tail = `\n\n${NO_GIT}`;
+  const tail = `\n\n${closing(role)}`;
   const end = rules.text === '' ? tail : `\n\n${rules.text}${tail}`;
   if (brief.length + end.length <= BRIEF_MAX) return brief + end;
   const note = `\n(brief truncated; full text in ${cli} instructions ${role})`;

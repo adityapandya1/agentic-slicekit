@@ -1,0 +1,220 @@
+{
+  "slice": "P5/S-23",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 156,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+    "headSha": "788894d8fa6f9ffcbdfe9e42bc05c5a2f05efe67"
+  },
+  "redCommit": "8113dec61aae3de30ae3193acafa4d2cde85f910",
+  "frozenTests": [
+    "test/commands/ops.test.js",
+    "test/commands/audit.test.js",
+    "test/briefs.test.js",
+    "test/render-all.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P5-S-23-r1.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "35c731d776921118cc44be3959b1dc604d79d426"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P5-S-23-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "c4a6ad382beb5cb8d076c659764b9b1706a9531e"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P5-S-23i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "6c0011ebe52ffb5907320da9d1e3f6023493b389"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P5-S-23i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "788894d8fa6f9ffcbdfe9e42bc05c5a2f05efe67"
+    }
+  ],
+  "ci": {
+    "sha": "12e7a38a5384b5e2232108fa23977281704bd4d1",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43680034264"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T03:55:54.542Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "8113dec61aae3de30ae3193acafa4d2cde85f910",
+        "testExit": 1,
+        "tests": [
+          "test/commands/ops.test.js",
+          "test/commands/audit.test.js",
+          "test/briefs.test.js",
+          "test/render-all.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T03:55:55.332Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T04:12:32.428Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 156,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+          "headSha": "35c731d776921118cc44be3959b1dc604d79d426",
+          "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T04:21:10.655Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P5-S-23-r1.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T04:33:59.041Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 156,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+          "headSha": "c4a6ad382beb5cb8d076c659764b9b1706a9531e",
+          "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T04:42:24.699Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P5-S-23-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T04:46:53.704Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 156,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+          "headSha": "6c0011ebe52ffb5907320da9d1e3f6023493b389",
+          "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T04:55:40.489Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P5-S-23i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-15T05:03:07.168Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 156,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/156",
+          "headSha": "788894d8fa6f9ffcbdfe9e42bc05c5a2f05efe67",
+          "title": "[P5/S-23] `/slicekit ops` and `/slicekit audit`"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-15T05:11:48.434Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P5-S-23i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-15T05:25:17.613Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "12e7a38a5384b5e2232108fa23977281704bd4d1",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/43680034264"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-15T05:25:19.672Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

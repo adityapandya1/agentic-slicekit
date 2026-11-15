@@ -11,6 +11,7 @@ export function kitPaths(root, cfg) {
     baselines: path.join(kit, 'baselines'),
     journalDir: path.join(kit, 'journal'),
     graph: path.join(kit, 'graph'),
+    reports: path.join(kit, 'reports'),
     workspace: path.join(kit, 'workspace.json'),
     docs,
     intake: path.join(docs, 'intake'),
