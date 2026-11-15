@@ -1218,3 +1218,35 @@ test('a quoted wrapper option value that holds a space is skipped whole', () => 
   assert.equal(javaBuildTool(null, ['echo "$(mvn -v)"']), 'maven');
   assert.equal(javaBuildTool(null, ['echo `./gradlew -v`']), 'gradle');
 });
+
+// Review H-4 of round 2 of P6/S-51: a comment and a here-document body are text the shell does not
+// split, so a quote character in one opens no quote; and the reader finds every call the line-by-line
+// reading before it found.
+test('a quote character in a comment or a here-document body hides no later Java call', () => {
+  // The three commands of the verdict.
+  assert.equal(javaBuildTool(null, ["# don't skip the tests\nmvn verify"]), 'maven');
+  assert.equal(javaBuildTool(null, ["npm ci # don't cache\n./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ["cat <<EOF\nit's\nEOF\nmvn verify"]), 'maven');
+  // Two quote characters that would pair across the call, so no quote is open at the end.
+  assert.equal(javaBuildTool(null, ["# don't skip the tests\nmvn verify\n# it's done"]), 'maven');
+  assert.equal(javaBuildTool(null, ['npm ci # say "hi\n./gradlew test # and "bye']), 'gradle');
+  assert.equal(javaBuildTool(null, ["cat <<A\nit's\nA\nmvn verify\ncat <<B\nit's\nB"]), 'maven');
+  // <<-WORD takes a delimiter line indented with tabs; a quoted delimiter names the same line.
+  assert.equal(javaBuildTool(null, ["cat <<-EOF\n\tit's\n\tEOF\nmvn verify\ncat <<-EOF\n\tit's\n\tEOF"]), 'maven');
+  assert.equal(javaBuildTool(null, ["cat <<'EOF'\nsay \"hi\n EOF\nEOF\n./gradlew test\ncat << \"END\"\nsay \"bye\nEND"]), 'gradle');
+  // A # inside a word, a quoted # and a here-string start no comment and no here-document.
+  assert.equal(javaBuildTool(null, ['echo a#b; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["echo '#'; mvn verify"]), 'maven');
+  assert.equal(javaBuildTool(null, ['echo $#; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['cat <<<"a b"\nmvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ['echo $((1<<2))\nmvn verify']), 'maven');
+  // A call inside a comment is no call.
+  assert.equal(javaBuildTool(null, ['echo a # ; mvn verify']), null);
+  assert.equal(javaBuildTool(null, ['npm test # then mvn verify\n# ./gradlew test']), null);
+  // A quote still open at the end: the command is read again line by line, and a tool that reading finds counts.
+  assert.equal(javaBuildTool(null, ['echo "unterminated; mvn verify']), 'maven');
+  assert.equal(javaBuildTool(null, ["echo it's\n./gradlew test"]), 'gradle');
+  assert.equal(javaBuildTool(null, ['sudo -u "build user mvn verify']), null);
+  // A here-document a shell reads as its script.
+  assert.equal(javaBuildTool(null, ['bash <<EOF\n./gradlew test\nEOF']), 'gradle');
+});
