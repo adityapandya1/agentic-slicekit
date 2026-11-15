@@ -2,13 +2,15 @@
 // columns Step and Command under `## CI steps the monitoring setup requires`; each row renders as one
 // obs-<n> job of the generated workflow, after the jobs of ci.observabilitySteps.
 import { LINE_SEPARATOR, workflowTextErrors } from './config.js';
-import { headings, prose, tableCells } from './markdown.js';
+import { headings, lines, tableCells } from './markdown.js';
 
 export const STEPS_HEADING = 'CI steps the monitoring setup requires';
 
-const COLUMNS = ['step', 'command'];
+const COLUMNS = ['Step', 'Command'];
+const FORM =
+  'the steps table is a header line | Step | Command | in plain text, a divider line |---|---|, then one row per step, and each of its lines opens with a bar';
 
-// A cell that is one code span reads as the span's text; any other cell reads as written. A span
+// A Step cell that is one code span reads as the span's text; any other reads as written. A span
 // opens and closes with runs of backticks of one length and holds no run of that length.
 function cellText(cell) {
   const text = (cell ?? '').trim();
@@ -18,14 +20,65 @@ function cellText(cell) {
   return inner.some((run) => run.length === span[1].length) ? text : span[2].trim();
 }
 
+// A Command cell is text with no backtick, or one code span as CommonMark reads it: the run of
+// backticks that opens the cell is closed by the next run of that length, and that run ends the
+// cell. Any other cell holding a backtick returns null: its backticks would reach the job's shell.
+function commandText(cell) {
+  const text = (cell ?? '').trim();
+  if (!text.includes('`')) return text;
+  const open = /^`+/.exec(text);
+  if (!open) return null;
+  const rest = text.slice(open[0].length);
+  for (const run of rest.matchAll(/`+/g)) {
+    if (run[0].length !== open[0].length) continue;
+    return run.index + run[0].length === rest.length ? rest.slice(0, run.index).trim() : null;
+  }
+  return null;
+}
+
 const opensWithBar = (line) => /^\s*\|/.test(line);
 const isDivider = (line) => opensWithBar(line) && tableCells(line).every((c) => /^:?-+:?$/.test(c));
+const FENCE = /^\s*(```|~~~)/;
+const INDENTED = /^(?: {4}| {0,3}\t)/;
+
+// The lines of the section between the lines `start` and `end`, each {line, n, hidden}. A line is
+// hidden when GitHub shows no table for it: a code fence and the lines inside it, a line indented
+// as code (four spaces or a tab), and an HTML comment that opens its line, up to and including the
+// line that closes it.
+function sectionLines(text, start, end) {
+  const out = [];
+  const all = lines(text);
+  let inFence = false;
+  let inComment = false;
+  for (let i = 0; i < all.length && i + 1 < end; i++) {
+    const line = all[i];
+    let hidden = false;
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      hidden = true;
+    } else if (inFence) {
+      hidden = true;
+    } else if (i + 1 > start) {
+      if (inComment) {
+        hidden = true;
+        inComment = !line.includes('-->');
+      } else if (/^ {0,3}<!--/.test(line)) {
+        hidden = true;
+        inComment = !line.slice(line.indexOf('<!--') + 4).includes('-->');
+      } else if (INDENTED.test(line) && line.trim() !== '') {
+        hidden = true;
+      }
+    }
+    if (i + 1 > start) out.push({ line, n: i + 1, hidden });
+  }
+  return out;
+}
 
 // The steps table of one observability.md: `rel` is the file's path as the messages name it.
-// A section with no such table (prose, `Not yet known`, `None`) holds no steps. The section is read
-// line by line, so that no line of the table is dropped without a message: a header naming Step and
-// Command is the steps table's or an error, and each later line of the table that opens with a bar
-// is a row or an error.
+// The section is read whole and fails closed. A hidden line is not read. Of the other lines, one
+// that holds no vertical bar is no part of a table (prose, `Not yet known`, `None`), and one that
+// holds a bar is a line of the one steps table in its exact form or an error naming its line: no
+// line that could read as a step to a person is passed over without a message.
 export function docSteps(text, rel) {
   const out = { steps: [], warnings: [], errors: [] };
   const all = headings(text);
@@ -34,40 +87,52 @@ export function docSteps(text, rel) {
   const start = all[at].line;
   const end = all.slice(at + 1).find((h) => h.level <= 2)?.line ?? Infinity;
   const headingLines = new Set(all.map((h) => h.line));
-  // The section's lines outside fenced code, each with its 1-based number.
-  const body = [...prose(text)].filter(([, n]) => n > start && n < end);
-  const dividerAfter = (k) => k + 1 < body.length && body[k + 1][1] === body[k][1] + 1 && isDivider(body[k + 1][0]);
-
-  let first = -1;
-  for (let k = 0; k < body.length && first === -1; k++) {
-    const [line, n] = body[k];
-    if (!opensWithBar(line)) continue;
-    const header = tableCells(line);
-    const names = header.map((c) => c.toLowerCase());
-    if (!COLUMNS.every((c) => names.includes(c))) {
-      // A table of other columns is not the steps table: its rows are passed over.
-      if (dividerAfter(k)) while (k + 1 < body.length && body[k + 1][1] === body[k][1] + 1 && opensWithBar(body[k + 1][0])) k++;
-      continue;
-    }
-    if (names.length !== COLUMNS.length || !names.every((c, i) => c === COLUMNS[i])) {
-      out.errors.push(`${rel}:${n}: the steps table has the columns ${header.join(', ')}; it takes two, Step then Command`);
-      return out;
-    }
-    if (!dividerAfter(k)) {
-      out.errors.push(`${rel}:${n}: the header of the steps table needs a divider line under it, |---|---|`);
-      return out;
-    }
-    first = k + 2;
-  }
-  if (first === -1) return out;
+  const body = sectionLines(text, start, end);
+  const refuse = (n, message) => {
+    out.errors.push(`${rel}:${n}: ${message}`);
+    return out;
+  };
 
   const seen = new Map();
-  for (let k = first; k < body.length; k++) {
-    const [line, n] = body[k];
-    // A blank line, a heading or a code fence ends the table.
-    if (n !== body[k - 1][1] + 1 || line.trim() === '' || headingLines.has(n)) break;
-    if (!opensWithBar(line)) continue;
+  // 'before' the header, in the 'rows', or 'after' the table's end.
+  let state = 'before';
+  for (let k = 0; k < body.length; k++) {
+    const { line, n, hidden } = body[k];
     const where = `${rel}:${n}`;
+    if (state === 'rows') {
+      // A row indented as code may still show as a row of the table it follows, so it is not passed over.
+      if (hidden && INDENTED.test(line) && line.includes('|')) {
+        out.errors.push(`${where}: a row of the steps table is indented as code; write it from the start of the line, opening with a bar`);
+        continue;
+      }
+      // A blank line, a heading, a code fence or an HTML comment ends the table.
+      if (hidden || line.trim() === '' || headingLines.has(n)) state = 'after';
+    }
+    if (hidden || !line.includes('|')) continue;
+
+    if (state === 'after') {
+      return refuse(n, `a line holding a vertical bar after the steps table has ended; the section takes one steps table and no other line holding a bar: ${FORM}`);
+    }
+
+    if (state === 'before') {
+      if (!opensWithBar(line)) return refuse(n, `a line holding a vertical bar that is not the header of the steps table; ${FORM}`);
+      const header = tableCells(line);
+      if (header.length !== COLUMNS.length || !header.every((c, i) => c === COLUMNS[i])) {
+        return refuse(n, `the steps table has the columns ${header.join(', ')}; it takes two, Step then Command, in plain text and these capitals: ${FORM}`);
+      }
+      const next = body[k + 1];
+      if (!next || next.hidden || !isDivider(next.line)) return refuse(n, 'the header of the steps table needs a divider line under it, |---|---|');
+      const cells = tableCells(next.line).length;
+      if (cells !== COLUMNS.length) return refuse(next.n, `the divider line has ${cells} ${cells === 1 ? 'cell' : 'cells'} and the header has ${COLUMNS.length}; ${FORM}`);
+      state = 'rows';
+      k++;
+      continue;
+    }
+
+    if (!opensWithBar(line)) {
+      out.errors.push(`${where}: a line of the steps table holds a vertical bar and does not open with one; a row opens with a bar, | Step | Command |`);
+      continue;
+    }
     // A carriage return alone does not end a line here, and a step is one line.
     if (line.includes('\r')) {
       out.errors.push(`${where}: the row holds a carriage return; write a step on one line`);
@@ -80,7 +145,16 @@ export function docSteps(text, rel) {
       continue;
     }
     const name = cellText(row[0]);
-    const run = cellText(row[1]);
+    const run = commandText(row[1]);
+    if (run === null) {
+      out.errors.push(`${where}: the Command cell mixes a code span with other text; write the whole command as one code span, or with no backtick`);
+      continue;
+    }
+    // GitHub shows no comment, and the job would run its text.
+    if (name.includes('<!--') || (run.includes('<!--') && !(row[1] ?? '').includes('`'))) {
+      out.errors.push(`${where}: the row holds an HTML comment; write a command that holds <!-- as one code span`);
+      continue;
+    }
     if (name === '') {
       out.errors.push(`${where}: a step needs a name`);
       continue;

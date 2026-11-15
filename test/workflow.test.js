@@ -1172,11 +1172,15 @@ test('a header naming Step and Command with any other column set is refused with
   assert.deepEqual(openRead.errors, []);
   assert.deepEqual(openRead.steps.map((s) => s.name), ['Trace check']);
 
-  // A table of other columns before the steps table is not the steps table and is no error.
-  const other = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Owner | Contact |', '|---|---|', '| ada | ada@example.com |', '', '| Step | Command |', '|---|---|', '| Trace check | npm run trace-check |', ''].join('\n');
+  // A table of other columns before the steps table is refused at its header: the section takes the one steps table.
+  const stepsTable = ['| Step | Command |', '|---|---|', '| Trace check | npm run trace-check |', ''];
+  const other = ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Owner | Contact |', '|---|---|', '| ada | ada@example.com |', '', ...stepsTable].join('\n');
   const otherRead = docSteps(other, rel);
-  assert.deepEqual(otherRead.errors, []);
-  assert.deepEqual(otherRead.steps.map((s) => s.name), ['Trace check']);
+  assert.equal(otherRead.errors.length, 1, JSON.stringify(otherRead));
+  assert.ok(otherRead.errors[0].startsWith(`${rel}:5: `), otherRead.errors[0]);
+  // Without that table, the steps table is read.
+  const alone = docSteps(['# Observability', '', '## CI steps the monitoring setup requires', '', ...stepsTable].join('\n'), rel);
+  assert.deepEqual(alone.steps.map((s) => s.name), ['Trace check']);
 
   // `slicekit workflow --write` and `--check` refuse the third column, name the file and line, and write nothing.
   withKitRepo((root) => {

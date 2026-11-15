@@ -200,8 +200,10 @@ test('two rows with one Step name are refused, naming both lines', () => {
 test('a command in a double-backtick span keeps its inner backtick only', () => {
   const text = doc(table('| Echo | `` echo `x` `` |', '| Plain | `npm run plain` |', '| Open | `echo a` && echo `b` |'));
   const read = docSteps(text, REL);
-  assert.deepEqual(read.errors, []);
-  assert.deepEqual(read.steps.map((s) => s.run), ['echo `x`', 'npm run plain', '`echo a` && echo `b`']);
+  // A Command of two code spans and text is refused with its line; the rows before it are read.
+  assert.equal(read.errors.length, 1, JSON.stringify(read));
+  assert.ok(read.errors[0].startsWith(`${REL}:${lineOf(text, '| Open |')}: `), read.errors[0]);
+  assert.deepEqual(read.steps.map((s) => s.run), ['echo `x`', 'npm run plain']);
 });
 
 // Review round 2 of P5/S-22.
@@ -230,9 +232,102 @@ test('a line of the steps table that begins with a bar is read as a row or refus
   const mixed = doc(table('| A | npm run a |', 'a line of text', '| C | npm run c |'));
   assert.deepEqual(docSteps(mixed, REL).steps.map((s) => s.name), ['A', 'C']);
 
-  // A blank line ends the table: a line beginning with a bar after it is no row.
+  // A blank line ends the table: a line beginning with a bar after it is no row, and is refused with its line.
   const ended = doc(`${table('| A | npm run a |')}\n\n| Later | npm run later |`);
   const endedRead = docSteps(ended, REL);
-  assert.deepEqual(endedRead.errors, []);
+  assert.equal(endedRead.errors.length, 1, JSON.stringify(endedRead));
+  assert.ok(endedRead.errors[0].startsWith(`${REL}:${lineOf(ended, '| Later |')}: `), endedRead.errors[0]);
   assert.deepEqual(endedRead.steps.map((s) => s.name), ['A']);
+});
+
+// Review round 3 of P5/S-22: the section is read whole. A line holding a vertical bar is a line of
+// the one steps table in its exact form, or it is refused with its file and line.
+
+test('a line holding a bar that does not open with one is refused with its line (H-8)', () => {
+  // Inside the table: the line is refused, and the rows around it are read.
+  const inside = doc(table('| Two | npm run two |', 'Three | npm run three', '| Four | npm run four |'));
+  const insideRead = docSteps(inside, REL);
+  assert.equal(insideRead.errors.length, 1, JSON.stringify(insideRead));
+  assert.ok(insideRead.errors[0].startsWith(`${REL}:${lineOf(inside, 'Three |')}: `), insideRead.errors[0]);
+  assert.match(insideRead.errors[0], /opens with a bar/);
+  assert.deepEqual(insideRead.steps.map((s) => s.name), ['Two', 'Four']);
+
+  // A whole table written with no opening bars is refused at its first line, and the message says the form.
+  const bare = doc(['Step | Command', '---|---', 'Two | npm run two'].join('\n'));
+  const bareRead = docSteps(bare, REL);
+  assert.equal(bareRead.errors.length, 1, JSON.stringify(bareRead));
+  assert.ok(bareRead.errors[0].startsWith(`${REL}:${lineOf(bare, 'Step | Command')}: `), bareRead.errors[0]);
+  assert.ok(bareRead.errors[0].includes('| Step | Command |'), bareRead.errors[0]);
+  assert.deepEqual(bareRead.steps, []);
+
+  // A line of text holding a bar before the table is refused too.
+  const before = doc(`Runs a | b nightly.\n\n${table('| Two | npm run two |')}`);
+  const beforeRead = docSteps(before, REL);
+  assert.equal(beforeRead.errors.length, 1, JSON.stringify(beforeRead));
+  assert.ok(beforeRead.errors[0].startsWith(`${REL}:${lineOf(before, 'Runs a')}: `), beforeRead.errors[0]);
+
+  // A second steps table is refused at its header.
+  const twice = doc(`${table('| Two | npm run two |')}\n\nMore:\n\n${table('| Five | npm run five |')}`);
+  const twiceRead = docSteps(twice, REL);
+  const second = twice.split('\n').lastIndexOf('| Step | Command |') + 1;
+  assert.equal(twiceRead.errors.length, 1, JSON.stringify(twiceRead));
+  assert.ok(twiceRead.errors[0].startsWith(`${REL}:${second}: `), twiceRead.errors[0]);
+  assert.ok(twiceRead.errors[0].includes('| Step | Command |'), twiceRead.errors[0]);
+});
+
+test('a Command cell that mixes a code span with other text is refused with its line (H-9)', () => {
+  const text = doc(table('| Unit | `npm test` (D-12) |', '| Date | echo `date |', '| Plain | npm run plain |', '| Span | `npm run span` |', '| Wide | `` echo `x` `` |'));
+  const read = docSteps(text, REL);
+  assert.equal(read.errors.length, 2, JSON.stringify(read));
+  assert.ok(read.errors[0].startsWith(`${REL}:${lineOf(text, '| Unit |')}: `), read.errors[0]);
+  assert.ok(read.errors[1].startsWith(`${REL}:${lineOf(text, '| Date |')}: `), read.errors[1]);
+  for (const e of read.errors) assert.match(e, /code span/);
+  // One code span, or text with no backtick, is read.
+  assert.deepEqual(read.steps.map((s) => s.run), ['npm run plain', 'npm run span', 'echo `x`']);
+});
+
+test('a table GitHub does not show is not read, and a divider of another cell count is refused (H-10)', () => {
+  const rows = ['| Step | Command |', '|---|---|', '| Test report as TAP | `node --test --test-reporter=tap` |'];
+  const hidden = {
+    'an HTML comment over several lines': ['<!--', ...rows, '-->'].join('\n'),
+    'an HTML comment on each line': rows.map((r) => `<!-- ${r} -->`).join('\n'),
+    'four spaces of indent': rows.map((r) => `    ${r}`).join('\n'),
+    'a tab of indent': rows.map((r) => `\t${r}`).join('\n'),
+    'a code fence': ['```', ...rows, '```'].join('\n'),
+  };
+  for (const [label, body] of Object.entries(hidden)) {
+    const read = docSteps(doc(`None.\n\n${body}`), REL);
+    assert.deepEqual(read.steps, [], label);
+    assert.deepEqual(read.warnings, [], label);
+    assert.deepEqual(read.errors, [], label);
+  }
+
+  // A divider with one cell or three under the two-cell header is refused at the divider's line.
+  for (const divider of ['|---|---|---|', '|---|']) {
+    const text = doc(['| Step | Command |', divider, '| Smoke | npm run smoke |'].join('\n'));
+    const read = docSteps(text, REL);
+    assert.equal(read.errors.length, 1, `${divider}: ${JSON.stringify(read)}`);
+    assert.ok(read.errors[0].startsWith(`${REL}:${lineOf(text, divider)}: `), read.errors[0]);
+    assert.ok(read.errors[0].includes('| Step | Command |'), read.errors[0]);
+    assert.deepEqual(read.steps, [], divider);
+  }
+
+  // A row commented out of the table is not a step. The comment ends the table, so the row after it is refused.
+  const cut = doc(table('| A | npm run a |', '<!-- | B | npm run b | -->', '| C | npm run c |'));
+  const cutRead = docSteps(cut, REL);
+  assert.deepEqual(cutRead.steps.map((s) => s.name), ['A']);
+  assert.equal(cutRead.errors.length, 1, JSON.stringify(cutRead));
+  assert.ok(cutRead.errors[0].startsWith(`${REL}:${lineOf(cut, '| C |')}: `), cutRead.errors[0]);
+});
+
+test('a header whose cells are styled or differ in case is refused with its line (H-11)', () => {
+  for (const header of ['| **Step** | **Command** |', '| step | command |', '| STEP | COMMAND |', '| `Step` | `Command` |', '| _Step_ | Command |']) {
+    const text = doc([header, '|---|---|', '| Smoke | npm run smoke |'].join('\n'));
+    const read = docSteps(text, REL);
+    assert.equal(read.errors.length, 1, `${header}: ${JSON.stringify(read)}`);
+    assert.ok(read.errors[0].startsWith(`${REL}:${lineOf(text, header)}: `), read.errors[0]);
+    assert.ok(read.errors[0].includes('| Step | Command |'), read.errors[0]);
+    assert.deepEqual(read.steps, [], header);
+    assert.deepEqual(read.warnings, [], header);
+  }
 });
