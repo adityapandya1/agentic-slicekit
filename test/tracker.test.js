@@ -560,6 +560,24 @@ test('jira find stops with an error when a page token repeats', async () => {
   assert.equal(same.seen.length, 2);
 });
 
+test('jira find stops with an error after 200 pages that each give a new token', async () => {
+  const jiraTracker = await loadJira();
+  // A faulty server: every page gives a token it has not given before, and no page holds the finding.
+  const { seen, fetchImpl } = jiraFetch(() => {
+    if (seen.length > 250) throw new Error('the search did not stop');
+    return { json: { issues: [jiraIssue(seen.length, '[P2/S-15] H-10: other')], nextPageToken: `page-${seen.length + 1}`, isLast: false } };
+  });
+  const t = jiraTracker(jiraCfg(), JIRA_ENV, fetchImpl);
+  await assert.rejects(t.find('P2/S-15', 'H-1'), (e) => {
+    assert.ok(e instanceof TrackerError, String(e));
+    assert.equal(e.message, 'jira find failed: the search still gave a page token after 200 pages; stopped');
+    return true;
+  });
+  assert.equal(seen.length, 200);
+  assert.equal(seen[0].url.searchParams.get('nextPageToken'), null);
+  assert.equal(seen[199].url.searchParams.get('nextPageToken'), 'page-200');
+});
+
 // A Jira that keeps the issues it is asked to open and answers every search with all of them.
 function keepingJira() {
   const issues = [];
