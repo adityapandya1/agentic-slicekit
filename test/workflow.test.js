@@ -1045,3 +1045,86 @@ test('a repository with no Java build renders as before', () => {
   assert.ok(!own.includes('setup-java'));
   assert.equal(fs.readFileSync(path.join(kitRoot, WORKFLOW_PATH), 'utf8'), own);
 });
+
+// P5/S-22 (REQ-3.11, D-56): the Step and Command table under `## CI steps the monitoring setup
+// requires` in observability.md renders as obs-<n> jobs, after the jobs of ci.observabilitySteps.
+
+const s22Doc = (...rows) =>
+  ['# Observability', '', '## CI steps the monitoring setup requires', '', '| Step | Command |', '|---|---|', ...rows, '', '## On-call contact', '', 'None.', ''].join('\n');
+const s22DocFile = (root) => path.join(root, 'docs', 'observability.md');
+const s22ObsIds = (yml) => jobIds(yml).filter((id) => id.startsWith('obs-'));
+
+function s22SetConfigSteps(root, steps) {
+  const file = path.join(root, '.slicekit', 'config.json');
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  cfg.ci.observabilitySteps = steps;
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+}
+
+test('observability steps from observability.md and config become jobs', () => {
+  withKitRepo((root) => {
+    s22SetConfigSteps(root, [{ name: 'Smoke', run: 'curl -fsS "$URL"', env: { URL: 'https://x.example.com' } }]);
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | `npm run trace-check` |', '| Log shape | npm run log-shape |'));
+
+    const printed = runCli(['workflow'], { cwd: root });
+    assert.equal(printed.code, 0, printed.stderr);
+    const yml = printed.stdout;
+    // Config's step first, then the doc's rows in their order.
+    assert.deepEqual(s22ObsIds(yml), ['obs-1', 'obs-2', 'obs-3']);
+    const one = jobBlock(yml, 'obs-1');
+    assert.ok(one.includes('name: Smoke\n'), one);
+    assert.ok(one.includes('run: curl -fsS "$URL"\n'), one);
+    const two = jobBlock(yml, 'obs-2');
+    assert.ok(two.includes('name: Trace check\n'), two);
+    assert.ok(two.includes('run: npm run trace-check\n'), two);
+    const three = jobBlock(yml, 'obs-3');
+    assert.ok(three.includes('name: Log shape\n'), three);
+    assert.ok(three.includes('run: npm run log-shape\n'), three);
+
+    // Each is needed by the checks job and required by SLICEKIT_CHECKS_OK.
+    const checks = jobBlock(yml, 'checks');
+    assert.ok(checks.includes('needs: [gate, cmd-test, obs-1, obs-2, obs-3]'), checks);
+    const okLine = /^ {10}SLICEKIT_CHECKS_OK: (.*)$/m.exec(checks);
+    assert.ok(okLine, checks);
+    for (const id of ['obs-1', 'obs-2', 'obs-3']) assert.ok(okLine[1].includes(`needs.${id}.result == 'success'`), `${id}: ${okLine[1]}`);
+
+    // --write puts the same render in the file, and --check accepts it.
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.equal(fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8'), yml);
+    assert.equal(runCli(['workflow', '--check'], { cwd: root }).code, 0);
+  });
+});
+
+test('an observability step with an empty command renders no job', () => {
+  withKitRepo((root) => {
+    s22SetConfigSteps(root, [{ name: 'Smoke', run: 'npm run smoke' }]);
+    const text = s22Doc('| Trace check | npm run trace-check |', '| Log shape | |');
+    fs.writeFileSync(s22DocFile(root), text);
+    const line = text.split('\n').findIndex((l) => l.startsWith('| Log shape |')) + 1;
+
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.ok(wrote.stderr.includes(`docs/observability.md:${line}: step "Log shape" has no command; no job rendered`), wrote.stderr);
+    const yml = fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8');
+    assert.deepEqual(s22ObsIds(yml), ['obs-1', 'obs-2']);
+    assert.ok(jobBlock(yml, 'obs-2').includes('name: Trace check\n'));
+    assert.ok(!yml.includes('Log shape'), 'the row with no command leaves nothing in the workflow');
+    assert.ok(jobBlock(yml, 'checks').includes('needs: [gate, cmd-test, obs-1, obs-2]'));
+  });
+});
+
+test('a new row in observability.md is workflow drift', () => {
+  withKitRepo((root) => {
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | npm run trace-check |'));
+    const wrote = runCli(['workflow', '--write'], { cwd: root });
+    assert.equal(wrote.code, 0, wrote.stderr);
+    assert.deepEqual(s22ObsIds(fs.readFileSync(path.join(root, WORKFLOW_PATH), 'utf8')), ['obs-1']);
+    assert.equal(runCli(['workflow', '--check'], { cwd: root }).code, 0);
+
+    fs.writeFileSync(s22DocFile(root), s22Doc('| Trace check | npm run trace-check |', '| Log shape | npm run log-shape |'));
+    const drift = runCli(['workflow', '--check'], { cwd: root });
+    assert.equal(drift.code, 1, drift.stderr);
+    assert.match(drift.stderr, /\.github\/workflows\/slicekit\.yml differs from the generator/);
+  });
+});
