@@ -17,7 +17,8 @@
     "test/user-guide.test.js"
   ],
   "unfrozen": [
-    "test/journal-heads.test.js"
+    "test/journal-heads.test.js",
+    "test/build-commit-staged.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -62,6 +63,17 @@
         "unfreeze": "test/journal-heads.test.js",
         "amendCommit": "db1dc9f9757cf244a07d44fb398803d4da09ce91",
         "reason": "an older test in the frozen file pins the first-parent heads rule this slice replaces; one count changes"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-15T14:08:36.593Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-commit-staged.test.js",
+        "amendCommit": "64f614a870c4639533286245f4c932a998ba50d9",
+        "reason": "its leftover checks list the temp folder all test processes share; the file takes a private temp folder"
       }
     }
   ]
