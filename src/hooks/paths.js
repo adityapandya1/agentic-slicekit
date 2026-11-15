@@ -61,6 +61,37 @@ export function real(p) {
   return rest === '' ? resolved : path.join(resolved, rest);
 }
 
+// Whether a path relative to a directory leaves it: `..` counts only as a whole component, so the
+// file `..secret` is inside (issue #123).
+export const leaves = (rel) => rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || path.isAbsolute(rel);
+
+// The paths inside `root` (a canonical path) that abs names, as written: abs itself when it lies under
+// root, and, for each leading directory of abs that resolves inside root, where that directory resolves
+// with the rest of abs kept as written. A link or junction to the root, or to a directory in it, from
+// outside the repository or from inside it, names the same files as the root does (issue #122). Empty
+// when no part of abs leads into root.
+export function namesUnder(root, abs) {
+  const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const inside = (p) => key(p) === key(root) || key(p).startsWith(key(root) + path.sep);
+  const full = path.resolve(abs);
+  const out = inside(full) ? [full] : [];
+  const top = path.parse(full).root;
+  const segs = full.slice(top.length).split(path.sep).filter((x) => x !== '');
+  let prefix = top;
+  for (let k = 0; k < segs.length; k++) {
+    prefix = path.join(prefix, segs[k]);
+    let resolved;
+    try {
+      resolved = fs.realpathSync.native(prefix);
+    } catch {
+      break;
+    }
+    const mapped = path.join(resolved, ...segs.slice(k + 1));
+    if (inside(resolved) && !out.some((p) => key(p) === key(mapped))) out.push(mapped);
+  }
+  return out;
+}
+
 // The slice the branch at root names: {id, state}, or {id, error} when its state file cannot be read,
 // or null when the branch is not a slice branch, has no state file, or root is not a repository.
 export function activeSlice(root, cfg) {
@@ -109,6 +140,47 @@ export function frozenTests(root, cfg) {
 
 // ---- agents.denyPaths (REQ-3.13, D-72) ----
 
+// The bracket expression that opens at p[i], as the source of a regular-expression class:
+// {src, end}, `end` the index of its closing `]`; null when no `]` closes it, so the `[` is a literal
+// character. A leading `!` or `^` negates; a `]` that comes first is a member, as are `[` and `^`
+// elsewhere; `[:alpha:]` and the other POSIX class names are read. A reversed range (`[z-a]`) is kept
+// as written, so the expression that holds it does not compile and the caller knows.
+const POSIX_CLASS = {
+  alpha: 'a-zA-Z',
+  digit: '0-9',
+  alnum: 'a-zA-Z0-9',
+  upper: 'A-Z',
+  lower: 'a-z',
+  space: '\\s',
+  blank: ' \\t',
+  punct: '!-\\/:-@\\[-`{-~',
+  xdigit: '0-9A-Fa-f',
+  word: '\\w',
+  cntrl: '\\x00-\\x1f\\x7f',
+  print: '\\x20-\\x7e',
+  graph: '\\x21-\\x7e',
+};
+export function bracketClass(p, i) {
+  let j = i + 1;
+  const negated = p[j] === '!' || p[j] === '^';
+  if (negated) j += 1;
+  let body = '';
+  for (let first = true; ; first = false) {
+    if (j >= p.length) return null;
+    const c = p[j];
+    if (c === ']' && !first) break;
+    const named = c === '[' && p[j + 1] === ':' ? /^\[:([a-z]+):\]/.exec(p.slice(j)) : null;
+    if (named && POSIX_CLASS[named[1]] !== undefined) {
+      body += POSIX_CLASS[named[1]];
+      j += named[0].length;
+    } else {
+      body += c === '\\' || c === ']' || c === '[' || c === '^' ? `\\${c}` : c;
+      j += 1;
+    }
+  }
+  return { src: `[${negated ? '^' : ''}${body}]`, end: j };
+}
+
 // One gitignore-style pattern over repository-relative POSIX paths as an anchored regular expression:
 // `**` crosses segments, `*` and `?` stay in one, `[...]` is a class; a leading `/` or `./` anchors at
 // the root, which a pattern with no inner `/` is not (it matches at any depth); a trailing `/` names a
@@ -137,14 +209,25 @@ function denyRe(pattern) {
       }
     } else if (c === '*') src += '[^/]*';
     else if (c === '?') src += '[^/]';
-    else if (c === '[' && p.indexOf(']', i + 2) !== -1) {
-      const end = p.indexOf(']', i + 2);
-      const body = p.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\');
-      src += `[${body}]`;
-      i = end;
+    else if (c === '[' && bracketClass(p, i) !== null) {
+      const cls = bracketClass(p, i);
+      src += cls.src;
+      i = cls.end;
     } else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
   }
   return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${src}$`, process.platform === 'win32' ? 'i' : '');
+}
+
+// -> why the guards cannot compile `pattern`, or null when they can. validateConfig refuses a pattern
+// with a reason (issue #120), so a guard does not meet one when it matches.
+export function denyPatternError(pattern) {
+  try {
+    denyRe(pattern);
+    return null;
+  } catch (e) {
+    const why = String(e?.message ?? e).split(': ').pop();
+    return `${pattern} does not compile as a glob (${why.charAt(0).toLowerCase()}${why.slice(1)})`;
+  }
 }
 
 // -> the first pattern of `patterns` that matches the repository-relative POSIX path `rel` or one of

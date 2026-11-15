@@ -9,14 +9,28 @@
 // a git or gh command whose arguments hold a variable or a command substitution; `eval`, a shell's
 // `-c` (`sh`, `bash`, `zsh`, `pwsh`, `cmd /c`, ...) or an interpreter's inline code (`node -e`,
 // `python -c`, `perl -e`, `ruby -e`) that names git or gh; (0b) a change to the host rules from the
-// agent's shell: `slicekit init --protect`, or a `gh api` write (a method other than GET, or a field or
-// input flag without `-X GET`) to rulesets, rules or branch protection; (0c) a write to a test frozen
-// for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv`, `rm`, `unlink` or
-// `truncate`; (0d) a command naming a path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
+// agent's shell: `slicekit init --protect`; a `gh api` write (a method other than GET, or a field or
+// input flag without `-X GET`) to rulesets, rules or branch protection, the endpoint given as a path, as
+// a full URL or under a GitHub Enterprise Server host's `api/v3` prefix; a `gh api graphql` call whose
+// query holds a mutation and names branch protection or a ruleset, and one whose query is not in the
+// command text (`--input`, `-F query=@file`, no query field), which cannot be judged; (0c) a write to
+// a test frozen for the active slice (REQ-3.3): by a redirection (`>`, `>>`, `>|`, `>&`, `&>`, with a
+// file descriptor or without, apart from the preceding word or against it); by `tee`, `sed -i`,
+// `perl -i` and `ruby -i` in their spellings (`-pi`, `-i.bak`, `-p -i`), `gawk -i inplace`, `dd of=`,
+// `truncate`; by `cp`, `mv`, `install`, `rsync` and `ln` with the test as the destination or the
+// link name, or as a name under a destination directory; by `rm`, `unlink` and `mv` of the test or
+// of a directory holding it; by `git checkout`, `git restore`, `git rm` and `git mv` naming the
+// test, a directory holding it or a pathspec that matches it, and by one of those whose paths the
+// text does not name (`--pathspec-from-file`, `--patch`, a `:(...)` pathspec); (0d) a command naming a
+// path that matches a pattern of `agents.denyPaths` (REQ-3.13): any
 // argument, redirection target, option value or `<rev>:<path>` path, resolved against the shell's
-// directory, a glob or brace expression by what it expands to, and the directory a pattern starts with
-// (`data` for `data/**`); the directory each command runs in and each `cd`/`pushd` target are judged
-// too, and while the list is set a `cd` it cannot resolve from the text is refused.
+// directory, a glob or brace expression by what it expands to (a glob that does not compile, such as
+// a reversed range, as the literal word), and the directory a pattern starts with
+// (`data` for `data/**`); a path named through a link or junction that leads into the repository is
+// judged where the link leads too; the directory each command runs in and each `cd`/`pushd` target
+// are judged too, a `cd` to a directory that does not exist yet is followed by its name, and while
+// the list is set a `cd` it cannot resolve from the text is refused: a variable, a substitution, `-`,
+// a glob or brace expression, and a `cd` in a pipeline or in the background.
 //
 // Rules in order, first deny wins: (1) commit on a protected branch; (2) push to a protected branch;
 // (3) any force push; (4) a commit that changes a frozen intake snapshot; (5) from a subagent: commit,
@@ -40,8 +54,23 @@
 // is not split out; `echo '...' | bash` (a piped string, not a here-document) and a shell function
 // (`function f { ...; }; f`) are not followed; the default destructive list misses `rm -fr /`
 // spellings and absolute paths inside the worktree; SQL read from a file (`psql -f f.sql`,
-// `cat f.sql | psql`) is not matched against the destructive list; a frozen test written by a program
-// that names it only inside its own code (`node -e "fs.writeFileSync(...)"`) is not seen.
+// `cat f.sql | psql`) is not matched against the destructive list.
+// Known gaps of rule 0b: a host-rule write by a client other than `gh api` (`curl`, a script, an
+// extension or alias of gh); a GraphQL mutation of the host's rules whose name holds neither
+// `BranchProtection` nor `Ruleset`.
+// Known gaps of rule 0c, each a write to a frozen test the guard does not see: a program that names
+// the test only inside its own code (`node -e "fs.writeFileSync(...)"`, `python -c`, a script file,
+// an editor run with commands such as `ed`, `ex` or `vim -c`); a command given the name by another
+// (`find ... -delete`, `find -exec`, `ls | xargs rm`); a writer not in the list above (`curl -o`,
+// `wget -O`, `sort -o`, `patch`, `tar -x`, `unzip`, `git apply`, `git stash pop`, `git reset --hard`,
+// `git clean`, `git checkout <branch>` or `git switch` to a revision where the test differs,
+// `git merge`, `git pull`, `git rebase`, `git cherry-pick`); a write through a symbolic link the same
+// command makes first (`ln -s test/a.test.js l && echo x > l`; a link that exists when the command is
+// judged is resolved) or through a hard link; `perl -i` switched on by `PERL5OPT` or by the script's
+// `#!` line; a name built from a variable, of which only the last segment is compared.
+// Known gaps of rule 0d: a `cd` inside a brace group that is piped or put in the background
+// (`{ cd src; } | cat`) is taken to last; `CDPATH` is not read; a link to a listed directory that the
+// same command makes under a name built from a variable is not seen.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,7 +78,7 @@ import { compileDestructive } from '../config.js';
 import { git, GitError, currentBranch } from '../git.js';
 import { kitPaths } from '../paths.js';
 import { allow, deny } from './io.js';
-import { denyDir, denyPaths, frozenTests, fromGitBash, matchesDeny, real, toPosix } from './paths.js';
+import { bracketClass, denyDir, denyPaths, frozenTests, fromGitBash, leaves, matchesDeny, namesUnder, real, toPosix } from './paths.js';
 
 // ---- tokenising ----
 
@@ -61,13 +90,15 @@ const DELIM_END = /[\s;&|()<>`]/;
 // word with quotes removed; `b` is only its unquoted characters; `x` is the characters the shell expands
 // (`v` without single-quoted or backslash-escaped text). Here-document bodies are data, attached to the
 // command that opened them; `stdin` is the command piped into this one; `subst` marks a command that
-// an unquoted backtick substitution interrupts (its output becomes this command's next argument).
+// an unquoted backtick substitution interrupts (its output becomes this command's next argument);
+// `depth` counts the subshell parentheses a command sits in and `tick` says it sits in a backtick
+// substitution; `piped` marks a command whose output is piped on and `background` one ended by `&`.
 function lex(command) {
   const s = String(command);
   const out = [];
   // `depth` counts the unquoted subshell parentheses a segment sits in.
   let depth = 0;
-  let cur = { toks: [], heredocs: [], depth };
+  let cur = { toks: [], heredocs: [], depth, tick: false };
   let word = null;
   let bare = '';
   let expand = '';
@@ -104,7 +135,7 @@ function lex(command) {
     endWord();
     const ended = cur;
     if (cur.toks.length) out.push(cur);
-    cur = { toks: [], heredocs: [], depth };
+    cur = { toks: [], heredocs: [], depth, tick: tickOpen };
     return ended;
   };
   let i = 0;
@@ -197,7 +228,13 @@ function lex(command) {
         i += s[i + 2] === '&' ? 2 : 1;
       }
       if (c === '|' && s[i + 1] === '|') i += 1;
-      else if (c === '|') cur.stdin = ended;
+      else if (c === '|') {
+        cur.stdin = ended;
+        ended.piped = true;
+      } else if (c === '&' && s[i + 1] !== '&' && s[i + 1] !== '>' && !'&|<>'.includes(s[i - 1] ?? ' ')) {
+        // A lone `&` puts the command in the background; `&&`, `|&`, `&>` and `>&` are not that.
+        ended.background = true;
+      }
       i += 1;
       if (c === '\n' && pending.length) {
         for (const p of pending) {
@@ -216,6 +253,12 @@ function lex(command) {
       }
     } else if (c === '#' && word === null) {
       while (i < s.length && s[i] !== '\n') i += 1;
+    } else if (c === '>' && s[i + 1] === '|') {
+      // `>|` is one redirection operator (it overwrites under noclobber), not a redirect and a pipe:
+      // `x>|f` is the word `x` and the redirect `>|f`; `1>|f` stays one word.
+      if (word !== null && !(word === bare && /^\d*$/.test(word))) endWord();
+      add('>|', false);
+      i += 2;
     } else if (c === '>' && word !== null && !(word === bare && /^\d*>?$/.test(word))) {
       // `x>f` is the word `x` and the redirect `>f`, as the shell reads it; `2>f` and `>>f` stay one word.
       endWord();
@@ -241,7 +284,7 @@ const base = (word) => path.posix.basename(word.replace(/\\/g, '/')).toLowerCase
 function dropRedirects(toks) {
   const out = [];
   for (let k = 0; k < toks.length; k++) {
-    const m = /^\d*(<<<|>>?|<|>&|<&|&>)(.*)$/.exec(toks[k].b === toks[k].v ? toks[k].v : '');
+    const m = /^\d*(<<<|>\||>>?|<|>&|<&|&>)(.*)$/.exec(toks[k].b === toks[k].v ? toks[k].v : '');
     if (!m) out.push(toks[k]);
     else if (m[2] === '') k += 1;
   }
@@ -306,7 +349,10 @@ const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
 // ---- directories ----
 
 // A directory the hook cannot resolve is null: commits and pushes there refuse rather than pass.
-function resolveDir(from, target) {
+// With `byName`, a target that does not exist yet is the path its name gives, since the command may
+// create it first (`mkdir x && cd x`, issue #118); git is still not asked about such a directory
+// (`dirExists`), so a commit or push from it refuses as before.
+function resolveDir(from, target, byName = false) {
   if (/[$`]/.test(target)) return null;
   let t = target;
   if (t === '~' || t.startsWith('~/')) t = path.join(os.homedir(), t.slice(1));
@@ -316,10 +362,18 @@ function resolveDir(from, target) {
   const abs = path.resolve(from ?? '', t);
   try {
     return fs.statSync(abs).isDirectory() ? abs : null;
-  } catch {
-    return null;
+  } catch (e) {
+    return byName && e?.code === 'ENOENT' ? abs : null;
   }
 }
+
+const dirExists = (dir) => {
+  try {
+    return dir !== null && fs.statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
 // ---- git argument parsing ----
 
@@ -470,12 +524,14 @@ const GH_API_VALUE = new Set(['-H', '--header', '-q', '--jq', '-t', '--template'
 
 // `gh api` from index k: {method, endpoint}. The method is the explicit one, else POST when a field or
 // input flag is given, else GET.
+// `fields` holds each body flag with its value, `{flag, value}`: `-f query=...`, `--input body.json`.
 function parseGhApi(w, k) {
   let method = null;
-  let body = false;
   let endpoint = null;
+  const fields = [];
   for (let j = k; j < w.length; j++) {
     const a = w[j];
+    const name = a.startsWith('--') ? a.split('=')[0] : a.slice(0, 2);
     if (a === '-X' || a === '--method') {
       if (w[j + 1] !== undefined) method = w[j + 1];
       j += 1;
@@ -484,21 +540,58 @@ function parseGhApi(w, k) {
     } else if (/^-X./.test(a)) {
       method = a.slice(2);
     } else if (GH_API_BODY.has(a)) {
-      body = true;
+      fields.push({ flag: a, value: w[j + 1] ?? '' });
       j += 1;
-    } else if (GH_API_BODY.has(a.startsWith('--') ? a.split('=')[0] : a.slice(0, 2))) {
-      body = true;
+    } else if (GH_API_BODY.has(name)) {
+      fields.push({ flag: name, value: a.slice(name.length).replace(/^=/, '') });
     } else if (GH_API_VALUE.has(a)) {
       j += 1;
     } else if (!a.startsWith('-') && endpoint === null) {
       endpoint = a;
     }
   }
-  return { method: (method ?? (body ? 'POST' : 'GET')).toUpperCase(), endpoint };
+  return { method: (method ?? (fields.length ? 'POST' : 'GET')).toUpperCase(), endpoint, fields };
 }
 
 // A repository's (or organisation's) rulesets and rules, or a branch's protection.
 const HOST_RULES_PATH = /^\/?(?:(?:repos\/[^/]+\/[^/]+|orgs\/[^/]+|enterprises\/[^/]+)\/(?:rulesets|rules)|repos\/[^/]+\/[^/]+\/branches\/.+\/protection)(?:[/?]|$)/;
+
+// The path of a `gh api` endpoint: a full URL without its scheme and host, a GitHub Enterprise Server
+// path without its `api/v3` prefix, repeated slashes as one. `gh api` takes a URL where it takes a
+// path, so both name the same resource (issue #104).
+function apiPath(endpoint) {
+  return endpoint
+    .replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]*/, '')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/?api\/v3(?=\/|$)/i, '')
+    .replace(/^\//, '');
+}
+
+// The GraphQL endpoint: `graphql`, or `api/graphql` on a GitHub Enterprise Server host.
+const GRAPHQL_PATH = /^(?:api\/)?graphql\/?(?:[?#]|$)/i;
+// A GraphQL name that belongs to branch protection or to a ruleset: `deleteBranchProtectionRule`,
+// `updateRepositoryRuleset`, and any later mutation named the same way.
+const RULE_NAME = /[A-Za-z0-9_]*(?:BranchProtection|Ruleset)[A-Za-z0-9_]*/i;
+
+// A `gh api graphql` call (issue #103) -> {change} when its query holds a mutation and names branch
+// protection or a ruleset; {unjudged} when the query is not in the command text (`--input`, a typed
+// field read from a file, or no query field); null when every query it holds is free of both.
+function graphqlRules(fields) {
+  const input = fields.find((f) => f.flag === '--input');
+  if (input) return { unjudged: `gh api graphql reads its request from ${input.value || 'its input'}` };
+  const queries = fields.filter((f) => /^query=/.test(f.value));
+  if (!queries.length) return { unjudged: 'gh api graphql names no query' };
+  for (const q of queries) {
+    const text = q.value.slice('query='.length);
+    // Only a typed field (`-F`, `--field`) reads `@file`; a raw field sends the text as it is.
+    if ((q.flag === '-F' || q.flag === '--field') && text.startsWith('@')) {
+      return { unjudged: `gh api graphql reads its query from ${text.slice(1) === '-' ? 'standard input' : text.slice(1)}` };
+    }
+    const name = /\bmutation\b/i.test(text) ? RULE_NAME.exec(text) : null;
+    if (name) return { change: `gh api graphql mutation ${name[0]}` };
+  }
+  return null;
+}
 
 // gh's command group and the index after it.
 function ghGroup(w) {
@@ -519,20 +612,25 @@ function classifyGh(w) {
   return null;
 }
 
-// -> a description of a write to the host's rules (REQ-3.14), or null.
+// -> {change}, a description of a write to the host's rules (REQ-3.14); {unjudged}, why a call that
+// may be one cannot be judged; or null.
 function hostRulesChange(w) {
   const head = base(w[0]);
   if (head === 'gh') {
     const { group, k } = ghGroup(w);
     if (group !== 'api') return null;
-    const { method, endpoint } = parseGhApi(w, k);
-    return method !== 'GET' && endpoint !== null && HOST_RULES_PATH.test(endpoint) ? `gh api ${method} ${endpoint}` : null;
+    const { method, endpoint, fields } = parseGhApi(w, k);
+    if (endpoint === null) return null;
+    const p = apiPath(endpoint);
+    // A GraphQL call is judged by its query, whatever method it names.
+    if (GRAPHQL_PATH.test(p)) return graphqlRules(fields);
+    return method !== 'GET' && HOST_RULES_PATH.test(p) ? { change: `gh api ${method} ${endpoint}` } : null;
   }
   const i = w.findIndex((x, idx) => idx <= 3 && /^slicekit(\.[cm]?js)?$/.test(base(x)));
   if (i === -1) return null;
   const rest = w.slice(i + 1);
   return rest.includes('init') && rest.some((a) => a === '--protect' || a.startsWith('--protect='))
-    ? 'slicekit init --protect'
+    ? { change: 'slicekit init --protect' }
     : null;
 }
 
@@ -609,28 +707,128 @@ function positionals(args, valued = new Set()) {
   return out;
 }
 
-// -> [{word, removes?, into?}]: the paths a simple command writes. `removes` also covers a directory
-// holding the file; `into` lists source names for a destination that may be a directory.
-function writeTargets(seg, w, head) {
+// Commands that copy or link their leading arguments to the last one, as `cp` does, with the options
+// of each that take a separate value.
+const COPIERS = {
+  cp: ['-t', '--target-directory', '-S', '--suffix'],
+  mv: ['-t', '--target-directory', '-S', '--suffix'],
+  install: ['-t', '--target-directory', '-S', '--suffix', '-m', '--mode', '-o', '--owner', '-g', '--group', '--strip-program'],
+  ln: ['-t', '--target-directory', '-S', '--suffix'],
+  rsync: ['-e', '--rsh', '-f', '--filter', '-B', '--block-size', '-T', '--temp-dir', '-M', '--remote-option'],
+};
+
+// Whether perl or ruby edits its file arguments in place: `-i`, `-i.bak`, `-pi`, `-ni`, in any option
+// before the code or the script. An option letter that takes the rest of its word as a value ends the
+// word (`-Mi` loads module `i`), and `-e` and `-E` take the next word when nothing follows them.
+// -> the file arguments, or null when the command does not edit in place.
+function inPlaceFiles(args) {
+  let inPlace = false;
+  let k = 0;
+  for (; k < args.length; k++) {
+    const a = args[k];
+    if (a === '--') {
+      k += 1;
+      break;
+    }
+    if (!a.startsWith('-') || a === '-') break;
+    if (a.startsWith('--')) continue;
+    for (let j = 1; j < a.length; j++) {
+      const c = a[j];
+      if (c === 'i') {
+        inPlace = true;
+        break;
+      }
+      if ('eEIr'.includes(c)) {
+        if (j === a.length - 1) k += 1;
+        break;
+      }
+      // `-0[digits]` and `-l[digits]` take only digits; more option letters may follow them.
+      if (c === '0' || c === 'l') {
+        while (/[0-7]/.test(a[j + 1] ?? '') || (c === '0' && /[0-9A-Fa-fx]/.test(a[j + 1] ?? ''))) j += 1;
+        continue;
+      }
+      if ('MmFxCdDV'.includes(c)) break;
+    }
+  }
+  if (!inPlace) return null;
+  // Without `-e` the first argument is the script; it is counted too, which can only refuse more.
+  return args.slice(k).filter((a) => !a.startsWith('-') || a === '-');
+}
+
+// `git checkout`, `git restore`, `git rm` and `git mv` (issue #105) -> the paths the command writes in
+// the work tree, each resolved in the directory `-C` names. A path covers what lies under it, and git
+// matches `*` across directories. A pathspec the text does not settle (`:(glob)...`, `:/`,
+// `--pathspec-from-file`, `--patch`) is `any`: it may reach every file.
+function gitWrites(w, cwd) {
+  let dir = cwd;
+  let k = 1;
+  while (k < w.length && w[k].startsWith('-')) {
+    if (w[k] === '-C' && w[k + 1] !== undefined) dir = resolveDir(dir, w[k + 1]);
+    k += w[k] === '-C' || GIT_GLOBAL_VALUE.has(w[k]) ? 2 : 1;
+  }
+  const sub = w[k];
+  const args = w.slice(k + 1);
+  if (!['checkout', 'restore', 'rm', 'mv'].includes(sub)) return [];
+  const has = (...names) => args.some((a) => names.includes(a.split('=')[0]));
+  const short = (letter) => args.some((a) => /^-[A-Za-z]+$/.test(a) && a.includes(letter));
+  // `git restore --staged` alone writes the index, and `git rm --cached` only that.
+  if (sub === 'restore' && (has('--staged') || short('S')) && !(has('--worktree') || short('W'))) return [];
+  if (sub === 'rm' && has('--cached')) return [];
+  const VALUED = {
+    checkout: ['-b', '-B', '--orphan', '--conflict', '-U', '--unified', '--inter-hunk-context', '--pathspec-from-file'],
+    restore: ['-s', '--source', '--conflict', '-U', '--unified', '--inter-hunk-context', '--pathspec-from-file'],
+    rm: ['--pathspec-from-file'],
+    mv: [],
+  };
+  const out = [];
+  if (has('--pathspec-from-file') || (sub !== 'mv' && sub !== 'rm' && (has('--patch') || short('p')))) out.push({ word: sub, any: true, dir });
+  const pos = positionals(args, new Set(VALUED[sub]));
+  if (sub === 'mv') {
+    if (pos.length > 1) out.push({ word: pos.at(-1), into: pos.slice(0, -1), dir });
+    for (const word of pos.slice(0, -1)) out.push({ word, removes: true, dir });
+    return out;
+  }
+  for (const word of pos) {
+    if (word.startsWith(':')) out.push({ word, any: true, dir });
+    else out.push({ word, removes: true, pathspec: true, dir });
+  }
+  return out;
+}
+
+// -> [{word, removes?, into?, any?, pathspec?, dir?}]: the paths a simple command writes. `removes`
+// also covers a directory holding the file; `into` lists source names for a destination that may be a
+// directory; `any` is a write whose paths the text does not name; `pathspec` is a git pathspec; `dir`
+// is the directory the path is named in when it is not the shell's (`cwd`).
+function writeTargets(seg, w, head, cwd) {
   const out = redirectTargets(seg.toks).map((word) => ({ word }));
   const args = w.slice(1);
   if (head === 'tee') {
     for (const word of positionals(args)) out.push({ word });
   } else if (head === 'sed' && args.some((a) => /^-[A-Za-z]*i/.test(a) || a.startsWith('--in-place'))) {
     for (const word of positionals(args, new Set(['-e', '-f', '--expression', '--file', '-l', '--line-length']))) out.push({ word });
-  } else if (head === 'cp' || head === 'mv') {
+  } else if (head === 'perl' || head === 'ruby') {
+    for (const word of inPlaceFiles(args) ?? []) out.push({ word });
+  } else if (/^g?awk$/.test(head) && args.some((a, k) => /^(-i|--include)$/.test(a) ? args[k + 1] === 'inplace' : /^(-i|--include=)inplace$/.test(a))) {
+    for (const word of positionals(args, new Set(['-i', '--include', '-f', '--file', '-v', '--assign', '-F', '--field-separator']))) out.push({ word });
+  } else if (head === 'dd') {
+    for (const a of args) if (a.startsWith('of=')) out.push({ word: a.slice('of='.length) });
+  } else if (COPIERS[head]) {
     let target = args.find((a, k) => args[k - 1] === '-t' || args[k - 1] === '--target-directory');
     const long = args.find((a) => a.startsWith('--target-directory='));
     if (long) target = long.slice('--target-directory='.length);
-    const pos = positionals(args, new Set(['-t', '--target-directory', '-S', '--suffix']));
-    const sources = target === undefined ? pos.slice(0, -1) : pos;
-    const dest = target ?? pos.at(-1);
+    const pos = positionals(args, new Set(COPIERS[head]));
+    // `ln <target>` with one name makes the link in the shell's directory under the target's name.
+    const single = head === 'ln' && target === undefined && pos.length === 1;
+    const sources = target === undefined && !single ? pos.slice(0, -1) : pos;
+    const dest = single ? '.' : target ?? pos.at(-1);
     if (dest !== undefined) out.push({ word: dest, into: sources });
     if (head === 'mv') for (const word of sources) out.push({ word, removes: true });
   } else if (head === 'rm' || head === 'unlink') {
     for (const word of positionals(args)) out.push({ word, removes: true });
   } else if (head === 'truncate') {
     for (const word of positionals(args, new Set(['-s', '--size', '-r', '--reference']))) out.push({ word });
+  } else if (head === 'git') {
+    out.push(...gitWrites(w, cwd));
   }
   return out;
 }
@@ -697,7 +895,7 @@ function walk(seg, state, acc) {
   if (why && acc.unjudgeable === null) acc.unjudgeable = why;
   const host = hostRulesChange(w);
   if (host && acc.hostRules === null) acc.hostRules = host;
-  for (const t of writeTargets(seg, w, head)) acc.writes.push({ ...t, dir: state.cwd });
+  for (const t of writeTargets(seg, w, head, state.cwd)) acc.writes.push({ ...t, dir: t.dir === undefined ? state.cwd : t.dir });
   const ownCommit = head === 'git' && w[gitSubIndex(w)] === 'commit';
   if (state.cwd !== null && !MENTION_READERS.has(head) && !ownCommit) {
     for (const x of w.slice(1)) if (!x.startsWith('-') && !/[$`]/.test(x)) acc.mentions.push({ dir: state.cwd, word: x });
@@ -722,10 +920,19 @@ function walk(seg, state, acc) {
     // An unquoted backtick ends the segment in the lexer, so the real target, the substitution's
     // output, is not among `toks`: `cd `echo data`` would otherwise read as a cd with no target.
     if (seg.subst) unknown(`${b} \`...\``);
+    // A command of a pipeline, and one put in the background, runs in a subshell in Bash, so its cd
+    // ends there; zsh runs a pipeline's last command in the shell itself. The text does not say which
+    // shell reads it, so where the later commands run cannot be told.
+    const detached = seg.piped === true || seg.stdin !== undefined || seg.background === true;
+    // The shell expands an unquoted glob or brace expression before cd sees it: what the directory
+    // is depends on the files there (issue #118).
+    const expands = target !== undefined && (GLOB.test(toks[at].b)
+      || (toks[at].b.includes('{') && (expandBraces(target, toks[at].m ?? '0'.repeat(target.length)) ?? []).join(' ') !== target));
+    if (detached) unknown(`${b}${target === undefined ? '' : ` ${target}`} in a pipeline or in the background`);
     if (target === undefined) {
       if (b === 'cd') acc.named.push({ word: os.homedir(), dir: null, isDir: true });
       else unknown('pushd');
-    } else if (target === '-' || /[$`]/.test(toks[at].x ?? target) || (target.startsWith('~') && !/^~(\/|$)/.test(target))) {
+    } else if (expands || target === '-' || /[$`]/.test(toks[at].x ?? target) || (target.startsWith('~') && !/^~(\/|$)/.test(target))) {
       unknown(`${b} ${target}`);
     } else {
       const t = fromGitBash((target === '~' || target.startsWith('~/') ? os.homedir() + target.slice(1) : target).replace(/\\/g, '/'));
@@ -736,13 +943,14 @@ function walk(seg, state, acc) {
     if (target === undefined) {
       state.cwd = b === 'cd' ? os.homedir() : null;
       state.label = b === 'cd' ? '~' : 'pushd';
-    } else if (target === '-') {
+    } else if (target === '-' || expands) {
       state.cwd = null;
-      state.label = '-';
+      state.label = target;
     } else {
-      state.cwd = resolveDir(state.cwd, target);
+      state.cwd = resolveDir(state.cwd, target, true);
       state.label = target;
     }
+    if (detached) state.cwd = null;
     return;
   }
   if (b === 'popd') {
@@ -776,7 +984,7 @@ function walk(seg, state, acc) {
     return;
   }
   if (b !== 'git') return;
-  let dir = state.cwd;
+  let dir = dirExists(state.cwd) ? state.cwd : null;
   let label = state.label;
   let k = 1;
   while (k < w.length && w[k].startsWith('-')) {
@@ -819,12 +1027,13 @@ function parse(command, cwd) {
   return acc;
 }
 
-// Walks segments in order; a `cd` inside a subshell `( ... )` ends with it, so the directory is put
-// back when the segments leave the parentheses.
+// Walks segments in order; a `cd` inside a subshell `( ... )` or a backtick substitution ends with
+// it, so the directory is put back when the segments leave the parentheses or pass the closing
+// backtick (issue #121).
 function walkAll(segs, state, acc) {
   const saved = [];
   for (const seg of segs) {
-    const depth = seg.depth ?? 0;
+    const depth = (seg.depth ?? 0) + (seg.tick ? 1 : 0);
     while (saved.length < depth) saved.push({ cwd: state.cwd, label: state.label, stack: [...state.stack], globstar: state.globstar });
     while (saved.length > depth) Object.assign(state, saved.pop());
     walk(seg, state, acc);
@@ -887,7 +1096,7 @@ function covers(stager, file, top) {
 function namesIntake(mentions, intakeAbs) {
   return mentions.some(({ dir, word }) => {
     const rel = path.relative(intakeAbs, path.resolve(real(dir), word));
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    return rel === '' || !leaves(rel);
   });
 }
 
@@ -898,7 +1107,7 @@ function frozenIntake(root, cfg, invs, mentions) {
     if (!top) continue;
     if (!quiet(() => (git(top, ['rev-parse', '--verify', 'HEAD']), true), false)) continue;
     const intake = toPosix(path.relative(top, intakeAbs));
-    if (intake.startsWith('..') || path.isAbsolute(intake)) continue;
+    if (leaves(intake)) continue;
     const inHead = (f) => quiet(() => (git(top, ['cat-file', '-e', `HEAD:${f}`]), true), false);
     // A commit naming paths commits only those; the index counts too only with -i.
     const onlyPaths = c.paths.length > 0 && !c.include;
@@ -930,25 +1139,47 @@ const fkey = (p) => (WIN ? p.toLowerCase() : p);
 const GLOB = /[*?[]/;
 
 // A shell glob over POSIX paths as an anchored regular expression (`*` and `?` stay in one segment;
-// `[!...]` and `[^...]` are both a negated class, as Bash reads them).
-function globRe(pattern) {
-  const src = pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\[(?:!|\\\^)/g, '[^').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
-  return new RegExp(`^${src}$`, WIN ? 'i' : '');
+// `[!...]` and `[^...]` are both a negated class, as Bash reads them; a `[` nothing closes is itself).
+// Null when the pattern does not compile, as a class with a reversed range (`[z-a]`) does not: Bash
+// matches nothing with such a pattern and passes the word on as it is, so the caller judges the literal
+// word (issue #119). `star` is what `*` matches: within one segment for the shell, across them for a
+// git pathspec.
+function globRe(pattern, star = '[^/]*') {
+  let src = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    const cls = c === '[' ? bracketClass(pattern, i) : null;
+    if (cls) {
+      src += `(?!/)${cls.src}`;
+      i = cls.end;
+    } else if (c === '*') src += star;
+    else if (c === '?') src += '[^/]';
+    else src += c.replace(/[.+^${}()|\\[\]]/g, '\\$&');
+  }
+  try {
+    return new RegExp(`^${src}$`, WIN ? 'i' : '');
+  } catch {
+    return null;
+  }
 }
 
 // Whether a write {dir, word, removes?, into?} reaches the frozen file at absolute POSIX path `frozen`.
 function reaches(wr, frozen) {
+  if (wr.any) return true;
   const word = fromGitBash(String(wr.word).replace(/\\/g, '/'));
   if (word === '') return false;
+  const star = wr.pathspec ? '.*' : '[^/]*';
   if (/[$`]/.test(word) || (wr.dir === null && !path.isAbsolute(word))) {
     // The directory or the name is unknown: judge by the last segment.
     const last = word.split('/').pop();
-    return !/[$`]/.test(last) && (GLOB.test(last) ? globRe(last).test(path.posix.basename(frozen))
-      : fkey(last) === fkey(path.posix.basename(frozen)));
+    if (/[$`]/.test(last)) return false;
+    const lastRe = GLOB.test(last) ? globRe(last, star) : null;
+    return lastRe ? lastRe.test(path.posix.basename(frozen)) : fkey(last) === fkey(path.posix.basename(frozen));
   }
   const target = toPosix(path.resolve(wr.dir === null ? '' : real(wr.dir), word));
-  if (GLOB.test(word)) {
-    const re = globRe(target);
+  // A glob that does not compile is the literal word.
+  const re = GLOB.test(word) ? globRe(target, star) : null;
+  if (re) {
     return re.test(frozen) || (wr.removes === true && frozen.split('/').some((_, k, all) => re.test(all.slice(0, k).join('/'))));
   }
   const canon = toPosix(real(target));
@@ -1158,6 +1389,8 @@ function expandGlob(base, word, globstar = false, cap = 20000) {
       for (const d of found) next.push(path.posix.join(d, seg));
     } else {
       const re = globRe(seg.replace(/\*\*+/g, '*'));
+      // A segment that does not compile matches nothing: the word stays as written.
+      if (re === null) return [];
       for (const d of found) {
         let names = [];
         try {
@@ -1191,13 +1424,21 @@ function deniedPath(root, cfg, named) {
   // The path is judged as written (`data/link`) and as resolved: a symlink under a listed directory
   // that points out of the repository resolves to a `..` path, and its listed name must still count.
   const judgeRel = (rel, abs, isDir) => {
-    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    if (rel === '' || leaves(rel)) return null;
     const r = toPosix(rel);
     let pattern = matchesDeny(r, patterns);
     if (pattern === null && (isDir || (fs.existsSync(abs) && fs.statSync(abs).isDirectory()))) pattern = denyDir(r, patterns);
     return pattern === null ? null : { rel: r, pattern };
   };
-  const judge = (abs, top, isDir) => judgeRel(path.relative(top, abs), abs, isDir) ?? judgeRel(path.relative(top, real(abs)), abs, isDir);
+  // A path named through a link or junction that leads to the repository, from outside it or from
+  // inside, is judged where that link leads as well (issue #122).
+  const judge = (abs, top, isDir) => {
+    for (const p of [abs, real(abs), ...namesUnder(top, abs)]) {
+      const hit = judgeRel(path.relative(top, p), abs, isDir);
+      if (hit) return hit;
+    }
+    return null;
+  };
   for (const { dir, word, fromTop, glob, wide, isDir, globstar } of named) {
     if (wide) return { wide: word };
     const once = JSON.stringify([dir, word, fromTop, glob, isDir, globstar]);
@@ -1244,8 +1485,11 @@ export function handle(input, { root, cfg }) {
   // (0a), in every session and on every branch (D-83)
   if (why) return deny(`cannot judge this command (REQ-3.2): ${why}; run git and gh with literal arguments`);
   // (0b)
+  if (hostRules?.unjudged) {
+    return deny(`cannot judge this command (REQ-3.14): ${hostRules.unjudged}, so it cannot be told from a write to the git host's rules; give the query in the command as -f query='...'`);
+  }
   if (hostRules) {
-    return deny(`${hostRules} changes the git host's rules (REQ-3.14); a human runs it from their own terminal`);
+    return deny(`${hostRules.change} changes the git host's rules (REQ-3.14); a human runs it from their own terminal`);
   }
   // (0c)
   const hit = frozenWrite(root, cfg, writes);
