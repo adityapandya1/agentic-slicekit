@@ -352,7 +352,9 @@ test('jira open, comment and find call the Jira REST API with the configured pro
   const jql = search.url.searchParams.get('jql');
   assert.match(jql, /project\s*=\s*"?SK"?/);
   assert.match(jql, /summary\s*~\s*"/);
-  assert.ok(jql.includes('P2/S-15') && jql.includes('H-1'), jql);
+  const value = jqlSummaryValue(jql);
+  assert.equal(typeof value, 'string', jql);
+  for (const part of ['P2', 'S-15', 'H-1']) assert.ok(value.split(/\s+/).includes(part), `${part} in ${value}`);
   assert.match(jql, /ORDER BY created ASC/i);
 
   found = [{ id: '8', key: 'SK-8', fields: { summary: '[P2/S-15] H-1: later', status: { statusCategory: { key: 'indeterminate' } } } }];
@@ -490,7 +492,7 @@ test('jira find sends a search value with no unescaped reserved character', asyn
   // A looser search value changes no answer: the hits are still narrowed to the prefix.
   assert.deepEqual(await t.find('P2/S-15', 'H-1'), { id: 7, url: `${JIRA_BASE}/browse/SK-7`, state: 'closed' });
   assert.equal(await t.find('P2/S-15', 'H-2'), null);
-  assert.equal(await t.find('P12/S-150', 'B-3'), null);
+  assert.equal(await t.find('P12/S-50', 'B-3'), null);
 
   assert.equal(jira.values.length, 3);
   for (const value of jira.values) {

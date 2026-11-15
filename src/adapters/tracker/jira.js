@@ -7,6 +7,8 @@ import { TrackerError, assertFinding, assertIssueId, assertIssueTitle, assertLab
 // error is scrubbed of the token and the Authorization value before it leaves this file. Nothing here
 // closes an issue. The three operations return promises.
 const SEARCH_LIMIT = 50;
+// The most pages one find reads. A search that still hands out a token after this many ends in an error.
+const PAGE_LIMIT = 200;
 
 // Throws a TrackerError naming the first config key that is missing or wrong.
 export function validate(cfg) {
@@ -38,6 +40,21 @@ function adf(text) {
 
 // A JQL string literal: backslash and double quote escaped.
 const jqlString = (s) => `"${String(s).replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+
+// The words of a title prefix as a value Jira's text search can parse. Jira refuses a `~` value with
+// HTTP 400 when a reserved character of the text search stands in it unescaped, so none is sent:
+// brackets, braces, parentheses, `^`, `:`, `/`, `&`, `|`, backslash and both quotes become a space,
+// and `+`, `-`, `!`, `*`, `?` and `~` are cut from the start of each word. The value is looser than
+// the prefix; pickFinding narrows the hits.
+export function searchValue(prefix) {
+  const words = String(prefix ?? '')
+    .replace(/[()[\]{}^:/&|\\"']/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.replace(/^[+\-!*?~]+/, ''))
+    .filter((w) => /[\p{L}\p{N}]/u.test(w));
+  if (words.length === 0) throw new TrackerError(`jira find: no word to search for in ${JSON.stringify(String(prefix ?? ''))}`);
+  return words.join(' ');
+}
 
 export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(...a)) {
   const { base, project, issueType } = validate(cfg);
@@ -113,21 +130,35 @@ export function jiraTracker(cfg, env = process.env, fetchImpl = (...a) => fetch(
       await call('comment', 'POST', `/rest/api/3/issue/${id}/comment`, { body: adf(body) });
     },
     // Jira's text search is loose, so its hits, oldest first, are narrowed to a summary that begins
-    // `[<slice>] <finding>:`. A status in the done category reads as closed.
+    // `[<slice>] <finding>:`. A status in the done category reads as closed. The pages are read in
+    // order, following `nextPageToken`, until one holds such a summary or no token is left. A token
+    // given twice ends the search with an error, so a faulty server cannot hold the command in a loop.
     async find(slice, finding) {
       assertSlice(slice);
       assertFinding(finding);
       const prefix = findingTitlePrefix(slice, finding);
-      const jql = `project = ${jqlString(project)} AND summary ~ ${jqlString(prefix)} ORDER BY created ASC`;
-      const q = new URLSearchParams({ jql, fields: 'summary,status,created', maxResults: String(SEARCH_LIMIT) });
-      const out = await call('find', 'GET', `/rest/api/3/search/jql?${q}`);
-      const list = (Array.isArray(out.issues) ? out.issues : []).map((i) => ({
-        number: Number(i?.id),
-        url: browse(i?.key),
-        title: i?.fields?.summary,
-        state: i?.fields?.status?.statusCategory?.key === 'done' ? 'closed' : 'open',
-      }));
-      return pickFinding(list, slice, finding);
+      const jql = `project = ${jqlString(project)} AND summary ~ ${jqlString(searchValue(prefix))} ORDER BY created ASC`;
+      const given = new Set();
+      let token = null;
+      for (let page = 1; ; page += 1) {
+        const q = new URLSearchParams({ jql, fields: 'summary,status,created', maxResults: String(SEARCH_LIMIT) });
+        if (token !== null) q.set('nextPageToken', token);
+        const out = await call('find', 'GET', `/rest/api/3/search/jql?${q}`);
+        const list = (Array.isArray(out.issues) ? out.issues : []).map((i) => ({
+          number: Number(i?.id),
+          url: browse(i?.key),
+          title: i?.fields?.summary,
+          state: i?.fields?.status?.statusCategory?.key === 'done' ? 'closed' : 'open',
+        }));
+        const hit = pickFinding(list, slice, finding);
+        if (hit) return hit;
+        const next = out.nextPageToken;
+        if (typeof next !== 'string' || next === '') return null;
+        if (given.has(next)) throw new TrackerError(`jira find failed: the search gave the page token ${JSON.stringify(next)} twice; stopped after ${page} pages`);
+        if (page >= PAGE_LIMIT) throw new TrackerError(`jira find failed: the search still gave a page token after ${PAGE_LIMIT} pages; stopped`);
+        given.add(next);
+        token = next;
+      }
     },
   };
 }
