@@ -82,7 +82,28 @@ The author merges pull requests and publishes versions. Anyone may run `slicekit
 
 ## Rollback
 
-A bad merge is reverted by a pull request like any other change. A bad version is marked with `npm deprecate` and replaced by a patch version (D-82).
+What is rolled back depends on how far the change went (D-82):
+
+- A change merged to the default branch and not yet published in a version: revert its pull request on GitHub (the pull request's page, "Revert"), which opens a new pull request that undoes the merge. A human reviews and merges it like any other pull request, and the sync pull request after that merge records the state. No history on the default branch is rewritten.
+- A version already on npm: see "Rolling back a bad version on npm" in this runbook. A version number is never reused, so the fix ships as the next patch version.
+- A release record that names the wrong things: fix what it quotes (a slice's state, the runbook, a decision row) through a pull request, revert the release pull request, and record the release again.
+
+## Recording a release
+
+A phase is released in this repository by a pull request that carries its release record (02 REQ-2.9, D-54). The record states what merged; it deploys nothing, and publishing a version to npm is a separate step (D-12; see "Releasing a version").
+
+- When: every slice of the phase is `merged` in `BUILD.md`, and the sync pull request after the last merge has itself merged, so the state files on the default branch say so.
+- How: in a Claude Code session, `/slicekit release P<n>`. The procedure runs `slicekit release P<n> --dry-run`, then `slicekit branch release <slug>`, then `slicekit release P<n>`, then `slicekit check`, then opens a pull request titled `[release] P<n>` through `slicekit pr open`. No step of it is a git or gh command typed by hand.
+- What it writes: the record at `docs/releases/P<n>.md` (the default branch's commit and its date, each requirement the phase's slices implement, each pull request, each decision named in a pull request body's Decisions section, and the Rollback section above, quoted), each slice's state file set to `released`, and `BUILD.md`.
+- What it refuses, printing one line per reason and writing nothing:
+  - `<slice> is <state>, not merged`: merge the slice's pull request and the sync pull request after it, then run the release again.
+  - `<slice> has no recorded pull request`: the slice's state file names no pull request, so the record could not list one; the slice was not built through `/slicekit build`, and its state is corrected through a pull request before the release.
+  - `<slice> (#<n>): runbook: …`: the slice says `runbook: yes`, its branch changed no `##` section of this runbook, and its pull request body's Runbook line does not begin "no operational change". Edit the Runbook line of the merged pull request's body on the host to say why no operational change was needed, or change the runbook in a new slice.
+  - `<slice>: commit <sha> of #<n> is not here`: the clone lacks the pull request's head commit; fetch it, or give the body a Runbook line as above.
+  - `release runs on a release branch at the tip of <default branch>`: run `slicekit branch release <slug>` first, with nothing committed on that branch.
+  - `<record> exists; a phase is released once`.
+- Merging the `[release] P<n>` pull request is the release. Until it merges, the record and the `released` states exist only on the `release/<slug>` branch, and closing the pull request without merging leaves the phase unreleased.
+- First things to check when the pull request's checks fail: `slicekit check` names the file and line; a `references` or `style` finding in the record points at text quoted from this runbook or from a pull request title, which is fixed at its source, not in the record.
 
 ## Keeping data and secret paths away from agents
 

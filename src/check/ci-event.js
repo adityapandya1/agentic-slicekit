@@ -77,8 +77,9 @@ export function isBotAuthor(cfg, pr) {
   return typeof pr?.author === 'string' && bots.includes(pr.author);
 }
 
-// A `[spec] `, `[plan] ` or `[sync] ` title: a spec, plan or state sync pull request, not a slice's.
-export const EXEMPT_TITLE = /^\[(spec|plan|sync)\] /;
+// A `[spec] `, `[plan] `, `[sync] ` or `[release] ` title: a spec, plan, state sync or release record
+// pull request (D-54), not a slice's.
+export const EXEMPT_TITLE = /^\[(spec|plan|sync|release)\] /;
 
 // A `[sync] ` title: the state sync pull request, which belongs on a `sync/<short sha>` branch only.
 export const SYNC_TITLE = /^\[sync\] /;

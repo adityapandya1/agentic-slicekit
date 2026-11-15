@@ -344,3 +344,27 @@ test('the small helpers: gitUser, isClean, hasRemote, commitPaths', async () => 
     assert.throws(() => switchBranch(root, '-x'), GitError);
   });
 });
+
+// P5/S-21, REQ-2.9, D-54: the release record's work branch is cut as the plan's is.
+test('branch release cuts release/<slug> from the default branch as origin has it', async () => {
+  await withRepo(
+    async (root) => {
+      commit(root, 'local only');
+      const r = await cli(root, ['branch', 'release', 'p1']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stdout, 'release/p1\n');
+      assert.equal(currentBranch(root), 'release/p1');
+      assert.equal(sha(root, 'HEAD'), sha(root, 'refs/remotes/origin/main'));
+      // Run again on the branch, it answers with the branch and moves nothing.
+      const again = await cli(root, ['branch', 'release', 'p1']);
+      assert.equal(again.code, 0, again.stderr);
+      assert.equal(again.stdout, 'release/p1\n');
+      // A slug that is not lowercase is a usage error, and so is a kind the command does not cut.
+      assert.equal((await cli(root, ['branch', 'release', 'P1'])).code, 2);
+      const unknown = await cli(root, ['branch', 'deploy', 'p1']);
+      assert.equal(unknown.code, 2);
+      assert.match(unknown.stderr, /usage: slicekit branch <spec\|gaps\|plan\|release> <slug>/);
+    },
+    { remote: true },
+  );
+});

@@ -17,6 +17,7 @@ import { journalCommand } from './journal.js';
 import { planCommand } from './plan.js';
 import { hookCommand } from './hook.js';
 import { readyLabelCommand } from './ready-label.js';
+import { releaseCommand } from './release.js';
 import { reviewCommand } from './review.js';
 import { specCommand } from './spec.js';
 import { stageCommand } from './stage.js';
@@ -50,6 +51,7 @@ export const COMMANDS = {
   plan: planCommand,
   pr: prCommand,
   'ready-label': readyLabelCommand,
+  release: releaseCommand,
   review: reviewCommand,
   spec: specCommand,
   shipped: shippedCommand,

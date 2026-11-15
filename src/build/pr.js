@@ -12,6 +12,7 @@ import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { openOrUpdate } from '../pr.js';
 import { PrBodyError, getSection, renderPrBody } from '../prbody.js';
+import { mergeBase, runbookRel, runbookSections, runbookVerdict } from '../runbook.js';
 import { readSlice, recordHead } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
 import { posixRel, runCommand, sliceIn, unusableRun } from './red.js';
@@ -23,7 +24,7 @@ import { BuildError, findWorktree } from './worktree.js';
 
 const FROM = ['building', 'draft-pr', 'in-review', 'changes-requested', 'ci-green', 'ready'];
 const NOTES_SHAPE = 'notes need tryIt (three steps) and skipped';
-const NO_CHANGE = 'no operational change: the slice touches no configuration, infrastructure, migration, alert, queue or integration';
+const NO_CHANGE_LINE = 'no operational change: the slice touches no configuration, infrastructure, migration, alert, queue or integration';
 const RUNBOOK_REFUSAL = 'the slice touches operations; change the runbook or give notes.runbook "no operational change: <reason>"';
 const COMMANDS = ['test', 'lint', 'build'];
 // The sections the notes give: with no notes, the live body must hold each of them.
@@ -95,20 +96,6 @@ function pendingDraftPr(wt, stateRel, current) {
     JSON.stringify(h.slice(0, -1)) === JSON.stringify(committed.history ?? []) &&
     h.at(-1)?.to === 'draft-pr'
   );
-}
-
-// Whether the branch changed the runbook since it left the default branch.
-function runbookChanged(wt, cfg, rel) {
-  const origin = `refs/remotes/origin/${cfg.defaultBranch}`;
-  let from;
-  try {
-    git(wt, ['rev-parse', '--verify', '--quiet', origin]);
-    from = origin;
-  } catch {
-    from = `refs/heads/${cfg.defaultBranch}`;
-  }
-  const base = git(wt, ['merge-base', 'HEAD', from]);
-  return git(wt, ['--literal-pathspecs', 'diff', '--name-only', base, 'HEAD', '--', rel]) !== '';
 }
 
 // The test run's pass and fail totals, from the last line naming each; the summary line when the
@@ -204,10 +191,14 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
     if (missing) throw new BuildError(`the pull request body has no "${missing}"; pass --notes <file> to supply it`);
   }
 
-  const runbookRel = cfg.docsRoot === '.' ? 'runbook.md' : `${cfg.docsRoot}/runbook.md`;
-  const changed = runbookChanged(wt, cfg, runbookRel);
+  // One judgement with the `runbook` check rule and `slicekit release` (REQ-3.7, D-55): a `##` section
+  // of the runbook changed since the branch left the default branch, or a Runbook line that begins
+  // "no operational change". A change above the first `##` heading, or of trailing whitespace, is none.
+  const rel = runbookRel(wt, cfg);
+  const sections = runbookSections(wt, rel, mergeBase(wt, cfg), 'HEAD');
+  const changed = sections.length > 0;
   const runbookNote = changed ? null : (given?.runbook ?? (current.pr ? kept('Runbook', null) : null));
-  if (slice.runbook && !changed && !(runbookNote ?? '').trim().startsWith('no operational change')) {
+  if (runbookVerdict({ flag: slice.runbook, sections, body: runbookNote === null ? null : `**Runbook:** ${runbookNote}`, rel }) !== null) {
     throw new BuildError(RUNBOOK_REFUSAL);
   }
   const { summary, command: testCommand, local } = runCommands(root, wt, cfg, env);
@@ -229,7 +220,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
         'Done when': slice.doneWhen.map((c, i) => `${i + 1}. ${c}`).join(' '),
         Proof: `\`${testCommand}\` → ${summary} · CI: pending`,
         Decisions: given?.decisions === undefined ? kept('Decisions', 'none') : given.decisions.join('; ') || 'none',
-        Runbook: changed ? `changed: ${runbookRel}` : (runbookNote ?? NO_CHANGE),
+        Runbook: changed ? `changed: ${rel} (${sections.join(', ')})` : (runbookNote ?? NO_CHANGE_LINE),
         'Infra / migration': noted('infra', 'Infra / migration', 'none'),
         'Try it': given ? given.tryIt.map((s, i) => `${i + 1}. ${s.trim()}`).join(' ') : kept('Try it', ''),
         'Reviewer blocked': kept('Reviewer blocked', 'nothing'),

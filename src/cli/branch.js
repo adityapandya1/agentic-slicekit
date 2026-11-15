@@ -1,13 +1,13 @@
-// `slicekit branch <spec|gaps|plan> <slug>` (REQ-2.3..REQ-2.5): puts the session on the work branch
-// of a document pull request, cut from the default branch as origin has it. The command owns git
+// `slicekit branch <spec|gaps|plan|release> <slug>` (REQ-2.3..REQ-2.5, REQ-2.9, D-54): puts the session on the
+// work branch of a document pull request, cut from the default branch as origin has it. The command owns git
 // (D-19). A change to a tracked file (staged or not) is refused, so no edit is carried across;
 // untracked files go along as git carries them, so a source dropped in for intake survives.
 import { ConfigError, loadConfig } from '../config.js';
 import { GitError, assertRef, currentBranch, git, hasRemote, switchBranch } from '../git.js';
 
-const KINDS = ['spec', 'gaps', 'plan'];
+const KINDS = ['spec', 'gaps', 'plan', 'release'];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,59}$/;
-const USAGE = 'branch <spec|gaps|plan> <slug>';
+const USAGE = 'branch <spec|gaps|plan|release> <slug>';
 
 const resolves = (root, ref) => {
   try {
