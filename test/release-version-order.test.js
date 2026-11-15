@@ -511,3 +511,103 @@ test('a hand-set version whose section mixes prose with a slice line is still a 
     namesNone(section, ['P1/S-01', 'Fixture 1', '#14']);
   }, { release: { auto: true } });
 });
+
+test('a hand-set version whose section arrives in a later commit, or under a bracketed dated heading, is still a floor', () => {
+  const PROSE = '- The second version, set by hand.\n\n## 0.1.0\n\n- The first version.\n';
+  // The sync on the tip sets no version; pull request 16 merged after it gets `next`, alone.
+  const floorHolds = ({ root, fixture, cfg, ids }, next, headings) => {
+    const pkg = read(root, 'package.json');
+    const log = read(root, 'CHANGELOG.md');
+    const r = syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'todo', 'todo']);
+    assert.doesNotMatch(r.stdout, /^version /m);
+    assert.equal(read(root, 'package.json'), pkg);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+
+    gitIn(root, ['checkout', '-q', '--', '.']);
+    mergeSlice(root, cfg, ids[1], 16, 'Fixture 2');
+    syncWrite(root, fixture);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'merged', 'todo']);
+    assert.equal(read(root, 'package.json'), withVersion(pkg, next));
+    const after = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(after), headings);
+    assert.ok(after.endsWith(log.slice(log.indexOf('## '))), after);
+    const section = newest(after);
+    names(section, ['P1/S-02', 'Fixture 2', '#16']);
+    namesNone(section, ['P1/S-01', 'Fixture 1', '#14', 'P1/S-03']);
+  };
+
+  // Pull request 14 is rebase-merged (review B-5 of round 4): the commit that sets 0.3.0 in
+  // package.json lands before the commit that adds its section. The slice set the version itself.
+  withRelease((kit) => {
+    const { root, cfg, ids } = kit;
+    writeSlice(root, cfg, { ...readSlice(root, cfg, ids[0]), state: 'building' });
+    mergeCommit(root, 'chore(slicekit): P1/S-01 building');
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.3.0'));
+    mergeCommit(root, 'feat(P1/S-01): the first release');
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## 0.3.0\n\n${PROSE}`);
+    mergeCommit(root, 'docs(P1/S-01): the changelog of the first release');
+    parkAt(root, cfg, ids[0], 'ready', { number: 14, headSha: 'abc14def5678' });
+    mergeCommit(root, 'chore(slicekit): P1/S-01 ready');
+    floorHolds(kit, '0.3.1', ['0.3.1', '0.3.0', '0.1.0']);
+  }, { release: { auto: true } });
+
+  // A release set by hand lands as two commits after pull request 14 merged: the version, then its section.
+  withRelease((kit) => {
+    const { root, cfg, ids } = kit;
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.2.0'));
+    mergeCommit(root, 'chore(release): 0.2.0');
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## 0.2.0\n\n${PROSE}`);
+    mergeCommit(root, 'docs(release): the changelog of 0.2.0');
+    floorHolds(kit, '0.2.1', ['0.2.1', '0.2.0', '0.1.0']);
+  }, { release: { auto: true } });
+
+  // A release set by hand in one merge, its heading the version in square brackets with a date.
+  withRelease((kit) => {
+    const { root, cfg, ids } = kit;
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.2.0'));
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## [0.2.0] - 2026-10-20\n\n${PROSE}`);
+    mergeCommit(root, 'Merge pull request #15 from acme/release/0.2.0', '[release] 0.2.0');
+    floorHolds(kit, '0.2.1', ['0.2.1', '[0.2.0]', '0.1.0']);
+  }, { release: { auto: true } });
+
+  // The control: the section lands before the version. The version is set at the second commit.
+  withRelease((kit) => {
+    const { root, cfg, ids } = kit;
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), `${INTRO}## 0.2.0\n\n${PROSE}`);
+    mergeCommit(root, 'docs(release): the changelog of 0.2.0');
+    fs.writeFileSync(path.join(root, 'package.json'), withVersion(PACKAGE, '0.2.0'));
+    mergeCommit(root, 'chore(release): 0.2.0');
+    floorHolds(kit, '0.2.1', ['0.2.1', '0.2.0', '0.1.0']);
+  }, { release: { auto: true } });
+});
+
+test('a second status --sync --write on the same tip adds no second section', () => {
+  withRelease(({ root, fixture, cfg, ids }) => {
+    // Pull request 14 merges; the sync on that tip sets 0.1.1 (review H-2 of round 4).
+    mergeSlice(root, cfg, ids[0], 14, 'Fixture 1');
+    const first = syncWrite(root, fixture);
+    assert.match(first.stdout, /^version 0\.1\.1: /m);
+    const pkg = read(root, 'package.json');
+    const log = read(root, 'CHANGELOG.md');
+    assert.equal(pkg, withVersion(PACKAGE, '0.1.1'));
+    assert.deepEqual(versions(log), ['0.1.1', '0.1.0']);
+    const changed = changedPaths(root);
+
+    // The same command again, with nothing committed between: it writes nothing and reports no version.
+    const second = syncWrite(root, fixture);
+    assert.doesNotMatch(second.stdout, /^version /m);
+    assert.deepEqual(states(root, cfg, ids), ['merged', 'todo', 'todo']);
+    assert.equal(read(root, 'package.json'), pkg);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+    assert.deepEqual(changedPaths(root), changed);
+
+    const j = runCli(['status', '--sync', '--write', '--json'], { cwd: root, env: cliEnv(fixture) });
+    assert.equal(j.code, 0, j.stderr + j.stdout);
+    assert.equal(JSON.parse(j.stdout).version, undefined, j.stdout);
+    assert.equal(read(root, 'CHANGELOG.md'), log);
+  }, { release: { auto: true } });
+});

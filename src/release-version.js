@@ -21,9 +21,12 @@
 // pull request was merged, nor a commit's subject, nor a move of a slice's recorded state plays a
 // part.
 //
-// A commit sets the version when it changes package.json's version and CHANGELOG.md at that commit
-// holds the new version's section. What tells a sync's version from one set by hand is that
-// section's content, read at that commit. The section is a sync's only when it holds a slice line
+// A version is set at the first commit of the first-parent history where package.json holds it and
+// CHANGELOG.md holds its section, whichever of the two arrived first: a commit that changes the
+// version followed by a commit that adds the section sets it at the second, and so does a section
+// followed by the version. A version that never gets a section is not set. A heading
+// `## [<version>] - <date>` is that version's section as `## <version>` is. What tells a sync's
+// version from one set by hand is that section's content, read at that commit. The section is a sync's only when it holds a slice line
 // and every non-empty line under its heading is a line `changelogSection` writes: a slice line,
 // `- <slice ID> <name> (#<pull request>)`, or, for a minor version, a phase line. A section with
 // any other line was written by hand, and its commit is a floor. A section written by hand that
@@ -117,11 +120,21 @@ export function changelogSection({ version, merges, phases = [] }) {
   return `${out.join('\n').trimEnd()}\n`;
 }
 
-// The changelog with `section` on top, under the file's intro (everything before the first `## `).
+// The one reading of a changelog heading. A section starts at a line `## <version>` or
+// `## [<version>]`, each with or without text after it (a date). `headingVersion` gives the version
+// a line names, or null when the line is not a section heading.
+const isHeading = (l) => /^## /.test(l);
+function headingVersion(l) {
+  if (!isHeading(l)) return null;
+  const first = l.replace(/^## /, '').split(/\s/)[0];
+  return /^\[.+\]$/.test(first) ? first.slice(1, -1) : first;
+}
+
+// The changelog with `section` on top, under the file's intro (everything before the first heading).
 export function prependSection(text, section) {
   if (text === null || text === '') return `# Changelog\n\n${section}`;
   const lines = text.split('\n');
-  const at = lines.findIndex((l) => /^## /.test(l));
+  const at = lines.findIndex(isHeading);
   if (at < 0) return `${text.replace(/\n*$/, '\n\n')}${section}`;
   return [...lines.slice(0, at), ...`${section}\n`.split('\n').slice(0, -1), ...lines.slice(at)].join('\n');
 }
@@ -165,17 +178,28 @@ function versionAt(root, rev) {
   return typeof v === 'string' ? v : null;
 }
 
-// The lines of a changelog's `## ` sections: everything from its first `## ` heading on.
+// The version field of a package.json's text, or null when it holds none.
+function versionOf(text) {
+  try {
+    const v = JSON.parse(text)?.version;
+    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// The lines of a changelog's sections: everything from its first heading on.
 function sectionLines(text) {
   const all = (text ?? '').split('\n');
-  const at = all.findIndex((l) => /^## /.test(l));
+  const at = all.findIndex(isHeading);
   return at < 0 ? [] : all.slice(at);
 }
 
-// The versions CHANGELOG.md's `## ` headings name at `rev`, newest first; [] when it holds none.
-function changelogVersionsAt(root, rev) {
-  return sectionLines(textAt(root, rev, CHANGELOG)).filter((l) => /^## /.test(l)).map((l) => l.replace(/^## /, '').split(/\s/)[0]);
-}
+// Whether a changelog's text holds the section of `version`.
+const holdsSection = (text, version) => sectionLines(text).some((l) => headingVersion(l) === version);
+
+// Whether package.json at `rev` holds `version` and CHANGELOG.md at `rev` holds its section.
+const holdsVersion = (root, rev, version) => versionAt(root, rev) === version && holdsSection(textAt(root, rev, CHANGELOG), version);
 
 // Whether a changelog section names the slice `id` (P1/S-01 does not name P1/S-011).
 function namesSlice(sections, id) {
@@ -183,13 +207,14 @@ function namesSlice(sections, id) {
   return sections.some((l) => re.test(l));
 }
 
-// Whether the commit `rev` set the version: it changes package.json's version from its first
-// parent's, and CHANGELOG.md at it holds the new version's section. A first commit sets none.
+// Whether the commit `rev` set the version: package.json at it holds a version and CHANGELOG.md at
+// it holds that version's section, and its first parent does not hold both. So the commit brought
+// the version, the section, or the two together. A first commit sets none, and neither does a
+// commit whose first parent has no package.json version.
 function setsVersion(root, rev) {
   const now = versionAt(root, rev);
-  if (now === null) return false;
-  const before = versionAt(root, `${rev}^1`);
-  return before !== null && before !== now && changelogVersionsAt(root, rev).includes(now);
+  if (now === null || !holdsVersion(root, rev, now)) return false;
+  return versionAt(root, `${rev}^1`) !== null && !holdsVersion(root, `${rev}^1`, now);
 }
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -202,27 +227,26 @@ const nonEmpty = (out) => out.split('\n').map((l) => l.trim()).filter((l) => l !
 // pull request was merged and whatever the commit's subject.
 function setByHand(root, rev) {
   const lines = sectionLines(textAt(root, rev, CHANGELOG));
-  const heading = (l) => /^## /.test(l);
   const version = versionAt(root, rev);
-  const start = lines.findIndex((l) => heading(l) && l.replace(/^## /, '').split(/\s/)[0] === version);
-  if (start < 0) return true;
-  const end = lines.findIndex((l, i) => i > start && heading(l));
+  // `rev` set the version, so CHANGELOG.md at it holds the section.
+  const start = lines.findIndex((l) => headingVersion(l) === version);
+  const end = lines.findIndex((l, i) => i > start && isHeading(l));
   const body = lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trimEnd()).filter((l) => l !== '');
   const minor = SEMVER.exec(String(version))?.[3] === '0';
   return !(body.some(isSliceLine) && body.every((l) => isSliceLine(l) || (minor && isPhaseLine(l))));
 }
 
 // The commits of `rev`'s first-parent history that changed one of `paths`, newest first.
-function firstParentCommits(root, rev, paths, extra = []) {
-  return nonEmpty(git(root, ['log', '--first-parent', '-m', '--format=%H', ...extra, rev, '--', ...paths]));
+function firstParentCommits(root, rev, paths) {
+  return nonEmpty(git(root, ['log', '--first-parent', '-m', '--format=%H', rev, '--', ...paths]));
 }
 
 // The floor of D-92 at `merge`: the newest first-parent commit that set the version by hand; with
 // none, the newest one that turned release.auto on (a first commit that holds it on counts). null
 // when the history holds neither, and then no slice is versioned.
 function floorOf(root, cfg, merge) {
-  // -G keeps the commits whose change to package.json touches a version line.
-  for (const c of firstParentCommits(root, merge, [PACKAGE], ['-G"version"'])) {
+  // A version is set by a commit that changes package.json or CHANGELOG.md, whichever came last.
+  for (const c of firstParentCommits(root, merge, [PACKAGE, CHANGELOG])) {
     if (setsVersion(root, c) && setByHand(root, c)) return c;
   }
   const config = posix(CONFIG_PATH);
@@ -326,14 +350,21 @@ export function onDefaultTip(root, cfg) {
 
 // Writes what releaseFor computed: package.json's version, the changelog section, and the render at
 // that version (the kit's own checkout) or at the running kit's version (any other). `isKit` says
-// which; it defaults to whether `root` is the kit's checkout. Returns the release or null.
+// which; it defaults to whether `root` is the kit's checkout. Returns the release, or null when
+// there is none or the files on disk already hold it (a second run on the same commit).
 export function applyRelease(root, cfg, { merge = 'HEAD', isKit = isKitRoot(root) } = {}) {
   const release = releaseFor(root, cfg, { merge });
   if (release === null) return null;
   const pkg = path.join(root, PACKAGE);
-  writeText(pkg, setVersion(readText(pkg), release.version));
   const log = path.join(root, CHANGELOG);
-  writeText(log, prependSection(fs.existsSync(log) ? readText(log) : null, release.section));
+  const pkgText = readText(pkg);
+  const logText = fs.existsSync(log) ? readText(log) : null;
+  // releaseFor reads the commits and this writes the files on disk. When package.json on disk holds
+  // the version computed and CHANGELOG.md on disk holds its section, an earlier run on this commit
+  // wrote them: this run writes nothing and sets no version.
+  if (versionOf(pkgText) === release.version && holdsSection(logText, release.version)) return null;
+  writeText(pkg, setVersion(pkgText, release.version));
+  writeText(log, prependSection(logText, release.section));
   const version = isKit ? release.version : kitVersion();
   applyUpdate(root, cfg, planUpdate(root, cfg, { version }), { version });
   return release;
