@@ -1,11 +1,11 @@
 {
   "slice": "P5/S-22",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 149,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
-    "headSha": "e0cd33d825ddfcb564a5ba5dab789155ee145924"
+    "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061"
   },
   "redCommit": "08562fde37368e058aca4862ae135afee23b79de",
   "frozenTests": [
@@ -100,6 +100,22 @@
         "unfreeze": "test/workflow.test.js",
         "amendCommit": "29218519df1309a4201ab7f8963b83c72168047b",
         "reason": "review round 1: the golden file test of H-2"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-15T01:26:26.354Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 149,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/149",
+          "headSha": "4094682c89e9e143f2e7a09218a2dc12ea6b9061",
+          "title": "[P5/S-22] Observability steps in CI"
+        }
       }
     }
   ]
