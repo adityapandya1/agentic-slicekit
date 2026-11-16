@@ -1,5 +1,5 @@
-// S-25: the README's walkthrough as a test runs it. The commands are read from the `sh` blocks under
-// `## Walkthrough` and run as one bash session, so `cd` and variables carry from one command to the
+// S-25, P6/S-55: the walkthrough in docs/walkthrough.md as a test runs it. The commands are read from
+// the `sh` blocks under `## Walkthrough` and run as one bash session, so `cd` and variables carry from one command to the
 // next as they do for a reader typing them.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -16,6 +16,9 @@ const HEADING = /^##\s+Walkthrough\s*$/;
 // Shell blocks a reader would run that are not `sh`: refused, so the test never covers less than
 // the reader runs.
 const SHELLS = new Set(['bash', 'shell', 'console', 'zsh', 'sh-session', 'shellsession', 'terminal']);
+
+// The file the walkthrough is in, as refusals and stops name it.
+export const WALKTHROUGH_FILE = 'docs/walkthrough.md';
 
 const closes = (open, line) => {
   const m = CLOSE.exec(line);
@@ -70,17 +73,17 @@ export function shellProblem(command) {
   return null;
 }
 
-const refuse = (line, why) => new Error(`README.md:${line}: ${why}`);
+const refuse = (line, why) => new Error(`${WALKTHROUGH_FILE}:${line}: ${why}`);
 
 // The commands of every `sh` block under `## Walkthrough`, up to the next `#` or `##` heading, in
-// file order: [{line, command}], `line` the 1-based README line of the command's first line. Blank
+// file order: [{line, command}], `line` the 1-based line of the command's first line. Blank
 // lines and `#` comments are skipped; a line ending in `\` joins the next. Inside the section a
 // block in another shell (```bash, ```console …), a `~~~` or longer fence, a block never closed and
-// a command bash cannot guard (see shellProblem) are refused with their README line.
+// a command bash cannot guard (see shellProblem) are refused with their line in docs/walkthrough.md.
 export function walkthroughCommands(text) {
   const all = String(text).split(/\r?\n/);
   const start = sectionStart(all);
-  if (start === -1) throw new Error('README.md has no "## Walkthrough" section');
+  if (start === -1) throw new Error(`${WALKTHROUGH_FILE} has no "## Walkthrough" section`);
   const out = [];
   let blocks = 0;
   let fence = null; // the open block: { lang, line }, or null outside a block
@@ -123,6 +126,11 @@ export function walkthroughCommands(text) {
   return out;
 }
 
+// The walkthrough's commands as docs/walkthrough.md under `root` holds them (see walkthroughCommands).
+export function readWalkthrough(root) {
+  return walkthroughCommands(fs.readFileSync(path.join(root, ...WALKTHROUGH_FILE.split('/')), 'utf8'));
+}
+
 const quote = (s) => `'${s.replace(/'/g, "'\\''")}'`;
 
 // One bash script: `set -u` and `pipefail`, no `set -e`. Each command runs in a `{ … }` group whose
@@ -132,7 +140,7 @@ export function walkthroughScript(commands) {
   const body = commands.map(({ line, command }) => {
     const problem = shellProblem(command);
     if (problem) throw refuse(line, problem);
-    const msg = quote(`walkthrough failed at README.md:${line}: ${command}`);
+    const msg = quote(`walkthrough failed at ${WALKTHROUGH_FILE}:${line}: ${command}`);
     return `{ ${command}\n} || { printf '%s\\n' ${msg} >&2; exit 1; }`;
   });
   return ['set -u', 'set -o pipefail', ...body, ''].join('\n');

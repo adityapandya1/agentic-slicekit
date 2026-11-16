@@ -1,10 +1,10 @@
-# SliceKit documentation
+# slicekit guide
 
-A Node.js command-line tool for spec-driven agentic delivery, driven from Claude Code through its slash commands.
+A closed-loop framework for spec-driven development with coding agents.
 
-slicekit is a Node.js command-line tool for spec-driven agentic delivery. A requirement document goes in and is snapshotted; an interview turns the answers into numbered decisions; those become a spec in which every requirement cites its source, then a plan of phases and slices. Each slice is then built to a reviewed pull request: failing tests first, then code, a reviewer's verdict and green CI. The rules live in the kit, not in a prompt: each slash command prints its procedure from the CLI, and the CLI, not the agent, runs git.
+This guide has one page for every `slicekit` command, every `/slicekit` slash command and every check rule. A command's page gives its usage, what it reads and writes, its exit codes and an example; a check rule's page says what fails and the failure the rule prevents. This index links the pages and holds what no single page does: the stages from intake to release and the conventions the pages share.
 
-This file is the index of the guide: it links one page per command, slash command and check rule, and holds what no single page does, the stages and the conventions. The same guide is one web page with a contents sidebar and a dark theme: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it. The web page is generated from this index and the pages it links; after a change to either, `node scripts/guide-html.js` writes it again, and a test of the kit fails while the two differ. The PDF copies for print are rendered from the web page outside the repository, so this folder holds none.
+The same guide is one web page with a contents sidebar and a dark theme: [open it in the browser](https://htmlpreview.github.io/?https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/guide/slicekit-guide.html), or download [`slicekit-guide.html`](slicekit-guide.html) and open it. The web page is generated from this index and the pages it links; after a change to either, `node scripts/guide-html.js` writes it again, and a test of the kit fails while the two differ. The PDF copies for print are rendered from the web page outside the repository, so this folder holds none.
 
 ## Contents
 

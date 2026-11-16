@@ -1,4 +1,7 @@
 // S-25: the README's shape (REQ-5.7) and its scope line (REQ-4.8).
+// P6/S-55 (D-98): the README opens with the banner, the one line, the badges, Why and a session
+// transcript; the status, the scope line, the hooks and how the kit is built follow in <details>
+// blocks, and the walkthrough is docs/walkthrough.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -27,28 +30,49 @@ function section(name) {
   return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
 }
 
-test('the README opens with two sentences, then Status: preview, the walkthrough and the scope line', () => {
+// The summaries of the README's <details> blocks, in order.
+const summaries = () => [...readme.matchAll(/^<summary>(.*)<\/summary>$/gm)].map((m) => m[1].trim());
+
+// The text of the <details> block whose <summary> is `name`, up to its </details>.
+function details(name) {
   const lines = readme.split('\n');
-  assert.match(lines[0], /^# /);
-  const rest = lines.slice(1).join('\n').trimStart();
-  const first = rest.split(/\n\s*\n/)[0];
-  assert.doesNotMatch(first, /^#/, 'the title is followed by a paragraph');
-  const sentences = first.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+(?=[A-Z`])/);
-  assert.equal(sentences.length, 2, first);
-  assert.deepEqual(headings(), ['Status: preview', 'Walkthrough', 'Scope', 'User guide', 'How the hooks find slicekit']);
-  const status = section('Status: preview');
+  const start = lines.findIndex((l) => l.trim() === `<summary>${name}</summary>`);
+  assert.ok(start >= 0, `no <details> block "${name}"`);
+  const end = lines.findIndex((l, i) => i > start && l.trim() === '</details>');
+  assert.ok(end > start, `the <details> block "${name}" is not closed`);
+  return lines.slice(start + 1, end).join('\n');
+}
+
+// The `## Walkthrough` section of docs/walkthrough.md.
+function walkthroughSection() {
+  const lines = fs.readFileSync(new URL('../docs/walkthrough.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex((l) => l.trim() === '## Walkthrough');
+  assert.ok(start >= 0, 'docs/walkthrough.md has no ## Walkthrough');
+  const end = lines.findIndex((l, i) => i > start && /^##?\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+}
+
+test('the README sections come in the order of D-98, with the status, scope, hooks and build in <details> blocks', () => {
+  assert.deepEqual(headings(), ['Why', 'See it in action', 'What it covers', 'Quick start', 'How it differs', 'Docs']);
+  assert.deepEqual(summaries(), ['Status: preview', 'Scope', 'How the hooks find slicekit', 'Built with itself']);
+  // Every <details> block comes after the Docs section.
+  assert.ok(readme.indexOf('<details>') > readme.indexOf('## Docs'), 'a <details> block comes before ## Docs');
+  assert.equal((readme.match(/^<details>$/gm) ?? []).length, (readme.match(/^<\/details>$/gm) ?? []).length);
+  const status = details('Status: preview');
   assert.match(status, /Phases 1 to 5 work/);
   assert.match(status, /Phase 4/);
   assert.match(status, /git clone https:\/\/github\.com\/adityapandya1\/agentic-slicekit/);
   assert.match(status, /node bin\/slicekit\.js --version/);
+  assert.match(details('Built with itself'), /built with itself/);
   assert.match(readme.trimEnd(), /\nLicense: MIT\.$/);
-  // No internal shorthand a newcomer cannot read: decision numbers, hook names.
-  assert.doesNotMatch(readme, /\bD-\d+\b/);
+  // No internal shorthand a newcomer cannot read: decision numbers, hook names. The transcript's
+  // code block shows what intake prints, decision IDs included.
+  assert.doesNotMatch(outsideCode(readme).join('\n'), /\bD-\d+\b/);
   assert.doesNotMatch(readme, /on every stop/);
 });
 
 test('the scope line says the kit parses no source code and names graphify', () => {
-  const scope = section('Scope');
+  const scope = details('Scope');
   assert.match(scope, /does not parse (your )?source code/);
   assert.match(scope, /https:\/\/github\.com\/Graphify-Labs\/graphify/);
   assert.match(scope, /```sh\npip install graphifyy && graphify install\n```/);
@@ -58,7 +82,7 @@ test('the scope line says the kit parses no source code and names graphify', () 
 
 // S-25 whole-branch review: what a newcomer needs after the walkthrough and from the hooks section.
 test('the walkthrough cleans up after itself, and the hooks section points a clone at --cli', () => {
-  const walk = section('Walkthrough');
+  const walk = walkthroughSection();
   assert.match(walk, /^cd "\$KIT"$/m);
   assert.match(walk, /^rm -rf "\$WORK"$/m);
   const unset = walk.split('\n').find((l) => l.startsWith('unset ')) ?? '';
@@ -67,7 +91,7 @@ test('the walkthrough cleans up after itself, and the hooks section points a clo
   }
   // The independent verdict is round 2, while `rounds: 1 of 2` counts only the in-loop rounds.
   assert.match(walk, /rounds: 1 of 2/);
-  const hooks = section('How the hooks find slicekit');
+  const hooks = details('How the hooks find slicekit');
   assert.match(hooks, /--cli/);
   assert.match(hooks, /clone/);
   // The local install comes first, the clone second.
@@ -75,17 +99,22 @@ test('the walkthrough cleans up after itself, and the hooks section points a clo
   assert.ok(hooks.indexOf(install) >= 0 && hooks.indexOf(install) < hooks.indexOf('clone'), hooks);
 });
 
-test('the status section gives the npm install and says the walkthrough runs from a clone', () => {
-  const status = section('Status: preview');
+test('Quick start gives the npm install and the status says the walkthrough runs from a clone', () => {
+  const quick = section('Quick start');
+  assert.match(quick, /```sh\nnpm install --save-dev slicekit\nnpx slicekit init --shape backend --name <your-project>\n```/);
+  assert.match(quick, /`\/slicekit intake [^`]*`/);
+  const link = /\]\((https:\/\/github\.com\/adityapandya1\/agentic-slicekit\/blob\/main\/)?docs\/walkthrough\.md\)/;
+  assert.match(quick, link, 'Quick start does not link docs/walkthrough.md');
+  assert.match(section('Docs'), link, 'Docs does not link docs/walkthrough.md');
+  const status = details('Status: preview');
   assert.match(status, /0\.1\.1/);
-  assert.match(status, /```sh\nnpm install --save-dev slicekit\nnpx slicekit init --shape backend --name <your-project>\n```/);
   assert.match(status, /walkthrough[^.]*clone/i);
   assert.match(status, /examples\/walkthrough/);
 });
 
 // P3/S-35: 0.2.0 ships Phase 3, and the install is spelled out in full wherever the README gives it.
 test("the status names Phase 3's commands and the install uses --save-dev", () => {
-  const status = section('Status: preview');
+  const status = details('Status: preview');
   const prose = status.replace(/\s+/g, ' ');
   assert.match(prose, /Phases 1 to 5 work/);
   for (const c of ['graph', 'trace', 'impact', 'history', 'uncovered', 'shipped', 'visualize']) assert.ok(status.includes(`\`${c}\``), c);
@@ -93,13 +122,13 @@ test("the status names Phase 3's commands and the install uses --save-dev", () =
   assert.match(prose, /Phase 5 is /);
   assert.doesNotMatch(prose, /not built yet/);
   assert.doesNotMatch(prose, /Phase 3 will add|Phases 3 and 4 are not built/);
-  assert.match(status, /```sh\nnpm install --save-dev slicekit\n/);
-  assert.match(section('How the hooks find slicekit'), /`npm install --save-dev slicekit`/);
+  assert.match(section('Quick start'), /```sh\nnpm install --save-dev slicekit\n/);
+  assert.match(details('How the hooks find slicekit'), /`npm install --save-dev slicekit`/);
   assert.doesNotMatch(readme, /npm i -D/);
 });
 
 test('the status section names no placeholder and no release still to come', () => {
-  const status = section('Status: preview');
+  const status = details('Status: preview');
   assert.doesNotMatch(status, /placeholder/);
   assert.doesNotMatch(status, /first\s+real\s+release/);
   assert.doesNotMatch(status, /0\.0\.1/);
@@ -107,12 +136,12 @@ test('the status section names no placeholder and no release still to come', () 
 
 // P3/S-17, REQ-4.8: the graph exists now; the scope line says what it is built from and what it is not.
 test('the scope line says the graph is built from IDs and git and is not a code graph', () => {
-  const scope = section('Scope').replace(/\s+/g, ' ');
+  const scope = details('Scope').replace(/\s+/g, ' ');
   assert.match(scope, /graph is built from (its|the kit's) own IDs and (from )?git/);
   assert.match(scope, /not a code graph/);
   assert.doesNotMatch(scope, /coming in Phase 3|will be built|will infer/);
   assert.match(scope, /https:\/\/github\.com\/Graphify-Labs\/graphify/);
-  assert.match(section('Scope'), /```sh\npip install graphifyy && graphify install\n```/);
+  assert.match(details('Scope'), /```sh\npip install graphifyy && graphify install\n```/);
 });
 
 // P4/S-44 (REQ-5.8, D-75): the exit path for a second agent tool names every hook subcommand the
@@ -145,9 +174,10 @@ test('docs/adapters.md names every hook subcommand in its exit path', () => {
 });
 
 // P5/S-24 (REQ-5.7, REQ-5.8, D-41, D-61): all five phases are built, versions are published from CI
-// with provenance, and the README links the user guide from a section of its own after the scope line.
+// with provenance, and the README links the user guide. P6/S-55: the links are in Docs, which also
+// links the walkthrough, the runbook and the changelog.
 test('the status names Phase 5 as built and links the guide', () => {
-  const status = section('Status: preview');
+  const status = details('Status: preview');
   const prose = status.replace(/\s+/g, ' ');
   assert.match(prose, /Phases 1 to 5 work/);
   assert.doesNotMatch(prose, /not built yet|will add|still to come/);
@@ -159,13 +189,12 @@ test('the status names Phase 5 as built and links the guide', () => {
   assert.match(prose, /provenance/);
   assert.doesNotMatch(prose, /published by hand/);
 
-  // The guide's section follows the scope line.
-  const names = headings();
-  assert.equal(names.indexOf('User guide'), names.indexOf('Scope') + 1, names.join(' | '));
-  const guide = section('User guide');
+  // Docs links the guide and each of the kit's other documents.
+  const guide = section('Docs');
   const link = (file) => new RegExp(`\\]\\((https://github\\.com/adityapandya1/agentic-slicekit/blob/main/)?${file.replace(/[.]/g, '\\.')}\\)`);
   assert.match(guide, link('docs/guide/README.md'));
   assert.match(guide, link('docs/adapters.md'));
+  for (const file of ['docs/walkthrough.md', 'docs/runbook.md', 'CHANGELOG.md']) assert.match(guide, link(file), file);
   // What the guide holds: a page per command, per slash command and per check rule.
   const about = guide.replace(/\s+/g, ' ');
   assert.match(about, /command/);
