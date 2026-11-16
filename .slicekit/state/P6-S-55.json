@@ -10,7 +10,8 @@
     "test/user-guide.test.js"
   ],
   "unfrozen": [
-    "test/readme.test.js"
+    "test/readme.test.js",
+    "test/walkthrough.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -48,6 +49,17 @@
         "unfreeze": "test/readme.test.js",
         "amendCommit": "3d9b592ab1b0697e626896e02bdf46699ac76ead",
         "reason": "tests outside the evaluation set pin the old README order; they move to the D-98 order, the details blocks and docs/walkthrough.md"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-16T13:12:27.546Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/walkthrough.test.js",
+        "amendCommit": "9ec2a8d20b91ee6c04683172c14ce4488ec2c807",
+        "reason": "refusals name docs/walkthrough.md lines; the slow test reads docs/walkthrough.md and checks its text blocks against the run (Done when 3)"
       }
     }
   ]
