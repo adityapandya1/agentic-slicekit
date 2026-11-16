@@ -29,6 +29,8 @@ decisions: [D-98, D-97]
 
 Amended (author's standing instruction, 2026-11-16): `test/readme.test.js` and `test/walkthrough.test.js` are frozen as whole files, and their tests written before this slice pin the old README: the order of two sentences, Status, Walkthrough and Scope, and refusals naming a README line. The tests outside the evaluation set move to the new order, the <details> blocks and `docs/walkthrough.md`; the rule against decision numbers applies outside code blocks, since the transcript shows decision IDs; the test that runs the walkthrough reads `docs/walkthrough.md` and fails naming a line of a `text` block the run does not print (Done when 3). The six evaluation tests are unchanged.
 
+The amendment covers `test/walkthrough.test.js` as well as `test/readme.test.js`; each file was unfrozen by its own amend.
+
 ## Expected changes
 
 `README.md`, `docs/walkthrough.md`, `docs/assets/slicekit-banner.png`, `docs/guide/README.md`, `docs/guide/slicekit-guide.html`, `scripts/guide-html.js`, `test/helpers/walkthrough.js`, tests.
