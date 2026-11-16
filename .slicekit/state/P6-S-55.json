@@ -1,8 +1,12 @@
 {
   "slice": "P6/S-55",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 194,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+    "headSha": "3716a765b3578b854600863a0539aea5ff2ad358"
+  },
   "redCommit": "d9c7d72257d6443b1f417894ccba850fa77edfef",
   "frozenTests": [
     "test/readme.test.js",
@@ -60,6 +64,22 @@
         "unfreeze": "test/walkthrough.test.js",
         "amendCommit": "9ec2a8d20b91ee6c04683172c14ce4488ec2c807",
         "reason": "refusals name docs/walkthrough.md lines; the slow test reads docs/walkthrough.md and checks its text blocks against the run (Done when 3)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-16T13:18:05.778Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "3716a765b3578b854600863a0539aea5ff2ad358",
+          "title": "[P6/S-55] Front page"
+        }
       }
     }
   ]
