@@ -9,7 +9,9 @@
     "test/walkthrough.test.js",
     "test/user-guide.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/readme.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -36,6 +38,17 @@
       "at": "2026-11-15T23:33:05.021Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-16T13:12:18.635Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/readme.test.js",
+        "amendCommit": "3d9b592ab1b0697e626896e02bdf46699ac76ead",
+        "reason": "tests outside the evaluation set pin the old README order; they move to the D-98 order, the details blocks and docs/walkthrough.md"
+      }
     }
   ]
 }
