@@ -36,6 +36,7 @@ lines the kit's commands print for it.
 > /slicekit plan
   ⎿ ready to plan
     D-14
+    BUILD.md updated
 
 > /slicekit build P1/S-01
   ⎿ tests-red → building
@@ -58,8 +59,8 @@ lines the kit's commands print for it.
 ```
 
 Intake, specify, gaps, plan and release lines are from the examples on the guide's command pages:
-intake from `intake`, specify from `pr`, gaps from `gaps` and `decide`, plan from `plan` and
-`decide`, release from `release`. Build and review lines are from the
+intake from `intake`, specify from `pr`, gaps from `gaps` and `decide`, plan from `plan`,
+`decide` and the `--write` option of `status`, release from `release`. Build and review lines are from the
 walkthrough on `examples/backend`, except the review's `verdict` line: it is the verdict file that
 `review start` prints, with the path shortened from the left to `…/`.
 
