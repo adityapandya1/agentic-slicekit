@@ -95,3 +95,15 @@ test('a missing workflow file is a finding (I3)', () => {
     ]);
   });
 });
+
+// P7/S-56 (REQ-1.1, D-99): init lays down the brief folder, and the rule requires it.
+test('a missing brief folder is a layout finding', () => {
+  withInstall('backend', ({ root, run }) => {
+    assert.ok(fs.existsSync(path.join(root, 'docs', 'brief', '.keep')), 'init laid down no docs/brief/.keep');
+    assert.deepEqual(run(), []);
+    fs.rmSync(path.join(root, 'docs', 'brief'), { recursive: true, force: true });
+    assert.deepEqual(run().map((f) => [f.file, f.line, f.message]), [
+      ['.slicekit/config.json', 1, 'docs/brief is missing; run slicekit init'],
+    ]);
+  });
+});
