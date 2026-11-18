@@ -35,6 +35,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 | Page | What it does |
 |---|---|
 | [`/slicekit`](slash/slicekit.md) | Runs any of the nine procedures by name. It is the one slash command a person needs to remember. |
+| [`/slicekit brief`](slash/brief.md) | Interviews a person who has only an idea, one topic per question, and writes the brief that `/slicekit intake` takes as its source. |
 | [`/slicekit intake`](slash/intake.md) | Brings a requirement document into the project and interviews the person about it. |
 | [`/slicekit specify`](slash/specify.md) | Writes the spec from the intake snapshots and the decisions, then opens the spec pull request. |
 | [`/slicekit gaps`](slash/gaps.md) | Finds each place where the spec is silent, vague or in conflict with the intake, asks the person about each, and closes every row. |
@@ -52,6 +53,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 | [`slicekit audit`](commands/audit.md) | The two steps of `/slicekit audit` that the CLI takes: the claims handed to the auditor, and the check of the report it writes. |
 | [`slicekit baseline`](commands/baseline.md) | Shows the ratchet baselines, or lowers them to today's counts. |
 | [`slicekit branch`](commands/branch.md) | Puts the session on the work branch of a document pull request. |
+| [`slicekit brief`](commands/brief.md) | The steps of `/slicekit brief` that the CLI takes: open the brief, record each question and answer in the order of the topics, and commit the brief. |
 | [`slicekit build`](commands/build.md) | The steps of `/slicekit build` and `/slicekit review` that the CLI takes for one slice. The agent runs each; a person types one only to resume or inspect. |
 | [`slicekit check`](commands/check.md) | The kit's one gate: runs every check rule and prints each finding. |
 | [`slicekit ci`](commands/ci.md) | Decides whether a push changes only the kit's bookkeeping, so CI can skip the team's commands. |
