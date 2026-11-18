@@ -65,6 +65,57 @@ test('brief done refuses while a topic was never asked and answered, naming the 
   });
 });
 
+// P7/S-56 fix round 2, H-3: a topic is either answered or open, never both, and listed once.
+const section = (text, heading) => {
+  const after = text.split(`## ${heading}\n`)[1] ?? '';
+  return after.split(/\n## /)[0].split('\n').map((l) => l.trim()).filter(Boolean);
+};
+const briefText = (root) => fs.readFileSync(path.join(root, 'docs', 'brief', 'payments-retry.md'), 'utf8');
+
+test('an unknown topic answered on a follow-up question is no longer open', async () => {
+  await withRepo(async (root) => {
+    assert.equal((await cli(root, ['brief', 'start', 'payments-retry'])).code, 0);
+    await askAnswer(root, 'problem', { unknown: true });
+    assert.deepEqual(section(briefText(root), 'Open questions'), ['Problem and who has it']);
+    await askAnswer(root, 'problem');
+    const text = briefText(root);
+    assert.deepEqual(section(text, 'Problem and who has it'), ['The answer on problem.']);
+    assert.deepEqual(section(text, 'Open questions'), []);
+  });
+});
+
+test('a topic answered --unknown twice is listed once under Open questions', async () => {
+  await withRepo(async (root) => {
+    assert.equal((await cli(root, ['brief', 'start', 'payments-retry'])).code, 0);
+    await askAnswer(root, 'problem');
+    await askAnswer(root, 'today', { unknown: true });
+    await askAnswer(root, 'today', { unknown: true });
+    const text = briefText(root);
+    assert.deepEqual(section(text, 'Open questions'), ['What they do today']);
+    assert.deepEqual(section(text, 'What they do today'), []);
+  });
+});
+
+test('brief answer --unknown on a topic already answered is refused and names the follow-up command', async () => {
+  await withRepo(async (root) => {
+    assert.equal((await cli(root, ['brief', 'start', 'payments-retry'])).code, 0);
+    await askAnswer(root, 'problem');
+    const before = briefText(root);
+    assert.equal((await cli(root, ['brief', 'ask', '--topic', 'problem', '--question', 'Who else has it?'])).code, 0);
+    const r = await cli(root, ['brief', 'answer', '--unknown']);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /topic problem is already answered/);
+    assert.ok(r.stderr.includes('slicekit brief answer --answer'), r.stderr);
+    assert.equal(briefText(root), before);
+    // The question still waits; a real answer records it under the topic.
+    const a = await cli(root, ['brief', 'answer', '--answer', 'The support team too.']);
+    assert.equal(a.code, 0, a.stderr);
+    const text = briefText(root);
+    assert.deepEqual(section(text, 'Problem and who has it'), ['The answer on problem.', 'The support team too.']);
+    assert.deepEqual(section(text, 'Open questions'), []);
+  });
+});
+
 test('stage require brief refuses an empty section not listed under Open questions', async () => {
   await withRepo(async (root) => {
     const write = (text) => {

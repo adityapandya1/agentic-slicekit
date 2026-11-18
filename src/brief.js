@@ -107,15 +107,19 @@ function specFilesNow(root, cfg) {
 const briefFile = (root, cfg, slug) => path.join(kitPaths(root, cfg).brief, `${slug}.md`);
 const briefRel = (root, cfg, slug) => posix(path.relative(root, briefFile(root, cfg, slug)));
 
-// The brief as the session holds it: each heading, then the answers under it in the order given;
-// an unknown answer is its topic's heading name under Open questions.
+// The brief as the session holds it, rebuilt from every recorded answer: each heading, then the
+// answers under it in the order given. A topic with only unknown answers is its heading name under
+// Open questions, once; a topic with a real answer is answered and not listed as open.
 export function renderBrief(asked) {
   const under = Object.fromEntries(BRIEF_HEADINGS.map((h) => [h, []]));
+  const answered = new Set(asked.filter((a) => a.answer !== null).map((a) => a.topic));
+  const open = new Set();
   for (const a of asked) {
     const { heading } = SECTIONS.find((s) => s.topic === a.topic);
     if (a.answer !== null) under[heading].push(a.answer);
-    else if (a.topic !== 'unknowns') under[OPEN].push(heading);
+    else if (a.topic !== 'unknowns' && !answered.has(a.topic)) open.add(heading);
   }
+  under[OPEN].unshift(...open);
   return `${BRIEF_HEADINGS.map((h) => [`## ${h}`, ...under[h]].join('\n\n')).join('\n\n')}\n`;
 }
 
@@ -163,12 +167,17 @@ export function ask(root, cfg, { topic, question } = {}) {
 
 // Writes the waiting question's answer into the brief, then clears it: the brief first, so the
 // answer is recorded before the next question can be asked. `unknown` lists the topic under Open
-// questions instead.
+// questions instead, and is refused on a topic the person already answered.
 export function answer(root, cfg, { answer: text, unknown = false } = {}) {
   const session = needSession(root);
   if (!session.pending) throw new BriefError(1, 'no question is waiting for an answer');
   let value = null;
-  if (!unknown) {
+  if (unknown) {
+    const { topic } = session.pending;
+    if (topic !== 'unknowns' && session.asked.some((a) => a.topic === topic && a.answer !== null)) {
+      throw new BriefError(1, `topic ${topic} is already answered, so it cannot be open; record what the person says to this question with slicekit brief answer --answer <a>`);
+    }
+  } else {
     if (typeof text !== 'string' || text.trim() === '') throw new BriefError(2, 'answer is required');
     value = text.trim().replace(/\r\n/g, '\n');
     if (value.split('\n').some((l) => /^#{1,6}\s/.test(l.trim()))) throw new BriefError(2, 'an answer holds no heading line');
