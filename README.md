@@ -15,8 +15,9 @@ CI runs the same checks on every pull request.
 
 ## See it in action
 
-A Claude Code session from the requirement document to the release. Under each slash command are
-lines the kit's commands print for it.
+The steps of a Claude Code session, from the requirement document to the release. Under each slash
+command are lines the kit's commands print for it, taken from two sources named below the block, so
+the pull request numbers and hosts differ between steps.
 
 ```text
 > /slicekit intake brief/orders.md
@@ -178,8 +179,8 @@ absolute path in `cli` or a global install.
 <details>
 <summary>Built with itself</summary>
 
-The kit is built with itself: each change to it is a slice with tests written first, a review and
-green CI. `docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every
+The kit is built with itself: each change to its code goes through a slice, with tests written first,
+a review and green CI; its plans and version changes go through pull requests of their own. `docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every
 choice made so far, and `BUILD.md` shows the order the kit is built in.
 
 </details>
