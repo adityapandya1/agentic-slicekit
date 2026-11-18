@@ -1,11 +1,11 @@
 {
   "slice": "P6/S-55",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 194,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
-    "headSha": "3716a765b3578b854600863a0539aea5ff2ad358"
+    "headSha": "0825972ffc534394cb486cf8dfbec1e1396600ef"
   },
   "redCommit": "d9c7d72257d6443b1f417894ccba850fa77edfef",
   "frozenTests": [
@@ -114,6 +114,22 @@
         "unfreeze": "test/user-guide.test.js",
         "amendCommit": "3a8d4da123c231098d1a60d2d1ad64eb4a1b2242",
         "reason": "the banner exists; the pending markers naming it are removed (no change to the test file)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-18T09:50:46.560Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "0825972ffc534394cb486cf8dfbec1e1396600ef",
+          "title": "[P6/S-55] Front page"
+        }
       }
     }
   ]
