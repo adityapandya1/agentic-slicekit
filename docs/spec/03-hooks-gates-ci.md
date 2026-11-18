@@ -28,8 +28,8 @@ The guard reads a command's text and cannot resolve what runs at execution time,
 deny, in every session and on every branch (D-83), a command it cannot judge: a git subcommand, ref or
 remote taken from a variable or a command substitution; git run through `eval`, `sh -c`, `bash -c`
 or another shell's `-c`; and an interpreter's inline code (`node -e`, `python -c`, `perl -e`,
-`ruby -e`) that names `git` or `gh`. It SHALL deny a command that writes a test file frozen for
-the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv` or `rm`. The guard remains
+`ruby -e`) that names `git` or `gh`. It SHALL deny a command that writes a file holding a test frozen
+for the active slice (REQ-3.3) by redirection, `tee`, `sed -i`, `cp`, `mv` or `rm`. The guard remains
 a check on the developer's machine (REQ-2.1); REQ-3.14 and REQ-3.15 hold on the host and in CI.
 
 Scenario: GIVEN the current branch is `main` WHEN `git commit` is attempted THEN the hook returns a
@@ -44,18 +44,23 @@ Enforced by: `slicekit hook pre-bash`.
 
 ## REQ-3.3 PreToolUse on Edit and Write — fail closed
 
-SHALL deny an edit to a test file listed as frozen in the active slice's state file unless the slice
-file was amended after the freeze (D-10); deny creation of a new file under the docs root while a
-slice is `tests-red` or `building`, except the runbook and the slice's own pull request notes; deny
+SHALL deny an edit or write that changes or removes a test frozen in the active slice's state file,
+known by its name in the evaluation set, unless `build amend` unfroze that test (D-10, D-102); other
+tests in the same file may change. It SHALL deny creation of a new file under the docs root while a
+slice is `tests-red` or `building`, except the runbook, the slice's own pull request notes and a new
+document that the slice file's Expected changes names (D-102); deny
 an edit to `.slicekit/baselines/`, any `.slicekit/state/` file or any file under the journal
 directory (`.slicekit/journal/<branch>--<clone-id>.log`, REQ-3.8) by anything other than the CLI;
 deny an edit to `.slicekit/journal-heads.log` by anything other than the CLI; and deny an edit to a
 path the config lists in `agents.denyPaths` (REQ-3.13).
 
-Scenario: GIVEN frozen `test/billing.test.js` WHEN the developer edits it THEN the hook denies with <!-- slicekit:example -->
+Scenario: GIVEN the frozen test `rejects an unknown currency` in `test/billing.test.js` WHEN the developer edits its body THEN the hook denies with <!-- slicekit:example -->
 "frozen for P1/S-03; amend the slice file to change the evaluation set".
 
-Cites: D-05, D-10, D-22, D-72.
+Scenario: GIVEN the same file WHEN the developer edits a test in it that the evaluation set does not
+name THEN the hook allows the edit.
+
+Cites: D-05, D-10, D-22, D-72, D-102.
 
 Enforced by: `slicekit hook pre-edit`.
 
@@ -109,7 +114,8 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 |---|---|
 | references | a reference in any doc to a file, heading or ID that does not exist, above the baseline; in a slice file whose slice is not yet merged or released, a code-span path on a `**Files:**` line or under `## Expected changes` is a promise and is checked only once the slice merges, while every other path, link and ID in it is checked now; a link resolves against its doc's directory (or the root when it starts with `/`), a backticked path also against the root, and a reference-style link at its definition line; a file under `<docsRoot>/intake/` whose sidecar's SHA-256 matches its bytes is exempt because it is frozen (REQ-1.2), while one without a valid sidecar is checked like any doc and is itself a finding; and in `BUILD.md` the generated region's paths are not checked because it is a view of the slice files, which are checked themselves (IDs in it are still checked) |
 | style | a phrase from the filler list in any doc, verdict or pull request body, above the baseline (D-25); a file under `<docsRoot>/intake/` whose sidecar's SHA-256 matches its bytes is exempt because it is frozen (REQ-1.2), and one without a valid sidecar is checked like any doc |
-| queue | `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6) |
+| queue | outside a slice branch, `BUILD.md` disagrees with `.slicekit/state/` (REQ-1.6, D-100) |
+| lane | a slice marked `lane: quick` whose expected changes, or whose branch's changes, reach `src/`, `bin/` or `templates/` (REQ-1.5, D-103) |
 | citations | a REQ cites a missing D or intake; a slice names a missing REQ or D; a test in an evaluation set names no REQ |
 | coverage | at plan stage or later, a REQ named by no slice, a slice listing no expected changes, a slice whose evaluation set has no `happy` or no `negative` test, a phase whose Order line misses, repeats or names a group no slice has or that carries a second Order line, or two slices in one parallel group, or in one step of the phase's Order line, expecting the same path (REQ-2.5) |
 | trailer | on a slice branch, a first-parent commit not reachable from the default branch, local or on origin, whose `Slice:` trailer, as git reads it, is missing or names another slice; merge commits are exempt |
@@ -117,7 +123,7 @@ The Stop hook SHALL run `slicekit check`, which exits non-zero on any of:
 | commands | a command declared in config does not exist or exits with "not found" |
 | hooks | `core.hooksPath` does not resolve to `.githooks`, or one of the three slicekit git hooks is missing or not executable |
 | journal | the hash chain in any `.slicekit/journal/<branch>--<clone-id>.log` is broken; an entry in that directory is not a `*.log` file (or its `*.lock`); or a journal file committed at the merge base with the default branch was shortened or removed; with `--ci`, a commit of the pull request that changes a journal file is not signed and verified by the host (D-71), or a line the journal-heads file gains differs from what CI recomputes (D-89) |
-| frozen | with `--ci`, on a slice branch, a test of the evaluation set differs from its content at the red commit and the slice file was not amended after it (REQ-3.15) |
+| frozen | with `--ci`, on a slice branch, a test of the evaluation set, known by its name, differs from its content at the red commit and `build amend` did not unfreeze it (REQ-3.15) |
 | host-rules | a rule of REQ-3.14 is missing on the default branch, or, with `--ci`, the rules cannot be read (D-81) |
 | layout | a path from REQ-1.1 is missing, or a rendered file exists that the shape does not include |
 | ci-title | with `--ci`, the pull request title does not begin with `[P<n>/S-<nn>]` (a `[spec] `, `[plan] ` or `[sync] ` title is exempt), or that slice has no slice file, no state file, a state before `draft-pr`, or a state of `merged` or `released` (a change after merge needs its own slice) (REQ-3.11); a pull request opened by an actor in `ci.botActors` is exempt (D-37); a pull request event file that is named but cannot be read fails the run |
@@ -133,7 +139,7 @@ Scenario: GIVEN a doc that cites `docs/spec/07-nothing.md` WHEN the turn ends TH
 fails with the file, the line and the missing target, and the agent must fix it before the turn is
 accepted.
 
-Cites: D-21, D-25, D-31, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-21, D-25, D-31, D-100, D-102, D-103, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: `slicekit check`; the reviewer's brief for the weakening case.
 
@@ -223,7 +229,8 @@ slice's state is before `draft-pr`; fails if the body lacks a section from REQ-2
 `ready` label only when the latest verdict on the pull request's current head has zero open
 blockers and, if required, the latest independent verdict on it has none either (REQ-2.8); a
 verdict given on an earlier head counts when every later commit touches only the kit's own
-bookkeeping (D-35). A pull request opened by an actor in `ci.botActors` is exempt from the title
+bookkeeping (D-35), or is a merge of the default branch after which every file the pull request
+changes, bookkeeping aside, has the content it had at the verdict's head (D-100). A pull request opened by an actor in `ci.botActors` is exempt from the title
 and body rules (D-37). On merge to the default branch it SHALL run
 `slicekit status --sync --write` and, when the state, `BUILD.md` or `.slicekit/journal-heads.log`
 (REQ-3.8) changed, push the change to a branch `sync/<short sha of the merge commit>` and open a
@@ -254,7 +261,7 @@ begin with [P<n>/S-<nn>]".
 Scenario: GIVEN a repository with `pom.xml` and `commands.test` set to `mvn -B verify` WHEN init
 writes the workflow THEN the test job sets up a JDK with the Maven cache and `workflow --check` passes.
 
-Cites: D-12, D-18, D-20, D-35, D-37, D-67, D-69, D-78, D-80, D-85, D-86.
+Cites: D-12, D-18, D-20, D-35, D-37, D-67, D-69, D-78, D-80, D-85, D-86, D-100.
 
 Enforced by: the generated workflow; `slicekit check --ci`; `slicekit workflow --check`.
 
@@ -325,9 +332,10 @@ Enforced by: `slicekit check` (host-rules rule); `slicekit init --protect`; the 
 
 ## REQ-3.15 Frozen tests hold in CI
 
-`slicekit check --ci` SHALL fail a slice pull request in which a test file of the slice's
-evaluation set differs from its content at the red commit recorded in the slice's state file, unless
-the slice file was amended after that commit (REQ-3.3, D-10). It reads the state file, the red
+`slicekit check --ci` SHALL fail a slice pull request in which a test of the slice's evaluation
+set, found by its name in its test file, differs from its content at the red commit recorded in the
+slice's state file or is gone, unless `build amend` unfroze that test after that commit (REQ-3.3,
+D-10, D-102). Other tests in the same file are not compared. It reads the state file, the red
 commit and the test files from git objects of the pull request's head, never the working tree, so a
 file hidden with `assume-unchanged` or `skip-worktree` is judged by its committed content (issue
 #71).
@@ -336,6 +344,6 @@ Scenario: GIVEN a slice pull request whose frozen `test/billing.test.js` changed
 commit through a Bash write WHEN CI runs THEN check fails with "frozen test changed after red:
 test/billing.test.js".
 
-Cites: D-10, D-66, `../intake/2026-11-02-architect-review.md`.
+Cites: D-10, D-66, D-102, `../intake/2026-11-02-architect-review.md`.
 
 Enforced by: `slicekit check` (frozen rule).

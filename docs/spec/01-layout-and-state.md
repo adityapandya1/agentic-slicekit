@@ -20,6 +20,7 @@ from config (default `docs/`, D-24):
   graph/               built, never committed (04)
   workspace.json       present only in a program repo that spans repositories (D-15)
 <docsRoot>/
+  brief/<slug>.md      briefs written by /slicekit brief, before intake (02 REQ-2.15)
   intake/              frozen source snapshots (REQ-1.2)
   decisions.md         D-NN rows (D-17)
   spec/<capability>.md REQ-NN requirements (REQ-1.3)
@@ -33,6 +34,7 @@ from config (default `docs/`, D-24):
   phases/P<n>-<name>/S-<nn>-<descr>.md  the slice file (REQ-1.5)
   releases/P<n>.md     release records (05 / 02 REQ-2.9)
 BUILD.md               the human-readable queue (REQ-1.6)
+.gitattributes         carries `BUILD.md merge=slicekit-build`, the merge driver of REQ-1.6
 .claude/               rendered adapter files inside managed-block markers (03 REQ-3.12)
 .github/workflows/slicekit.yml
 .githooks/prepare-commit-msg
@@ -41,12 +43,12 @@ BUILD.md               the human-readable queue (REQ-1.6)
 ```
 
 Scenario: GIVEN an empty repository WHEN `slicekit init --shape backend` runs THEN every path above
-exists except `.slicekit/workspace.json`, `.slicekit/graph/`, `docs/phases/*` and `docs/releases/*`, and `slicekit check` exits 0. <!-- slicekit:example -->
+exists except `.slicekit/workspace.json`, `.slicekit/graph/`, `docs/brief/*`, `docs/phases/*` and `docs/releases/*`, and `slicekit check` exits 0. <!-- slicekit:example -->
 
 Scenario: GIVEN a repository that already has `docs/` WHEN init runs THEN nothing already present is
 overwritten; the kit adds its files beside them and reports each one it added.
 
-Cites: D-15, D-17, D-20, D-21, D-22, D-24.
+Cites: D-15, D-17, D-20, D-21, D-22, D-24, D-99, D-100.
 
 Enforced by: `slicekit init`, `slicekit check` (layout rule).
 
@@ -111,34 +113,60 @@ D-21); and the parallel group within its phase. A phase file MAY carry one line
 `**Order:** <step>; <step>; …`, each step a comma list of the groups that run at the same time;
 without it each group is its own step, in name order.
 
+When `freezeTests` is set, freezing SHALL cover each test of the evaluation set by its name, not the
+file that holds it; other tests in that file may change (D-102). `slicekit build amend` SHALL record
+any change to the slice file with its reason in the state file, and SHALL unfreeze a test only when
+that test is named in the call.
+
+A slice whose expected changes name no path under `src/`, `bin/` or `templates/` MAY carry
+`lane: quick` in its front matter (D-103); its plan and review steps are those of REQ-2.5. `slicekit
+check` SHALL refuse a slice marked `lane: quick` whose expected changes, or whose branch's changes
+against the default branch, reach one of those folders.
+
 Scenario: GIVEN a slice file whose evaluation set has a test naming no REQ WHEN `slicekit check`
 runs THEN it fails naming the slice and the test.
 
-Cites: D-10, D-15, D-21, D-38, `../intake/2026-10-24-founding-requirement.md`.
+Scenario: GIVEN a slice file with `lane: quick` and a branch that changes `src/init.js` WHEN
+`slicekit check` runs THEN it fails naming the slice and the path.
 
-Enforced by: `slicekit check` (citations rule).
+Scenario: GIVEN a slice at `building` whose slice file the human changed WHEN `slicekit build amend
+<id> --reason <r>` runs without naming a test THEN the state file records the change and the reason,
+and every frozen test stays frozen.
+
+Cites: D-10, D-15, D-21, D-38, D-102, D-103, `../intake/2026-10-24-founding-requirement.md`.
+
+Enforced by: `slicekit check` (citations rule, lane rule); `slicekit build amend`.
 
 ## REQ-1.6 BUILD.md is a view of state, never the source
 
 `BUILD.md` SHALL list every phase and slice with status and pull request number, generated from the
-state files. A difference between `BUILD.md` and `.slicekit/state/` SHALL fail `slicekit check`.
-`slicekit status --write` regenerates it.
+state files. `slicekit status --write` regenerates it. A slice branch SHALL not commit its own change
+to `BUILD.md`; the sync after a merge (03 REQ-3.11) regenerates it on the default branch (D-100).
+Init SHALL register a git merge driver for `BUILD.md`, named in `.gitattributes` and set in the
+clone's git config, that regenerates the file from the merged state files on a local merge. A
+difference between `BUILD.md` and `.slicekit/state/` SHALL fail `slicekit check` on every branch but
+a slice branch; on a slice branch a `BUILD.md` that differs from state is no finding.
 
-Scenario: GIVEN a slice state file at `draft-pr` with PR 14 WHEN `BUILD.md` says `todo` THEN
-`slicekit check` fails and names the slice.
+Scenario: GIVEN a slice state file at `draft-pr` with PR 14 WHEN `BUILD.md` on the default branch
+says `todo` THEN `slicekit check` fails and names the slice.
 
-Cites: D-10, D-22.
+Scenario: GIVEN a slice branch whose own state file moved to `in-review` WHEN `slicekit check` runs
+on that branch with `BUILD.md` unchanged from the default branch THEN the queue rule reports nothing.
 
-Enforced by: `slicekit check` (queue rule).
+Cites: D-10, D-22, D-100.
+
+Enforced by: `slicekit check` (queue rule); `slicekit init` (merge driver); the sync job.
 
 ## REQ-1.7 Program stages, in order
 
 The program SHALL move through: `intake → clarify → specify → spec-review → gap-scan → stack → plan
-→ build → release`. A stage command SHALL refuse to start until the CLI confirms from files that the
-previous stage is complete:
+→ build → release`, optionally preceded by `brief` (D-99). A stage command SHALL refuse to start until
+the CLI confirms from files that the previous stage is complete; intake SHALL not require the brief
+stage:
 
 | Stage | Complete when |
 |---|---|
+| brief (optional) | `<docsRoot>/brief/<slug>.md` exists with every section of 02 REQ-2.15 present |
 | intake | at least one snapshot, and every file under intake has a valid sidecar |
 | clarify | `decisions.md` exists and no row of type Open is cited by the spec |
 | specify | every REQ has the shape of REQ-1.3 |
@@ -152,7 +180,10 @@ previous stage is complete:
 Scenario: GIVEN no `gaps.md` WHEN `/slicekit plan` is invoked THEN it stops with "gap scan not done"
 and the command that does it.
 
-Cites: D-07, `../intake/2026-10-24-founding-requirement.md`.
+Scenario: GIVEN a repository with no file under `<docsRoot>/brief/` WHEN `/slicekit intake` is invoked
+with a requirement document THEN it starts.
+
+Cites: D-07, D-99, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: each stage command's precondition, read through `slicekit status --json`.
 
@@ -165,14 +196,14 @@ Transitions and their mechanical preconditions:
 | From → to | Precondition checked from files |
 |---|---|
 | todo → tests-red | a commit exists on the slice branch whose test run exit code was non-zero, recorded in the state file with the commit SHA |
-| tests-red → building | the test files listed in the state file are present and (if `freezeTests`) frozen |
+| tests-red → building | the test files listed in the state file are present and (if `freezeTests`) the evaluation tests in them are frozen by name (D-102) |
 | building → draft-pr | the test command exits 0; `slicekit check` exits 0; a pull request exists whose title begins `[P<n>/S-<nn>]` |
 | draft-pr or changes-requested → in-review | a verdict file exists for the next round |
 | in-review, ci-green or ready → in-review | an independent verdict file exists for the next round |
 | in-review → changes-requested | the latest verdict has open blockers |
 | in-review → ci-green | the latest verdict has zero open blockers and CI reports success on the head SHA or a later head D-35 covers |
-| ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35) |
-| in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push) |
+| ci-green → ready | the latest independent verdict on the current head SHA has zero open blockers, or config sets it optional; a verdict given on an earlier head counts when every later commit touches only the kit's own bookkeeping (D-35), or is a merge of the default branch after which every file the pull request changes, bookkeeping aside, has the content it had at the verdict's head (D-100) |
+| in-review, changes-requested, ci-green or ready → draft-pr | a new head SHA on the pull request (a fix push); a merge of the default branch that leaves every file the pull request changes, bookkeeping aside, as it was at the verdict's head keeps the state (D-100) |
 | draft-pr → draft-pr | the worktree's head moved since the recorded head (a merge of the default branch, or any commit); `build pr` records the new head in a bookkeeping commit (D-43) |
 | draft-pr, in-review or changes-requested → building | `build amend` unfroze a frozen test after the human amended the slice file, so a finding inside a frozen test is fixed during review (D-43) |
 | ready → merged | the pull request is merged (observed by CI sync or `slicekit status --sync`) |
@@ -187,7 +218,11 @@ Scenario: GIVEN a slice at `draft-pr` whose pull request was merged on the git h
 `state set <id> merged --backfill` runs THEN the slice is `merged` with the host's merge time and
 head; while the host reports the pull request open, the same command is refused.
 
-Cites: D-10, D-18, D-22, D-35, D-39, D-43.
+Scenario: GIVEN a slice at `ci-green` with an independent verdict on head A WHEN a merge of the
+default branch that changes no file the pull request changes makes head B THEN `state set <id> ready`
+accepts the verdict on A; when the merge changes one of those files, it is refused.
+
+Cites: D-10, D-18, D-22, D-35, D-39, D-43, D-100, D-102.
 
 Enforced by: `slicekit state set` (the only writer), which checks the precondition and refuses
 otherwise.

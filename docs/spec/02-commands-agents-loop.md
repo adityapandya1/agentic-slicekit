@@ -27,12 +27,13 @@ SHALL snapshot the source (REQ-1.2), read it, and interview the human in two pas
 question, offering choices where choices exist: first the product (purpose, users, components,
 existing systems, constraints, what is out of scope), then the platform and observability (REQ-1.11).
 Every answer SHALL be written as a D-NN row before the next question is asked. The command SHALL not
-write any spec text. It ends by printing the open questions it could not get answered.
+write any spec text. It ends by printing the open questions it could not get answered. A brief
+written by `/slicekit brief` (REQ-2.15) is a valid source and is snapshotted like any other document.
 
 Scenario: GIVEN a Word document WHEN intake runs THEN `intake/<date>-<slug>.docx` and its sidecar
 exist, `decisions.md` has one row per answered question, and no file under `<docsRoot>/spec/` was created.
 
-Cites: D-08, D-17, D-20, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-08, D-17, D-20, D-99, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: the command brief; `slicekit check` (no spec files at stage intake).
 
@@ -81,12 +82,20 @@ runs over all slices of one Order step, since the groups of a step run at the sa
 file SHALL carry at most one Order line, and it SHALL name every group of the phase exactly once and
 no group that no slice has.
 
+The plan MAY mark a slice `lane: quick` in its slice file when the slice changes no file under `src/`,
+`bin/` or `templates/` (REQ-1.5, D-103). A quick slice SHALL get one combined plan step, in which its
+slice file is written and merged in one `[plan]` pull request; one in-loop review round in place of
+REQ-2.6's two; and the independent review of REQ-2.8 as for any slice.
+
 Scenario: GIVEN two slices in parallel group A both listing `src/billing/` WHEN check runs on the plan <!-- slicekit:example -->
 branch THEN it fails naming both slices.
 
-Cites: D-10, D-38, `../intake/2026-10-24-founding-requirement.md`.
+Scenario: GIVEN a slice marked `lane: quick` whose round-one verdict holds a blocker WHEN step 7 of
+REQ-2.6 completes THEN the state is `changes-requested` and no second in-loop reviewer is spawned.
 
-Enforced by: `slicekit plan check`; `slicekit check` (coverage rule, overlap rule, evaluation-set rule).
+Cites: D-10, D-38, D-103, `../intake/2026-10-24-founding-requirement.md`.
+
+Enforced by: `slicekit plan check`; `slicekit check` (coverage rule, overlap rule, evaluation-set rule, lane rule); the build command's round count.
 
 ## REQ-2.6 `/slicekit build [P<n>/S-<nn>]`
 
@@ -97,19 +106,21 @@ It SHALL then, in order:
 2. Spawn **developer** with `slicekit instructions developer P<n>/S-<nn>` (the slice file, the cited
    REQ and D rows, the team's commands, the writing rules). Nothing else.
 3. Receive the test files. Run the test command. Require a non-zero exit. Commit. Record the SHA and
-   the test file list in the state file; set `tests-red`. If `freezeTests`, the files are now refused
-   to Edit and Write for this slice (D-10).
+   the test file list in the state file; set `tests-red`. If `freezeTests`, the evaluation tests are
+   now frozen by name for this slice: an Edit or Write that changes one is refused, and other tests in
+   the same files may change (D-10, D-102).
 4. Set `building`. Spawn **developer** again (same context if alive, fresh otherwise) to make the
    tests pass. Commit each time the test command's exit code flips to 0 for a new test, with the
    trailer. The developer may ask for a slice-file amendment if a test is wrong; the command asks the
-   human, amends the slice file, unfreezes that one file, and records it.
+   human, amends the slice file, unfreezes that one test, and records it.
 5. Run the test, lint and build commands and `slicekit check`. Push. Open a draft pull request with
    the body of REQ-2.10. Set `draft-pr`.
 6. Spawn **reviewer** with the pull request number. Receive the verdict file (REQ-2.11). Set
    `in-review`.
 7. If blockers: spawn **fixer** with the verdict, repeat step 5 without reopening the pull request,
-   spawn reviewer again. At most two rounds (D-18). A blocker that survives round two stops the loop:
-   state `changes-requested`, the pull request stays draft, the command prints what is stuck.
+   spawn reviewer again. At most two rounds (D-18), one for a quick slice (REQ-2.5). A blocker that
+   survives the last round stops the loop: state `changes-requested`, the pull request stays draft,
+   the command prints what is stuck. The independent rounds that follow are those of REQ-2.8 (D-101).
 8. For should-haves: ask the human once per round, fix or decline. A decline SHALL be written under
    "Should-haves declined" in the pull request body and opened as a GitHub issue titled
    `[P<n>/S-<nn>] <finding>` with the verdict excerpt (D-09).
@@ -124,7 +135,7 @@ Scenario: GIVEN round two's verdict still holds blocker B-1 WHEN step 7 complete
 `changes-requested`, no third reviewer is spawned, and the pull request body's "Reviewer blocked"
 line names B-1.
 
-Cites: D-09, D-10, D-18, D-19.
+Cites: D-09, D-10, D-18, D-19, D-101, D-102, D-103.
 
 Enforced by: the command; `slicekit state set` preconditions (REQ-1.8).
 
@@ -148,14 +159,27 @@ Enforced by: the command; per-slice state files (D-22).
 SHALL be run in a session with no context from the building session, by default required before
 merge (D-18). It spawns **reviewer** in a fresh worktree of the pull request head, writes a verdict
 file marked `independent`, and, on blockers, offers to spawn **fixer** in that worktree; the command
-then commits and pushes to the slice branch. This round does not count against REQ-2.6's two.
+then commits and pushes to the slice branch. This round does not count against REQ-2.6's two. A
+reviewer subagent started by `slicekit review start <PR>` from the main checkout, given only the pull
+request and the reviewer's brief and no build context, SHALL also count as independent;
+`/slicekit review` in a new session is the stronger form (D-104).
+
+The independent review SHALL have one round, and a second round only when the first left a blocker
+(D-101). When the last allowed round still has a blocker, the slice SHALL stop at
+`changes-requested` and the command SHALL print the open findings and the three choices for the
+human: fix by hand, re-scope the slice, or allow one more round. An extra round SHALL be recorded as
+a D-NN row naming the slice before it starts.
 
 Scenario: GIVEN `review.independent: required` and no independent verdict WHEN CI evaluates the
 `ready` label THEN the label is withheld with "independent review missing".
 
-Cites: D-18.
+Scenario: GIVEN a slice whose second independent verdict holds blocker B-1 WHEN `slicekit review
+start` is run for a third round with no decision row allowing it THEN it refuses, names B-1 and
+prints the three choices.
 
-Enforced by: CI label rule (03 REQ-3.11).
+Cites: D-18, D-101, D-104.
+
+Enforced by: CI label rule (03 REQ-3.11); `slicekit review start` (round budget).
 
 ## REQ-2.9 `/slicekit release P<n>`
 
@@ -201,12 +225,14 @@ A reviewer SHALL write `.slicekit/reviews/P<n>-S-<nn>-r<k>.md` (committed with t
 verdict line `BLOCK | CHANGES | APPROVE`, a table of findings each with ID `B-<n>` (blocker) or
 `H-<n>` (should-have), file and line, what is wrong, why it matters, and how it was verified (a
 command run and its output, or "read only"), then the list of checklists run, then "Not checked".
-A finding without a "how verified" entry SHALL fail the SubagentStop shape check.
+A finding without a "how verified" entry SHALL fail the SubagentStop shape check. A verdict SHALL
+hold no style finding (one on wording, formatting or naming alone), and a reviewer with nothing to report SHALL write `APPROVE` with an empty
+findings table rather than a finding (D-101).
 
 Scenario: GIVEN a verdict file with a finding whose "how verified" entry is empty WHEN the reviewer
 stops THEN the SubagentStop shape check fails naming that finding.
 
-Cites: D-18, `../intake/2026-10-24-founding-requirement.md`.
+Cites: D-18, D-101, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: SubagentStop hook (03 REQ-3.5).
 
@@ -218,7 +244,7 @@ so the rules have one home.
 | Agent | Writes | Never |
 |---|---|---|
 | developer | tests, then code, in the worktree; a report of commands run and their summary lines | git; files outside the slice's expected set without saying so; a document |
-| reviewer | a verdict file | code; questions; praise |
+| reviewer | a verdict file, within the round budget of REQ-2.6 and REQ-2.8 | code; questions; praise; a style finding; a finding when it has none |
 | fixer | code changes answering named findings | new features; tests the verdict did not ask for |
 | auditor | a gaps file or an audit report with a citation on both sides | code |
 | ops | a proposed-actions report | any change to infrastructure or code |
@@ -229,7 +255,7 @@ Every agent's reply SHALL end with "Skipped:" and "Not checked:" lines (ponytail
 Scenario: GIVEN a reviewer reply that ends without a "Not checked:" line WHEN the reviewer stops
 THEN the SubagentStop shape check re-prompts it for the missing line.
 
-Cites: D-14, D-19, D-21.
+Cites: D-14, D-19, D-21, D-101.
 
 Enforced by: SubagentStop shape check; SubagentStart injection.
 
@@ -261,3 +287,59 @@ report lists that claim as `drifted` with the commit, and no other file changed.
 Cites: D-13, `../intake/2026-10-24-founding-requirement.md`.
 
 Enforced by: advisory, by design; its findings become slices or decisions.
+
+## REQ-2.15 `/slicekit brief [<slug>]`
+
+SHALL interview the person one topic per question, in this order: the problem and who has it, what
+they do today, the use cases, what is out of scope, the success measures, the constraints, and the
+unknowns. Every answer SHALL be recorded in the brief before the next question is asked. The command
+SHALL write `<docsRoot>/brief/<slug>.md` with these sections, each built only from the person's
+answers:
+
+```
+## Problem and who has it
+## What they do today
+## Use cases
+## Out of scope
+## Success measures
+## Constraints
+## Open questions
+```
+
+An answer of "I don't know", or a topic the person cannot answer, SHALL be written under
+`## Open questions` and never as a requirement. The command SHALL write no spec text. It SHALL commit the brief on the spec branch (`slicekit branch spec <slug>`) through the CLI, and
+end by printing `/slicekit intake <docsRoot>/brief/<slug>.md` as the next command (D-99).
+
+Scenario: GIVEN a person who answers every topic but says they do not know the success measures
+WHEN `/slicekit brief payments-retry` completes THEN `docs/brief/payments-retry.md` has all seven <!-- slicekit:example -->
+sections, the success measures topic is listed under `## Open questions`, no file under
+`<docsRoot>/spec/` changed, and the last line printed is
+`/slicekit intake docs/brief/payments-retry.md`. <!-- slicekit:example -->
+
+Cites: D-99.
+
+Enforced by: the command brief; `slicekit stage require brief` (sections present); `slicekit check`
+(no spec files written by the brief stage).
+
+## REQ-2.16 `slicekit next` and `/slicekit next`
+
+`slicekit next` SHALL read the program and slice state from files only (`.slicekit/state/`, the
+slice files, the verdict files and `decisions.md`) and print the single next step with the command
+that runs it. It SHALL be idempotent: a step whose result the files already record is not repeated,
+and a second run with no change in between prints the same step. `/slicekit next` SHALL run the step
+that `slicekit next` prints and stop. Neither SHALL merge a pull request, approve a publish or push
+with force; at each of those points, at an Open decision row the step depends on, and at a review
+budget stop (REQ-2.8), it SHALL stop and print the command for the human. Each run SHALL be one step,
+so that Claude Code's `/loop` can run `/slicekit next` once per iteration and a step can resume after
+a restart or a compaction (D-104).
+
+Scenario: GIVEN a slice at `ready` WHEN `slicekit next` runs THEN it prints that a human merges the
+pull request, with the pull request number, and changes no file.
+
+Scenario: GIVEN a slice whose verdict for round 1 is recorded in its state file WHEN `slicekit next`
+runs twice THEN neither run names round 1 and both name the same next step.
+
+Cites: D-101, D-104.
+
+Enforced by: `slicekit next` (reads files only, writes nothing); the command brief for
+`/slicekit next`.
