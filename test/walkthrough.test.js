@@ -1,4 +1,4 @@
-// REQ-5.7: the README walkthrough's commands run verbatim in a bash session and stop at the first failure.
+// REQ-5.7: the walkthrough's commands (docs/walkthrough.md since P6/S-55) run verbatim in a bash session and stop at the first failure.
 // S-25: the README's walkthrough, read from its sh blocks and run as one bash session.
 // S-24: the walkthrough still exits 0 after the status, the user guide link and the examples change.
 import { test } from 'node:test';
@@ -9,7 +9,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolveBash, runWalkthrough, walkthroughCommands, walkthroughScript } from './helpers/walkthrough.js';
+import { readWalkthrough, resolveBash, runWalkthrough, walkthroughCommands, walkthroughScript } from './helpers/walkthrough.js';
 import { makeRemote, makeRepo } from './helpers/tmp-repo.js';
 import { parseVerdict, verdictProblems } from '../src/verdict.js';
 
@@ -55,7 +55,7 @@ test("the walkthrough's commands are read from its sh blocks in README order", (
 });
 
 test('a README with no walkthrough section or no sh block in it is refused', () => {
-  assert.throws(() => walkthroughCommands('# Kit\n\n## Install\n\n```sh\nnpm i\n```\n'), { message: 'README.md has no "## Walkthrough" section' });
+  assert.throws(() => walkthroughCommands('# Kit\n\n## Install\n\n```sh\nnpm i\n```\n'), { message: 'docs/walkthrough.md has no "## Walkthrough" section' });
   assert.throws(() => walkthroughCommands('# Kit\n\n## Walkthrough\n\n```js\nx\n```\n\n## Next\n\n```sh\nnpm i\n```\n'), { message: 'the walkthrough holds no sh block' });
 });
 
@@ -81,7 +81,7 @@ test('the script carries cd and variables from one command to the next', () => {
   }
 });
 
-test('a walkthrough command that fails stops the run, naming the command and its README line', () => {
+test('a walkthrough command that fails stops the run, naming the command and its line', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-walk-'));
   try {
     const r = runWalkthrough(
@@ -93,11 +93,11 @@ test('a walkthrough command that fails stops the run, naming the command and its
       { cwd: dir },
     );
     assert.equal(r.code, 1);
-    assert.equal(r.stderr, 'walkthrough failed at README.md:14: false\n');
+    assert.equal(r.stderr, 'walkthrough failed at docs/walkthrough.md:14: false\n');
     assert.equal(fs.existsSync(path.join(dir, 'after')), false);
     // A quote in the command is printed as written.
     const q = runWalkthrough([{ line: 3, command: "test 'a' = \"b\"" }], { cwd: dir });
-    assert.equal(q.stderr, 'walkthrough failed at README.md:3: test \'a\' = "b"\n');
+    assert.equal(q.stderr, 'walkthrough failed at docs/walkthrough.md:3: test \'a\' = "b"\n');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -153,7 +153,7 @@ function stopsAt(command) {
   inTemp((dir) => {
     const r = runWalkthrough([{ line: 7, command }, { line: 8, command: 'touch after' }], { cwd: dir });
     assert.equal(r.code, 1, `${command}: ${r.stdout}${r.stderr}`);
-    assert.equal(r.stderr, `walkthrough failed at README.md:7: ${command}\n`, command);
+    assert.equal(r.stderr, `walkthrough failed at docs/walkthrough.md:7: ${command}\n`, command);
     assert.equal(fs.existsSync(path.join(dir, 'after')), false, command);
   });
 }
@@ -164,12 +164,12 @@ test('a trailing comment does not swallow the stop', () => stopsAt('false # this
 
 test('a failing command in a pipe stops the run', () => stopsAt('false | cat'));
 
-test('a ; list, a heredoc and a trailing & are refused with their README line', () => {
-  // README line 6 is the command: four lines of heading, then the fence on line 5.
+test('a ; list, a heredoc and a trailing & are refused with their line', () => {
+  // Line 6 is the command: four lines of heading, then the fence on line 5.
   const refused = [
-    ['false; true', /^README\.md:6: .*";"/],
-    ['cat > f <<EOF', /^README\.md:6: .*heredoc/],
-    ['sleep 0 &', /^README\.md:6: .*"&"/],
+    ['false; true', /^docs\/walkthrough\.md:6: .*";"/],
+    ['cat > f <<EOF', /^docs\/walkthrough\.md:6: .*heredoc/],
+    ['sleep 0 &', /^docs\/walkthrough\.md:6: .*"&"/],
   ];
   for (const [command, message] of refused) {
     assert.throws(() => walkthroughCommands(inWalkthrough('```sh', command, '```')), { message }, command);
@@ -187,9 +187,9 @@ test('a ; list, a heredoc and a trailing & are refused with their README line', 
 test('a shell block that is not ```sh, another fence or an unclosed block is refused, naming its line', () => {
   for (const fence of ['```bash', '```shell', '```console', '~~~sh', '````sh']) {
     const close = fence.startsWith('~') ? '~~~' : fence.startsWith('````') ? '````' : '```';
-    assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'true', '```', '', fence, 'npm i', close)), { message: /^README\.md:9: / }, fence);
+    assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'true', '```', '', fence, 'npm i', close)), { message: /^docs\/walkthrough\.md:9: / }, fence);
   }
-  assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'npm i')), { message: /^README\.md:5: .*never closed/ });
+  assert.throws(() => walkthroughCommands(inWalkthrough('```sh', 'npm i')), { message: /^docs\/walkthrough\.md:5: .*never closed/ });
   // `sh` with an info string after it is still sh.
   assert.deepEqual(walkthroughCommands(inWalkthrough('```sh title="x"', 'npm i', '```')), [{ line: 6, command: 'npm i' }]);
 });
@@ -492,15 +492,74 @@ test('examples/walkthrough uses no banned phrase and says it is not an example p
   assert.equal(fs.existsSync(path.join(WALK, '.slicekit')), false);
 });
 
-// The README's own walkthrough, run as a reader runs it from a checkout of the kit: every command
-// exits 0, and the last `status` shows the slice merged. A failing step names its README line.
-test("the README walkthrough's commands exit 0 on examples/backend", { timeout: 900_000 }, () => {
+// P6/S-55 (REQ-5.7, D-98): the walkthrough moves from the README to docs/walkthrough.md, its commands
+// unchanged. `readWalkthrough(root)` reads them from <root>/docs/walkthrough.md, and a refusal names
+// that file's line. The digest is of the 44 commands the README's walkthrough held before the move,
+// joined by newlines.
+const WALKTHROUGH_COMMANDS_SHA1 = '152f97484df3c8d59d55ac7b3f32466ca41042dd';
+
+test("the walkthrough's commands are read from docs/walkthrough.md", async () => {
+  const helper = await import('./helpers/walkthrough.js');
+  assert.equal(typeof helper.readWalkthrough, 'function', 'test/helpers/walkthrough.js exports no readWalkthrough');
+
+  // A root whose README has no walkthrough: the commands come from docs/walkthrough.md.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-walkfile-'));
+  try {
+    fs.mkdirSync(path.join(root, 'docs'));
+    fs.writeFileSync(path.join(root, 'README.md'), '# Kit\n\n## Quick start\n\n```sh\nnot-read\n```\n');
+    const doc = (...block) => ['# Walkthrough', '', '## Walkthrough', '', ...block, ''].join('\n');
+    fs.writeFileSync(path.join(root, 'docs', 'walkthrough.md'), doc('```sh', 'npm i', '', 'cd demo', '```', '', '```text', 'printed', '```'));
+    assert.deepEqual(helper.readWalkthrough(root), [
+      { line: 6, command: 'npm i' },
+      { line: 8, command: 'cd demo' },
+    ]);
+    // A refusal names docs/walkthrough.md and its line.
+    fs.writeFileSync(path.join(root, 'docs', 'walkthrough.md'), doc('```sh', 'false; true', '```'));
+    assert.throws(() => helper.readWalkthrough(root), { message: /^docs\/walkthrough\.md:6: .*";"/ });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
+  // The kit's own: the README holds no walkthrough, and docs/walkthrough.md holds its commands unchanged.
   const readme = fs.readFileSync(path.join(KIT_ROOT, 'README.md'), 'utf8');
+  assert.doesNotMatch(readme, /^##\s+Walkthrough\s*$/m, 'README.md still has ## Walkthrough');
+  const commands = helper.readWalkthrough(KIT_ROOT).map((c) => c.command);
+  assert.equal(commands.length, 44);
+  assert.equal(commands[0], 'KIT="$(pwd -W 2>/dev/null || pwd)"');
+  assert.equal(commands.at(-1), 'rm -rf "$WORK"');
+  assert.equal(createHash('sha1').update(commands.join('\n')).digest('hex'), WALKTHROUGH_COMMANDS_SHA1);
+});
+
+// The walkthrough in docs/walkthrough.md, run as a reader runs it from a checkout of the kit: every
+// command exits 0, and the last `status` shows the slice merged. A failing step names its line. P6/S-55:
+// every line of its ```text blocks is a line the run prints, read as the README transcript test reads
+// one (no leading space or ⎿ marker, inner runs of spaces as one); a line the run does not print is named.
+const printedLine = (l) => l.replace(/^[\s⎿│]+/, '').replace(/\s+/g, ' ').trim();
+
+function recordedLines(text) {
+  const out = [];
+  let lang = null;
+  for (const l of String(text).replace(/\r\n/g, '\n').split('\n')) {
+    if (lang === null) {
+      const m = /^\s*`{3,}\s*([\w-]*)/.exec(l);
+      if (m) lang = m[1].toLowerCase();
+    } else if (/^\s*`{3,}\s*$/.test(l)) {
+      lang = null;
+    } else if (lang === 'text' && printedLine(l) !== '') {
+      out.push(printedLine(l));
+    }
+  }
+  return out;
+}
+
+test("the walkthrough's commands in docs/walkthrough.md exit 0 on examples/backend and print its text lines", { timeout: 900_000 }, () => {
+  const recorded = recordedLines(fs.readFileSync(path.join(KIT_ROOT, 'docs', 'walkthrough.md'), 'utf8'));
+  assert.ok(recorded.length > 0, 'docs/walkthrough.md records no output in a ```text block');
   // mktemp honours TMPDIR, so the walkthrough's WORK lands in a directory this test removes.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-readme-'));
   let r;
   try {
-    r = runWalkthrough(walkthroughCommands(readme), { cwd: KIT_ROOT, env: { TMPDIR: tmp.split(path.sep).join('/') }, timeoutMs: 840_000 });
+    r = runWalkthrough(readWalkthrough(KIT_ROOT), { cwd: KIT_ROOT, env: { TMPDIR: tmp.split(path.sep).join('/') }, timeoutMs: 840_000 });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -511,4 +570,6 @@ test("the README walkthrough's commands exit 0 on examples/backend", { timeout: 
   assert.match(last, /^P1\/S-01\s+merged\s+PR #1\b/, tail(r.stdout));
   // init's hook probe answered: the --cli path is quoted and in a form Node reads.
   assert.doesNotMatch(r.stderr, /did not answer/);
+  const printed = new Set(r.stdout.split(/\r?\n/).map(printedLine));
+  assert.deepEqual(recorded.filter((l) => !printed.has(l)), [], 'docs/walkthrough.md records these lines the run does not print');
 });

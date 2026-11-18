@@ -1,0 +1,262 @@
+{
+  "slice": "P6/S-55",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 194,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+    "headSha": "ee5ca589470c8490237b8cf6678969b90d751d52"
+  },
+  "redCommit": "d9c7d72257d6443b1f417894ccba850fa77edfef",
+  "frozenTests": [
+    "test/readme.test.js",
+    "test/walkthrough.test.js",
+    "test/user-guide.test.js"
+  ],
+  "unfrozen": [
+    "test/readme.test.js",
+    "test/walkthrough.test.js",
+    "test/user-guide.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P6-S-55-r1.md",
+      "blockers": 2,
+      "independent": false,
+      "headSha": "3716a765b3578b854600863a0539aea5ff2ad358"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P6-S-55-r2.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "0825972ffc534394cb486cf8dfbec1e1396600ef"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P6-S-55i-r3.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "e1e2ee5f94f3a99f6c8c000d9056ab50d93efd6c"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P6-S-55i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "ee5ca589470c8490237b8cf6678969b90d751d52"
+    }
+  ],
+  "ci": {
+    "sha": "4e288e78f14950b3d70732735be3e6672eeb3ba8",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44286931490"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-15T23:33:04.566Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "d9c7d72257d6443b1f417894ccba850fa77edfef",
+        "testExit": 1,
+        "tests": [
+          "test/readme.test.js",
+          "test/walkthrough.test.js",
+          "test/user-guide.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-15T23:33:05.021Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-16T13:12:18.635Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/readme.test.js",
+        "amendCommit": "3d9b592ab1b0697e626896e02bdf46699ac76ead",
+        "reason": "tests outside the evaluation set pin the old README order; they move to the D-98 order, the details blocks and docs/walkthrough.md"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-16T13:12:27.546Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/walkthrough.test.js",
+        "amendCommit": "9ec2a8d20b91ee6c04683172c14ce4488ec2c807",
+        "reason": "refusals name docs/walkthrough.md lines; the slow test reads docs/walkthrough.md and checks its text blocks against the run (Done when 3)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-16T13:18:05.778Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "3716a765b3578b854600863a0539aea5ff2ad358",
+          "title": "[P6/S-55] Front page"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-16T13:32:30.455Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P6-S-55-r1.md",
+          "blockers": 2,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-18T09:48:05.222Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/user-guide.test.js",
+        "amendCommit": "3a8d4da123c231098d1a60d2d1ad64eb4a1b2242",
+        "reason": "the banner exists; the pending markers naming it are removed (no change to the test file)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-18T09:50:46.560Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "0825972ffc534394cb486cf8dfbec1e1396600ef",
+          "title": "[P6/S-55] Front page"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-18T10:00:08.583Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P6-S-55-r2.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-18T10:00:09.255Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "draft-pr",
+      "at": "2026-11-18T10:02:44.928Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "e1e2ee5f94f3a99f6c8c000d9056ab50d93efd6c",
+          "title": "[P6/S-55] Front page"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-18T10:11:35.745Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P6-S-55i-r3.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-18T10:15:14.376Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 194,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
+          "headSha": "ee5ca589470c8490237b8cf6678969b90d751d52",
+          "title": "[P6/S-55] Front page"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-18T10:35:45.365Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P6-S-55i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-18T10:37:00.514Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "4e288e78f14950b3d70732735be3e6672eeb3ba8",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44286931490"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-18T10:37:02.981Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

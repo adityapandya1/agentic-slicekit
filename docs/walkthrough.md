@@ -2,7 +2,7 @@
 
 This page builds the one slice of `examples/backend`, P1/S-01 "Greet a name", from `todo` to
 `merged` on your machine. The kit's own test runs its `sh` blocks as written, in order, in one
-shell.
+shell, and checks that every line in its `text` blocks is one the run prints.
 
 ## Before you start
 
