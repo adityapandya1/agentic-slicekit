@@ -210,3 +210,26 @@ test("the guide index opens with the README's line", () => {
   const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(readme.split('\n').some((l) => l.trim() === ONE_LINE), 'README.md has no line "A closed-loop framework ..."');
 });
+
+// P7/S-56 (REQ-5.8, REQ-5.7, D-99): `slicekit brief` and `/slicekit brief` have their pages, the
+// guide index's Pages section links both, and the README's "What it covers" table has a Brief row.
+test('the brief command and procedure have pages', () => {
+  const lists = kitLists();
+  assert.ok(lists.commands.includes('brief'), `COMMANDS has no brief: ${lists.commands.join(' ')}`);
+  assert.ok(lists.slash.includes('brief'), `PROCEDURES has no brief: ${lists.slash.join(' ')}`);
+  for (const page of ['commands/brief', 'slash/brief']) {
+    assert.ok(fs.existsSync(pagePath(page)), `docs/guide/${page}.md is missing`);
+    assert.notEqual(readPage(page).trim(), '', `docs/guide/${page}.md is empty`);
+  }
+  const index = fs.readFileSync(path.join(GUIDE, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  const pages = (section(index, 'Pages') ?? []).join('\n');
+  for (const page of ['commands/brief', 'slash/brief']) {
+    assert.ok(pages.includes(`](${page}.md)`) || pages.includes(`](./${page}.md)`), `the Pages section does not link ${page}.md`);
+  }
+  // The README's "What it covers" table has a row for /slicekit brief.
+  const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+  const covers = section(readme, 'What it covers') ?? [];
+  const row = covers.find((l) => l.startsWith('|') && /`\/slicekit[ -]brief`/.test(l));
+  assert.ok(row, 'the README\'s What it covers table has no /slicekit brief row');
+  assert.match(row.split('|')[1].trim(), /^Brief$/);
+});

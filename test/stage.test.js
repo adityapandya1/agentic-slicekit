@@ -334,3 +334,98 @@ test('gap-scan blocks when gaps.md has IDs but no Closed by column', () => {
     assert.deepEqual(r.blockers, ['docs/spec/gaps.md has no Closed by column']);
   });
 });
+
+// P7/S-56 (REQ-1.7, D-99): the optional brief stage, judged alone by `slicekit stage require brief`.
+test('stage require brief names the file and the first missing section', async () => {
+  const { main } = await import('../src/cli/index.js');
+  const cli = async (root, args) => {
+    let stdout = '';
+    let stderr = '';
+    const code = await main(args, { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } });
+    return { code, stdout, stderr };
+  };
+  const HEADINGS = ['Problem and who has it', 'What they do today', 'Use cases', 'Out of scope', 'Success measures', 'Constraints', 'Open questions'];
+  const brief = (headings) => headings.map((h) => `## ${h}\n\nSaid by the person.\n`).join('\n');
+  const write = (root, rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  };
+  const repo = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n` } });
+  try {
+    const root = repo.root;
+    // No brief at all, and a folder holding only .keep, are both no brief.
+    for (const step of [() => {}, () => write(root, 'docs/brief/.keep', '')]) {
+      step();
+      const none = await cli(root, ['stage', 'require', 'brief']);
+      assert.equal(none.code, 1);
+      assert.ok(none.stderr.includes('no brief under docs/brief/'), none.stderr);
+      assert.equal(none.stdout, '');
+    }
+
+    // A brief with every section is ready.
+    write(root, 'docs/brief/payments-retry.md', brief(HEADINGS));
+    const ready = await cli(root, ['stage', 'require', 'brief']);
+    assert.equal(ready.code, 0, ready.stderr);
+    assert.match(ready.stdout, /^ready: brief$/m);
+
+    // A second brief missing two sections names itself and the first one missing.
+    write(root, 'docs/brief/orders.md', brief(HEADINGS.filter((h) => h !== 'Use cases' && h !== 'Constraints')));
+    const r = await cli(root, ['stage', 'require', 'brief']);
+    assert.equal(r.code, 1);
+    assert.equal(r.stdout, '');
+    assert.ok(r.stderr.includes('docs/brief/orders.md'), r.stderr);
+    assert.match(r.stderr, /Use cases/);
+    assert.doesNotMatch(r.stderr, /Constraints/);
+    assert.doesNotMatch(r.stderr, /payments-retry/);
+  } finally {
+    repo.cleanup();
+  }
+});
+
+test('stage require intake does not read the brief folder', async () => {
+  const { main } = await import('../src/cli/index.js');
+  const cli = async (root, args) => {
+    let stdout = '';
+    let stderr = '';
+    const code = await main(args, { cwd: root, stdout: (s) => { stdout += s; }, stderr: (s) => { stderr += s; } });
+    return { code, stdout, stderr };
+  };
+  // The brief is not one of the stages.
+  assert.ok(!STAGES.includes('brief'), STAGES.join(' '));
+  assert.equal(STAGES[0], 'intake');
+
+  // The same program twice: once with no brief folder, once with a brief that lacks every section
+  // but one. Every stage from intake on gives the same answer in both.
+  const config = (root) => {
+    fs.mkdirSync(path.join(root, '.slicekit'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.slicekit', 'config.json'), `${JSON.stringify(cfg, null, 2)}\n`);
+  };
+  for (const points of [[], ['after-intake'], PLAN]) {
+    const without = stageRepo(points, { commit: false });
+    const withBrief = stageRepo(points, { commit: false });
+    try {
+      config(without.root);
+      config(withBrief.root);
+      fs.mkdirSync(path.join(withBrief.root, 'docs', 'brief'), { recursive: true });
+      fs.writeFileSync(path.join(withBrief.root, 'docs', 'brief', 'orders.md'), '## Problem and who has it\n\nOrders are lost.\n');
+      for (const root of [without.root, withBrief.root]) {
+        git(root, ['add', '-A']);
+        git(root, ['commit', '-m', 'fixture']);
+      }
+      assert.equal(fs.existsSync(path.join(without.root, 'docs', 'brief')), false);
+      // The brief is broken, and the brief stage says so.
+      assert.equal((await cli(withBrief.root, ['stage', 'require', 'brief'])).code, 1);
+      for (const stage of STAGES) {
+        const a = await cli(without.root, ['stage', 'require', stage]);
+        const b = await cli(withBrief.root, ['stage', 'require', stage]);
+        assert.deepEqual(b, a, `${points.join('+') || 'empty'}: stage require ${stage}`);
+      }
+      // Intake on a repository with no brief starts as it did before the brief stage.
+      const intake = await cli(without.root, ['stage', 'require', 'intake']);
+      assert.doesNotMatch(intake.stderr, /brief/i);
+    } finally {
+      without.cleanup();
+      withBrief.cleanup();
+    }
+  }
+});

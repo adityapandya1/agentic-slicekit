@@ -34,7 +34,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 
 | Page | What it does |
 |---|---|
-| [`/slicekit`](slash/slicekit.md) | Runs any of the nine procedures by name. It is the one slash command a person needs to remember. |
+| [`/slicekit`](slash/slicekit.md) | Runs any of the ten procedures by name. It is the one slash command a person needs to remember. |
 | [`/slicekit brief`](slash/brief.md) | Interviews a person who has only an idea, one topic per question, and writes the brief that `/slicekit intake` takes as its source. |
 | [`/slicekit intake`](slash/intake.md) | Brings a requirement document into the project and interviews the person about it. |
 | [`/slicekit specify`](slash/specify.md) | Writes the spec from the intake snapshots and the decisions, then opens the spec pull request. |

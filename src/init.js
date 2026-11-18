@@ -137,6 +137,7 @@ const TEMPLATE_DEST = {
   'spec/00-overview.md': (p) => path.join(p.spec, '00-overview.md'),
   'spec/gaps.md': (p) => p.gaps,
   'spec/stack.md': (p) => p.stack,
+  'brief/.keep': (p) => path.join(p.brief, '.keep'),
   'intake/.keep': (p) => path.join(p.intake, '.keep'),
   'spec/contracts/.keep': (p) => path.join(p.contracts, '.keep'),
   'phases/.keep': (p) => path.join(p.phases, '.keep'),

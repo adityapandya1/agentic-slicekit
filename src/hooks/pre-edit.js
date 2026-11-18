@@ -6,7 +6,7 @@
 // `.slicekit/baselines/`, `.slicekit/.subagent-*`, `.slicekit/.retry-*` or `.slicekit/.agents-*` segment
 // under any root, or a `slicekit/subagent-*` marker, `slicekit/retry-*` retry state or `slicekit/agents-*`
 // started-agents record in a git directory (`.git` or `*.git`), or the `slicekit/interview.json` intake
-// session in one (a linked worktree's included)
+// session or the `slicekit/brief.json` brief session in one (a linked worktree's included)
 // — always; (4) a path that matches a pattern of the root's `agents.denyPaths` (REQ-3.13) — always;
 // then, only while
 // the file's own root has an active slice (a `slice/*` branch with a state file) in `tests-red` or
@@ -86,9 +86,9 @@ function kitOwned(abs) {
   }) || segs.some((s, i) => i > 0 && (segs[i - 1] === '.git' || segs[i - 1].endsWith('.git'))
     && s === 'slicekit' && (segs[i + 1] === 'clone-id'
       || ['subagent-', 'retry-', 'agents-'].some((p) => segs[i + 1]?.startsWith(p))))
-    // The intake interview session, also in a linked worktree's own git directory
-    // (`<.git>/worktrees/<name>/slicekit/interview.json`).
-    || segs.some((s, i) => s === 'slicekit' && segs[i + 1] === 'interview.json'
+    // The intake interview and brief sessions, also in a linked worktree's own git directory
+    // (`<.git>/worktrees/<name>/slicekit/interview.json`, `.../slicekit/brief.json`).
+    || segs.some((s, i) => s === 'slicekit' && (segs[i + 1] === 'interview.json' || segs[i + 1] === 'brief.json')
       && segs.slice(0, i).some((p) => p === '.git' || p.endsWith('.git')));
 }
 

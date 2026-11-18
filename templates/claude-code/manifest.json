@@ -9,6 +9,15 @@
     ]
   },
   {
+    "src": "commands/slicekit-brief.md",
+    "dest": ".claude/commands/slicekit-brief.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
     "src": "commands/slicekit-intake.md",
     "dest": ".claude/commands/slicekit-intake.md",
     "shapes": [

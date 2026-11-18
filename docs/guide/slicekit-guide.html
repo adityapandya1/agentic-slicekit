@@ -390,9 +390,9 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 
   <section id="slash-slicekit" class="cmd" data-page="slash/slicekit.md">
     <header><h4><code>/slicekit</code></h4></header>
-    <p class="sum">Runs any of the nine procedures by name. It is the one slash command a person needs to remember.</p>
+    <p class="sum">Runs any of the ten procedures by name. It is the one slash command a person needs to remember.</p>
     <h5 id="slash-slicekit--what-you-type">What you type</h5>
-    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code> and <code>audit</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
+    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>brief</code>, <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code> and <code>audit</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
     <h5 id="slash-slicekit--agents-it-spawns">Agents it spawns</h5>
     <p>None of its own. The procedure it prints says which agents to spawn; see that procedure's page.</p>
     <h5 id="slash-slicekit--commands-its-procedure-runs">Commands its procedure runs</h5>
@@ -731,16 +731,17 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
       <tbody>
         <tr><td><code>brief start &lt;slug&gt;</code></td><td>Writes <code>&lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code> with its seven headings and prints its path. It refuses on the default branch or a protected branch, while another brief is under way, and when the file exists.</td></tr>
         <tr><td><code>brief ask</code></td><td>Records the question the agent is about to ask and prints <code>question &lt;n&gt;</code>. The topic is the one last asked or the next in the order of the usage line. It refuses a topic out of that order, and a new question while the last one has no answer.</td></tr>
-        <tr><td><code>brief answer</code></td><td>Writes the answer just given under its topic's heading and prints the brief's path. <code>--unknown</code> lists the topic under <code>## Open questions</code> instead and writes nothing under its heading. An answer to <code>unknowns</code> goes under <code>## Open questions</code>.</td></tr>
-        <tr><td><code>brief done</code></td><td>Commits the brief alone on the current branch, then prints its path and, as the last line, <code>/slicekit intake &lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code>. It refuses while a question has no answer, on the default branch or a protected branch, while a heading is missing from the brief, and when a file under <code>&lt;docsRoot&gt;/spec/</code> appeared, changed or was removed since <code>brief start</code>.</td></tr>
+        <tr><td><code>brief answer</code></td><td>Writes the answer just given under its topic's heading and prints the brief's path. <code>--unknown</code> lists the topic under <code>## Open questions</code> instead, once, and writes nothing under its heading; a later answer on the topic takes it off <code>## Open questions</code>. It refuses <code>--unknown</code> on a topic that already has an answer, naming <code>brief answer --answer</code> for the follow-up answer. An answer to <code>unknowns</code> goes under <code>## Open questions</code>.</td></tr>
+        <tr><td><code>brief done</code></td><td>Commits the brief alone on the current branch, then prints its path and, as the last line, <code>/slicekit intake &lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code>. It refuses when no brief is under way, while a question has no answer, on the default branch or a protected branch, while a topic was never asked and answered (an answer given with <code>--unknown</code> counts as answered), naming the first such topic, when the brief file is missing, while a heading is missing from the brief, and when a file under <code>&lt;docsRoot&gt;/spec/</code> appeared, changed or was removed since <code>brief start</code>.</td></tr>
       </tbody>
     </table></div>
+    <p><code>slicekit stage require brief</code> refuses a brief in which a topic's section is empty and the topic is not listed under <code>## Open questions</code>, naming the file and the section, so a brief edited by hand is held to the same rule.</p>
     <h5 id="commands-brief--what-it-reads-and-writes">What it reads and writes</h5>
     <p>Reads the brief session file in the worktree's git directory and the files under <code>&lt;docsRoot&gt;/spec/</code>, to compare them with the start. Writes <code>&lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code> and the session file, and one commit: the brief's.</p>
     <h5 id="commands-brief--exit-codes">Exit codes</h5>
     <ul class="exits">
       <li><b>0</b><span>done; <code>ask</code> prints <code>question &lt;n&gt;</code>, <code>done</code> ends with the intake command</span></li>
-      <li><b>1</b><span>refused: a protected branch, a topic out of order, a question with no answer, a missing heading, a changed spec file</span></li>
+      <li><b>1</b><span>refused: a protected branch, a topic out of order, a question with no answer, <code>--unknown</code> on an answered topic, a topic never asked, a missing heading, a changed spec file</span></li>
       <li><b>2</b><span>bad usage or bad input: an unknown topic, a bad slug, both or neither of <code>--answer</code> and <code>--unknown</code></span></li>
     </ul>
     <h5 id="commands-brief--example">Example</h5>
@@ -750,6 +751,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 <span class="o">question 1</span>
 <span class="p">$ </span>slicekit brief answer --answer=&quot;Card payments that time out are lost; the support team handles them.&quot;
 <span class="o">docs/brief/payments-retry.md</span>
+<span class="p">$ </span># one brief ask and one brief answer for each of the six other topics, in order
 <span class="p">$ </span>slicekit brief done
 <span class="o">docs/brief/payments-retry.md</span>
 <span class="o">/slicekit intake docs/brief/payments-retry.md</span></pre>

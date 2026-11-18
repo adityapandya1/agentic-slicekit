@@ -625,3 +625,38 @@ test('an untracked source survives the branch step', async () => {
     { branch: 'main', files: docs() },
   );
 });
+
+// P7/S-56 (REQ-2.2, D-99): a brief written by /slicekit brief is a source like any other document.
+test('a brief is snapshotted as an intake source', async () => {
+  const brief = [
+    '## Problem and who has it', '', 'Card payments that fail on a timeout are lost.', '',
+    '## What they do today', '', 'Support retries each one by hand.', '',
+    '## Use cases', '', 'A timed-out payment is retried once.', '',
+    '## Out of scope', '', 'Refunds.', '',
+    '## Success measures', '',
+    '## Constraints', '', 'One retry per payment.', '',
+    '## Open questions', '', '- success measures', '',
+  ].join('\n');
+  await withRepo(
+    async (root) => {
+      const rel = 'docs/brief/payments-retry.md';
+      const r = await cli(root, ['intake', 'snapshot', rel]);
+      assert.equal(r.code, 0, r.stderr);
+      const snap = first(r);
+      assert.equal(snap, `docs/intake/${DATE}-payments-retry.md`);
+      assert.equal(fs.readFileSync(path.join(root, snap), 'utf8'), brief);
+      const m = meta(root, snap);
+      assert.equal(m.origin, path.join(root, rel).split(path.sep).join('/'));
+      assert.equal(m.sha256, sha256(Buffer.from(brief)));
+      assert.equal(intakePin(path.join(root, snap)).status, 'frozen');
+      // The brief itself is left as it was.
+      assert.equal(fs.readFileSync(path.join(root, rel), 'utf8'), brief);
+      assert.equal(git(root, ['status', '--porcelain']), '');
+    },
+    { files: { 'docs/brief/payments-retry.md': brief } },
+  );
+  // The intake procedure says a brief is a valid source.
+  const text = fs.readFileSync(new URL('../../templates/instructions/commands/intake.md', import.meta.url), 'utf8');
+  const lines = text.split(/\r?\n/).filter((l) => l.includes('<docsRoot>/brief/') && /\/slicekit brief/.test(l) && /source/.test(l));
+  assert.ok(lines.length > 0, 'the intake procedure has no line saying a brief from /slicekit brief is a source');
+});

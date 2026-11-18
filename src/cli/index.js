@@ -7,6 +7,7 @@ import { findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { auditCommand } from './audit.js';
 import { baselineCommand } from './baseline.js';
 import { branchCommand } from './branch.js';
+import { briefCommand } from './brief.js';
 import { buildCommand } from './build.js';
 import { checkCommand } from './check.js';
 import { ciCommand } from './ci.js';
@@ -43,6 +44,7 @@ export const COMMANDS = {
   audit: auditCommand,
   baseline: baselineCommand,
   branch: branchCommand,
+  brief: briefCommand,
   build: buildCommand,
   check: checkCommand,
   ci: ciCommand,
