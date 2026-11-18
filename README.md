@@ -25,12 +25,17 @@ lines the kit's commands print for it.
     open: D-09 Which payment provider do refunds go through?
 
 > /slicekit specify
-  ⎿ spec verified: 18 REQ, 2 contracts, 1 clarification markers
-    #12 https://github.com/acme/orders/pull/12
+  ⎿ #12 https://github.com/acme/orders/pull/12
+
+> /slicekit gaps
+  ⎿ G-3 unknown D-09 is open: Which payment provider do refunds go through?
+    D-09
+    G-3 closed by D-09
+    ready: gap-scan
 
 > /slicekit plan
   ⎿ ready to plan
-    BUILD.md updated
+    D-14
 
 > /slicekit build P1/S-01
   ⎿ tests-red → building
@@ -42,6 +47,7 @@ lines the kit's commands print for it.
 
 > /slicekit review 1
   ⎿ round 2
+    verdict …/.slicekit/reviews/P1-S-01i-r2.md
     next: ci
     ci-green
     ready
@@ -51,8 +57,11 @@ lines the kit's commands print for it.
     released P1/S-01
 ```
 
-Intake, specify, plan and release lines are from the guide's examples; build and review lines are
-from the walkthrough on `examples/backend`.
+Intake, specify, gaps, plan and release lines are from the examples on the guide's command pages:
+intake from `intake`, specify from `pr`, gaps from `gaps` and `decide`, plan from `plan` and
+`decide`, release from `release`. Build and review lines are from the
+walkthrough on `examples/backend`, except the review's `verdict` line: it is the verdict file that
+`review start` prints, with the path shortened from the left to `…/`.
 
 ## What it covers
 
@@ -88,7 +97,7 @@ from a clone of this repository.
 
 - Prompt and rule-file workflows tell the agent what to do. slicekit refuses the step when the agent does not do it.
 - Spec-only tools write the spec and stop. slicekit traces each requirement to its tests, commits, pull requests and releases, and checks the spec again on each turn and in CI.
-- With no workflow, the agent's own report is the record. With slicekit the record is the state files, commits and verdicts that its CLI writes.
+- With no workflow, the agent's own report is the record. With slicekit the record is the state files and commits that its CLI writes, and the verdict files that the reviewer agent writes and the CLI checks and commits.
 
 ## Docs
 
