@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-55",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 194,
@@ -32,6 +32,13 @@
       "blockers": 1,
       "independent": false,
       "headSha": "0825972ffc534394cb486cf8dfbec1e1396600ef"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P6-S-55i-r3.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "e1e2ee5f94f3a99f6c8c000d9056ab50d93efd6c"
     }
   ],
   "ci": null,
@@ -173,6 +180,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/194",
           "headSha": "e1e2ee5f94f3a99f6c8c000d9056ab50d93efd6c",
           "title": "[P6/S-55] Front page"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-18T10:11:35.745Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P6-S-55i-r3.md",
+          "blockers": 1,
+          "independent": true
         }
       }
     }
