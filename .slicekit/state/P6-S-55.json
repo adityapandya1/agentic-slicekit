@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-55",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 194,
@@ -15,7 +15,8 @@
   ],
   "unfrozen": [
     "test/readme.test.js",
-    "test/walkthrough.test.js"
+    "test/walkthrough.test.js",
+    "test/user-guide.test.js"
   ],
   "verdicts": [
     {
@@ -102,6 +103,17 @@
           "blockers": 2,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-18T09:48:05.222Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/user-guide.test.js",
+        "amendCommit": "3a8d4da123c231098d1a60d2d1ad64eb4a1b2242",
+        "reason": "the banner exists; the pending markers naming it are removed (no change to the test file)"
       }
     }
   ]
