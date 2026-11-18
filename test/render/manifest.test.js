@@ -9,20 +9,20 @@ const root = fileURLToPath(new URL('../../templates/claude-code/', import.meta.u
 
 test('every manifest src exists', () => {
   const entries = loadManifest();
-  assert.equal(entries.length, 19); // ten commands (nine per-command files and /slicekit), six agents, three skills
+  assert.equal(entries.length, 20); // eleven commands (ten per-command files and /slicekit), six agents, three skills
   for (const e of entries) assert.ok(fs.existsSync(root + e.src), e.src);
 });
 
 test('entriesForShape backend excludes designer', () => {
   const srcs = entriesForShape('backend').map((e) => e.src);
   assert.ok(!srcs.includes('agents/designer.md'));
-  assert.equal(srcs.length, 18);
+  assert.equal(srcs.length, 19);
 });
 
 test('entriesForShape fullstack includes designer', () => {
   const srcs = entriesForShape('fullstack').map((e) => e.src);
   assert.ok(srcs.includes('agents/designer.md'));
-  assert.equal(srcs.length, 19);
+  assert.equal(srcs.length, 20);
 });
 
 test('every dest is relative and under .claude', () => {

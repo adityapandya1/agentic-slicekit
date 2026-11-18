@@ -70,6 +70,7 @@ walkthrough on `examples/backend`, except the review's `verdict` line: it is the
 | Stage | Command | What you get |
 |---|---|---|
 | Any | `/slicekit` | any procedure below by name, for example `/slicekit build` |
+| Brief | `/slicekit brief` | a brief written from the person's own answers, when there is only an idea and no requirement document |
 | Intake | `/slicekit intake` | a frozen snapshot of the requirement document and one decision row per answer |
 | Specify | `/slicekit specify` | spec files in which every requirement cites its source, and the spec pull request |
 | Gaps | `/slicekit gaps` | each place the spec is silent, vague or in conflict with the intake, asked about and closed |

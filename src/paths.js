@@ -14,6 +14,7 @@ export function kitPaths(root, cfg) {
     reports: path.join(kit, 'reports'),
     workspace: path.join(kit, 'workspace.json'),
     docs,
+    brief: path.join(docs, 'brief'),
     intake: path.join(docs, 'intake'),
     decisions: path.join(docs, 'decisions.md'),
     spec,

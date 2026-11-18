@@ -1,10 +1,10 @@
 # /slicekit
 
-Runs any of the nine procedures by name. It is the one slash command a person needs to remember.
+Runs any of the ten procedures by name. It is the one slash command a person needs to remember.
 
 ## What you type
 
-`/slicekit <command> [args]`, where the command is one of `intake`, `specify`, `gaps`, `plan`, `build`, `review`, `release`, `ops` and `audit`. For example `/slicekit build` or `/slicekit review 14`. Each procedure also has a file of its own, so `/slicekit-build` is the same command as `/slicekit build`.
+`/slicekit <command> [args]`, where the command is one of `brief`, `intake`, `specify`, `gaps`, `plan`, `build`, `review`, `release`, `ops` and `audit`. For example `/slicekit build` or `/slicekit review 14`. Each procedure also has a file of its own, so `/slicekit-build` is the same command as `/slicekit build`.
 
 ## Agents it spawns
 

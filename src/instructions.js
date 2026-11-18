@@ -16,7 +16,7 @@ import { kitPaths } from './paths.js';
 import { findSliceFiles } from './slicefile.js';
 import { reqBlocks } from './stage.js';
 
-export const PROCEDURES = ['intake', 'specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit'];
+export const PROCEDURES = ['brief', 'intake','specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit'];
 export const TEMPLATES = fileURLToPath(new URL('../templates/instructions', import.meta.url));
 
 const KIT_SKILL = fileURLToPath(new URL('../templates/claude-code/skills/slicekit-writing/SKILL.md', import.meta.url));

@@ -4,6 +4,8 @@ You bring a requirement document into the project and interview the human about 
 
 `<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`.
 
+A brief at `<docsRoot>/brief/<slug>.md`, written by `/slicekit brief`, is a valid source: snapshot it in step 2 as you would any other document.
+
 This command writes no file under `<docsRoot>/spec/`. Writing the spec is `/slicekit specify`, later. Every git step is in the CLI: the branch, the snapshot commit and the answers commit are all `{{cli}}` subcommands. You run no git command yourself.
 
 When a `{{cli}}` step exits with a code other than 0, stop and show the human its message. Do not work around it.

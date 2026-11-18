@@ -6,6 +6,7 @@ import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
 import { readDecisions } from './decisions.js';
 import { blankCodeSpans, headings, lines, prose, refs, tables } from './markdown.js';
 import { re } from './ids.js';
+import { missingHeadings } from './brief.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
 import { listSlices } from './state/index.js';
@@ -14,6 +15,7 @@ export const STAGES = ['intake', 'clarify', 'specify', 'spec-review', 'gap-scan'
 
 // The slash command that does each stage, named in the refusal.
 const COMMANDS = {
+  brief: 'brief',
   intake: 'intake',
   clarify: 'intake (clarify)',
   specify: 'specify',
@@ -27,6 +29,7 @@ const COMMANDS = {
 
 // The display name of each stage, used in messages; the ids stay in code.
 const LABELS = {
+  brief: 'brief',
   intake: 'intake',
   clarify: 'clarify',
   specify: 'specify',
@@ -296,6 +299,21 @@ function release(root, cfg) {
   return [...new Set(phases)]
     .filter((id) => !exists(path.join(p.releases, `${id}.md`)))
     .map((id) => `${id} has no releases/${id}.md`);
+}
+
+// The optional brief stage (REQ-1.7, D-99), outside STAGES: no stage after it reads the brief folder.
+// Complete when there is a brief and every file under `<docsRoot>/brief/` other than `.keep` has
+// every section of REQ-2.15; the blockers name each file and its first missing section.
+export function briefStage(root, cfg) {
+  const dir = kitPaths(root, cfg).brief;
+  const files = exists(dir) ? listFiles(dir).filter((f) => path.posix.basename(f) !== '.keep') : [];
+  if (files.length === 0) return { stage: 'brief', complete: false, blockers: [`no brief under ${rel(root, dir)}/`] };
+  const blockers = [];
+  for (const f of files.sort()) {
+    const missing = missingHeadings(readText(path.join(dir, f)));
+    if (missing.length > 0) blockers.push(`${rel(root, path.join(dir, f))} has no section ## ${missing[0]}`);
+  }
+  return { stage: 'brief', complete: blockers.length === 0, blockers };
 }
 
 const CHECKS = { intake, clarify, specify, 'spec-review': specReview, 'gap-scan': gapScan, stack, plan, build, release };

@@ -170,6 +170,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <li><a href="#slash-commands">Slash commands</a>
       <ol>
         <li><a href="#slash-slicekit"><code>/slicekit</code></a></li>
+        <li><a href="#slash-brief"><code>/slicekit brief</code></a></li>
         <li><a href="#slash-intake"><code>/slicekit intake</code></a></li>
         <li><a href="#slash-specify"><code>/slicekit specify</code></a></li>
         <li><a href="#slash-gaps"><code>/slicekit gaps</code></a></li>
@@ -185,6 +186,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <li><a href="#commands-audit"><code>slicekit audit</code></a></li>
         <li><a href="#commands-baseline"><code>slicekit baseline</code></a></li>
         <li><a href="#commands-branch"><code>slicekit branch</code></a></li>
+        <li><a href="#commands-brief"><code>slicekit brief</code></a></li>
         <li><a href="#commands-build"><code>slicekit build</code></a></li>
         <li><a href="#commands-check"><code>slicekit check</code></a></li>
         <li><a href="#commands-ci"><code>slicekit ci</code></a></li>
@@ -388,9 +390,9 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 
   <section id="slash-slicekit" class="cmd" data-page="slash/slicekit.md">
     <header><h4><code>/slicekit</code></h4></header>
-    <p class="sum">Runs any of the nine procedures by name. It is the one slash command a person needs to remember.</p>
+    <p class="sum">Runs any of the ten procedures by name. It is the one slash command a person needs to remember.</p>
     <h5 id="slash-slicekit--what-you-type">What you type</h5>
-    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code> and <code>audit</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
+    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>brief</code>, <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code> and <code>audit</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
     <h5 id="slash-slicekit--agents-it-spawns">Agents it spawns</h5>
     <p>None of its own. The procedure it prints says which agents to spawn; see that procedure's page.</p>
     <h5 id="slash-slicekit--commands-its-procedure-runs">Commands its procedure runs</h5>
@@ -400,6 +402,24 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
     <h5 id="slash-slicekit--what-it-leaves-behind">What it leaves behind</h5>
     <p>What the named procedure leaves. The command file in <code>.claude/commands/</code> holds no rule: it runs <code>instructions --command</code> and follows what prints, so an upgrade of the kit changes the procedure without changing the file.</p>
+    <p class="back"><a href="#toc">Back to the guide</a></p>
+  </section>
+
+  <section id="slash-brief" class="cmd" data-page="slash/brief.md">
+    <header><h4><code>/slicekit brief</code></h4></header>
+    <p class="sum">Interviews a person who has an idea but no requirement document, and writes the brief that <code>/slicekit intake</code> takes as its source.</p>
+    <h5 id="slash-brief--what-you-type">What you type</h5>
+    <p><code>/slicekit brief [&lt;slug&gt;]</code>. Run it before <code>/slicekit intake</code>, when there is no requirement document yet. With no slug, the session asks the person for a short name for the idea.</p>
+    <h5 id="slash-brief--agents-it-spawns">Agents it spawns</h5>
+    <p>None. The session itself asks the questions, one topic per question, in this order: the problem and who has it, what they do today, the use cases, what is out of scope, the success measures, the constraints, and the unknowns.</p>
+    <h5 id="slash-brief--commands-its-procedure-runs">Commands its procedure runs</h5>
+    <ul>
+      <li><a href="#commands-branch"><code>branch</code></a> as <code>branch spec &lt;slug&gt;</code></li>
+      <li><a href="#commands-brief"><code>brief</code></a> as <code>brief start &lt;slug&gt;</code>, then <code>brief ask</code> before each question and <code>brief answer</code> after each answer, then <code>brief done</code></li>
+    </ul>
+    <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
+    <h5 id="slash-brief--what-it-leaves-behind">What it leaves behind</h5>
+    <p>The branch <code>spec/&lt;slug&gt;</code>. The brief <code>&lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code>, committed, with the seven sections and only the person's answers; each topic the person could not answer is listed under <code>## Open questions</code>. The next command, printed as the last line: <code>/slicekit intake &lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code>. No spec file and no pull request.</p>
     <p class="back"><a href="#toc">Back to the guide</a></p>
   </section>
 
@@ -698,6 +718,41 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <h5 id="commands-branch--example">Example</h5>
     <pre class="ex"><span class="p">$ </span>slicekit branch spec orders
 <span class="o">spec/orders</span></pre>
+    <p class="back"><a href="#toc">Back to the guide</a></p>
+  </section>
+
+  <section id="commands-brief" class="cmd" data-page="commands/brief.md">
+    <header><h4><code>slicekit brief</code></h4></header>
+    <p class="sum">The steps of <code>/slicekit brief</code> that the CLI takes: open the brief, record each question and its answer in the order of the topics, then commit the brief.</p>
+    <h5 id="commands-brief--usage">Usage</h5>
+    <pre class="syn"><span class="l">slicekit brief start &lt;slug&gt;</span><span class="l">slicekit brief ask --topic &lt;problem|today|use-cases|out-of-scope|success-measures|constraints|unknowns&gt; --question &lt;q&gt;</span><span class="l">slicekit brief answer (--answer &lt;a&gt; | --unknown)</span><span class="l">slicekit brief done</span></pre>
+    <div class="tw"><table class="cols-2">
+      <thead><tr><th>Subcommand</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>brief start &lt;slug&gt;</code></td><td>Writes <code>&lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code> with its seven headings and prints its path. It refuses on the default branch or a protected branch, while another brief is under way, and when the file exists.</td></tr>
+        <tr><td><code>brief ask</code></td><td>Records the question the agent is about to ask and prints <code>question &lt;n&gt;</code>. The topic is the one last asked or the next in the order of the usage line. It refuses a topic out of that order, and a new question while the last one has no answer.</td></tr>
+        <tr><td><code>brief answer</code></td><td>Writes the answer just given under its topic's heading and prints the brief's path. <code>--unknown</code> lists the topic under <code>## Open questions</code> instead and writes nothing under its heading. An answer to <code>unknowns</code> goes under <code>## Open questions</code>.</td></tr>
+        <tr><td><code>brief done</code></td><td>Commits the brief alone on the current branch, then prints its path and, as the last line, <code>/slicekit intake &lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code>. It refuses while a question has no answer, on the default branch or a protected branch, while a heading is missing from the brief, and when a file under <code>&lt;docsRoot&gt;/spec/</code> appeared, changed or was removed since <code>brief start</code>.</td></tr>
+      </tbody>
+    </table></div>
+    <h5 id="commands-brief--what-it-reads-and-writes">What it reads and writes</h5>
+    <p>Reads the brief session file in the worktree's git directory and the files under <code>&lt;docsRoot&gt;/spec/</code>, to compare them with the start. Writes <code>&lt;docsRoot&gt;/brief/&lt;slug&gt;.md</code> and the session file, and one commit: the brief's.</p>
+    <h5 id="commands-brief--exit-codes">Exit codes</h5>
+    <ul class="exits">
+      <li><b>0</b><span>done; <code>ask</code> prints <code>question &lt;n&gt;</code>, <code>done</code> ends with the intake command</span></li>
+      <li><b>1</b><span>refused: a protected branch, a topic out of order, a question with no answer, a missing heading, a changed spec file</span></li>
+      <li><b>2</b><span>bad usage or bad input: an unknown topic, a bad slug, both or neither of <code>--answer</code> and <code>--unknown</code></span></li>
+    </ul>
+    <h5 id="commands-brief--example">Example</h5>
+    <pre class="ex"><span class="p">$ </span>slicekit brief start payments-retry
+<span class="o">docs/brief/payments-retry.md</span>
+<span class="p">$ </span>slicekit brief ask --topic=problem --question=&quot;What goes wrong, and for whom?&quot;
+<span class="o">question 1</span>
+<span class="p">$ </span>slicekit brief answer --answer=&quot;Card payments that time out are lost; the support team handles them.&quot;
+<span class="o">docs/brief/payments-retry.md</span>
+<span class="p">$ </span>slicekit brief done
+<span class="o">docs/brief/payments-retry.md</span>
+<span class="o">/slicekit intake docs/brief/payments-retry.md</span></pre>
     <p class="back"><a href="#toc">Back to the guide</a></p>
   </section>
 
