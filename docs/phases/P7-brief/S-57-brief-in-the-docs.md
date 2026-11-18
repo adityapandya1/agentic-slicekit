@@ -46,7 +46,7 @@ decisions: [D-99, D-98, D-97]
 
 **Files:** Create `test/brief-docs.test.js`. Modify `docs/guide/commands/brief.md`.
 
-- [ ] **Step 1: Failing tests** — the two `brief-docs.test.js` tests above. The section list is imported from `src/brief.js`, not copied. <!-- slicekit:pending P7/S-56 -->
+- [ ] **Step 1: Failing tests** — the two `brief-docs.test.js` tests above. The section list is imported from `src/brief.js`, not copied.
 - [ ] **Step 2: Run** `node --test test/brief-docs.test.js` → FAIL.
 - [ ] **Step 3: Implement** the blank brief, the example's brief written from the example's intake snapshot with no requirement it does not hold, and the page's line naming the blank brief. Regenerate the web page.
 - [ ] **Step 4: Run** the same and `node --test test/guide-page.test.js` → PASS.
