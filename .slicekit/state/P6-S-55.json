@@ -1,6 +1,6 @@
 {
   "slice": "P6/S-55",
-  "state": "ci-green",
+  "state": "ready",
   "branch": null,
   "pr": {
     "number": 194,
@@ -250,6 +250,13 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44286931490"
         }
       }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-18T10:37:02.981Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
