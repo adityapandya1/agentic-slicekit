@@ -47,6 +47,22 @@ export function missingHeadings(text) {
   return BRIEF_HEADINGS.filter((h) => !present.has(`## ${h}`));
 }
 
+// The topic headings of a brief whose section holds no line and whose name is not listed under
+// `## Open questions`, in the order of REQ-2.15: each such topic was neither answered nor left open.
+export function unlistedEmptySections(text) {
+  const under = {};
+  let at = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith('## ')) {
+      at = line.slice(3).trim();
+      under[at] ??= [];
+    } else if (at !== null && line !== '') under[at].push(line);
+  }
+  const open = new Set((under[OPEN] ?? []).map((l) => l.toLowerCase()));
+  return BRIEF_HEADINGS.filter((h) => h !== OPEN && Object.hasOwn(under, h) && under[h].length === 0 && !open.has(h.toLowerCase()));
+}
+
 function onWorkBranch(root, cfg, what) {
   const branch = currentBranch(root);
   if (branch === null || branch === cfg.defaultBranch || cfg.protectedBranches.includes(branch)) {
@@ -165,12 +181,17 @@ export function answer(root, cfg, { answer: text, unknown = false } = {}) {
 }
 
 // Ends the brief: refuses while a question waits, on the default or a protected branch, while a
-// heading is missing from the brief, or when a file under the spec directory appeared, changed or
+// topic was never asked and answered (an unknown answer counts), while a heading is missing from the brief, or when a file under the spec directory appeared, changed or
 // went since `brief start`; otherwise commits the brief alone.
 export function done(root, cfg) {
   const session = needSession(root);
   if (session.pending) throw new BriefError(1, `answer the last question first: "${session.pending.question}" has no answer`);
   onWorkBranch(root, cfg, 'the brief');
+  const answered = new Set(session.asked.map((a) => a.topic));
+  const unasked = TOPICS.find((t) => !answered.has(t));
+  if (unasked) {
+    throw new BriefError(1, `topic ${unasked} was never asked and answered; run slicekit brief ask --topic ${unasked} --question <q>, then slicekit brief answer`);
+  }
   const file = briefFile(root, cfg, session.slug);
   const rel = briefRel(root, cfg, session.slug);
   if (!fs.existsSync(file)) throw new BriefError(1, `${rel} is missing; run slicekit brief start ${session.slug} again`);

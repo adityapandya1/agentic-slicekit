@@ -448,6 +448,21 @@ test('the intake interview session is kit-owned', () => {
   }
 });
 
+// P7/S-56 (REQ-2.15): the brief interview session lives in the per-worktree git directory; only the CLI writes it.
+test('the brief interview session is kit-owned', () => {
+  const { root, cleanup } = sliceRepo({ state: 'todo' });
+  try {
+    assertDeny(decide(root, '.git/slicekit/brief.json'), '.git/slicekit/brief.json is written only by the slicekit CLI');
+    assertDeny(
+      decide(root, '.git/worktrees/wt/slicekit/brief.json'),
+      '.git/worktrees/wt/slicekit/brief.json is written only by the slicekit CLI',
+    );
+    assertAllow(decide(root, 'src/slicekit/brief.json'));
+  } finally {
+    cleanup();
+  }
+});
+
 // P4/S-39 (REQ-3.13, REQ-3.3, D-72)
 test('an edit to a path in agents.denyPaths is denied, naming the pattern', () => {
   const { root, cleanup } = makeRepo({ files: { 'data/pain001-sample.xml': '<x/>', 'config/prod.pem': 'k', 'src/a.js': 'x' } });

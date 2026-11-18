@@ -6,7 +6,7 @@ import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
 import { readDecisions } from './decisions.js';
 import { blankCodeSpans, headings, lines, prose, refs, tables } from './markdown.js';
 import { re } from './ids.js';
-import { missingHeadings } from './brief.js';
+import { missingHeadings, unlistedEmptySections } from './brief.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
 import { listSlices } from './state/index.js';
@@ -303,15 +303,24 @@ function release(root, cfg) {
 
 // The optional brief stage (REQ-1.7, D-99), outside STAGES: no stage after it reads the brief folder.
 // Complete when there is a brief and every file under `<docsRoot>/brief/` other than `.keep` has
-// every section of REQ-2.15; the blockers name each file and its first missing section.
+// every section of REQ-2.15, each topic section filled or listed under Open questions; the blockers
+// name each file and its first missing section, or else its first empty section not listed there.
 export function briefStage(root, cfg) {
   const dir = kitPaths(root, cfg).brief;
   const files = exists(dir) ? listFiles(dir).filter((f) => path.posix.basename(f) !== '.keep') : [];
   if (files.length === 0) return { stage: 'brief', complete: false, blockers: [`no brief under ${rel(root, dir)}/`] };
   const blockers = [];
   for (const f of files.sort()) {
-    const missing = missingHeadings(readText(path.join(dir, f)));
-    if (missing.length > 0) blockers.push(`${rel(root, path.join(dir, f))} has no section ## ${missing[0]}`);
+    const text = readText(path.join(dir, f));
+    const missing = missingHeadings(text);
+    if (missing.length > 0) {
+      blockers.push(`${rel(root, path.join(dir, f))} has no section ## ${missing[0]}`);
+      continue;
+    }
+    const empty = unlistedEmptySections(text);
+    if (empty.length > 0) {
+      blockers.push(`${rel(root, path.join(dir, f))} has an empty section ## ${empty[0]} that is not listed under ## Open questions`);
+    }
   }
   return { stage: 'brief', complete: blockers.length === 0, blockers };
 }
