@@ -233,3 +233,42 @@ test('the brief command and procedure have pages', () => {
   assert.ok(row, 'the README\'s What it covers table has no /slicekit brief row');
   assert.match(row.split('|')[1].trim(), /^Brief$/);
 });
+
+// P7/S-57 (REQ-5.8, D-99, D-97): the guide index's Stages table opens with the optional brief stage,
+// the paragraph above it names `brief` as optional and before `intake`, and the "Intake and spec"
+// group links the brief pages.
+test('the Stages table opens with the optional brief stage and its CLI steps', () => {
+  const index = fs.readFileSync(path.join(GUIDE, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  const stages = section(index, 'Stages');
+  assert.ok(stages, 'the index has no ## Stages');
+  const rows = stages.filter((l) => l.trim().startsWith('|'));
+  const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  assert.deepEqual(cells(rows[0] ?? ''), ['Stage', 'Slash command', 'What happens', 'CLI steps'], 'the Stages table header');
+  // rows[1] is the |---| line; rows[2] is the first stage.
+  const first = cells(rows[2] ?? '');
+  assert.equal(first[0], '0. Brief (optional)', `the first row of the Stages table: ${rows[2]}`);
+  assert.ok(first[1].includes('`/slicekit brief [<slug>]`'), `the brief row's slash command: ${first[1]}`);
+  assert.match(first[2], /no requirement document/i, 'the brief row does not say it is for a person with no requirement document');
+  assert.match(first[2], /intake does not require it|intake[^.]*not require/i, 'the brief row does not say intake does not require it');
+  const steps = [...first[3].matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+  assert.deepEqual(steps, ['branch spec', 'brief start', 'brief ask', 'brief answer', 'brief done', 'stage require brief'], 'the brief row\'s CLI steps');
+  // The intake row still follows, unchanged in name.
+  assert.ok(rows.slice(3).some((r) => cells(r)[0] === '1. Intake'), 'the Stages table lost its 1. Intake row');
+
+  // The paragraph above the table names brief as an optional stage before intake.
+  const above = stages.slice(0, stages.findIndex((l) => l.trim().startsWith('|'))).join(' ').replace(/\s+/g, ' ');
+  const sentence = above.split(/(?<=[.!?])\s+(?=[A-Z`[])/).find((s) => s.includes('`brief`'));
+  assert.ok(sentence, `the paragraph above the Stages table does not name \`brief\`: ${above}`);
+  assert.match(sentence, /optional/i, `the sentence naming \`brief\` does not say it is optional: ${sentence}`);
+  assert.match(sentence, /before `intake`/, `the sentence naming \`brief\` does not say it comes before \`intake\`: ${sentence}`);
+
+  // The "Intake and spec" group names the brief pages.
+  const lines = index.split('\n');
+  const start = lines.findIndex((l) => l.trim() === '### Intake and spec');
+  assert.ok(start >= 0, 'the index has no ### Intake and spec');
+  const end = lines.findIndex((l, i) => i > start && /^#{1,3}\s/.test(l));
+  const group = lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+  for (const page of ['commands/brief.md', 'slash/brief.md']) {
+    assert.ok(group.includes(`](${page})`), `the Intake and spec group does not link ${page}`);
+  }
+});

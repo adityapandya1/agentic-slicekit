@@ -573,3 +573,81 @@ test("the walkthrough's commands in docs/walkthrough.md exit 0 on examples/backe
   const printed = new Set(r.stdout.split(/\r?\n/).map(printedLine));
   assert.deepEqual(recorded.filter((l) => !printed.has(l)), [], 'docs/walkthrough.md records these lines the run does not print');
 });
+
+// P7/S-57 (REQ-5.7, D-99): docs/walkthrough.md has a section "Optional: start from an idea" before its
+// first step. It says the example's brief came from /slicekit brief, runs `slicekit stage require brief`
+// in an `sh` block, and records `ready: brief` in a `text` block. Its commands are read as the
+// walkthrough's are and run from the root of the kit, and every line of its text blocks is printed.
+const BRIEF_STEP = 'Optional: start from an idea';
+
+// The lines of the brief step, from its heading (## or ###) to the next heading of that level or
+// above, outside code blocks: { start, end, commands, recorded, prose }. Throws when the section is
+// missing. `commands` are read by walkthroughCommands, so a refusal names the line in docs/walkthrough.md.
+function briefStep(text) {
+  const all = String(text).replace(/\r\n/g, '\n').split('\n');
+  let open = false;
+  let start = -1;
+  let level = 0;
+  let end = all.length;
+  for (let i = 0; i < all.length; i++) {
+    if (/^\s*(`{3,}|~{3,})/.test(all[i])) {
+      open = !open;
+      continue;
+    }
+    if (open) continue;
+    const m = /^(#{2,3})\s+(.*?)\s*$/.exec(all[i]);
+    const any = /^(#{1,6})\s/.exec(all[i]);
+    if (start < 0 && m && m[2] === BRIEF_STEP) {
+      start = i;
+      level = m[1].length;
+    } else if (start >= 0 && any && any[1].length <= level) {
+      end = i;
+      break;
+    }
+  }
+  if (start < 0) throw new Error(`docs/walkthrough.md has no section "${BRIEF_STEP}"`);
+  // The section alone, under a "## Walkthrough" heading at its own line, so line numbers stay those of the file.
+  const only = all.map((l, i) => (i === start ? '## Walkthrough' : i > start && i < end ? l : ''));
+  const body = all.slice(start + 1, end).join('\n');
+  let inCode = false;
+  const prose = body
+    .split('\n')
+    .filter((l) => {
+      if (/^\s*(`{3,}|~{3,})/.test(l)) {
+        inCode = !inCode;
+        return false;
+      }
+      return !inCode;
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ');
+  return { start, end, commands: walkthroughCommands(only.join('\n')), recorded: recordedLines(body), prose };
+}
+
+test('the optional brief step runs and prints ready: brief', { timeout: 300_000 }, () => {
+  // A walkthrough without the section is refused, naming it.
+  assert.throws(() => briefStep('# W\n\n## Walkthrough\n\n### 1. A step\n\n```sh\ntrue\n```\n'), { message: /no section "Optional: start from an idea"/ });
+
+  const text = fs.readFileSync(path.join(KIT_ROOT, 'docs', 'walkthrough.md'), 'utf8').replace(/\r\n/g, '\n');
+  const step = briefStep(text);
+  const lines = text.split('\n');
+  const firstStep = lines.findIndex((l) => /^###\s+1\.\s/.test(l));
+  assert.ok(firstStep >= 0, 'docs/walkthrough.md has no first step "### 1."');
+  assert.ok(step.start < firstStep, `"${BRIEF_STEP}" (line ${step.start + 1}) comes after the first step (line ${firstStep + 1})`);
+  assert.match(step.prose, /`\/slicekit brief`/, 'the section does not say the brief came from /slicekit brief');
+  assert.match(step.prose, /examples\/backend|example/i, "the section does not name the example's brief");
+  assert.ok(step.commands.some((c) => /\bstage require brief$/.test(c.command)), `no sh command of the section runs stage require brief: ${step.commands.map((c) => c.command).join(' | ')}`);
+  assert.ok(step.recorded.includes('ready: brief'), `the section's text blocks do not record "ready: brief": ${step.recorded.join(' | ')}`);
+
+  // The section's commands, run from the root of the kit as a reader runs them, exit 0 and print its text lines.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-brief-step-'));
+  let r;
+  try {
+    r = runWalkthrough(step.commands, { cwd: KIT_ROOT, env: { TMPDIR: tmp.split(path.sep).join('/') }, timeoutMs: 240_000 });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  assert.equal(r.code, 0, `${r.stderr}\n--- stdout ---\n${r.stdout}`);
+  const printed = new Set(r.stdout.split(/\r?\n/).map(printedLine));
+  assert.deepEqual(step.recorded.filter((l) => !printed.has(l)), [], `"${BRIEF_STEP}" records these lines the run does not print`);
+});
