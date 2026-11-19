@@ -10,7 +10,9 @@
     "test/user-guide.test.js",
     "test/walkthrough.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/walkthrough.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -38,6 +40,17 @@
       "at": "2026-11-19T00:05:13.331Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-19T00:09:08.201Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/walkthrough.test.js",
+        "amendCommit": "3e93622bf670729aeb905a52d73dafbf8cd80c36",
+        "reason": "the whole-page text-line check conflicts with Done when 5's optional section; it reads the ## Walkthrough section only"
+      }
     }
   ]
 }
