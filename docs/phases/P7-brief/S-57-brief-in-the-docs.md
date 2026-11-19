@@ -12,8 +12,8 @@ decisions: [D-99, D-98, D-97]
 
 1. The guide index's Stages table has a first row, "0. Brief (optional)", naming `/slicekit brief [<slug>]`, saying it is for a person with no requirement document and that intake does not require it, and listing its CLI steps `branch spec`, `brief start`, `brief ask`, `brief answer`, `brief done` and `stage require brief`. The paragraph above the table names `brief` as an optional stage before `intake`, and the "Intake and spec" group names the brief pages. `node scripts/guide-html.js --check` exits 0 (REQ-5.8, D-99, D-97).
 2. The README's Quick start says, in one sentence after the first slash command, that a person with only an idea types `/slicekit brief` first and then the intake command it prints. The README's opening, "See it in action" and the order of its sections stay as D-98 fixed them, and the README tests pass (REQ-5.7, D-98).
-3. `templates/brief/blank.md` holds the seven headings of REQ-2.15 in their order and one line under each saying what goes there, for a person who writes a brief by hand; its headings are the section list `stage require brief` checks, read from `src/brief.js`, and the `slicekit brief` page names the file (REQ-5.8, D-99). <!-- slicekit:pending P7/S-57 -->
-4. `examples/backend/docs/brief/greeting.md` is a brief for the example's greeting service with all seven sections and one entry under `## Open questions`; `slicekit stage require brief` run in `examples/backend` exits 0 with `ready: brief` (REQ-5.7, D-99). <!-- slicekit:pending P7/S-57 -->
+3. `templates/brief/blank.md` holds the seven headings of REQ-2.15 in their order and one line under each saying what goes there, for a person who writes a brief by hand; its headings are the section list `stage require brief` checks, read from `src/brief.js`, and the `slicekit brief` page names the file (REQ-5.8, D-99).
+4. `examples/backend/docs/brief/greeting.md` is a brief for the example's greeting service with all seven sections and one entry under `## Open questions`; `slicekit stage require brief` run in `examples/backend` exits 0 with `ready: brief` (REQ-5.7, D-99).
 5. `docs/walkthrough.md` has a section "Optional: start from an idea" before its first step, saying that the example's brief came from `/slicekit brief` and showing `slicekit stage require brief` in a `sh` block with its output line in a `text` block; the walkthrough test runs it and passes. `slicekit check` gives `0 findings` and no pending marker naming this slice is left in `docs/` (REQ-5.7).
 
 ## Evaluation set
@@ -25,6 +25,8 @@ decisions: [D-99, D-98, D-97]
 | `brief-docs.test.js » the example's brief passes stage require brief` | happy | REQ-5.7 |
 | `readme.test.js » Quick start names /slicekit brief for a person with only an idea` | happy | REQ-5.7 |
 | `walkthrough.test.js » the optional brief step runs and prints ready: brief` | negative | REQ-5.7 |
+
+Amended (author's standing instruction, 2026-11-19): `test/walkthrough.test.js`, where the test "the walkthrough's commands in docs/walkthrough.md exit 0 on examples/backend and print its text lines" reads the `text` blocks of the whole page, while Done when 5 puts `ready: brief` in a `text` block of the separate optional section that the 44 commands never run. That test now reads the `text` blocks of the `## Walkthrough` section only; the optional section's lines are checked by its own evaluation test. The pending markers of this slice are removed in the same change, since the files they excused are written by it.
 
 ## Expected changes
 
@@ -64,4 +66,4 @@ decisions: [D-99, D-98, D-97]
 
 ## Notes
 
-`examples/backend/docs/brief/greeting.md` and `templates/brief/blank.md` are new documents. The pre-edit guard allows a new document only under the docs root's exceptions until P8/S-60 lets one that Expected changes names through; `examples/` and `templates/` are outside the docs root, so the guard does not refuse them. <!-- slicekit:pending P7/S-57 -->
+`examples/backend/docs/brief/greeting.md` and `templates/brief/blank.md` are new documents. The pre-edit guard allows a new document only under the docs root's exceptions until P8/S-60 lets one that Expected changes names through; `examples/` and `templates/` are outside the docs root, so the guard does not refuse them.
