@@ -1,6 +1,6 @@
 {
   "slice": "P7/S-57",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 204,
@@ -40,6 +40,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P7-S-57i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43"
     }
   ],
   "ci": null,
@@ -202,6 +209,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
           "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43",
           "title": "[P7/S-57] Brief in the docs"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-21T11:24:56.417Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P7-S-57i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
