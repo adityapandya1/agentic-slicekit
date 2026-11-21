@@ -1,6 +1,6 @@
 {
   "slice": "P7/S-57",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 204,
@@ -15,7 +15,8 @@
     "test/walkthrough.test.js"
   ],
   "unfrozen": [
-    "test/walkthrough.test.js"
+    "test/walkthrough.test.js",
+    "test/brief-docs.test.js"
   ],
   "verdicts": [
     {
@@ -92,6 +93,17 @@
           "blockers": 0,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-21T08:48:48.380Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/brief-docs.test.js",
+        "amendCommit": "30c4c7c5de47a1b0d24186dd41a7536316a6b48d",
+        "reason": "review H-3: Done when 4 names the initialised copy of examples/backend the test runs in, since the example is kept before init"
       }
     }
   ]
