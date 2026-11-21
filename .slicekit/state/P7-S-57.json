@@ -1,6 +1,6 @@
 {
   "slice": "P7/S-57",
-  "state": "in-review",
+  "state": "ci-green",
   "branch": null,
   "pr": {
     "number": 204,
@@ -34,7 +34,11 @@
       "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
     }
   ],
-  "ci": null,
+  "ci": {
+    "sha": "ec19346efdfb50dce807ea933bee5a8bd9f6853c",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44897246501"
+  },
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -140,6 +144,19 @@
           "path": ".slicekit/reviews/P7-S-57-r2.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-21T11:15:42.442Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "ec19346efdfb50dce807ea933bee5a8bd9f6853c",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44897246501"
         }
       }
     }
