@@ -17,6 +17,32 @@ node bin/slicekit.js --version
 
 The last line prints the version the clone carries.
 
+## Optional: start from an idea
+
+The walkthrough starts from a requirement document. A person who has only an idea types
+`/slicekit brief` first: it asks one question per topic and writes a brief from the answers, and
+`/slicekit intake` then takes that brief as its source. The example's brief,
+`examples/backend/docs/brief/greeting.md`, has the shape `/slicekit brief` writes. This step
+checks it in a copy of the example, from the root of your clone, and then removes the copy.
+
+```sh
+BRIEF_KIT="$(pwd -W 2>/dev/null || pwd)"
+BRIEF_WORK="$(mktemp -d)"
+cp -R examples/backend "$BRIEF_WORK/greeting"
+cd "$BRIEF_WORK/greeting"
+git init -q -b main
+node "$BRIEF_KIT/bin/slicekit.js" init --shape backend --cli "node \"$BRIEF_KIT/bin/slicekit.js\""
+node "$BRIEF_KIT/bin/slicekit.js" stage require brief
+cd "$BRIEF_KIT"
+rm -rf "$BRIEF_WORK"
+```
+
+`stage require brief` prints:
+
+```text
+ready: brief
+```
+
 ## Walkthrough
 
 This takes about ten minutes. It builds P1/S-01 from `todo` to `merged`: red tests, green code, a

@@ -553,7 +553,22 @@ function recordedLines(text) {
 }
 
 test("the walkthrough's commands in docs/walkthrough.md exit 0 on examples/backend and print its text lines", { timeout: 900_000 }, () => {
-  const recorded = recordedLines(fs.readFileSync(path.join(KIT_ROOT, 'docs', 'walkthrough.md'), 'utf8'));
+  // P7/S-57 amendment: only the `text` blocks of the `## Walkthrough` section, up to the next `#` or
+  // `##` heading outside a code block; another section's lines are checked by its own test.
+  const all = fs.readFileSync(path.join(KIT_ROOT, 'docs', 'walkthrough.md'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+  let inCode = false;
+  let from = -1;
+  let to = all.length;
+  for (let i = 0; i < all.length; i++) {
+    if (/^\s*(`{3,}|~{3,})/.test(all[i])) inCode = !inCode;
+    else if (!inCode && from < 0 && /^##\s+Walkthrough\s*$/.test(all[i])) from = i;
+    else if (!inCode && from >= 0 && /^#{1,2}\s/.test(all[i])) {
+      to = i;
+      break;
+    }
+  }
+  assert.ok(from >= 0, 'docs/walkthrough.md has no ## Walkthrough section');
+  const recorded = recordedLines(all.slice(from + 1, to).join('\n'));
   assert.ok(recorded.length > 0, 'docs/walkthrough.md records no output in a ```text block');
   // mktemp honours TMPDIR, so the walkthrough's WORK lands in a directory this test removes.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-readme-'));

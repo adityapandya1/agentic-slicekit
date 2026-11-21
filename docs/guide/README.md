@@ -116,10 +116,11 @@ In your project the kit runs as `npx slicekit`, or through the `cli` value in `.
 
 ## Stages
 
-A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. `slicekit stage require <stage>` is that check at the start of specify, gaps and build; plan uses `slicekit plan check`, and release uses `slicekit release P<n> --dry-run`. The stage names in the code are `intake`, `clarify`, `specify`, `spec-review`, `gap-scan`, `stack`, `plan`, `build` and `release`. Merging a pull request is always a person's act.
+A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. `slicekit stage require <stage>` is that check at the start of specify, gaps and build; plan uses `slicekit plan check`, and release uses `slicekit release P<n> --dry-run`. The stage names in the code are `intake`, `clarify`, `specify`, `spec-review`, `gap-scan`, `stack`, `plan`, `build` and `release`. Merging a pull request is always a person's act. The optional stage `brief` comes before `intake` and is judged alone: `slicekit stage require brief` checks it, and no later stage reads it.
 
 | Stage | Slash command | What happens | CLI steps |
 |---|---|---|---|
+| 0. Brief (optional) | `/slicekit brief [<slug>]` | For a person with no requirement document. The agent asks one question per topic and writes `<docsRoot>/brief/<slug>.md` from the answers alone; a topic the person cannot answer becomes an open question. The last line printed is the intake command that takes the brief as its source. Intake does not require it. | `branch spec`, `brief start`, `brief ask`, `brief answer`, `brief done`, `stage require brief` |
 | Setup |  | Once per repository. Adds the config, docs layout, Claude Code files, git hooks and the CI workflow. | `init`, `status --write`, `workflow --write` |
 | 1. Intake | `/slicekit intake <file or URL>` | The source document is snapshotted and frozen. The agent asks one question at a time, and each answer becomes a numbered decision row. | `branch spec`, `intake snapshot`, `intake ask`, `intake answer`, `intake done`, `workflow --write` |
 | 2. Clarify | no command of its own | Questions intake left open are answered. The stage is complete when `decisions.md` exists and the spec cites no blocking Open row. An open row of type `Action` or `Information` is listed as pending and does not block. | `decide settle`, `decide add` |
@@ -142,7 +143,7 @@ Adding the kit to a repository and keeping its own files current: [`init`](comma
 
 ### Intake and spec
 
-The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`: [`branch`](commands/branch.md), [`intake`](commands/intake.md), [`decide`](commands/decide.md), [`stage`](commands/stage.md), [`spec`](commands/spec.md), [`gaps`](commands/gaps.md) and [`pr`](commands/pr.md). The agent runs nearly all of them. You type `decide` and `stage require` yourself now and then.
+The steps of `/slicekit intake`, `/slicekit specify` and `/slicekit gaps`: [`branch`](commands/branch.md), [`intake`](commands/intake.md), [`decide`](commands/decide.md), [`stage`](commands/stage.md), [`spec`](commands/spec.md), [`gaps`](commands/gaps.md) and [`pr`](commands/pr.md). The agent runs nearly all of them. You type `decide` and `stage require` yourself now and then. Before intake, `/slicekit brief` ([page](slash/brief.md)) runs the steps of [`brief`](commands/brief.md) for a person who has only an idea.
 
 ### Plan
 
