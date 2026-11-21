@@ -1,10 +1,8 @@
 ## Problem and who has it
 
-Callers of the greeting service need one way to greet a person by name.
+Callers of the greeting service need one function, `greet(name)`, that greets a person by name.
 
 ## What they do today
-
-Each caller builds the greeting text itself.
 
 ## Use cases
 
@@ -12,7 +10,7 @@ A caller passes a name to `greet(name)` and gets back `Hello, <name>!`.
 
 ## Out of scope
 
-Greetings in another language, and any greeting other than `Hello`.
+Anything other than the one function `greet(name)`.
 
 ## Success measures
 
@@ -20,8 +18,8 @@ Greetings in another language, and any greeting other than `Hello`.
 
 ## Constraints
 
-An empty name is a mistake by the caller, so the service refuses it instead of greeting nobody.
+An empty name is a mistake by the caller, so `greet` refuses it.
 
 ## Open questions
 
-Whether a name made only of spaces counts as empty.
+What they do today
