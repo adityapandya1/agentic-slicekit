@@ -2,6 +2,13 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.7.0
+
+Phase 7: Start from an idea.
+
+- P7/S-56 Brief (#199)
+- P7/S-57 Brief in the docs (#204)
+
 ## 0.6.2
 
 - P7/S-56 Brief (#199)
