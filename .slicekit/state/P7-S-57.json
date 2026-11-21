@@ -1,6 +1,6 @@
 {
   "slice": "P7/S-57",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 204,
@@ -16,7 +16,8 @@
   ],
   "unfrozen": [
     "test/walkthrough.test.js",
-    "test/brief-docs.test.js"
+    "test/brief-docs.test.js",
+    "test/user-guide.test.js"
   ],
   "verdicts": [
     {
@@ -179,6 +180,17 @@
           "blockers": 0,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-21T11:19:33.502Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/user-guide.test.js",
+        "amendCommit": "8d943591f2d3faaea1981925719ff9a8c66ce7ac",
+        "reason": "independent review H-4: Done when 5 says the example's brief has the shape /slicekit brief writes, since it was written by hand; H-5 rewords the guide index sentence the user-guide test reads"
       }
     }
   ]
