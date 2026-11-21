@@ -1,11 +1,11 @@
 {
   "slice": "P7/S-57",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 204,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
-    "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
+    "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43"
   },
   "redCommit": "5a0e1efe08ffe84b6a35891bc1dd481101801b25",
   "frozenTests": [
@@ -42,11 +42,7 @@
       "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
     }
   ],
-  "ci": {
-    "sha": "ec19346efdfb50dce807ea933bee5a8bd9f6853c",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44897246501"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -191,6 +187,22 @@
         "unfreeze": "test/user-guide.test.js",
         "amendCommit": "8d943591f2d3faaea1981925719ff9a8c66ce7ac",
         "reason": "independent review H-4: Done when 5 says the example's brief has the shape /slicekit brief writes, since it was written by hand; H-5 rewords the guide index sentence the user-guide test reads"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T11:21:16.635Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43",
+          "title": "[P7/S-57] Brief in the docs"
+        }
       }
     }
   ]
