@@ -1,11 +1,11 @@
 {
   "slice": "P7/S-57",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 204,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
-    "headSha": "bca461525752873cc1d5f2998f427b557482b693"
+    "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
   },
   "redCommit": "5a0e1efe08ffe84b6a35891bc1dd481101801b25",
   "frozenTests": [
@@ -104,6 +104,22 @@
         "unfreeze": "test/brief-docs.test.js",
         "amendCommit": "30c4c7c5de47a1b0d24186dd41a7536316a6b48d",
         "reason": "review H-3: Done when 4 names the initialised copy of examples/backend the test runs in, since the example is kept before init"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T11:01:10.700Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b",
+          "title": "[P7/S-57] Brief in the docs"
+        }
       }
     }
   ]
