@@ -116,7 +116,7 @@ In your project the kit runs as `npx slicekit`, or through the `cli` value in `.
 
 ## Stages
 
-A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. `slicekit stage require <stage>` is that check at the start of specify, gaps and build; plan uses `slicekit plan check`, and release uses `slicekit release P<n> --dry-run`. The stage names in the code are `intake`, `clarify`, `specify`, `spec-review`, `gap-scan`, `stack`, `plan`, `build` and `release`. Merging a pull request is always a person's act. The optional stage `brief` comes before `intake` and is judged alone: `slicekit stage require brief` checks it, and no later stage reads it.
+A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. `slicekit stage require <stage>` is that check at the start of specify, gaps and build; plan uses `slicekit plan check`, and release uses `slicekit release P<n> --dry-run`. The stage names in the code are `intake`, `clarify`, `specify`, `spec-review`, `gap-scan`, `stack`, `plan`, `build` and `release`. Merging a pull request is always a person's act. The optional stage `brief` comes before `intake` and is judged alone: `slicekit stage require brief` checks it, no later stage requires it, and `intake` takes it as its source when it exists.
 
 | Stage | Slash command | What happens | CLI steps |
 |---|---|---|---|
