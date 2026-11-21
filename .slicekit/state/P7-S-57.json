@@ -1,8 +1,12 @@
 {
   "slice": "P7/S-57",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 204,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+    "headSha": "bca461525752873cc1d5f2998f427b557482b693"
+  },
   "redCommit": "5a0e1efe08ffe84b6a35891bc1dd481101801b25",
   "frozenTests": [
     "test/brief-docs.test.js",
@@ -50,6 +54,22 @@
         "unfreeze": "test/walkthrough.test.js",
         "amendCommit": "3e93622bf670729aeb905a52d73dafbf8cd80c36",
         "reason": "the whole-page text-line check conflicts with Done when 5's optional section; it reads the ## Walkthrough section only"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T08:44:41.774Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "bca461525752873cc1d5f2998f427b557482b693",
+          "title": "[P7/S-57] Brief in the docs"
+        }
       }
     }
   ]
