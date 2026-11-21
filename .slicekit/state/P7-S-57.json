@@ -1,0 +1,254 @@
+{
+  "slice": "P7/S-57",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 204,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+    "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43"
+  },
+  "redCommit": "5a0e1efe08ffe84b6a35891bc1dd481101801b25",
+  "frozenTests": [
+    "test/brief-docs.test.js",
+    "test/readme.test.js",
+    "test/user-guide.test.js",
+    "test/walkthrough.test.js"
+  ],
+  "unfrozen": [
+    "test/walkthrough.test.js",
+    "test/brief-docs.test.js",
+    "test/user-guide.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P7-S-57-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "bca461525752873cc1d5f2998f427b557482b693"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P7-S-57-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P7-S-57i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P7-S-57i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43"
+    }
+  ],
+  "ci": {
+    "sha": "265a2fa6a38a410f7bb2f7be020e0b0a33e09b7a",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44899005051"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-19T00:05:12.586Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "5a0e1efe08ffe84b6a35891bc1dd481101801b25",
+        "testExit": 1,
+        "tests": [
+          "test/brief-docs.test.js",
+          "test/readme.test.js",
+          "test/user-guide.test.js",
+          "test/walkthrough.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-19T00:05:13.331Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-19T00:09:08.201Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/walkthrough.test.js",
+        "amendCommit": "3e93622bf670729aeb905a52d73dafbf8cd80c36",
+        "reason": "the whole-page text-line check conflicts with Done when 5's optional section; it reads the ## Walkthrough section only"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T08:44:41.774Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "bca461525752873cc1d5f2998f427b557482b693",
+          "title": "[P7/S-57] Brief in the docs"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-21T08:48:03.529Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P7-S-57-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-21T08:48:48.380Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/brief-docs.test.js",
+        "amendCommit": "30c4c7c5de47a1b0d24186dd41a7536316a6b48d",
+        "reason": "review H-3: Done when 4 names the initialised copy of examples/backend the test runs in, since the example is kept before init"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T11:01:10.700Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "15414d1a83a572ef55e04fc763c74fc9d4e2538b",
+          "title": "[P7/S-57] Brief in the docs"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-21T11:03:12.953Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P7-S-57-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-21T11:15:42.442Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "ec19346efdfb50dce807ea933bee5a8bd9f6853c",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44897246501"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-21T11:18:07.643Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P7-S-57i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-21T11:19:33.502Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/user-guide.test.js",
+        "amendCommit": "8d943591f2d3faaea1981925719ff9a8c66ce7ac",
+        "reason": "independent review H-4: Done when 5 says the example's brief has the shape /slicekit brief writes, since it was written by hand; H-5 rewords the guide index sentence the user-guide test reads"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-21T11:21:16.635Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 204,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/204",
+          "headSha": "06987dcc7012db5396bfb4723f61b3193264aa43",
+          "title": "[P7/S-57] Brief in the docs"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-21T11:24:56.417Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P7-S-57i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-21T11:39:11.642Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "265a2fa6a38a410f7bb2f7be020e0b0a33e09b7a",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/44899005051"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-21T11:39:14.294Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

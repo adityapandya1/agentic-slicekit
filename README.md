@@ -91,7 +91,8 @@ npm install --save-dev slicekit
 npx slicekit init --shape backend --name <your-project>
 ```
 
-Then open Claude Code in the project and type `/slicekit intake <your requirement document>`. To
+Then open Claude Code in the project and type `/slicekit intake <your requirement document>`. A person with only an idea types
+`/slicekit brief` first, then the `/slicekit intake` command it prints. To
 see each step run on a sample project first, follow
 [the ten-minute walkthrough](https://github.com/adityapandya1/agentic-slicekit/blob/main/docs/walkthrough.md)
 from a clone of this repository.

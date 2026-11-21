@@ -20,6 +20,8 @@ slicekit brief done
 
 `slicekit stage require brief` refuses a brief in which a topic's section is empty and the topic is not listed under `## Open questions`, naming the file and the section, so a brief edited by hand is held to the same rule.
 
+To write a brief by hand, copy the blank brief `templates/brief/blank.md` from the installed package to `<docsRoot>/brief/<slug>.md` and replace the line under each heading. It holds the seven headings in the order `stage require brief` checks them.
+
 ## What it reads and writes
 
 Reads the brief session file in the worktree's git directory and the files under `<docsRoot>/spec/`, to compare them with the start. Writes `<docsRoot>/brief/<slug>.md` and the session file, and one commit: the brief's.

@@ -416,3 +416,22 @@ test('What it covers names every command template and the graph queries', () => 
 
   assert.deepEqual(coversMissing(readme, templates), [], 'the README leaves out of What it covers');
 });
+
+// P7/S-57 (REQ-5.7, D-98, D-99): after the Quick start's first slash command, one sentence says that a
+// person with only an idea types `/slicekit brief` first and then the intake command it prints.
+test('Quick start names /slicekit brief for a person with only an idea', () => {
+  const prose = outsideCode(section('Quick start')).join(' ').replace(/\s+/g, ' ').trim();
+  const sentences = prose.split(/(?<=[.!?])\s+(?=[A-Z`[(])/);
+  const firstSlash = sentences.findIndex((s) => /`\/slicekit[ -]?[a-z-]*[^`]*`/.test(s));
+  assert.ok(firstSlash >= 0, `Quick start names no slash command: ${prose}`);
+  assert.match(sentences[firstSlash], /`\/slicekit intake [^`]*`/, 'the first slash command of Quick start is no longer /slicekit intake');
+  const briefs = sentences.map((s, i) => (s.includes('`/slicekit brief`') ? i : -1)).filter((i) => i >= 0);
+  assert.equal(briefs.length, 1, `Quick start names \`/slicekit brief\` in ${briefs.length} sentences, not one`);
+  const at = briefs[0];
+  assert.ok(at > firstSlash, 'the sentence naming /slicekit brief comes before the first slash command');
+  const s = sentences[at];
+  assert.match(s, /only an idea/i, `the sentence does not say it is for a person with only an idea: ${s}`);
+  assert.match(s, /first/i, `the sentence does not say /slicekit brief comes first: ${s}`);
+  assert.match(s, /intake/i, `the sentence does not name the intake command: ${s}`);
+  assert.match(s, /prints/i, `the sentence does not say the intake command is the one brief prints: ${s}`);
+});
