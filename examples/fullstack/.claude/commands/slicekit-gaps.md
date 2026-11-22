@@ -1,6 +1,6 @@
 ---
 description: Audit the merged spec against intake and decisions, then close each gap with the human.
-slicekit-managed: v0.7.0
+slicekit-managed: v0.7.1
 ---
 Run `slicekit instructions --command gaps $ARGUMENTS` and follow the procedure it prints. The procedure is the only source of this command's rules.
 

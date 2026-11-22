@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.7.1
+
+- P8/S-58 BUILD.md out of the merge path (#209)
+
 ## 0.7.0
 
 Phase 7: Start from an idea.
