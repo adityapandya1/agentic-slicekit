@@ -291,7 +291,8 @@ test("a dead path in a slice file's done-when is reported on the slice file, not
     );
     const cfg = loadConfig(root);
     fs.writeFileSync(path.join(root, 'BUILD.md'), renderBuild(root, cfg, fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8')));
-    assert.ok(fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8').includes('`src/gone.js` exists'));
+    // P8/S-58 (D-105): BUILD.md copies no Done when item; the dead path is in the slice file alone.
+    assert.ok(!fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8').includes('`src/gone.js` exists'));
   });
   assert.deepEqual(r.lines, [
     'references docs/phases/P1-x/S-01-a.md:13 missing file src/gone.js',

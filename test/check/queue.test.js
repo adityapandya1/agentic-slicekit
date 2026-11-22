@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { init } from '../../src/init.js';
 import { loadConfig } from '../../src/config.js';
 import { setState } from '../../src/state/index.js';
@@ -158,4 +159,31 @@ test('a repository that has not planned is silent', () => {
 test("the kit's own queue is current", () => {
   const result = check(kitRoot, { rules: [queue] });
   assert.deepEqual(result.findings.filter((f) => f.rule === 'queue'), []);
+});
+
+// P8/S-58 (REQ-1.6, D-100): a slice branch commits no BUILD.md of its own, so there the rule is silent.
+test('on a slice branch a BUILD.md that differs from state is no finding', () => {
+  withKit(({ root, cfg, ids, build, run }) => {
+    execFileSync('git', ['checkout', '-q', '-b', 'slice/P1-S-02-a'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    setState(root, cfg, ids[1], 'draft-pr', { backfill: true, testExit: 0, checkExit: 0, pr: PR });
+    assert.deepEqual(run(), []);
+    fs.writeFileSync(build, fs.readFileSync(build, 'utf8').replace('| S-03 | Fixture 3 |', '| S-03 | Fixture three |'));
+    assert.deepEqual(run(), []);
+    fs.writeFileSync(build, fs.readFileSync(build, 'utf8').replace(MARKER, ''));
+    assert.deepEqual(run(), []);
+    fs.rmSync(build);
+    assert.deepEqual(run(), []);
+  });
+});
+
+// P8/S-58 (REQ-1.6 scenario): off a slice branch the rule reports as before.
+test('on the default branch a BUILD.md that differs from state is still a finding', () => {
+  withKit(({ root, cfg, ids, build, run }) => {
+    setState(root, cfg, ids[1], 'draft-pr', { backfill: true, testExit: 0, checkExit: 0, pr: PR });
+    const want = [{ file: 'BUILD.md', line: lineOf(build, '| S-02 |'), message: 'BUILD.md row for P1/S-02 says "Todo", state says "PR #14"' }];
+    assert.equal(execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), cfg.defaultBranch);
+    assert.deepEqual(run(), want);
+    execFileSync('git', ['checkout', '-q', '-b', 'feature/x'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.deepEqual(run(), want, 'a branch that is not a slice branch is judged as the default branch is');
+  });
 });

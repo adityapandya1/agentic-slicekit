@@ -296,7 +296,8 @@ test('status --sync --write regenerates after syncing', () => {
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, `synced ${ids[0]} → merged (PR #14)\nBUILD.md updated\n`);
     const build = fs.readFileSync(kitPaths(root, cfg).build, 'utf8');
-    assert.match(build, /^\| S-01 \|.*\| Done \|$/m);
+    // P8/S-58 (D-105): the phase's one slice is merged, so the phase is one line.
+    assert.match(build, /^- Phase 1 — .*: 1 slice, all merged; /m);
     const again = runCli(['status', '--sync'], { cwd: root, env });
     assert.equal(again.code, 0, again.stderr);
     assert.ok(!again.stdout.includes('synced'), again.stdout);

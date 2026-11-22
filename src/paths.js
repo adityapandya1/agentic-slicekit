@@ -31,5 +31,6 @@ export function kitPaths(root, cfg) {
     githooks: path.join(root, '.githooks'),
     workflow: path.join(root, '.github', 'workflows', 'slicekit.yml'),
     gitignore: path.join(root, '.gitignore'),
+    gitattributes: path.join(root, '.gitattributes'),
   };
 }

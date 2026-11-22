@@ -6,8 +6,8 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 
 ## Phase 1 — Counter
 
-| Slice | Name | Done when | Group | Status |
+| Slice | Name | Group | Slice file | Status |
 |---|---|---|---|---|
-| S-01 | Count over HTTP and on the page | `GET /count` on a server that has just started answers 200 with `{"count": 0}`; `GET /` answers an HTML page whose element with the id `count` holds 0, with `lang="en"` on `html` and one `h1`; `GET /other` answers 404 and no page | A | Todo |
+| S-01 | Count over HTTP and on the page | A | [S-01-count.md](docs/phases/P1-counter/S-01-count.md) | Todo |
 
 <!-- slicekit:generated:end -->

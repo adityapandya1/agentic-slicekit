@@ -1079,6 +1079,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <h5 id="commands-init--usage">Usage</h5>
     <pre class="syn"><span class="l">slicekit init --shape &lt;backend|fullstack|data&gt; [--name &lt;n&gt;] [--docs &lt;dir&gt;] [--cli &lt;command&gt;] [--default-branch &lt;name&gt;] [--test &lt;cmd&gt;] [--lint &lt;cmd&gt;] [--build &lt;cmd&gt;] [--e2e &lt;cmd&gt;] [--protect]</span></pre>
     <p>It writes <code>.slicekit/config.json</code>, the docs layout, the Claude Code commands, agents and hooks, the git hooks (it sets <code>core.hooksPath</code> to <code>.githooks</code>) and the CI workflow when there is none yet. It prints <code>created</code>, <code>updated</code> or <code>skipped</code> for each file, then <code>hooks run: &lt;cli&gt;</code>. An existing config wins, so <code>--shape</code> is then optional.</p>
+    <p>It also writes <code>BUILD.md merge=slicekit-build</code> to <code>.gitattributes</code> and sets <code>merge.slicekit-build.driver</code> in the clone's git config to <code>&lt;cli&gt; status --merge-driver %O %A %B</code>, so a local merge regenerates <code>BUILD.md</code> from the merged state files instead of leaving a conflict (D-100). Run again, it adds neither twice. The git config is not part of a clone: in a clone made after init, run <code>slicekit init</code> once; it changes no committed file.</p>
     <ul>
       <li><code>--shape &lt;backend|fullstack|data&gt;</code>: the project's shape; it decides which files are rendered. <code>fullstack</code> adds the designer agent. Required unless a config exists.</li>
       <li><code>--name &lt;n&gt;</code>: the program name. Default: the folder's name.</li>
@@ -1089,7 +1090,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
       <li><code>--protect</code>: after the files are written, sets on the git host each rule the default branch lacks, as one ruleset named <code>slicekit</code>: a pull request before merge, one approving review, the kit's CI checks required, and force push refused. It needs admin rights on the repository. It is the only place where the kit changes a host setting. It prints <code>set &lt;branch&gt;: &lt;rule&gt;</code> per rule, or <code>host rules: &lt;branch&gt; has every rule; nothing set</code>.</li>
     </ul>
     <h5 id="commands-init--what-it-reads-and-writes">What it reads and writes</h5>
-    <p>Reads the repository, an existing config and, with <code>--protect</code>, the git host's rulesets. Writes the config, the docs layout, <code>.claude/</code>, <code>.githooks/</code>, the workflow file, the rendered copies under <code>.slicekit/rendered/</code> and git's <code>core.hooksPath</code>. It commits nothing. With <code>--protect</code> it writes one ruleset on the host.</p>
+    <p>Reads the repository, an existing config and, with <code>--protect</code>, the git host's rulesets. Writes the config, the docs layout, <code>.claude/</code>, <code>.githooks/</code>, the workflow file, the rendered copies under <code>.slicekit/rendered/</code>, <code>.gitattributes</code>, and git's <code>core.hooksPath</code> and <code>merge.slicekit-build.driver</code>. It commits nothing. With <code>--protect</code> it writes one ruleset on the host.</p>
     <h5 id="commands-init--exit-codes">Exit codes</h5>
     <ul class="exits">
       <li><b>0</b><span>done; warnings go to stderr</span></li>
@@ -1481,13 +1482,15 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <header><h4><code>slicekit status</code></h4></header>
     <p class="sum">Lists every slice's state, syncs merges from the git host and regenerates <code>BUILD.md</code>.</p>
     <h5 id="commands-status--usage">Usage</h5>
-    <pre class="syn"><span class="l">slicekit status [--json] [--write] [--sync]</span></pre>
+    <pre class="syn"><span class="l">slicekit status [--json] [--write] [--sync]</span><span class="l">slicekit status --merge-driver &lt;ancestor&gt; &lt;current&gt; &lt;other&gt;</span></pre>
     <p>With no option it lists every slice as <code>&lt;id&gt;  &lt;state&gt;  PR &lt;#n|-&gt;  &lt;name&gt;</code>.</p>
     <ul>
       <li><code>--sync</code>: first asks the git host which pull requests merged and moves those slices, from <code>draft-pr</code> to <code>ready</code>, to <code>merged</code>.</li>
-      <li><code>--write</code>: regenerates the generated region of <code>BUILD.md</code> from the slice files and the state files, and prints <code>BUILD.md updated</code> or <code>unchanged</code> in place of the list.</li>
+      <li><code>--write</code>: regenerates the generated region of <code>BUILD.md</code> from the slice files and the state files, and prints <code>BUILD.md updated</code> or <code>unchanged</code> in place of the list. A phase with a slice not yet merged has one row per slice: its name, group, a link to its slice file and its status, with no Done when column. A phase whose slices are all merged is one line under &quot;Merged phases&quot; naming the phase, its number of slices and its folder under the docs root; a slice moved back from done brings its phase's rows back (D-105).</li>
       <li><code>--json</code>: prints one JSON document: stage, slices, synced, warnings, build.</li>
+      <li><code>--merge-driver &lt;ancestor&gt; &lt;current&gt; &lt;other&gt;</code>: the mode git runs as the <code>BUILD.md</code> merge driver that <a href="#commands-init"><code>init</code></a> sets, with <code>%O %A %B</code>. It merges the slice files and state files of both sides, renders <code>BUILD.md</code> from them and writes it to <code>&lt;current&gt;</code>. Exit 0 is a clean merge; any other exit leaves <code>BUILD.md</code> conflicted (D-100).</li>
     </ul>
+    <p>A slice branch commits no change to <code>BUILD.md</code>: the <code>build</code> steps commit the state file alone, and the sync pull request rewrites <code>BUILD.md</code> on the default branch.</p>
     <p>After a merge to the default branch, the sync job of the generated workflow runs <code>status --sync --write</code>, then <a href="#commands-sync"><code>sync open</code></a> puts the change up as a pull request.</p>
     <h5 id="commands-status--what-it-reads-and-writes">What it reads and writes</h5>
     <p>Reads the slice files, the state files and, with <code>--sync</code>, the git host. <code>--sync</code> writes state files; <code>--write</code> writes <code>BUILD.md</code>. It commits nothing.</p>
@@ -1874,11 +1877,12 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <ul>
       <li><code>&lt;path&gt; is missing; run slicekit init</code>: a file or a directory of the layout is gone or is the wrong kind.</li>
       <li><code>&lt;file&gt; is not part of shape &lt;shape&gt;; run slicekit update</code>: a file under <code>.claude/</code> that the kit ships only for another shape.</li>
+      <li><code>.gitattributes lacks the line BUILD.md merge=slicekit-build; run slicekit init</code>: the file is missing or has no line naming the merge driver that regenerates <code>BUILD.md</code> on a local merge (REQ-1.6, D-100).</li>
     </ul>
     <h5 id="rules-layout--when-it-judges">When it judges</h5>
     <p>On every run once <code>.slicekit/config.json</code> exists. A file under <code>.claude/</code> that the kit does not ship is the team's and is never a finding.</p>
     <h5 id="rules-layout--how-to-clear-a-finding">How to clear a finding</h5>
-    <p>Run <code>slicekit init</code> to put back what is missing, or <code>slicekit update</code> to remove a file of another shape.</p>
+    <p>Run <code>slicekit init</code> to put back what is missing, including the <code>.gitattributes</code> line, or <code>slicekit update</code> to remove a file of another shape.</p>
     <h5 id="rules-layout--the-failure-it-prevents">The failure it prevents</h5>
     <p>A deleted or renamed part of the layout, such as the decisions file or the state folder, makes a later command fail in the middle of a build or read an empty folder as &quot;nothing planned&quot;.</p>
   </section>
@@ -1914,7 +1918,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
       <li><code>BUILD.md is stale</code>: the generated region differs in order, position or a line outside the rows.</li>
     </ul>
     <h5 id="rules-queue--when-it-judges">When it judges</h5>
-    <p>On every run once a slice file or a state file exists. Only the generated region is compared; the text below the marker is the team's.</p>
+    <p>On every run once a slice file or a state file exists, on every branch but a slice branch (<code>slice/P&lt;n&gt;-S-&lt;nn&gt;-…</code>; with <code>--ci</code>, the pull request's head branch). A slice branch commits no change to <code>BUILD.md</code>, so there a <code>BUILD.md</code> that differs from state is no finding; the sync pull request after the merge rewrites it on the default branch (D-100). Only the generated region is compared; the text below the marker is the team's.</p>
     <h5 id="rules-queue--how-to-clear-a-finding">How to clear a finding</h5>
     <p>Run <code>slicekit status --write</code>. Never edit the generated region by hand.</p>
     <h5 id="rules-queue--the-failure-it-prevents">The failure it prevents</h5>

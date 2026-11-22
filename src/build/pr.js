@@ -60,8 +60,8 @@ function readNotes(root, notes) {
 
 const lines = (out) => out.split('\n').filter((l) => l !== '');
 
-// The worktree is clean, or holds only the state file and BUILD.md of a draft-pr recording whose
-// bookkeeping commit did not land: that commit is made now.
+// The worktree is clean, or holds only the state file of a draft-pr recording whose bookkeeping
+// commit did not land: that commit is made now. A slice branch commits no BUILD.md (D-100).
 function cleanOrFinish(wt, cfg, id, current) {
   // Paths from name lists, never from status columns: git() trims its output, and a leading space
   // is part of the first porcelain line.
@@ -73,10 +73,9 @@ function cleanOrFinish(wt, cfg, id, current) {
   if (files.length === 0) return;
   const paths = kitPaths(wt, cfg);
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
-  const buildRel = posixRel(wt, paths.build);
-  const onlyBookkeeping = files.includes(stateRel) && files.every((f) => f === stateRel || f === buildRel);
+  const onlyBookkeeping = files.length === 1 && files[0] === stateRel;
   if (current.state === 'draft-pr' && onlyBookkeeping && pendingDraftPr(wt, stateRel, current)) {
-    commitBookkeeping(wt, id, 'draft-pr', files);
+    commitBookkeeping(wt, id, 'draft-pr', [stateRel]);
     return;
   }
   throw new BuildError(`the worktree has uncommitted changes (${files.slice(0, 5).join(', ')}); build commit them first`);
@@ -158,9 +157,12 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
   // here, before the push, rather than after it.
   const afterReview = current.state !== 'building' && current.state !== 'draft-pr';
   // A head that adds only bookkeeping (a verdict, the state, BUILD.md) to the reviewed one is the same work.
-  if (afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt))) {
+  if (afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt), { merges: false })) {
     throw new BuildError(`${id} has nothing new since review of ${current.pr.headSha.slice(0, 7)}; push a fix to return to draft-pr`);
   }
+  // A head that adds to the reviewed one a merge of the default branch leaving the pull request's
+  // files as they were (D-100): the verdict still holds, so the head is pushed and the state kept.
+  const keep = afterReview && current.pr && headCovers(wt, current.pr.headSha, headSha(wt)) ? current.state : null;
   // A path another slice of the same Order step already changes on origin (D-06): a plan defect,
   // refused before the notes, the body and the commands, so a defect in the plan stops the run before
   // minutes of test runs, and before anything is pushed. After the behind-origin refusal, which a
@@ -240,10 +242,12 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
   const made = openOrUpdate(wt, cfg, host, { title, body, draft: true });
   // The absolute session-root path the next in-loop reviewer writes (null once the loop's rounds are
   // used or an independent verdict is recorded): recording draft-pr adds no verdict, so the count read before is the count after.
+  // A kept state asks for no new review: no verdict path.
+  if (keep) return { number: made.number, url: made.url, created: made.created, verdictPath: null, local: local ? testCommand : null, movedHead: null, kept: keep };
   const verdictPath = nextVerdictPath(root, id, current.verdicts ?? []);
   // The reviewer writes there at once: its directory is made here, as the path is printed.
   if (verdictPath) fs.mkdirSync(path.dirname(verdictPath), { recursive: true });
-  const result = { number: made.number, url: made.url, created: made.created, verdictPath, local: local ? testCommand : null, movedHead: null };
+  const result = { number: made.number, url: made.url, created: made.created, verdictPath, local: local ? testCommand : null, movedHead: null, kept: null };
   // `build finish` marked it ready; a slice back at draft-pr has a draft pull request again.
   if (livePr?.draft === false) host.markDraft(made.number);
   // At draft-pr a head that moved since the recorded one (a merge of the default branch, any commit)
@@ -251,7 +255,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
   // that adds only bookkeeping to the recorded one is the same work: nothing is recorded.
   if (current.state === 'draft-pr') {
     const head = headSha(wt);
-    if (current.pr?.headSha && !headCovers(wt, current.pr.headSha, head)) {
+    if (current.pr?.headSha && !headCovers(wt, current.pr.headSha, head, { merges: false })) {
       recordHead(wt, cfg, id, { number: made.number, url: made.url, headSha: head });
       commitState(wt, cfg, id, 'head');
       pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });

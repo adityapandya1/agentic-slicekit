@@ -1,0 +1,427 @@
+{
+  "slice": "P8/S-58",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 209,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+    "headSha": "98f22307118df11cb42c505a95d40d01e6cc6af7"
+  },
+  "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
+  "frozenTests": [
+    "test/build-record.test.js",
+    "test/check/queue.test.js",
+    "test/check/layout.test.js",
+    "test/build-merge-driver.test.js",
+    "test/init.test.js",
+    "test/covers.test.js",
+    "test/ready-label.test.js",
+    "test/status-build.test.js"
+  ],
+  "unfrozen": [
+    "test/init.test.js",
+    "test/build-merge-driver.test.js",
+    "test/status-build.test.js",
+    "test/check/layout.test.js",
+    "test/build-record.test.js",
+    "test/covers.test.js",
+    "test/ready-label.test.js",
+    "test/check/queue.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-58-r1.md",
+      "blockers": 2,
+      "independent": false,
+      "headSha": "b320b3ef6f423e4dfc78a05e46504ea33c544edd"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-58-r2.md",
+      "blockers": 1,
+      "independent": false,
+      "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-58i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-58i-r4.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "2b2e056059c994dfb2a914b94dc9f1f1a5586595"
+    },
+    {
+      "round": 5,
+      "path": ".slicekit/reviews/P8-S-58i-r5.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "8514fcb71fcb6da082ff76eaaf6f764c14bc4efb"
+    },
+    {
+      "round": 6,
+      "path": ".slicekit/reviews/P8-S-58i-r6.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "af5e537689edc11066e4770328db202446a412e2"
+    },
+    {
+      "round": 7,
+      "path": ".slicekit/reviews/P8-S-58i-r7.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "98f22307118df11cb42c505a95d40d01e6cc6af7"
+    }
+  ],
+  "ci": {
+    "sha": "f8ffbf473ae99702f95d0806e23f9e3a0a5e904e",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45071770018"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-22T17:52:31.072Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
+        "testExit": 1,
+        "tests": [
+          "test/build-record.test.js",
+          "test/check/queue.test.js",
+          "test/check/layout.test.js",
+          "test/build-merge-driver.test.js",
+          "test/init.test.js",
+          "test/covers.test.js",
+          "test/ready-label.test.js",
+          "test/status-build.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-22T17:52:32.215Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:38.226Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "662ddf7b70f68ed7d7324d4f8a8009894be56d78",
+        "reason": "init now writes the BUILD.md merge rule; two exact-content tests gain that line"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:40.422Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-merge-driver.test.js",
+        "amendCommit": "fbae3f1efe3c33ff858bf4758a0ba4c8270f23e0",
+        "reason": "a clone with core.autocrlf checks BUILD.md out with CRLF; compare with line endings normalised"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:42.467Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/status-build.test.js",
+        "amendCommit": "163a4d2c180d7b7237c0822924e43779800ade49",
+        "reason": "the BUILD.md preamble holds the words done when; check the table headers only"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:46:59.646Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/layout.test.js",
+        "amendCommit": "c47c7b7a127cdbad3ac96bb8775536a6b9557dcc",
+        "reason": "the examples need the merge rule and the new BUILD.md table to check green; Expected changes names them"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T18:58:28.083Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "b320b3ef6f423e4dfc78a05e46504ea33c544edd",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T19:09:03.724Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-58-r1.md",
+          "blockers": 2,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-22T19:19:55.491Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-record.test.js",
+        "amendCommit": "ac758ec659d9226d486e492fd8e9c1a73503cf28",
+        "reason": "review B-1: this branch's tests-red commit wrote BUILD.md with the old code and build commit cannot commit BUILD.md; Done when 1 holds for branches whose bookkeeping this code makes"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T19:27:21.885Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T19:36:48.057Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-58-r2.md",
+          "blockers": 1,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "changes-requested",
+      "at": "2026-11-22T19:36:48.840Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "in-review",
+      "at": "2026-11-22T19:43:52.146Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-58i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-22T19:44:06.327Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/covers.test.js",
+        "amendCommit": "295d01278dbd85937cc10ea15af224f6f0446ce2",
+        "reason": "independent review H-4 and H-3: Expected changes names src/cli/build.js (the keep line of build pr) and src/build/red.js (the resumed red commit)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T19:44:46.069Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/ready-label.test.js",
+        "amendCommit": "db04b3bcf60f88a470f0fad7e0e1350adabb1af3",
+        "reason": "S-60 owns src/build/red.js and src/cli/build.js in the same Order step; Expected changes names neither"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T20:04:57.041Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "2b2e056059c994dfb2a914b94dc9f1f1a5586595",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T20:11:23.761Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-58i-r4.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-22T20:18:31.786Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/queue.test.js",
+        "amendCommit": "b8b1df6d69379dc7a4f584f9f1e43e784162de37",
+        "reason": "independent review B-4: on CI's detached merge checkout the queue rule reads the pull request's head branch through src/check/ci-event.js"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T20:25:23.621Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "8514fcb71fcb6da082ff76eaaf6f764c14bc4efb",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T20:44:19.477Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 5,
+          "path": ".slicekit/reviews/P8-S-58i-r5.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-22T21:04:58.583Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "af5e537689edc11066e4770328db202446a412e2",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T21:10:17.954Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 6,
+          "path": ".slicekit/reviews/P8-S-58i-r6.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-22T21:17:39.841Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "98f22307118df11cb42c505a95d40d01e6cc6af7",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T21:22:34.390Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 7,
+          "path": ".slicekit/reviews/P8-S-58i-r7.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-22T21:37:30.250Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "f8ffbf473ae99702f95d0806e23f9e3a0a5e904e",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45071770018"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-22T21:37:34.456Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

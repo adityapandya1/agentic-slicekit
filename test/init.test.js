@@ -547,20 +547,20 @@ test('init writes the .githooks eol rule to .gitattributes once', () => {
   withRepo((root) => {
     const first = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(first.created.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\n');
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\nBUILD.md merge=slicekit-build\n');
     const second = init(root, { name: 'demo', shape: 'backend' });
     assert.ok(second.skipped.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\n');
+    assert.equal(read(root, '.gitattributes'), '.githooks/* text eol=lf\ndocs/intake/** -text\nBUILD.md merge=slicekit-build\n');
   });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.updated.includes('.gitattributes'));
-    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\ndocs/intake/** -text\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\n.githooks/* text eol=lf\ndocs/intake/** -text\nBUILD.md merge=slicekit-build\n');
   }, { files: { '.gitattributes': '* text=auto\n' } });
   withRepo((root) => {
     const result = init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     assert.ok(result.skipped.includes('.gitattributes'));
-  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n/docs/intake/** -text\n' } });
+  }, { files: { '.gitattributes': '/.githooks/*   text  eol=lf\n/docs/intake/** -text\nBUILD.md merge=slicekit-build\n' } });
 });
 
 // S-10 writes intake snapshots byte for byte; -text keeps git from converting their line endings.
@@ -586,7 +586,7 @@ test('init keeps a CRLF ignore or attributes file CRLF', () => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
     const kit = '.slicekit/graph/\r\n.slicekit/.subagent-*\r\n.slicekit/local.json\r\n.slicekit/reports/\r\n!.slicekit/journal/\r\n!.slicekit/journal/*.log\r\n.slicekit/journal/*.lock\r\n!.slicekit/journal-heads.log\r\n.worktrees/\r\n';
     assert.equal(read(root, '.gitignore'), `node_modules\r\n${kit}`);
-    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\ndocs/intake/** -text\r\n');
+    assert.equal(read(root, '.gitattributes'), '* text=auto\r\n.githooks/* text eol=lf\r\ndocs/intake/** -text\r\nBUILD.md merge=slicekit-build\r\n');
   }, { files: { '.gitignore': 'node_modules\r\n', '.gitattributes': '* text=auto' + '\r\n' } });
   withRepo((root) => {
     init(root, { name: 'demo', shape: 'backend', cli: 'node bin/slicekit.js' });
@@ -792,4 +792,24 @@ test('init without --protect calls no host write', () => {
     }),
     { commits: 1, branch: 'main' },
   );
+});
+
+// P8/S-58 (REQ-1.1, REQ-1.6, D-100): the BUILD.md merge rule in .gitattributes and the driver in the
+// clone's git config, each written once however often init runs.
+test('init writes the merge rule and the driver once', () => {
+  withRepo((root) => {
+    const cli = 'node bin/slicekit.js';
+    const rules = () => read(root, '.gitattributes').split(/\r?\n/).filter((l) => l === 'BUILD.md merge=slicekit-build');
+    const drivers = () => git(root, ['config', '--local', '--get-all', 'merge.slicekit-build.driver']).split('\n').filter(Boolean);
+    init(root, { name: 'demo', shape: 'backend', cli });
+    assert.equal(rules().length, 1);
+    assert.equal(drivers().length, 1);
+    const [driver] = drivers();
+    assert.ok(driver.startsWith(`${cli} status `), driver);
+    assert.ok(driver.endsWith(' %O %A %B'), driver);
+    assert.equal(git(root, ['check-attr', 'merge', '--', 'BUILD.md']), 'BUILD.md: merge: slicekit-build');
+    init(root, { name: 'demo', shape: 'backend' });
+    assert.equal(rules().length, 1, 'a second init added the rule again');
+    assert.deepEqual(drivers(), [driver], 'a second init added the driver again');
+  });
 });

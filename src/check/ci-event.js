@@ -92,11 +92,26 @@ export const SYNC_BRANCH = /^sync\/[0-9a-f]{7,40}$/;
 // merge commit's second parent when the event has none). Otherwise the current branch and HEAD.
 export function branchTip(ctx) {
   if (!ctx.git?.isRepo || !ctx.git.hasCommits) return null;
-  const ref = ctx.env?.GITHUB_HEAD_REF;
-  if (ctx.ci && typeof ref === 'string' && ref !== '') {
+  const ref = headRef(ctx.env);
+  if (ctx.ci && ref) {
     const headSha = readCiEvent(ctx.env)?.headSha;
     const tip = (headSha && /^[0-9a-f]{7,40}$/.test(headSha) && resolveCommit(ctx.root, headSha)) || resolveCommit(ctx.root, 'HEAD^2') || 'HEAD';
     return { branch: ref, tip };
   }
   return ctx.git.branch ? { branch: ctx.git.branch, tip: 'HEAD' } : null;
+}
+
+// The pull request's head branch GitHub Actions names in GITHUB_HEAD_REF, or null when unset or empty.
+function headRef(env) {
+  const ref = env?.GITHUB_HEAD_REF;
+  return typeof ref === 'string' && ref !== '' ? ref : null;
+}
+
+// The name of the branch judged: branchTip's, else HEAD's branch name (a branch with no commit yet).
+// With a detached HEAD, without --ci too, it is the pull request's head branch when CI names it: the
+// test job checks out the pull request's merge commit detached (P8/S-58, review B-4).
+export function judgedBranch(ctx) {
+  const branch = branchTip(ctx)?.branch ?? ctx.git?.branch ?? null;
+  if (branch) return branch;
+  return ctx.git?.isRepo ? headRef(ctx.env) : null;
 }

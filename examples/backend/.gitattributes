@@ -1,1 +1,2 @@
 docs/intake/** -text
+BUILD.md merge=slicekit-build

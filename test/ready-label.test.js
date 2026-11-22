@@ -380,3 +380,40 @@ test('ready-label: a broken event file is reported and still exits 0', () => {
     assert.match(r.stderr, /cannot read the GitHub event/);
   });
 });
+
+// P8/S-58 (REQ-3.11, D-100): the pull request changes src/a.js. A is its reviewed head; the verdict
+// files are committed on top, then main, which another slice changed, is merged in to make head B.
+// The verdict on A covers B, so the label is given on B.
+test("the ready label is given after a merge of the default branch that leaves the slice's files", () => {
+  withCli(({ root, cfg, ids, event, run, calls }) => {
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'plan');
+    git(root, 'checkout', '-q', '-b', 'slice/P1-S-01-a');
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src', 'a.js'), 'export const a = 1;\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'feat: a\n\nSlice: P1/S-01');
+    const A = git(root, 'rev-parse', 'HEAD');
+    const verdicts = [verdict(1, 0, { independent: true, headSha: A })].map((v) => ({
+      ...v,
+      path: `.slicekit/reviews/${verdictFileName(ids[0], v.round, { independent: v.independent })}`,
+    }));
+    fs.mkdirSync(path.join(root, '.slicekit', 'reviews'), { recursive: true });
+    for (const v of verdicts) fs.writeFileSync(path.join(root, ...v.path.split('/')), verdictText(v.blockers));
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'chore(slicekit): P1/S-01 verdict\n\nSlice: P1/S-01');
+    git(root, 'checkout', '-q', 'main');
+    fs.writeFileSync(path.join(root, 'src-other.js'), 'export const other = 1;\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', 'another slice merged');
+    git(root, 'checkout', '-q', 'slice/P1-S-01-a');
+    git(root, 'merge', '--no-ff', '--no-edit', '-q', 'main');
+    const B = git(root, 'rev-parse', 'HEAD');
+    assert.notEqual(A, B);
+    writeSlice(root, cfg, { ...readSlice(root, cfg, ids[0]), state: 'ci-green', pr: { number: 9, headSha: B }, verdicts });
+    const r = run(event(`[${ids[0]}] Fixture`, { head: B }), { GH_TOKEN: 't' });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, new RegExp(`${ids[0]} ready`));
+    assert.deepEqual(calls(), [CREATE, { number: 9, name: 'ready', present: true }]);
+  });
+});

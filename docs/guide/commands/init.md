@@ -10,6 +10,8 @@ slicekit init --shape <backend|fullstack|data> [--name <n>] [--docs <dir>] [--cl
 
 It writes `.slicekit/config.json`, the docs layout, the Claude Code commands, agents and hooks, the git hooks (it sets `core.hooksPath` to `.githooks`) and the CI workflow when there is none yet. It prints `created`, `updated` or `skipped` for each file, then `hooks run: <cli>`. An existing config wins, so `--shape` is then optional.
 
+It also writes `BUILD.md merge=slicekit-build` to `.gitattributes` and sets `merge.slicekit-build.driver` in the clone's git config to `<cli> status --merge-driver %O %A %B`, so a local merge regenerates `BUILD.md` from the merged state files instead of leaving a conflict (D-100). Run again, it adds neither twice. The git config is not part of a clone: in a clone made after init, run `slicekit init` once; it changes no committed file.
+
 - `--shape <backend|fullstack|data>`: the project's shape; it decides which files are rendered. `fullstack` adds the designer agent. Required unless a config exists.
 - `--name <n>`: the program name. Default: the folder's name.
 - `--docs <dir>`: the docs root. Default: `docs`.
@@ -20,7 +22,7 @@ It writes `.slicekit/config.json`, the docs layout, the Claude Code commands, ag
 
 ## What it reads and writes
 
-Reads the repository, an existing config and, with `--protect`, the git host's rulesets. Writes the config, the docs layout, `.claude/`, `.githooks/`, the workflow file, the rendered copies under `.slicekit/rendered/` and git's `core.hooksPath`. It commits nothing. With `--protect` it writes one ruleset on the host.
+Reads the repository, an existing config and, with `--protect`, the git host's rulesets. Writes the config, the docs layout, `.claude/`, `.githooks/`, the workflow file, the rendered copies under `.slicekit/rendered/`, `.gitattributes`, and git's `core.hooksPath` and `merge.slicekit-build.driver`. It commits nothing. With `--protect` it writes one ruleset on the host.
 
 ## Exit codes
 

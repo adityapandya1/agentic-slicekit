@@ -328,7 +328,8 @@ test('writes the release record and sets each slice released', async () => {
     const build = readBuild(root);
     assert.notEqual(build, buildBefore, 'BUILD.md is rewritten');
     assert.equal(build, renderBuild(root, loadConfig(root), buildBefore ?? ''));
-    for (const row of ['| S-01 | Thing a |', '| S-02 | Thing b |']) assert.ok(build.includes(row), `BUILD.md has no row ${row}`);
+    // P8/S-58 (D-105): every slice of the phase is released, so the phase is one line.
+    assert.match(build, /^- Phase 1 — .*: 2 slices, all merged; /m);
 
     // A phase is released once.
     const again = await p.run(['release', 'P1']);

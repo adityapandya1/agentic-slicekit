@@ -7,6 +7,7 @@ import { currentBranch, detectDefaultBranch, git, GitError, hasCommits, isRepo }
 import { GITHOOKS, HOOKS_PATH, hooksPathValue, isInstalledHooksPath } from './githooks.js';
 import { probeCli } from './hook-cli.js';
 import { kitPaths } from './paths.js';
+import { BUILD_MERGE_DRIVER, BUILD_MERGE_RULE, mergeDriverCommand } from './state/build.js';
 import { kitVersion, renderAll } from './render/index.js';
 import { readSettings } from './render/settings.js';
 import { WORKFLOW_DRIFT, WORKFLOW_PATH, workflowState, workflowSteps } from './workflow.js';
@@ -122,7 +123,26 @@ function attributeRules(root, cfg) {
   return [
     { rule: '.githooks/* text eol=lf', forms: new Set(['.githooks/* text eol=lf', '/.githooks/* text eol=lf']) },
     { rule: intake, forms: new Set([intake, `/${intake}`]) },
+    { rule: BUILD_MERGE_RULE, forms: new Set([BUILD_MERGE_RULE, `/${BUILD_MERGE_RULE}`]) },
   ];
+}
+
+// The merge driver the BUILD.md rule names, set in this clone's git config (REQ-1.6, D-100): a local
+// merge regenerates BUILD.md from the merged state files. Set once; a second init leaves one entry.
+function setMergeDriver(root, cfg) {
+  const want = mergeDriverCommand(cfg.cli);
+  const key = `merge.${BUILD_MERGE_DRIVER}`;
+  let have = [];
+  try {
+    have = git(root, ['config', '--local', '--get-all', `${key}.driver`]).split('\n').filter(Boolean);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+  }
+  if (have.length !== 1 || have[0] !== want) {
+    if (have.length > 0) git(root, ['config', '--local', '--unset-all', `${key}.driver`]);
+    git(root, ['config', '--local', `${key}.driver`, want]);
+  }
+  git(root, ['config', '--local', `${key}.name`, 'slicekit: BUILD.md rendered from the merged state files']);
 }
 const NOT_A_REPO = 'not a git repository';
 const UNBORN_PROTECTED = 'commit this scaffold with ALLOW_PROTECTED_COMMIT=1 git commit …, or start on a slice branch';
@@ -405,6 +425,7 @@ export function init(root, { name, shape, docsRoot, commands = {}, cli, defaultB
   if (repo) {
     stageHooks(root, hooks, warnings);
     setHooksPath(root, warnings);
+    setMergeDriver(root, cfg);
   }
   // The CI workflow (REQ-3.11): written when absent; an existing one is the team's and stays as is.
   const workflow = workflowState(root, cfg);
