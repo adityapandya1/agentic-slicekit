@@ -94,3 +94,61 @@ test('decideReady and the ready transition count a verdict whose head covers the
     assert.equal(setState(root, cfg, id, 'ready', {}).state, 'ready');
   });
 });
+
+// P8/S-58 (REQ-1.8, D-100): a slice branch that merged the default branch. The pull request changes
+// src/x.js; A is its reviewed head, then a bookkeeping commit, then B, a merge of main. On main, after
+// the branch point, `mainChange` is committed with a state file of another slice and BUILD.md.
+const X = ['one', 'two', 'three', 'four', 'five'].map((w) => `export const ${w} = 1;`).join('\n');
+function withMergedDefault(mainChange, fn) {
+  const repo = makeRepo();
+  try {
+    const root = repo.root;
+    init(root, { name: 'demo', shape: 'backend' });
+    const ids = writeSliceFixtures(root, 2);
+    write(root, 'src/x.js', `${X}\n`);
+    commitAll(root, 'plan');
+    git(root, 'checkout', '-q', '-b', 'slice/P1-S-01-a');
+    write(root, 'src/x.js', `${X.replace('one = 1', 'one = 2')}\n`);
+    const A = commitAll(root, 'feat: x\n\nSlice: P1/S-01');
+    write(root, '.slicekit/state/P1-S-01.json', '{"bookkeeping":true}\n');
+    write(root, '.slicekit/reviews/P1-S-01i-r1.md', 'Verdict: APPROVE\n');
+    commitAll(root, 'chore(slicekit): P1/S-01 verdict\n\nSlice: P1/S-01');
+    git(root, 'checkout', '-q', 'main');
+    for (const [rel, text] of Object.entries(mainChange)) write(root, rel, text);
+    write(root, '.slicekit/state/P1-S-02.json', '{"other":true}\n');
+    write(root, 'BUILD.md', '# Build on main\n');
+    commitAll(root, 'another slice merged');
+    git(root, 'checkout', '-q', 'slice/P1-S-01-a');
+    git(root, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-edit', '-q', 'main');
+    const B = git(root, 'rev-parse', 'HEAD');
+    assert.equal(git(root, 'rev-list', '--parents', '-n', '1', B).split(' ').length, 3, 'B is a merge commit');
+    return fn({ root, cfg: loadConfig(root), id: ids[0], A, B });
+  } finally {
+    repo.cleanup();
+  }
+}
+
+// The slice parked at ci-green on head B with an independent verdict on head A.
+function parkOnA(root, cfg, id, A, B) {
+  const verdicts = [{ round: 1, path: '.slicekit/reviews/P1-S-01i-r1.md', blockers: 0, independent: true, headSha: A }];
+  writeSlice(root, cfg, { ...readSlice(root, cfg, id), state: 'ci-green', pr: { number: 3, headSha: B }, verdicts });
+}
+
+test("a merge of the default branch that leaves the pull request's files as they were covers the verdict", () => {
+  withMergedDefault({ 'src/other.js': 'export const other = 1;\n' }, ({ root, cfg, id, A, B }) => {
+    assert.equal(git(root, 'show', `${B}:src/x.js`), git(root, 'show', `${A}:src/x.js`));
+    assert.equal(headCovers(root, A, B), true);
+    parkOnA(root, cfg, id, A, B);
+    assert.equal(setState(root, cfg, id, 'ready', {}).state, 'ready');
+  });
+});
+
+test('a merge that changes a file the pull request changes does not cover the verdict', () => {
+  withMergedDefault({ 'src/x.js': `${X.replace('five = 1', 'five = 5')}\n` }, ({ root, cfg, id, A, B }) => {
+    assert.notEqual(git(root, 'show', `${B}:src/x.js`), git(root, 'show', `${A}:src/x.js`));
+    assert.equal(headCovers(root, A, B), false);
+    parkOnA(root, cfg, id, A, B);
+    assert.throws(() => setState(root, cfg, id, 'ready', {}));
+    assert.equal(readSlice(root, cfg, id).state, 'ci-green');
+  });
+});

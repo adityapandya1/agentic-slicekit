@@ -793,3 +793,23 @@ test('init without --protect calls no host write', () => {
     { commits: 1, branch: 'main' },
   );
 });
+
+// P8/S-58 (REQ-1.1, REQ-1.6, D-100): the BUILD.md merge rule in .gitattributes and the driver in the
+// clone's git config, each written once however often init runs.
+test('init writes the merge rule and the driver once', () => {
+  withRepo((root) => {
+    const cli = 'node bin/slicekit.js';
+    const rules = () => read(root, '.gitattributes').split(/\r?\n/).filter((l) => l === 'BUILD.md merge=slicekit-build');
+    const drivers = () => git(root, ['config', '--local', '--get-all', 'merge.slicekit-build.driver']).split('\n').filter(Boolean);
+    init(root, { name: 'demo', shape: 'backend', cli });
+    assert.equal(rules().length, 1);
+    assert.equal(drivers().length, 1);
+    const [driver] = drivers();
+    assert.ok(driver.startsWith(`${cli} status `), driver);
+    assert.ok(driver.endsWith(' %O %A %B'), driver);
+    assert.equal(git(root, ['check-attr', 'merge', '--', 'BUILD.md']), 'BUILD.md: merge: slicekit-build');
+    init(root, { name: 'demo', shape: 'backend' });
+    assert.equal(rules().length, 1, 'a second init added the rule again');
+    assert.deepEqual(drivers(), [driver], 'a second init added the driver again');
+  });
+});

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { init } from '../../src/init.js';
 import { loadConfig } from '../../src/config.js';
 import { buildContext } from '../../src/check/context.js';
@@ -106,4 +107,26 @@ test('a missing brief folder is a layout finding', () => {
       ['.slicekit/config.json', 1, 'docs/brief is missing; run slicekit init'],
     ]);
   });
+});
+
+// P8/S-58 (REQ-1.1, REQ-1.6, D-100): init writes the BUILD.md merge rule; a .gitattributes without it
+// is a finding, and the kit's own .gitattributes carries it.
+test('a .gitattributes without the BUILD.md merge rule is a layout finding', () => {
+  const RULE = 'BUILD.md merge=slicekit-build';
+  withInstall('backend', ({ root, run }) => {
+    const file = path.join(root, '.gitattributes');
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(text.split(/\r?\n/).includes(RULE), text);
+    assert.deepEqual(run(), []);
+    fs.writeFileSync(file, text.split(/\r?\n/).filter((l) => l !== RULE).join('\n'));
+    const found = run();
+    assert.equal(found.length, 1, JSON.stringify(found));
+    assert.ok(found[0].message.includes(RULE), found[0].message);
+    assert.ok(found[0].message.includes('.gitattributes'), found[0].message);
+    fs.rmSync(file);
+    assert.equal(run().filter((f) => f.message.includes('.gitattributes')).length, 1, 'no .gitattributes is a finding too');
+  });
+  const kitRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  assert.ok(fs.readFileSync(path.join(kitRoot, '.gitattributes'), 'utf8').split(/\r?\n/).includes(RULE), "the kit's own .gitattributes lacks the rule");
+  assert.deepEqual(layout.run(buildContext(kitRoot, loadConfig(kitRoot))).filter((f) => f.message.includes(RULE)), []);
 });
