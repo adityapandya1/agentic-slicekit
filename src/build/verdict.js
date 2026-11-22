@@ -7,7 +7,9 @@
 //
 // Two in-loop rounds (D-18): a third is refused before anything moves, and a blocker left at round 2
 // records `changes-requested` and stops the loop with the pull request still a draft. After every
-// verdict the body's "Reviewer blocked" names each blocker and whether it was fixed.
+// verdict the body's "Reviewer blocked" names each blocker and whether it was fixed. The independent
+// rounds have their own budget (D-101): one, a second only after a blocker, any later one only with a
+// decision row; a blocker left at the last allowed round records `changes-requested` the same way.
 //
 // Finding IDs name one finding for the whole slice: a finding that survives keeps its ID, a new one
 // takes a number never used before in the slice (B and H counted apart). An ID absent from the
@@ -23,6 +25,8 @@ import { bannedPhrasesIn } from '../check/rules/style.js';
 import { buildContext } from '../check/context.js';
 import references from '../check/rules/references.js';
 import { loadConfig } from '../config.js';
+import { readDecisions } from '../decisions.js';
+import { kitPaths } from '../paths.js';
 import { lines as splitLines } from '../markdown.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
@@ -133,6 +137,54 @@ function verdictSource(wt, id, k, src, dest, rel, shown) {
 
 const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 
+// ---- The independent round budget (REQ-2.8, D-101) ----
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The settled decision rows of `<docsRoot>/decisions.md` that allow `id` one more independent round:
+// the answer names the slice ID and the words "one more round". 0 when the file is missing.
+export function extraRounds(root, cfg, id) {
+  const file = kitPaths(root, cfg).decisions;
+  if (!fs.existsSync(file)) return 0;
+  const names = new RegExp(`(?<![\\w/])${escapeRe(id)}(?!\\d)`);
+  return readDecisions(fs.readFileSync(file, 'utf8')).rows.filter((r) => r.table === 'settled' && names.test(r.answer) && /\bone more round\b/i.test(r.answer)).length;
+}
+
+// Whether one more independent round may start after the independent verdicts recorded, given as
+// their blocker counts in round order: the first always; a second only when the first left a blocker;
+// any later one only with a decision row for it (`extra` rows allow `extra` rounds beyond those).
+export function independentRoundAllowed(blockerCounts, extra = 0) {
+  const n = blockerCounts.length;
+  if (n === 0) return true;
+  const base = blockerCounts[0] > 0 ? 2 : 1;
+  if (n < base && blockerCounts.at(-1) > 0) return true;
+  return n - base < extra;
+}
+
+// The blocker counts of the independent verdicts in the slice's state entries, in round order.
+export const independentBlockers = (verdicts) =>
+  [...verdicts]
+    .filter((v) => v.independent)
+    .sort((a, b) => a.round - b.round)
+    .map((v) => Number(v.blockers ?? 0));
+
+// The three choices for a person when the independent rounds are used (REQ-2.8, D-101): `review start`
+// and `build verdict --independent` both print them.
+export const STOP_CHOICES = [
+  'fix the open blockers by hand in the slice worktree and push them with slicekit build pr <id>',
+  're-scope the slice: amend the slice file so the blockers fall outside it, or move them to a new slice',
+  'allow one more round: record a decision row in <decisions> whose answer names <id> and says "one more round", then run slicekit review start <n> again',
+];
+
+// The stop text: the open blockers of the latest independent round, each with its "what is wrong",
+// then the three choices.
+export function stopText(root, cfg, id, number, round, blockers) {
+  const decisions = posixRel(root, kitPaths(root, cfg).decisions);
+  const open = blockers.map((f) => `- ${f.id} ${quoted(f.wrong)}`);
+  const choices = STOP_CHOICES.map((c, i) => `${i + 1}. ${c.replaceAll('<id>', id).replaceAll('<n>', String(number)).replaceAll('<decisions>', decisions)}`);
+  return [`no independent round is left for ${id} (D-101); round ${round}'s verdict holds open blockers:`, ...open, 'choose one:', ...choices].join('\n');
+}
+
 // A verdict file's absolute path in the session root, with forward slashes: the reviewer works in
 // the worktree, so a relative path would land there.
 const inSessionRoot = (root, name) => path.resolve(root, ...REVIEWS.split('/'), name).split(path.sep).join('/');
@@ -165,17 +217,31 @@ const withNextPath = (root, id, result, verdicts, independent) => ({
   verdictPath: !independent && (result.next === 'fix' || result.next === 'ask') ? nextVerdictPath(root, id, verdicts) : null,
 });
 
-// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix, never
-// `stuck`, and without blockers it goes to CI; its should-haves are the review procedure's to list.
-function outcome(k, v, verdicts, independent) {
+// An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix while
+// another independent round is left (`left`, D-101), else `stuck`; without blockers it goes to CI;
+// its should-haves are the review procedure's to list.
+function outcome(k, v, verdicts, independent, left = true) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
   const shouldHaves = v.findings.filter((f) => f.kind === 'should-have').map((f) => f.id);
   const roundsUsed = inLoop(verdicts);
   let next = 'ci';
-  if (blockers.length > 0) next = independent || roundsUsed < LOOP_ROUNDS ? 'fix' : 'stuck';
+  if (blockers.length > 0) next = (independent ? left : roundsUsed < LOOP_ROUNDS) ? 'fix' : 'stuck';
   else if (shouldHaves.length > 0 && !independent) next = 'ask';
   return { round: k, blockers, shouldHaves, roundsUsed, next };
 }
+
+// The independent outcome with what a person needs (D-101): on `fix`, `reviewStart`, the command of
+// the next independent round; on `stuck`, `stop`, the open blockers and the three choices.
+function independentOutcome(root, cfg, id, number, k, v, verdicts) {
+  const left = independentRoundAllowed(independentBlockers(verdicts), extraRounds(root, cfg, id));
+  const result = outcome(k, v, verdicts, true, left);
+  if (result.next === 'fix') return { ...result, reviewStart: `slicekit review start ${number}` };
+  if (result.next === 'stuck') return { ...result, stop: stopText(root, cfg, id, number, k, v.findings.filter((f) => f.kind === 'blocker')) };
+  return result;
+}
+
+const outcomeOf = (root, cfg, id, number, k, v, verdicts, independent) =>
+  independent ? independentOutcome(root, cfg, id, number, k, v, verdicts) : outcome(k, v, verdicts, false);
 
 const push = (wt, cfg) => pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
 
@@ -338,7 +404,10 @@ function assertBuilt(wt, id, current) {
 // -> {round, blockers, shouldHaves, roundsUsed, next, verdictPath}: `blockers` and `shouldHaves` are
 // finding IDs; `next` is `fix`, `ask`, `ci`, or `stuck` when an in-loop verdict leaves blockers at the last round.
 // `stuck` is returned, not thrown: the loop has stopped and changes-requested is recorded, and a
-// caller must exit 1 on it (the CLI does). `verdictPath` is the next round's file (nextVerdictPath)
+// caller must exit 1 on it (the CLI does). An independent verdict is `stuck` when it leaves a blocker
+// and no independent round is left (D-101); it then carries `stop`, the open blockers and the three
+// choices to print, and on `fix` `reviewStart`, the command of the next independent round.
+// `verdictPath` is the next round's file (nextVerdictPath)
 // on `fix` or `ask` of an in-loop verdict, else null.
 //
 // `independent` (D-39): the verdict of an independent review, named `<P-S>i-r<k>.md`, recorded from
@@ -397,7 +466,8 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    return withNextPath(root, id, finish(wt, cfg, host, id, current, outcome(k, v, verdicts, independent), verdicts, independent), verdicts, independent);
+    const result = outcomeOf(root, cfg, id, current.pr.number, k, v, verdicts, independent);
+    return withNextPath(root, id, finish(wt, cfg, host, id, current, result, verdicts, independent), verdicts, independent);
   }
 
   // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
@@ -420,7 +490,8 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   const unknown = referenceProblems(wt, rel, text, shown);
   if (unknown.length > 0) throw new BuildError(unknown.join('\n'));
   // The line this round would write, judged against the live body before anything moves.
-  const stuck = outcome(k, v, [...verdicts, { independent }], independent).next === 'stuck';
+  const blockerCount = v.findings.filter((f) => f.kind === 'blocker').length;
+  const stuck = outcomeOf(root, cfg, id, current.pr.number, k, v, [...verdicts, { round: k, independent, blockers: blockerCount }], independent).next === 'stuck';
   const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings, headSha: current.pr.headSha, independent }], {
     stuck,
     covers: coversIn(wt),
@@ -433,7 +504,7 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   if (here && moved) fs.rmSync(src);
   else if (here) move(src, dest);
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
-  const blockers = v.findings.filter((f) => f.kind === 'blocker').length;
-  const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers, independent } });
-  return withNextPath(root, id, finish(wt, cfg, host, id, state, outcome(k, v, state.verdicts, independent), state.verdicts, independent), state.verdicts, independent);
+  const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers: blockerCount, independent } });
+  const result = outcomeOf(root, cfg, id, state.pr.number, k, v, state.verdicts, independent);
+  return withNextPath(root, id, finish(wt, cfg, host, id, state, result, state.verdicts, independent), state.verdicts, independent);
 }

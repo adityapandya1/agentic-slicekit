@@ -18,6 +18,10 @@ it is left to the person who started this session. When this session built the s
 the building session's context, stop and tell the human to run `/slicekit review <PR>` in a new
 session.
 
+A reviewer subagent started by `{{cli}} review start <PR>` from the main checkout, given only the
+pull request and the reviewer's brief and no build context, counts as independent, and
+`/slicekit review` in a new session is the stronger form (D-104).
+
 When the arguments are `(none)`, ask the human for the pull request's number and use it in place of
 `{{args}}` below. Call that number `<n>`.
 
@@ -38,6 +42,12 @@ slice pull request or from a fork, and a review worktree with uncommitted change
 refusal and stop, since the human decides each of these. A refusal that names
 `build pr <id> --worktree <dir>` means an earlier review session committed a fix it did not push:
 run `{{cli}} build pr <id> --worktree <dir>` with the path it names, then this step again.
+
+The independent review has one round, and a second only when the first left a blocker (D-101). A
+refusal that `no independent round is left` names the latest round's open blockers and three
+choices: fix them by hand, re-scope the slice, or record a decision row that allows one more round.
+A refusal that the review `left no blocker` means the slice has its independent verdict. Print
+either refusal and stop: the human decides.
 
 ## 3. The reviewer gives the independent verdict
 
@@ -60,6 +70,10 @@ branch, and prints `next: <step>`, `blockers: <IDs or none>`, `should-haves: <ID
   session pushed since step 2. Run `{{cli}} build sync <id> --worktree <wt>`, then this command again.
 - `a new verdict needs a fresh fetch`: origin could not be reached. Print it and stop; tell the
   human to run this command again once origin answers.
+- Exit 1 with `stopped:` and `next: stuck`: the round was the last one allowed and left a blocker
+  (D-101). The slice is `changes-requested`. Print the open blockers and the three choices it
+  prints and stop: the human fixes them by hand, re-scopes the slice, or records a decision row that
+  allows one more round.
 - Any other refusal goes to the human: print it and stop.
 
 When the verdict lists should-haves, ask the human once, listing each with its ID and its "What is

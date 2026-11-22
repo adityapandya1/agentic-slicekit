@@ -3,6 +3,7 @@
 // caught. Part 2 of the old review.test.js (issue #55).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -248,6 +249,13 @@ test('the ready label is withheld without an independent verdict', async () => {
   }
 });
 
+// P8/S-59: a second independent round after a clean first one needs a decision row allowing it (D-101).
+function allowOneMoreRound(p) {
+  fs.appendFileSync(path.join(p.root, 'docs', 'decisions.md'), '| D-02 | Decision | Another independent round for P1/S-01? | P1/S-01 may have one more round. | team, 2026-11-22 |\n');
+  git(p.root, ['add', 'docs/decisions.md']);
+  execFileSync('git', ['commit', '-q', '-m', 'docs: decision'], { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } });
+}
+
 // Task 1's review, M-4: a clean independent verdict at ready sends the pull request back to draft;
 // finish brings it to ready again only once CI is green and the ready decision passes.
 test('a clean independent verdict at ready ends at ready with the pull request ready', async () => {
@@ -257,6 +265,8 @@ test('a clean independent verdict at ready ends at ready with the pull request r
     assert.equal((await cli(p.root, ['build', 'finish', 'P1/S-01'], p.env)).code, 0);
     assert.equal(stateIn(p.wt).state, 'ready');
 
+    // P8/S-59: the row that allows the second independent round after a clean first one.
+    allowOneMoreRound(p);
     await independentRound(p, 4, verdictText('APPROVE'));
     const back = stateIn(p.wt);
     assert.equal(back.state, 'in-review');

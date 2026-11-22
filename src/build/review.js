@@ -12,7 +12,8 @@ import { readSlice } from '../state/index.js';
 import { titleSlice } from '../check/rules/ci-title.js';
 import { posixRel } from './red.js';
 import { commits } from './sync.js';
-import { independentVerdictPath } from './verdict.js';
+import { extraRounds, independentBlockers, independentRoundAllowed, independentVerdictPath, stopText } from './verdict.js';
+import { parseVerdict } from '../verdict.js';
 import { BuildError, listWorktrees, reviewBranch, reviewWorktreeDir, samePath } from './worktree.js';
 
 const fwd = (p) => p.replaceAll('\\', '/');
@@ -58,8 +59,8 @@ function clearOld(root, id, dir, branch) {
   if (lines(git(root, ['branch', '--list', branch])).length > 0) git(root, ['branch', '-q', '-D', branch]);
 }
 
-// The pull request number the slice's state on `ref` records, or null when it records none.
-function recordedNumber(root, cfg, id, ref) {
+// The slice's state as `ref` holds it, or null when it holds none or it does not parse.
+function stateOn(root, cfg, id, ref) {
   const rel = posixRel(root, path.join(kitPaths(root, cfg).state, stateFileName(id)));
   let text;
   try {
@@ -69,15 +70,39 @@ function recordedNumber(root, cfg, id, ref) {
     return null;
   }
   try {
-    return JSON.parse(text).pr?.number ?? null;
+    return JSON.parse(text);
   } catch {
     return null;
   }
 }
 
+// The independent round budget (REQ-2.8, D-101), judged on the slice's state on `ref`: one round, a
+// second only when the first left a blocker, any later one only with a decision row for it. A refusal
+// names the latest round's open blockers and the three choices.
+function assertRoundLeft(root, cfg, id, number, ref, state) {
+  const verdicts = Array.isArray(state?.verdicts) ? state.verdicts : [];
+  const counts = independentBlockers(verdicts);
+  if (independentRoundAllowed(counts, extraRounds(root, cfg, id))) return;
+  const latest = verdicts.filter((v) => v.independent).sort((a, b) => a.round - b.round).at(-1);
+  if (counts.at(-1) === 0) {
+    const decisions = posixRel(root, kitPaths(root, cfg).decisions);
+    throw new BuildError(
+      `the independent review of ${id} left no blocker in round ${latest.round}; another independent round starts only after a blocker, or with a decision row in ${decisions} whose answer names ${id} and says "one more round" (D-101)`,
+    );
+  }
+  let blockers;
+  try {
+    blockers = parseVerdict(git(root, ['show', `${ref}:${latest.path}`]), latest.path).findings.filter((f) => f.kind === 'blocker');
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    blockers = [];
+  }
+  throw new BuildError(stopText(root, cfg, id, number, latest.round, blockers));
+}
+
 // -> {id, worktree, branch, round, verdictPath}: `round` is the slice's verdict count plus one, and
 // `verdictPath` the absolute session-root path of that round's independent verdict. Every refusal
-// comes before an earlier review worktree is touched.
+// comes before an earlier review worktree is touched, the round budget's too (D-101).
 export function startReview(root, cfg, host, number) {
   const pr = host.getPullRequest(number);
   const id = titleSlice(pr.title ?? '');
@@ -108,8 +133,10 @@ export function startReview(root, cfg, host, number) {
   if (typeof pr.headSha === 'string' && pr.headSha !== '' && pr.headSha !== tip) {
     throw new BuildError(`pull request #${number}'s head ${pr.headSha.slice(0, 7)} is not origin/${headRef}; is it from a fork? If the branch was just pushed, run the same command again in a minute`);
   }
-  const recorded = recordedNumber(root, cfg, id, tracking);
+  const onOrigin = stateOn(root, cfg, id, tracking);
+  const recorded = onOrigin?.pr?.number ?? null;
   if (recorded !== null && recorded !== number) throw new BuildError(`pull request #${number} is not the one recorded for ${id} (#${recorded})`);
+  assertRoundLeft(root, cfg, id, number, tracking, onOrigin);
 
   const dir = reviewWorktreeDir(root, addr);
   clearOld(root, id, dir, branch);
