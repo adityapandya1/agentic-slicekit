@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-58",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 209,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
-    "headSha": "b320b3ef6f423e4dfc78a05e46504ea33c544edd"
+    "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
   },
   "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
   "frozenTests": [
@@ -148,6 +148,22 @@
         "unfreeze": "test/build-record.test.js",
         "amendCommit": "ac758ec659d9226d486e492fd8e9c1a73503cf28",
         "reason": "review B-1: this branch's tests-red commit wrote BUILD.md with the old code and build commit cannot commit BUILD.md; Done when 1 holds for branches whose bookkeeping this code makes"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T19:27:21.885Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
       }
     }
   ]
