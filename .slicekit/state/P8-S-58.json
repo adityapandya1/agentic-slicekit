@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-58",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 209,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
-    "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
+    "headSha": "2b2e056059c994dfb2a914b94dc9f1f1a5586595"
   },
   "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
   "frozenTests": [
@@ -237,6 +237,22 @@
         "unfreeze": "test/ready-label.test.js",
         "amendCommit": "db04b3bcf60f88a470f0fad7e0e1350adabb1af3",
         "reason": "S-60 owns src/build/red.js and src/cli/build.js in the same Order step; Expected changes names neither"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T20:04:57.041Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "2b2e056059c994dfb2a914b94dc9f1f1a5586595",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
       }
     }
   ]
