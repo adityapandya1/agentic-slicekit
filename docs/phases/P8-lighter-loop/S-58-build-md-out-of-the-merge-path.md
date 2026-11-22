@@ -41,7 +41,7 @@ Amended (author's standing instruction, 2026-11-22): `test/status-build.test.js`
 
 ## Expected changes
 
-`src/build/record.js`, `src/build/pr.js`, `src/state/covers.js`, `src/check/rules/queue.js`, `src/check/rules/layout.js`, `src/init.js`, `src/paths.js`, `src/cli/status.js`, `src/state/build.js`, `.gitattributes`, `docs/guide/rules/queue.md`, `docs/guide/rules/layout.md`, `docs/guide/commands/init.md`, `docs/guide/commands/status.md`, `docs/guide/slicekit-guide.html`, `docs/runbook.md`, tests.
+`src/build/record.js`, `src/build/pr.js`, `src/state/covers.js`, `src/check/rules/queue.js`, `src/check/rules/layout.js`, `src/init.js`, `src/paths.js`, `src/cli/status.js`, `src/state/build.js`, `.gitattributes`, `docs/guide/rules/queue.md`, `docs/guide/rules/layout.md`, `docs/guide/commands/init.md`, `docs/guide/commands/status.md`, `docs/guide/slicekit-guide.html`, `docs/runbook.md`, `examples/backend/.gitattributes`, `examples/data/.gitattributes`, `examples/fullstack/.gitattributes`, `examples/data/BUILD.md`, `examples/fullstack/BUILD.md`, tests. The examples gain the merge rule the layout rule now asks for, and their `BUILD.md` the new table, so the examples still check green.
 
 ## Tasks
 
