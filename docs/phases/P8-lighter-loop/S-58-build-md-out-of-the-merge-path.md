@@ -35,6 +35,8 @@ decisions: [D-100, D-35, D-105]
 
 Amended (author's standing instruction, 2026-11-22): `test/init.test.js`, whose tests "init writes the .githooks eol rule to .gitattributes once" and "init keeps a CRLF ignore or attributes file CRLF" expect `.gitattributes` to hold exactly the `.githooks` and intake lines; each expected text gains the `BUILD.md merge=slicekit-build` line init now writes.
 
+Amended (author's standing instruction, 2026-11-22): `test/build-merge-driver.test.js` compares the merged `BUILD.md` with its line endings normalised, since a clone with `core.autocrlf` set checks the file out with CRLF.
+
 ## Expected changes
 
 `src/build/record.js`, `src/build/pr.js`, `src/state/covers.js`, `src/check/rules/queue.js`, `src/check/rules/layout.js`, `src/init.js`, `src/paths.js`, `src/cli/status.js`, `src/state/build.js`, `.gitattributes`, `docs/guide/rules/queue.md`, `docs/guide/rules/layout.md`, `docs/guide/commands/init.md`, `docs/guide/commands/status.md`, `docs/guide/slicekit-guide.html`, `docs/runbook.md`, tests.
