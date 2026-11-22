@@ -5,7 +5,7 @@ repo: .
 group: A
 runbook: yes
 requirements: [REQ-1.6, REQ-1.8, REQ-3.7, REQ-3.11, REQ-1.1]
-decisions: [D-100, D-35]
+decisions: [D-100, D-35, D-105]
 ---
 
 ## Done when
@@ -15,6 +15,7 @@ decisions: [D-100, D-35]
 3. `slicekit init` writes `BUILD.md merge=slicekit-build` to `.gitattributes` and sets `merge.slicekit-build.driver` in the clone's git config to the kit's `status` merge-driver mode; run again it adds neither twice. A local `git merge` of the default branch into a slice branch, both of which changed state files and `BUILD.md`, completes with no conflict on `BUILD.md`, and the file equals what `status --write` renders from the merged state files. The layout rule reports a `.gitattributes` that lacks the rule; the kit's own `.gitattributes` carries it (REQ-1.6, REQ-1.1).
 4. A verdict on head A covers head B when B adds to A a merge of the default branch after which every file the pull request changes, bookkeeping aside, has the content it had at A (D-100, refining D-35): `state set <id> ready` accepts an independent verdict on A, the ready label of REQ-3.11 is given on B, and `build pr` keeps a slice at `in-review`, `ci-green` or `ready` rather than moving it to `draft-pr`. When the merge changes one of those files, each refuses as before; the scenario of REQ-1.8 passes as written (REQ-1.8, REQ-3.11).
 5. The runbook says how a clone made after init gets the merge driver (run `slicekit init` once; it changes no committed file), what a `BUILD.md` conflict means when the driver is not set, and that the sync pull request rewrites `BUILD.md`. The guide pages of the queue and layout rules and of `init` and `status` say the same, `node scripts/guide-html.js --check` exits 0, and `slicekit check` gives `0 findings`.
+6. `slicekit status --write` writes one row per slice of a phase with a slice not yet merged, with its name, group, status and a link to its slice file, and no Done when column; a phase whose slices are all merged is one line naming the phase, its number of slices and its folder under the docs root. A slice moved back from `done` brings its phase's rows back. Run on the kit's own state files, `slicekit status --write` writes a `BUILD.md` under 20 KB (REQ-1.6, D-105).
 
 ## Evaluation set
 
@@ -29,6 +30,8 @@ decisions: [D-100, D-35]
 | `covers.test.js » a merge of the default branch that leaves the pull request's files as they were covers the verdict` | happy | REQ-1.8 |
 | `covers.test.js » a merge that changes a file the pull request changes does not cover the verdict` | negative | REQ-1.8 |
 | `ready-label.test.js » the ready label is given after a merge of the default branch that leaves the slice's files` | happy | REQ-3.11 |
+| `status-build.test.js » a phase with a slice not merged lists its slices with links and no Done when column` | happy | REQ-1.6 |
+| `status-build.test.js » a phase whose slices are all merged is one line, and a slice moved back from done brings its rows back` | negative | REQ-1.6 |
 
 ## Expected changes
 
@@ -66,10 +69,20 @@ decisions: [D-100, D-35]
 - [ ] **Step 4: Run** the same and `node --test test/state.test.js test/build-pr-head.test.js` → PASS.
 - [ ] **Step 5: Commit** `fix(state): a merge of the default branch does not reset a verdict on untouched files`.
 
-### Task 4: The pages
+### Task 4: The shorter table
+
+**Files:** Create `test/status-build.test.js`. Modify `src/state/build.js`.
+
+- [ ] **Step 1: Failing tests** — the two `status-build.test.js` tests above. Existing tests that read the Done when column change with the rule; each one names P8/S-58 in a comment.
+- [ ] **Step 2: Run** `node --test test/status-build.test.js` → FAIL.
+- [ ] **Step 3: Implement** in `src/state/build.js`: the row without Done when and with the slice file's link relative to the repository root; the one line for a phase whose slices are all `done`.
+- [ ] **Step 4: Run** the same and `node --test test/state.test.js test/check/queue.test.js` → PASS.
+- [ ] **Step 5: Commit** `feat(status): BUILD.md links slice files and folds merged phases`.
+
+### Task 5: The pages
 
 **Files:** Modify `docs/guide/rules/queue.md`, `docs/guide/rules/layout.md`, `docs/guide/commands/init.md`, `docs/guide/commands/status.md`, `docs/guide/slicekit-guide.html`.
 
-- [ ] **Step 1: Write** the pages' lines for Done when 2 to 4; run `node scripts/guide-html.js`.
+- [ ] **Step 1: Write** the pages' lines for Done when 2 to 4 and 6; run `node scripts/guide-html.js`.
 - [ ] **Step 2: Run** `node --test test/guide-page.test.js test/user-guide.test.js` and `node bin/slicekit.js check` → PASS, `0 findings`.
 - [ ] **Step 3: Commit** `docs(guide): BUILD.md out of the merge path`.

@@ -139,8 +139,11 @@ Enforced by: `slicekit check` (citations rule, lane rule); `slicekit build amend
 
 ## REQ-1.6 BUILD.md is a view of state, never the source
 
-`BUILD.md` SHALL list every phase and slice with status and pull request number, generated from the
-state files. `slicekit status --write` regenerates it. A slice branch SHALL not commit its own change
+`BUILD.md` SHALL list every phase, and every slice of a phase with a slice not yet merged, with its
+name, group, status and pull request number and a link to its slice file, generated from the state
+files; it holds no copy of a slice's Done when list. A phase whose slices are all merged SHALL be one
+line naming the phase, its number of slices and its folder under the docs root (D-105).
+`slicekit status --write` regenerates it. A slice branch SHALL not commit its own change
 to `BUILD.md`; the sync after a merge (03 REQ-3.11) regenerates it on the default branch (D-100).
 Init SHALL register a git merge driver for `BUILD.md`, named in `.gitattributes` and set in the
 clone's git config, that regenerates the file from the merged state files on a local merge. A
@@ -153,7 +156,7 @@ says `todo` THEN `slicekit check` fails and names the slice.
 Scenario: GIVEN a slice branch whose own state file moved to `in-review` WHEN `slicekit check` runs
 on that branch with `BUILD.md` unchanged from the default branch THEN the queue rule reports nothing.
 
-Cites: D-10, D-22, D-100.
+Cites: D-10, D-22, D-100, D-105.
 
 Enforced by: `slicekit check` (queue rule); `slicekit init` (merge driver); the sync job.
 
