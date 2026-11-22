@@ -224,6 +224,46 @@ test('instructions.test.js » a command whose procedure is not built exits 1', (
   }
 });
 
+// The prose of a rendered text as sentences: fenced lines left out, wrapped lines joined.
+const sentences = (text) =>
+  [...prose(text)]
+    .map(([l]) => l.trim())
+    .join(' ')
+    .split(/(?<=[.!?])\s+/);
+
+// REQ-2.12, D-101: the reviewer reports no style finding, no finding when it has none, and knows its rounds.
+test('instructions.test.js » the reviewer brief forbids a style finding and names the round budget', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const r = await cli(root, ['instructions', 'reviewer', 'P1/S-01']);
+    assert.equal(r.code, 0, r.stderr);
+    const t = r.stdout;
+    assert.match(t, /no finding on wording, formatting or naming alone/, t);
+    assert.match(t, /no finding when (?:it has|you have) none/, t);
+    assert.match(t, /`?(?:Verdict: )?APPROVE`? with an empty findings table/, t);
+    // The budget comes from the brief itself: this slice cites neither requirement.
+    assert.match(t, /round budget/i, t);
+    assert.ok(t.includes('REQ-2.6'), t);
+    assert.ok(t.includes('REQ-2.8'), t);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-2.8, D-104: a fresh reviewer subagent from the main checkout is an independent review.
+test('instructions.test.js » the review procedure says a fresh reviewer subagent from the main checkout is independent', async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const r = await cli(root, ['instructions', '--command', 'review', '1']);
+    assert.equal(r.code, 0, r.stderr);
+    const parts = ['subagent', 'review start', 'main checkout', 'no build context', 'independent', '/slicekit review', 'new session', 'stronger form'];
+    const one = sentences(r.stdout).filter((s) => parts.every((x) => s.includes(x)));
+    assert.equal(one.length, 1, r.stdout);
+  } finally {
+    cleanup();
+  }
+});
+
 // ---- further cases ----
 
 // P5/S-23, REQ-2.13, REQ-2.14: the last two procedures are built.
