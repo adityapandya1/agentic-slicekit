@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-58",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 209,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
-    "headSha": "2b2e056059c994dfb2a914b94dc9f1f1a5586595"
+    "headSha": "8514fcb71fcb6da082ff76eaaf6f764c14bc4efb"
   },
   "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
   "frozenTests": [
@@ -286,6 +286,22 @@
         "unfreeze": "test/check/queue.test.js",
         "amendCommit": "b8b1df6d69379dc7a4f584f9f1e43e784162de37",
         "reason": "independent review B-4: on CI's detached merge checkout the queue rule reads the pull request's head branch through src/check/ci-event.js"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T20:25:23.621Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "8514fcb71fcb6da082ff76eaaf6f764c14bc4efb",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
       }
     }
   ]
