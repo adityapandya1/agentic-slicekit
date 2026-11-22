@@ -52,7 +52,10 @@ export function headCovers(root, from, to, { merges = true } = {}) {
       throw e;
     }
     const kept = bookkeeping(root);
-    if (names(root, ['diff', '--name-only', '--no-renames', a, b, '--']).every((f) => inBookkeeping(kept, f))) return true;
+    if (names(root, ['diff', '--name-only', '--no-renames', a, b, '--']).every((f) => inBookkeeping(kept, f))) {
+      // A bookkeeping-only difference that a merge reached by putting back older content is no cover.
+      return !merges || firstParentLine(root, a, b).every(({ sha, parents }) => parents.length < 2 || keepsSecondParent(root, kept, sha, parents));
+    }
     return merges && mergedDefaultOnly(root, kept, a, b);
   } catch (e) {
     if (e instanceof GitError) return false;
@@ -87,16 +90,33 @@ const isAncestor = (root, x, y) => {
 };
 
 // D-100, refining D-35: B adds to A, on its first-parent line, only bookkeeping commits and merges
-// whose second parent the default branch reaches, and every file the pull request changes (its
+// whose second parent the default branch reaches and which give every file the slice branch did not
+// change that parent's content, and every file the pull request changes (its
 // changes against the default branch's merge base at A and at B, bookkeeping aside) has the same
 // content at B as at A.
+// The commits B adds to A on its first-parent line, each with its parents.
+const firstParentLine = (root, a, b) =>
+  names(root, ['rev-list', '--first-parent', '--parents', b, `^${a}`]).map((line) => {
+    const [sha, ...parents] = line.split(' ');
+    return { sha, parents };
+  });
+
+// Whether merge `sha` gives every file its first parent did not change since it met the second
+// parent, bookkeeping aside, the second parent's content: a merge that puts back older content of a
+// file only the default branch changed does not.
+function keepsSecondParent(root, kept, sha, parents) {
+  const base = git(root, ['merge-base', parents[0], parents[1]]);
+  const ownSide = new Set(names(root, ['diff', '--name-only', '--no-renames', base, parents[0], '--']));
+  return names(root, ['diff', '--name-only', '--no-renames', parents[1], sha, '--']).every((f) => inBookkeeping(kept, f) || ownSide.has(f));
+}
+
 function mergedDefaultOnly(root, kept, a, b) {
   const tips = defaultTips(root);
   if (tips.length === 0) return false;
-  for (const line of names(root, ['rev-list', '--first-parent', '--parents', b, `^${a}`])) {
-    const [sha, ...parents] = line.split(' ');
+  for (const { sha, parents } of firstParentLine(root, a, b)) {
     if (parents.length >= 2) {
       if (!tips.some((t) => isAncestor(root, parents[1], t))) return false;
+      if (!keepsSecondParent(root, kept, sha, parents)) return false;
     } else {
       const own = names(root, ['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '--root', sha]);
       if (!own.every((f) => inBookkeeping(kept, f))) return false;

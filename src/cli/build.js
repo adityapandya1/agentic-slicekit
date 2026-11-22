@@ -149,14 +149,12 @@ function prStep(root, io, positionals, values) {
   if (positionals.length !== 1) return usage(io);
   const cfg = loadConfig(root);
   const host = getHost(cfg, io.env ?? process.env, root);
-  const { number, url, verdictPath, local, movedHead, kept } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree, env: io.env ?? process.env });
+  const { number, url, verdictPath, local, movedHead } = openSlicePr(root, cfg, host, positionals[0], { notes: values.notes, worktree: values.worktree, env: io.env ?? process.env });
   if (local) io.stderr(`${localNote(local)}\n`);
   // Last, the path the next reviewer writes; none once the loop's rounds are used.
   // A head recorded at draft-pr: the verdict path again, for a review of that head.
   const moved = movedHead ? `head ${movedHead} recorded; the next verdict reviews it\n` : '';
-  // A merge of the default branch that leaves the pull request's files as they were (D-100).
-  const keptLine = kept ? `${positionals[0]} stays ${kept}; the merge leaves the reviewed files as they were\n` : '';
-  io.stdout(`#${number} ${url}\n${moved}${keptLine}${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
+  io.stdout(`#${number} ${url}\n${moved}${verdictPath ? `verdict ${verdictPath}\n` : ''}`);
   return 0;
 }
 

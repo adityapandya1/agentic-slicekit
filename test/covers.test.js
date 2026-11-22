@@ -152,3 +152,18 @@ test('a merge that changes a file the pull request changes does not cover the ve
     assert.equal(readSlice(root, cfg, id).state, 'ci-green');
   });
 });
+
+test('a merge that puts back old content of a file only the default branch changed does not cover the verdict', () => {
+  withMergedDefault({ 'docs/runbook.md': '# Runbook\n\nChanged on main.\n' }, ({ root, A, B }) => {
+    assert.equal(headCovers(root, A, B), true, 'the plain merge covers the verdict');
+    // The same merge made again, with docs/runbook.md resolved to the slice branch's older content.
+    git(root, 'reset', '-q', '--hard', `${B}^1`);
+    git(root, '-c', 'core.hooksPath=/dev/null', 'merge', '--no-ff', '--no-commit', '-q', 'main');
+    git(root, 'checkout', 'HEAD', '--', 'docs/runbook.md');
+    git(root, '-c', 'core.hooksPath=/dev/null', 'commit', '--no-verify', '-q', '--no-edit');
+    const reverted = git(root, 'rev-parse', 'HEAD');
+    assert.equal(git(root, 'rev-list', '--parents', '-n', '1', reverted).split(' ').length, 3, 'a merge commit');
+    assert.notEqual(git(root, 'show', `${reverted}:docs/runbook.md`), git(root, 'show', 'main:docs/runbook.md'));
+    assert.equal(headCovers(root, A, reverted), false);
+  });
+});

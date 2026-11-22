@@ -90,8 +90,10 @@ test('build pr at in-review pushes a merge of the default branch that leaves the
     const again = await p.pr();
     assert.equal(again.code, 0, again.stderr);
     assert.doesNotMatch(again.stderr, /nothing new since review/);
-    assert.match(again.stdout, /P1\/S-01 stays in-review/);
-    assert.doesNotMatch(again.stdout, /^verdict /m);
+    // One line, the pull request's number and address, and no verdict path: the state is kept.
+    const out = again.stdout.split('\n').filter(Boolean);
+    assert.equal(out.length, 1, again.stdout);
+    assert.match(out[0], /^#\d+ \S+$/);
     const after = stateIn(p.wt);
     assert.equal(after.state, 'in-review');
     assert.equal(after.pr.headSha, before.pr.headSha);
