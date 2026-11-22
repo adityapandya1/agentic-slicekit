@@ -65,3 +65,39 @@ test('build pr at draft-pr records a head moved by a merge of the default branch
     p.cleanup();
   }
 });
+
+// P8/S-58 Done when 4 (D-100): after a verdict, a merge of the default branch that leaves the pull
+// request's files as they were keeps the state; build pr pushes the merge rather than refusing it.
+test('build pr at in-review pushes a merge of the default branch that leaves the slice files and keeps the state', async () => {
+  const p = await green();
+  try {
+    assert.equal((await p.pr()).code, 0);
+    const rel = '.slicekit/reviews/P1-S-01-r1.md';
+    write(p.root, rel, verdict(git(p.wt, ['rev-parse', 'HEAD'])));
+    const v = await cli(p.root, ['build', 'verdict', 'P1/S-01', rel], p.env);
+    assert.equal(v.code, 0, v.stderr);
+    const before = stateIn(p.wt);
+    assert.equal(before.state, 'in-review');
+
+    // The default branch moves on origin with a file the slice does not change, and the slice merges it.
+    write(p.root, 'src/other.js', 'export const y = 1;\n');
+    commitAll(p.root, 'other work on main');
+    git(p.root, ['push', '-q', 'origin', 'main']);
+    git(p.wt, ['fetch', '-q', 'origin']);
+    git(p.wt, ['merge', '-q', '--no-ff', '-m', 'Merge main into the slice\n\nSlice: P1/S-01', 'origin/main']);
+    const merged = git(p.wt, ['rev-parse', 'HEAD']);
+
+    const again = await p.pr();
+    assert.equal(again.code, 0, again.stderr);
+    assert.doesNotMatch(again.stderr, /nothing new since review/);
+    assert.match(again.stdout, /P1\/S-01 stays in-review/);
+    assert.doesNotMatch(again.stdout, /^verdict /m);
+    const after = stateIn(p.wt);
+    assert.equal(after.state, 'in-review');
+    assert.equal(after.pr.headSha, before.pr.headSha);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), merged);
+    assert.equal(git(p.remote, ['rev-parse', SLICE_BRANCH]), merged);
+  } finally {
+    p.cleanup();
+  }
+});
