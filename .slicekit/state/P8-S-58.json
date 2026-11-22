@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-58",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 209,
@@ -25,7 +25,8 @@
     "test/check/layout.test.js",
     "test/build-record.test.js",
     "test/covers.test.js",
-    "test/ready-label.test.js"
+    "test/ready-label.test.js",
+    "test/check/queue.test.js"
   ],
   "verdicts": [
     {
@@ -274,6 +275,17 @@
           "blockers": 1,
           "independent": true
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-22T20:18:31.786Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/queue.test.js",
+        "amendCommit": "b8b1df6d69379dc7a4f584f9f1e43e784162de37",
+        "reason": "independent review B-4: on CI's detached merge checkout the queue rule reads the pull request's head branch through src/check/ci-event.js"
       }
     }
   ]
