@@ -1,8 +1,12 @@
 {
   "slice": "P8/S-58",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 209,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+    "headSha": "b320b3ef6f423e4dfc78a05e46504ea33c544edd"
+  },
   "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
   "frozenTests": [
     "test/build-record.test.js",
@@ -94,6 +98,22 @@
         "unfreeze": "test/check/layout.test.js",
         "amendCommit": "c47c7b7a127cdbad3ac96bb8775536a6b9557dcc",
         "reason": "the examples need the merge rule and the new BUILD.md table to check green; Expected changes names them"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T18:58:28.083Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "b320b3ef6f423e4dfc78a05e46504ea33c544edd",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
+        }
       }
     }
   ]
