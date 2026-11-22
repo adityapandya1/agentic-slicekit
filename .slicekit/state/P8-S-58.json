@@ -16,7 +16,8 @@
   ],
   "unfrozen": [
     "test/init.test.js",
-    "test/build-merge-driver.test.js"
+    "test/build-merge-driver.test.js",
+    "test/status-build.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -70,6 +71,17 @@
         "unfreeze": "test/build-merge-driver.test.js",
         "amendCommit": "fbae3f1efe3c33ff858bf4758a0ba4c8270f23e0",
         "reason": "a clone with core.autocrlf checks BUILD.md out with CRLF; compare with line endings normalised"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:42.467Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/status-build.test.js",
+        "amendCommit": "163a4d2c180d7b7237c0822924e43779800ade49",
+        "reason": "the BUILD.md preamble holds the words done when; check the table headers only"
       }
     }
   ]
