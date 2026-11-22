@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-58",
-  "state": "changes-requested",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 209,
@@ -38,6 +38,13 @@
       "path": ".slicekit/reviews/P8-S-58-r2.md",
       "blockers": 1,
       "independent": false,
+      "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-58i-r3.md",
+      "blockers": 0,
+      "independent": true,
       "headSha": "866bb758fe66e695dc65950bc25fee5e5d4f526f"
     }
   ],
@@ -193,6 +200,20 @@
       "at": "2026-11-22T19:36:48.840Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "changes-requested",
+      "to": "in-review",
+      "at": "2026-11-22T19:43:52.146Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-58i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
     }
   ]
 }
