@@ -30,13 +30,13 @@ decisions: [D-101, D-104, D-18]
 
 ## Expected changes
 
-`src/build/review.js`, `src/build/verdict.js`, `src/cli/review.js`, `src/verdict.js`, `src/hooks/shapes.js`, `templates/instructions/commands/review.md`, `templates/instructions/agents/reviewer.md`, `docs/runbook.md`, tests.
+`src/build/review.js`, `src/build/verdict.js`, `src/cli/build.js`, `src/cli/review.js`, `src/verdict.js`, `src/hooks/shapes.js`, `templates/instructions/commands/review.md`, `templates/instructions/agents/reviewer.md`, `docs/runbook.md`, tests.
 
 ## Tasks
 
 ### Task 1: The independent round budget
 
-**Files:** Create `test/review-budget.test.js`. Modify `src/build/review.js`, `src/build/verdict.js`, `src/cli/review.js`, `docs/runbook.md`.
+**Files:** Create `test/review-budget.test.js`. Modify `src/build/review.js`, `src/build/verdict.js`, `src/cli/build.js`, `src/cli/review.js`, `docs/runbook.md`.
 
 - [ ] **Step 1: Failing tests** — the four `review-budget.test.js` tests above, on the fixtures of `test/review-worktree.test.js` with a fixture host (`SLICEKIT_GITHOST_FIXTURE`). A decision row allows a round when its answer names the slice ID and the words "one more round".
 - [ ] **Step 2: Run** `node --test test/review-budget.test.js` → FAIL.
