@@ -55,7 +55,8 @@ test('an independent verdict does not use an in-loop round', async () => {
     const wt = reviewWorktree(p);
     const r = await independent(p, independentFile(p, 3, verdictText('BLOCK', [['B-2', 'y is wrong']])), wt);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'next: fix\nblockers: B-2\nshould-haves: none\nrounds: 2 of 2\n');
+    // P8/S-59: a blocker in the first independent round leaves a second; build verdict names its command.
+    assert.equal(r.stdout, 'next: fix\nblockers: B-2\nshould-haves: none\nrounds: 2 of 2\nreview: slicekit review start 1\n');
     assert.equal(stateIn(wt).state, 'in-review');
     assert.equal(prIn(p).isDraft, true);
   } finally {
@@ -160,7 +161,8 @@ test('a failed markDraft says the round is recorded and to run the command again
     assert.equal(prIn(p).isDraft, false);
     const again = await independent(p, file, wt);
     assert.equal(again.code, 0, again.stderr);
-    assert.equal(again.stdout, 'next: fix\nblockers: B-2\nshould-haves: none\nrounds: 2 of 2\n');
+    // P8/S-59: the re-run prints the next independent round's command too.
+    assert.equal(again.stdout, 'next: fix\nblockers: B-2\nshould-haves: none\nrounds: 2 of 2\nreview: slicekit review start 1\n');
     assert.equal(prIn(p).isDraft, true);
     assert.equal(git(p.remote, ['rev-parse', 'refs/heads/slice/P1-S-01-thing-1']), git(wt, ['rev-parse', 'HEAD']));
   } finally {

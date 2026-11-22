@@ -61,7 +61,9 @@ section lets it write that one file outside the worktree.
 When the reviewer stops, run `{{cli}} build verdict <id> <path> --independent --worktree <wt>` with
 step 2's verdict path. It commits the verdict into the review worktree, pushes it to the slice
 branch, and prints `next: <step>`, `blockers: <IDs or none>`, `should-haves: <IDs or none>` and
-`rounds: <used> of 2`; the rounds stay as they were. By what it prints:
+`rounds: <used> of 2`; the rounds stay as they were. On `next: fix` it also prints
+`review: <command>`, the `review start` command of the next independent round that the budget
+allows (D-101); keep it for step 5. By what it prints:
 
 - A refusal that names the verdict's content (a finding with no "How verified", a reused finding
   number, a banned phrase, a `<!--`): send the reviewer back with the printed message, then run this
@@ -105,7 +107,8 @@ When the fixer reports, run these two in this order:
    `pass --notes <file>`, the body lost a section: print the refusal and stop, since the notes are the
    building session's.
 
-Then start again at step 2 with `{{cli}} review start <n>`: the new head needs its own independent
+Then start again at step 2 with the command step 4's `review:` line printed,
+`{{cli}} review start <n>`: the new head needs its own independent
 verdict, at the next round. Tell the human that the slice branch moved under the building session:
 that session syncs its worktree with `build sync <id>` before its next push.
 
