@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-58",
-  "state": "in-review",
+  "state": "building",
   "branch": null,
   "pr": {
     "number": 209,
@@ -22,7 +22,8 @@
     "test/init.test.js",
     "test/build-merge-driver.test.js",
     "test/status-build.test.js",
-    "test/check/layout.test.js"
+    "test/check/layout.test.js",
+    "test/build-record.test.js"
   ],
   "verdicts": [
     {
@@ -136,6 +137,17 @@
           "blockers": 2,
           "independent": false
         }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "building",
+      "at": "2026-11-22T19:19:55.491Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-record.test.js",
+        "amendCommit": "ac758ec659d9226d486e492fd8e9c1a73503cf28",
+        "reason": "review B-1: this branch's tests-red commit wrote BUILD.md with the old code and build commit cannot commit BUILD.md; Done when 1 holds for branches whose bookkeeping this code makes"
       }
     }
   ]
