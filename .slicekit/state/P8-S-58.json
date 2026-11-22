@@ -1,0 +1,44 @@
+{
+  "slice": "P8/S-58",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
+  "frozenTests": [
+    "test/build-record.test.js",
+    "test/check/queue.test.js",
+    "test/check/layout.test.js",
+    "test/build-merge-driver.test.js",
+    "test/init.test.js",
+    "test/covers.test.js",
+    "test/ready-label.test.js",
+    "test/status-build.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-22T17:52:31.072Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
+        "testExit": 1,
+        "tests": [
+          "test/build-record.test.js",
+          "test/check/queue.test.js",
+          "test/check/layout.test.js",
+          "test/build-merge-driver.test.js",
+          "test/init.test.js",
+          "test/covers.test.js",
+          "test/ready-label.test.js",
+          "test/status-build.test.js"
+        ]
+      }
+    }
+  ]
+}
