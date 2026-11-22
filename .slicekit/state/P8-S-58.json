@@ -14,7 +14,9 @@
     "test/ready-label.test.js",
     "test/status-build.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/init.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -46,6 +48,17 @@
       "at": "2026-11-22T17:52:32.215Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:38.226Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/init.test.js",
+        "amendCommit": "662ddf7b70f68ed7d7324d4f8a8009894be56d78",
+        "reason": "init now writes the BUILD.md merge rule; two exact-content tests gain that line"
+      }
     }
   ]
 }
