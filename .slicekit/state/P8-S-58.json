@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-58",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 209,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
-    "headSha": "8514fcb71fcb6da082ff76eaaf6f764c14bc4efb"
+    "headSha": "af5e537689edc11066e4770328db202446a412e2"
   },
   "redCommit": "835a2b80b9bc6344b30a85a9a1940e190c24bb60",
   "frozenTests": [
@@ -322,6 +322,22 @@
           "path": ".slicekit/reviews/P8-S-58i-r5.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-22T21:04:58.583Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 209,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/209",
+          "headSha": "af5e537689edc11066e4770328db202446a412e2",
+          "title": "[P8/S-58] BUILD.md out of the merge path"
         }
       }
     }
