@@ -12,6 +12,9 @@ import { renderBuild, generatedRegion, MARKER } from '../src/state/build.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli } from './helpers/run-cli.js';
 import { git } from '../src/git.js';
+import { buildContext } from '../src/check/context.js';
+import { judgedBranch } from '../src/check/ci-event.js';
+import { sliceFromBranch } from '../src/ids.js';
 import { GREEN, building, commitWorkCli, write } from './helpers/build-flow.js';
 import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
 
@@ -260,14 +263,15 @@ test('status without a config exits 2', () => {
 });
 
 // P8/S-58 (D-100, D-105): rendered in memory, so the test writes nothing into the kit's tree. A slice
-// branch commits no BUILD.md of its own, so the committed file is compared only off a slice branch.
+// branch commits no BUILD.md of its own, so the committed file is compared only off a slice branch,
+// the branch the queue rule judges (on a detached CI checkout, the pull request's head branch).
 // Phases 1 to 5 are all merged, so each is one line above the marker.
 test("status --write regenerates the kit's own BUILD.md", () => {
   const cfg = loadConfig(kitRoot);
   const committed = fs.readFileSync(path.join(kitRoot, 'BUILD.md'), 'utf8');
   const text = renderBuild(kitRoot, cfg, committed);
-  const branch = git(kitRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  if (!branch.startsWith('slice/')) {
+  const branch = judgedBranch(buildContext(kitRoot, cfg));
+  if (!(branch && sliceFromBranch(branch))) {
     assert.equal(committed.replace(/\r\n/g, '\n'), text, 'the committed BUILD.md is stale; run slicekit status --write');
   }
   assert.ok(text.includes(MARKER), text);

@@ -9,7 +9,7 @@ import { lines } from '../../markdown.js';
 import { findSliceFiles } from '../../slicefile.js';
 import { generatedRegion, renderBuild, MARKER } from '../../state/build.js';
 import { sliceFromBranch } from '../../ids.js';
-import { branchTip } from '../ci-event.js';
+import { judgedBranch } from '../ci-event.js';
 
 export const id = 'queue';
 export const blocking = true;
@@ -59,10 +59,10 @@ function unplanned(ctx) {
   return states.length === 0 && findSliceFiles(ctx.root, ctx.cfg).length === 0;
 }
 
-// The branch judged is a slice branch: HEAD's, or with --ci the pull request's head branch. A branch
-// with no commit yet is HEAD's branch name.
+// The branch judged is a slice branch: HEAD's, or with --ci or a detached HEAD the pull request's
+// head branch CI names (judgedBranch).
 function onSliceBranch(ctx) {
-  const branch = branchTip(ctx)?.branch ?? ctx.git?.branch ?? null;
+  const branch = judgedBranch(ctx);
   return Boolean(branch && sliceFromBranch(branch));
 }
 
