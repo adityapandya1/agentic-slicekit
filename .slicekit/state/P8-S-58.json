@@ -24,7 +24,8 @@
     "test/status-build.test.js",
     "test/check/layout.test.js",
     "test/build-record.test.js",
-    "test/covers.test.js"
+    "test/covers.test.js",
+    "test/ready-label.test.js"
   ],
   "verdicts": [
     {
@@ -225,6 +226,17 @@
         "unfreeze": "test/covers.test.js",
         "amendCommit": "295d01278dbd85937cc10ea15af224f6f0446ce2",
         "reason": "independent review H-4 and H-3: Expected changes names src/cli/build.js (the keep line of build pr) and src/build/red.js (the resumed red commit)"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T19:44:46.069Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/ready-label.test.js",
+        "amendCommit": "db04b3bcf60f88a470f0fad7e0e1350adabb1af3",
+        "reason": "S-60 owns src/build/red.js and src/cli/build.js in the same Order step; Expected changes names neither"
       }
     }
   ]
