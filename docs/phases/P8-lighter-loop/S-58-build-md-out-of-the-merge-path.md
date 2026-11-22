@@ -37,6 +37,8 @@ Amended (author's standing instruction, 2026-11-22): `test/init.test.js`, whose 
 
 Amended (author's standing instruction, 2026-11-22): `test/build-merge-driver.test.js` compares the merged `BUILD.md` with its line endings normalised, since a clone with `core.autocrlf` set checks the file out with CRLF.
 
+Amended (author's standing instruction, 2026-11-22): `test/status-build.test.js` checks for no `Done when` column in the table headers instead of no `Done when` anywhere, since the BUILD.md preamble's sentence "A slice is done when a human has merged it" holds those words.
+
 ## Expected changes
 
 `src/build/record.js`, `src/build/pr.js`, `src/state/covers.js`, `src/check/rules/queue.js`, `src/check/rules/layout.js`, `src/init.js`, `src/paths.js`, `src/cli/status.js`, `src/state/build.js`, `.gitattributes`, `docs/guide/rules/queue.md`, `docs/guide/rules/layout.md`, `docs/guide/commands/init.md`, `docs/guide/commands/status.md`, `docs/guide/slicekit-guide.html`, `docs/runbook.md`, tests.
