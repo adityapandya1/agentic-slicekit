@@ -9,7 +9,9 @@
     "test/verdict.test.js",
     "test/instructions.test.js"
   ],
-  "unfrozen": [],
+  "unfrozen": [
+    "test/review-budget.test.js"
+  ],
   "verdicts": [],
   "ci": null,
   "mergedAt": null,
@@ -36,6 +38,17 @@
       "at": "2026-11-22T22:10:17.592Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T22:54:34.942Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/review-budget.test.js",
+        "amendCommit": "060a16355b8854ff0133acce38cb89027c6fa33e",
+        "reason": "build verdict prints the review start an allowing decision row gives and the three choices at the stop from src/cli/build.js; plan PR 213 put S-60 in a later step"
+      }
     }
   ]
 }
