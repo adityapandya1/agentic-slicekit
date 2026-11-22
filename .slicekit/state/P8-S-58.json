@@ -15,7 +15,8 @@
     "test/status-build.test.js"
   ],
   "unfrozen": [
-    "test/init.test.js"
+    "test/init.test.js",
+    "test/build-merge-driver.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -58,6 +59,17 @@
         "unfreeze": "test/init.test.js",
         "amendCommit": "662ddf7b70f68ed7d7324d4f8a8009894be56d78",
         "reason": "init now writes the BUILD.md merge rule; two exact-content tests gain that line"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T18:13:40.422Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-merge-driver.test.js",
+        "amendCommit": "fbae3f1efe3c33ff858bf4758a0ba4c8270f23e0",
+        "reason": "a clone with core.autocrlf checks BUILD.md out with CRLF; compare with line endings normalised"
       }
     }
   ]
