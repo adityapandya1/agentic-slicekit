@@ -6,8 +6,8 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 
 ## Phase 1 — Sales summary
 
-| Slice | Name | Done when | Group | Status |
+| Slice | Name | Group | Slice file | Status |
 |---|---|---|---|---|
-| S-01 | Summarise sales by region | `summarise` over the five rows of `data/sales.csv` returns `{"north": 150, "south": 100, "east": 55}`; `summarise([])` returns `{}` | A | Todo |
+| S-01 | Summarise sales by region | A | [S-01-summarise.md](docs/phases/P1-sales/S-01-summarise.md) | Todo |
 
 <!-- slicekit:generated:end -->

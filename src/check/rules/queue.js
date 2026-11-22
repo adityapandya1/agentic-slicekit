@@ -1,12 +1,15 @@
 // queue (01 REQ-1.6, 03 REQ-3.7): BUILD.md is a view of the slice files and their state, so its
 // generated region must read exactly as `slicekit status --write` would write it. The text below
-// the marker is the team's and is never compared.
+// the marker is the team's and is never compared. On a slice branch the rule is silent: the branch
+// commits no BUILD.md of its own, and the sync after its merge regenerates it (D-100).
 import fs from 'node:fs';
 import path from 'node:path';
 import { readText } from '../../fs.js';
 import { lines } from '../../markdown.js';
 import { findSliceFiles } from '../../slicefile.js';
 import { generatedRegion, renderBuild, MARKER } from '../../state/build.js';
+import { sliceFromBranch } from '../../ids.js';
+import { branchTip } from '../ci-event.js';
 
 export const id = 'queue';
 export const blocking = true;
@@ -56,8 +59,15 @@ function unplanned(ctx) {
   return states.length === 0 && findSliceFiles(ctx.root, ctx.cfg).length === 0;
 }
 
+// The branch judged is a slice branch: HEAD's, or with --ci the pull request's head branch. A branch
+// with no commit yet is HEAD's branch name.
+function onSliceBranch(ctx) {
+  const branch = branchTip(ctx)?.branch ?? ctx.git?.branch ?? null;
+  return Boolean(branch && sliceFromBranch(branch));
+}
+
 export function run(ctx) {
-  if (unplanned(ctx)) return [];
+  if (unplanned(ctx) || onSliceBranch(ctx)) return [];
   const file = toPosix(path.relative(ctx.root, ctx.paths.build));
   const at = (line, message) => ({ file, line, message });
   if (!fs.existsSync(ctx.paths.build)) return [at(0, `${file} is missing; run slicekit status --write`)];

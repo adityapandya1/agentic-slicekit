@@ -8,6 +8,7 @@ A blocking rule: any finding fails `check`. It is one of the rules of [`slicekit
 
 - `<path> is missing; run slicekit init`: a file or a directory of the layout is gone or is the wrong kind.
 - `<file> is not part of shape <shape>; run slicekit update`: a file under `.claude/` that the kit ships only for another shape.
+- `.gitattributes lacks the line BUILD.md merge=slicekit-build; run slicekit init`: the file is missing or has no line naming the merge driver that regenerates `BUILD.md` on a local merge (REQ-1.6, D-100).
 
 ## When it judges
 
@@ -15,7 +16,7 @@ On every run once `.slicekit/config.json` exists. A file under `.claude/` that t
 
 ## How to clear a finding
 
-Run `slicekit init` to put back what is missing, or `slicekit update` to remove a file of another shape.
+Run `slicekit init` to put back what is missing, including the `.gitattributes` line, or `slicekit update` to remove a file of another shape.
 
 ## The failure it prevents
 

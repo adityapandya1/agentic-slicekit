@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { kitPaths } from '../src/paths.js';
 
-test('kitPaths returns the 26 keys as absolute paths with exact relative forms', () => {
+// P8/S-58 (REQ-1.6, D-100): `gitattributes` joins the keys, for the layout rule's merge-driver line.
+test('kitPaths returns the 27 keys as absolute paths with exact relative forms', () => {
   const root = path.resolve('some', 'root');
   const p = kitPaths(root, { docsRoot: 'docs' });
   const expected = {
@@ -34,8 +35,9 @@ test('kitPaths returns the 26 keys as absolute paths with exact relative forms',
     githooks: '.githooks',
     workflow: '.github/workflows/slicekit.yml',
     gitignore: '.gitignore',
+    gitattributes: '.gitattributes',
   };
-  assert.equal(Object.keys(expected).length, 26);
+  assert.equal(Object.keys(expected).length, 27);
   assert.deepEqual(Object.keys(p).sort(), Object.keys(expected).sort());
   for (const [key, rel] of Object.entries(expected)) {
     assert.ok(path.isAbsolute(p[key]), key);

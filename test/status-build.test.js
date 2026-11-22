@@ -85,7 +85,7 @@ test('a phase with a slice not merged lists its slices with links and no Done wh
     merged(root, cfg, 'P1/S-01', 11);
     setTo(root, cfg, 'P1/S-02', 'draft-pr', { number: 14, url: 'http://x/14', headSha: 'b'.repeat(40), title: '[P1/S-02] x' });
     const text = render();
-    assert.doesNotMatch(text, /Done when/i);
+    assert.deepEqual(tableLines(text).filter((l) => /Done when/i.test(l)), [], 'a table header holds a Done when column');
     assert.doesNotMatch(text, /unique done-when text/);
     const rows = rowsInto(text, one);
     assert.equal(rows.length, 2, text);

@@ -480,14 +480,13 @@ test('absolute and backslash test paths are stored relative', async () => {
     assert.equal(parseTrailers(body).Slice, 'P1/S-01');
     const after = git(p.wt, ['log', '--format=%s', `${sha}..HEAD`]).split('\n');
     assert.deepEqual(after, ['chore(slicekit): P1/S-01 building', 'chore(slicekit): P1/S-01 tests-red']);
-    // Each bookkeeping commit carries the state file, and BUILD.md when its text changed, nothing else.
+    // Each bookkeeping commit carries the state file and nothing else; P8/S-58 (D-100): never BUILD.md.
     for (const c of git(p.wt, ['rev-list', `${sha}..HEAD`]).split('\n')) {
       const touched = git(p.wt, ['diff-tree', '--no-commit-id', '--name-only', '-r', c]).split('\n');
-      assert.ok(touched.includes('.slicekit/state/P1-S-01.json'), touched.join(', '));
-      assert.ok(touched.every((f) => ['.slicekit/state/P1-S-01.json', 'BUILD.md'].includes(f)), touched.join(', '));
+      assert.deepEqual(touched, ['.slicekit/state/P1-S-01.json']);
       assert.equal(parseTrailers(git(p.wt, ['log', '-1', '--format=%B', c])).Slice, 'P1/S-01');
     }
-    assert.ok(git(p.wt, ['diff', '--name-only', sha, 'HEAD']).split('\n').includes('BUILD.md'));
+    assert.ok(!git(p.wt, ['diff', '--name-only', sha, 'HEAD']).split('\n').includes('BUILD.md'));
     assert.equal(git(p.wt, ['status', '--porcelain']), '');
 
     const again = await cli(p.root, ['build', 'red', 'P1/S-01', '--tests', abs]);
@@ -700,7 +699,9 @@ test('build commit refuses a red run under --require-green, a run that could not
       const r = await commitWorkCli(p, '--message', 'x');
       assert.equal(r.code, 1, kit);
       assert.ok(r.stderr.includes(`${kit} is a kit file; build commit does not commit it`), r.stderr);
-      git(p.wt, ['checkout', '--', kit]);
+      // P8/S-58 (D-100): the build steps commit no BUILD.md, so here it may be a new file.
+      if (git(p.wt, ['ls-files', '--', kit]) === '') fs.rmSync(path.join(p.wt, ...kit.split('/')));
+      else git(p.wt, ['checkout', '--', kit]);
     }
 
     // The config the command reads is the main checkout's; the worktree's copy stays as committed.

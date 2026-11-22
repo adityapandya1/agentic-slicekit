@@ -1,23 +1,48 @@
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, loadConfig } from '../config.js';
 import { exists, readText, writeText } from '../fs.js';
 import { kitPaths } from '../paths.js';
 import { SliceFileError, findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { programStage } from '../stage.js';
-import { renderBuild } from '../state/build.js';
+import { mergeBuild, renderBuild } from '../state/build.js';
 import { LockError, readSlice } from '../state/index.js';
 import { syncFromHost } from '../state/sync.js';
 import { ReleaseError, applyRelease, onDefaultTip } from '../release-version.js';
 import { getHost } from '../adapters/githost/index.js';
 import { GitHostError } from '../adapters/githost/errors.js';
 
-const USAGE = 'status [--json] [--write] [--sync]';
+const USAGE = 'status [--json] [--write] [--sync] | status --merge-driver <ancestor> <current> <other>';
 
 const OPTIONS = {
   json: { type: 'boolean' },
   write: { type: 'boolean' },
   sync: { type: 'boolean' },
+  'merge-driver': { type: 'boolean' },
 };
+
+// The merge driver git runs for BUILD.md on a local merge (REQ-1.6, D-100): BUILD.md rendered from
+// the merged state files is written to <current>, the path git gave as %A. Exit 0 is a clean merge;
+// any other exit leaves BUILD.md conflicted.
+function mergeDriver(root, files, io) {
+  if (files.length !== 3) {
+    io.stderr(`slicekit: --merge-driver takes three paths, %O %A %B\nusage: slicekit ${USAGE}\n`);
+    return 2;
+  }
+  try {
+    const cfg = loadConfig(root);
+    const read = (f) => {
+      const abs = path.resolve(root, f);
+      return exists(abs) ? readText(abs) : '';
+    };
+    const [ancestor, current, other] = files.map(read);
+    writeText(path.resolve(root, files[1]), mergeBuild(root, cfg, { ancestor, current, other, env: io.env ?? process.env }));
+    return 0;
+  } catch (e) {
+    io.stderr(`slicekit: BUILD.md merge driver: ${e.message}\n`);
+    return 1;
+  }
+}
 
 function slices(root, cfg) {
   return findSliceFiles(root, cfg).map((f) => {
@@ -38,13 +63,15 @@ const expected = (e) =>
 // Without --json, changes go to stdout and warnings and errors to stderr.
 async function run(args, io) {
   let values;
+  let positionals;
   try {
-    ({ values } = parseArgs({ args, options: OPTIONS, allowPositionals: false }));
+    ({ values, positionals } = parseArgs({ args, options: OPTIONS, allowPositionals: args.includes('--merge-driver') }));
   } catch (e) {
     io.stderr(`slicekit: ${e.message}\nusage: slicekit ${USAGE}\n`);
     return 2;
   }
   const root = io.cwd;
+  if (values['merge-driver']) return mergeDriver(root, positionals, io);
   const warnings = [];
   const synced = [];
   let version = null;

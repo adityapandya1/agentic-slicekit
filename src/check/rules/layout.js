@@ -1,11 +1,14 @@
 // layout (03 REQ-3.7, 01 REQ-1.1, REQ-1.10): every path slicekit init lays down must exist, as the
 // kind it was laid down as; and no file under .claude/ may be one the manifest ships only for
 // another shape. A file under .claude/ that no manifest entry names is the team's and never a
-// finding. With no .slicekit/config.json the rule is silent: there is no install to judge.
+// finding. `.gitattributes` carries the BUILD.md merge rule init writes (REQ-1.6, D-100). With no
+// .slicekit/config.json the rule is silent: there is no install to judge.
 import fs from 'node:fs';
 import path from 'node:path';
 import { listFiles } from '../../fs.js';
+import { lines } from '../../markdown.js';
 import { loadManifest } from '../../render/manifest.js';
+import { BUILD_MERGE_RULE } from '../../state/build.js';
 
 export const id = 'layout';
 export const blocking = true;
@@ -37,6 +40,12 @@ export function run(ctx) {
     if (kindOf(paths[key]) !== kind) {
       out.push({ file: CONFIG, line: 1, message: `${rel(paths[key])} is missing; run slicekit init` });
     }
+  }
+
+  const squash = (line) => line.trim().replace(/\s+/g, ' ').replace(/^\//, '');
+  const attributes = kindOf(paths.gitattributes) === 'file' ? lines(fs.readFileSync(paths.gitattributes, 'utf8')).map(squash) : [];
+  if (!attributes.includes(BUILD_MERGE_RULE)) {
+    out.push({ file: rel(paths.gitattributes), line: 1, message: `${rel(paths.gitattributes)} lacks the line ${BUILD_MERGE_RULE}; run slicekit init` });
   }
 
   if (kindOf(paths.claude) === 'dir') {

@@ -60,8 +60,8 @@ function readNotes(root, notes) {
 
 const lines = (out) => out.split('\n').filter((l) => l !== '');
 
-// The worktree is clean, or holds only the state file and BUILD.md of a draft-pr recording whose
-// bookkeeping commit did not land: that commit is made now.
+// The worktree is clean, or holds only the state file of a draft-pr recording whose bookkeeping
+// commit did not land: that commit is made now. A slice branch commits no BUILD.md (D-100).
 function cleanOrFinish(wt, cfg, id, current) {
   // Paths from name lists, never from status columns: git() trims its output, and a leading space
   // is part of the first porcelain line.
@@ -73,10 +73,9 @@ function cleanOrFinish(wt, cfg, id, current) {
   if (files.length === 0) return;
   const paths = kitPaths(wt, cfg);
   const stateRel = posixRel(wt, path.join(paths.state, stateFileName(id)));
-  const buildRel = posixRel(wt, paths.build);
-  const onlyBookkeeping = files.includes(stateRel) && files.every((f) => f === stateRel || f === buildRel);
+  const onlyBookkeeping = files.length === 1 && files[0] === stateRel;
   if (current.state === 'draft-pr' && onlyBookkeeping && pendingDraftPr(wt, stateRel, current)) {
-    commitBookkeeping(wt, id, 'draft-pr', files);
+    commitBookkeeping(wt, id, 'draft-pr', [stateRel]);
     return;
   }
   throw new BuildError(`the worktree has uncommitted changes (${files.slice(0, 5).join(', ')}); build commit them first`);
@@ -251,7 +250,7 @@ export function openSlicePr(root, cfg, host, id, { notes, worktree, env = proces
   // that adds only bookkeeping to the recorded one is the same work: nothing is recorded.
   if (current.state === 'draft-pr') {
     const head = headSha(wt);
-    if (current.pr?.headSha && !headCovers(wt, current.pr.headSha, head)) {
+    if (current.pr?.headSha && !headCovers(wt, current.pr.headSha, head, { merges: false })) {
       recordHead(wt, cfg, id, { number: made.number, url: made.url, headSha: head });
       commitState(wt, cfg, id, 'head');
       pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });

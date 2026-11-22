@@ -53,16 +53,18 @@ test('renderBuild lists phases and slices from files and state', () => {
     assert.ok(out.includes('Spec: `docs/spec/`.'), out);
     assert.ok(!out.includes('{{'), out);
     assert.ok(out.includes('## Phase 1 — Spine\n'), out);
-    assert.ok(out.includes('| Slice | Name | Done when | Group | Status |'), out);
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
-    assert.ok(out.includes('| S-02 | Fixture 2 | It works | B | PR #14 |'), out);
-    assert.ok(out.includes('| S-03 | Fixture 3 | It works | B | Done |'), out);
+    // P8/S-58 (D-105): no Done when column; each row links its slice file.
+    assert.ok(out.includes('| Slice | Name | Group | Slice file | Status |'), out);
+    assert.ok(out.includes('| S-01 | Fixture 1 | B | [S-01-a.md](docs/phases/P1-x/S-01-a.md) | Todo |'), out);
+    assert.ok(out.includes('| S-02 | Fixture 2 | B | [S-02-a.md](docs/phases/P1-x/S-02-a.md) | PR #14 |'), out);
+    assert.ok(out.includes('| S-03 | Fixture 3 | B | [S-03-a.md](docs/phases/P1-x/S-03-a.md) | Done |'), out);
     assert.ok(out.includes('Group A first, then B.'), out);
     assert.ok(!out.includes('Not copied.'), out);
     assert.ok(out.trimEnd().endsWith(MARKER), out);
   });
 });
 
+// P8/S-58 (D-105): the Done when items stay in the slice file; the row does not copy them.
 test('renderBuild shows an in-progress slice and joins Done when items', () => {
   withKit((root, cfg, ids) => {
     const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
@@ -71,7 +73,8 @@ test('renderBuild shows an in-progress slice and joins Done when items', () => {
     fs.writeFileSync(path.join(root, 'a.test.js'), '');
     setState(root, cfg, ids[0], 'tests-red', { commit: 'c1c1c1c', testExit: 1, tests: ['a.test.js'] });
     const out = renderBuild(root, cfg, '');
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works; It has a \\| pipe | B | Todo (in progress) |'), out);
+    assert.ok(out.includes('| S-01 | Fixture 1 | B | [S-01-a.md](docs/phases/P1-x/S-01-a.md) | Todo (in progress) |'), out);
+    assert.ok(!out.includes('It has a'), out);
   }, { slices: 1 });
 });
 
@@ -190,7 +193,9 @@ test('a Done when item ending in an ellipsis keeps it', () => {
     const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works...\n2. It ends.'));
     const out = renderBuild(root, cfg, '');
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works...; It ends | B | Todo |'), out);
+    // P8/S-58 (D-105): the row holds no Done when item, with or without an ellipsis.
+    assert.ok(out.includes('| S-01 | Fixture 1 | B | [S-01-a.md](docs/phases/P1-x/S-01-a.md) | Todo |'), out);
+    assert.ok(!out.includes('It works...') && !out.includes('It ends'), out);
   }, { slices: 1 });
 });
 
@@ -254,17 +259,21 @@ test('status without a config exits 2', () => {
   }
 });
 
+// P8/S-58 (D-100, D-105): rendered in memory, so the test writes nothing into the kit's tree. A slice
+// branch commits no BUILD.md of its own, so the committed file is compared only off a slice branch.
+// Phases 1 to 5 are all merged, so each is one line above the marker.
 test("status --write regenerates the kit's own BUILD.md", () => {
-  const r = runCli(['status', '--write'], { cwd: kitRoot });
-  assert.equal(r.code, 0, r.stderr);
-  assert.equal(r.stdout, 'BUILD.md unchanged\n', 'the committed BUILD.md is stale; the rewrite left in the tree is the fix');
-  const text = fs.readFileSync(path.join(kitRoot, 'BUILD.md'), 'utf8');
-  assert.ok(text.includes('## Phase 1 — Spine'), text);
-  assert.match(text, /^\| S-01 \|.*\| Done \|$/m);
+  const cfg = loadConfig(kitRoot);
+  const committed = fs.readFileSync(path.join(kitRoot, 'BUILD.md'), 'utf8');
+  const text = renderBuild(kitRoot, cfg, committed);
+  const branch = git(kitRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (!branch.startsWith('slice/')) {
+    assert.equal(committed.replace(/\r\n/g, '\n'), text, 'the committed BUILD.md is stale; run slicekit status --write');
+  }
   assert.ok(text.includes(MARKER), text);
-  // Every phase has slice files now, so every phase is generated and nothing below the marker is a phase.
-  for (const phase of ['## Phase 2 — Loop', '## Phase 3 — Trace', '## Phase 4 — Hardening', '## Phase 5 — Ops']) {
-    assert.ok(text.includes(phase) && text.indexOf(phase) < text.indexOf(MARKER), phase);
+  for (const phase of ['Phase 1 — Spine', 'Phase 2 — Loop', 'Phase 3 — Trace', 'Phase 4 — Hardening', 'Phase 5 — Ops']) {
+    assert.match(text, new RegExp(`^- ${phase}: \\d+ slices, all merged; `, 'm'), phase);
+    assert.ok(text.indexOf(phase) < text.indexOf(MARKER), phase);
   }
   assert.doesNotMatch(text.slice(text.indexOf(MARKER)), /^## Phase /m);
 });
@@ -274,7 +283,8 @@ test('a done-when example marker does not reach the rendered row', () => {
     const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works. <!-- slicekit:example -->'));
     const out = renderBuild(root, cfg, '');
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
+    // P8/S-58 (D-105): the row copies no Done when item, so no marker either.
+    assert.ok(out.includes('| S-01 | Fixture 1 | B | [S-01-a.md](docs/phases/P1-x/S-01-a.md) | Todo |'), out);
     assert.ok(!out.includes('slicekit:example'), out);
   }, { slices: 1 });
 });
@@ -284,7 +294,8 @@ test('a done-when pending marker does not reach the rendered row', () => {
     const file = path.join(root, 'docs', 'phases', 'P1-x', 'S-01-a.md');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('1. It works.', '1. It works. <!-- slicekit:pending P1/S-08 -->'));
     const out = renderBuild(root, cfg, '');
-    assert.ok(out.includes('| S-01 | Fixture 1 | It works | B | Todo |'), out);
+    // P8/S-58 (D-105): the row copies no Done when item, so no marker either.
+    assert.ok(out.includes('| S-01 | Fixture 1 | B | [S-01-a.md](docs/phases/P1-x/S-01-a.md) | Todo |'), out);
     assert.ok(!out.includes('slicekit:pending'), out);
   }, { slices: 1 });
 });

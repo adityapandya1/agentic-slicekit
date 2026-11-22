@@ -13,7 +13,7 @@ A blocking rule: any finding fails `check`. It is one of the rules of [`slicekit
 
 ## When it judges
 
-On every run once a slice file or a state file exists. Only the generated region is compared; the text below the marker is the team's.
+On every run once a slice file or a state file exists, on every branch but a slice branch (`slice/P<n>-S-<nn>-…`; with `--ci`, the pull request's head branch). A slice branch commits no change to `BUILD.md`, so there a `BUILD.md` that differs from state is no finding; the sync pull request after the merge rewrites it on the default branch (D-100). Only the generated region is compared; the text below the marker is the team's.
 
 ## How to clear a finding
 

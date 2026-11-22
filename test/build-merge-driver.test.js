@@ -67,11 +67,12 @@ test('a local merge regenerates BUILD.md through the merge driver with no confli
     // Both moves are in the merged state files, and BUILD.md is their rendering.
     assert.equal(readSlice(root, cfg, ids[0]).state, 'draft-pr');
     assert.equal(readSlice(root, cfg, ids[1]).state, 'draft-pr');
-    const text = fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8');
+    // git may check BUILD.md out with CRLF (core.autocrlf on a Windows runner): compared with LF.
+    const text = fs.readFileSync(path.join(root, 'BUILD.md'), 'utf8').replace(/\r\n/g, '\n');
     assert.equal(text, renderBuild(root, cfg, text));
     assert.match(text, /#14/);
     assert.match(text, /#15/);
-    assert.equal(git(root, 'show', 'HEAD:BUILD.md'), text.trim());
+    assert.equal(git(root, 'show', 'HEAD:BUILD.md').replace(/\r\n/g, '\n'), text.trim());
   } finally {
     repo.cleanup();
   }

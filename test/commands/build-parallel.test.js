@@ -59,12 +59,14 @@ test('a second run changing the same path stops as a plan defect', async () => {
 test('a shared root or a bookkeeping file is not an overlap', async () => {
   const p = twoInA();
   try {
-    // BUILD.md and the state files are the kit's: each recorded state rewrites both.
+    // The state files are the kit's: each recorded state rewrites the slice's own. P8/S-58 (D-100):
+    // a slice branch commits no BUILD.md.
     const one = await greenSlice(p, 1, { 'test/x.test.js': PASSING(1) });
     const two = await greenSlice(p, 2, { 'test/x.test.js': PASSING(2) });
     for (const s of [one, two]) {
       const changed = git(s.wt, ['diff', '--name-only', 'origin/main', 'HEAD']).split('\n');
-      for (const f of ['BUILD.md', 'test/x.test.js']) assert.ok(changed.includes(f), `${s.id} changes ${f}`);
+      assert.ok(changed.includes('test/x.test.js'), `${s.id} changes test/x.test.js`);
+      assert.ok(!changed.includes('BUILD.md'), `${s.id} changes BUILD.md`);
       assert.ok(changed.some((f) => f.startsWith('.slicekit/state/')), `${s.id} changes its state file`);
     }
     const first = await p.pr('P1/S-01');
