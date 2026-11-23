@@ -473,3 +473,28 @@ test('instructions » a summary stays under its cap for a slice naming hundreds 
     cleanup();
   }
 });
+
+// REQ-2.5, D-103: the plan procedure says when a slice may be marked quick, and that a quick slice
+// gets one combined plan step: its slice file written and merged in one `[plan]` pull request.
+test("the plan procedure describes the quick lane's combined plan step", async () => {
+  const { root, cleanup } = project('backend');
+  try {
+    const r = await cli(root, ['instructions', '--command', 'plan']);
+    assert.equal(r.code, 0, r.stderr);
+    // The prose as sentences: fenced lines left out, wrapped lines joined.
+    const said = [...prose(r.stdout)]
+      .map(([l]) => l.trim())
+      .join(' ')
+      .split(/(?<=[.!?])\s+/);
+    const one = (parts, what) => {
+      const found = said.filter((s) => parts.every((x) => s.includes(x)));
+      assert.ok(found.length >= 1, `no sentence of the plan procedure says ${what} (${parts.join(', ')}):\n${r.stdout}`);
+    };
+    // When the plan may mark a slice quick: it changes no file under src/, bin/ or templates/.
+    one(['lane: quick', 'src/', 'bin/', 'templates/'], 'when a slice may be marked quick');
+    // The combined plan step: one `[plan]` pull request writes and merges the slice file.
+    one(['quick', 'combined plan step', '[plan]', 'pull request', 'merged'], "the quick lane's combined plan step");
+  } finally {
+    cleanup();
+  }
+});

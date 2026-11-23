@@ -203,3 +203,20 @@ test('parseOrder reads steps and parallel groups', () => {
   const fenced = '```\n**Order:** X; Y\n```\n\n**Order:**  A ,B ;C\n\n**Order:** Z\n';
   assert.deepEqual(parseOrder(fenced), [['A', 'B'], ['C']]);
 });
+
+// P8/S-61 (REQ-1.5, D-103): the optional front-matter field `lane`, whose one allowed value is `quick`.
+test('lane quick is read and another lane value is refused', () => {
+  const withLane = (value) => sample.replace('runbook: no\n', `runbook: no\nlane: ${value}\n`);
+  assert.equal(parseSliceFile(withLane('quick'), 'x.md').lane, 'quick');
+  // A slice file without the field parses as before, with no lane.
+  const plain = parseSliceFile(sample, fixture);
+  assert.equal(plain.lane ?? null, null);
+  assert.equal(plain.id, 'P1/S-07');
+  for (const value of ['fast', 'normal']) {
+    assert.throws(
+      () => parseSliceFile(withLane(value), 'docs/x.md'),
+      (e) => e instanceof SliceFileError && e.field === 'lane' && e.path === 'docs/x.md' && /lane/.test(e.message),
+      value,
+    );
+  }
+});

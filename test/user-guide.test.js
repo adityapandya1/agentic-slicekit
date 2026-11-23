@@ -272,3 +272,34 @@ test('the Stages table opens with the optional brief stage and its CLI steps', (
     assert.ok(group.includes(`](${page})`), `the Intake and spec group does not link ${page}`);
   }
 });
+
+// P8/S-61 (REQ-5.8, D-103, D-101): the lane rule has a page the index links, and both review pages
+// say the independent round budget: one independent round, a second only after a blocker, and one
+// more only when a person allows it.
+test('the lane rule has a page and the review page names the independent round budget', () => {
+  const page = (rel) => path.join(GUIDE, ...rel.split('/'));
+  const read = (rel) => fs.readFileSync(page(rel), 'utf8').replace(/\r\n/g, '\n');
+
+  assert.ok(fs.existsSync(page('rules/lane.md')), 'docs/guide/rules/lane.md is missing');
+  const lane = read('rules/lane.md');
+  assert.match(lane, /^# Check rule: lane$/m, lane);
+  for (const part of ['lane: quick', 'src/', 'bin/', 'templates/', '## The failure it prevents']) {
+    assert.ok(lane.includes(part), `rules/lane.md does not say ${part}`);
+  }
+
+  // The index's Check rules table links the page.
+  const index = read('README.md');
+  const start = index.indexOf('### Check rules');
+  assert.ok(start >= 0, 'docs/guide/README.md has no Check rules heading');
+  const next = index.indexOf('\n#', start + 1);
+  const table = index.slice(start, next < 0 ? undefined : next);
+  assert.ok(table.includes('](rules/lane.md)'), 'the Check rules table does not link rules/lane.md');
+
+  // Both review pages name the independent round budget.
+  for (const rel of ['commands/review.md', 'slash/review.md']) {
+    const text = read(rel).replace(/\s+/g, ' ');
+    assert.match(text, /second independent round/i, `${rel} does not name the second independent round`);
+    assert.match(text, /blocker/i, `${rel} does not say a blocker opens the second round`);
+    assert.match(text, /one more round/i, `${rel} does not say how a person allows one more round`);
+  }
+});
