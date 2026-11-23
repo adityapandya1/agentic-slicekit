@@ -127,6 +127,16 @@
       "at": "2026-11-23T21:12:48.472Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T21:32:26.256Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "68b2ce8d8ad52d779dd8f99c025c56275f31c89c",
+        "reason": "stage require brief builds its result in briefStage in src/stage.js, which must call the blank-brief check of issue 206"
+      }
     }
   ]
 }
