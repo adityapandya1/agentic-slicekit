@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-60",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 217,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
-    "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
+    "headSha": "499975218cf552126501163cc9c9e73db6f9deb4"
   },
   "redCommit": "afb6190af4668192461f8992863f442be374cdae",
   "frozenTests": [
@@ -43,11 +43,7 @@
       "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
     }
   ],
-  "ci": {
-    "sha": "5ecd2df1308cc798abc0aa5b65ffb4a3c67a061c",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45103414251"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -182,6 +178,22 @@
           "path": ".slicekit/reviews/P8-S-60i-r3.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T06:59:17.106Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 217,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+          "headSha": "499975218cf552126501163cc9c9e73db6f9deb4",
+          "title": "[P8/S-60] Freezing by test name and slice-file amendments"
         }
       }
     }
