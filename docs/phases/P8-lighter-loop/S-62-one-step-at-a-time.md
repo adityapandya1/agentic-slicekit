@@ -29,7 +29,7 @@ decisions: [D-104, D-101, D-98, D-97]
 
 ## Expected changes
 
-`src/next.js`, `src/cli/next.js`, `src/cli/index.js`, `src/instructions.js`, `templates/instructions/commands/next.md`, `templates/claude-code/commands/slicekit-next.md`, `templates/claude-code/commands/slicekit.md`, `templates/claude-code/manifest.json`, `.claude/commands/slicekit-next.md`, `.claude/commands/slicekit.md`, `docs/guide/commands/next.md`, `docs/guide/slash/next.md`, `docs/guide/README.md`, `docs/guide/slicekit-guide.html`, `README.md`, tests.
+`src/next.js`, `src/cli/next.js`, `src/cli/index.js`, `src/instructions.js`, `templates/instructions/commands/next.md`, `templates/claude-code/commands/slicekit-next.md`, `templates/claude-code/commands/slicekit.md`, `templates/claude-code/manifest.json`, `.claude/commands/slicekit-next.md`, `.claude/commands/slicekit.md`, `docs/guide/commands/next.md`, `docs/guide/slash/next.md`, `docs/guide/README.md`, `docs/guide/slicekit-guide.html`, `README.md`, `docs/adapters.md`, `docs/guide/slash/slicekit.md`, the rendered `slicekit.md` and `slicekit-next.md` under `.claude/commands/` and `.slicekit/rendered/` of the kit and of `examples/data` and `examples/fullstack`, tests. The adapters page and the `/slicekit` page list every procedure, and the examples check green only with the new command rendered.
 
 ## Tasks
 
