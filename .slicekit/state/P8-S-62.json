@@ -1,8 +1,12 @@
 {
   "slice": "P8/S-62",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 222,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+    "headSha": "274281e3057f063c37633396843beecd72253a4b"
+  },
   "redCommit": "384e14628746d2def8e654a44258a3db97f4fe14",
   "frozenTests": [
     {
@@ -92,6 +96,22 @@
       "evidence": {
         "amendCommit": "c8fb88f51a92afea386d53499222482d210e9ee2",
         "reason": "the adapters page and the /slicekit page list every procedure, and the examples need the rendered next command to check green; Expected changes names them"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:12:27.687Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "274281e3057f063c37633396843beecd72253a4b",
+          "title": "[P8/S-62] One step at a time"
+        }
       }
     }
   ]
