@@ -19,7 +19,7 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 | Slice | Name | Group | Slice file | Status |
 |---|---|---|---|---|
 | S-58 | BUILD.md out of the merge path | A | [S-58-build-md-out-of-the-merge-path.md](docs/phases/P8-lighter-loop/S-58-build-md-out-of-the-merge-path.md) | Done |
-| S-59 | Review budget | B | [S-59-review-budget.md](docs/phases/P8-lighter-loop/S-59-review-budget.md) | Todo |
+| S-59 | Review budget | B | [S-59-review-budget.md](docs/phases/P8-lighter-loop/S-59-review-budget.md) | Done |
 | S-60 | Freezing by test name and slice-file amendments | C | [S-60-freezing-by-test-name.md](docs/phases/P8-lighter-loop/S-60-freezing-by-test-name.md) | Todo |
 | S-61 | Quick lane | D | [S-61-quick-lane.md](docs/phases/P8-lighter-loop/S-61-quick-lane.md) | Todo |
 | S-62 | One step at a time | E | [S-62-one-step-at-a-time.md](docs/phases/P8-lighter-loop/S-62-one-step-at-a-time.md) | Todo |
