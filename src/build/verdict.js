@@ -182,7 +182,7 @@ export const independentBlockers = (verdicts) =>
 export const STOP_CHOICES = [
   'fix the open blockers by hand in the slice worktree and push them with slicekit build pr <id>',
   're-scope the slice: amend the slice file so the blockers fall outside it, or move them to a new slice',
-  'allow one more round: record a decision row in <decisions> whose answer names <id> and says "one more round", then run slicekit review start <n> again',
+  'allow one more round: record a decision row in <decisions> whose answer names <id> and says "one more round", commit it on the default branch and push it to origin, then run slicekit review start <n> again',
 ];
 
 // The stop text: the open blockers of the latest independent round, each with its "what is wrong",

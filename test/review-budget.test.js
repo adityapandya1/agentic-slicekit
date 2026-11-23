@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { git } from '../src/git.js';
 import { cli, stateIn, write } from './helpers/build-flow.js';
@@ -163,6 +164,34 @@ test('review-budget.test.js » an uncommitted decision row allows no round', asy
     assertChoices(r.stderr);
     assert.deepEqual(worktreeAt(p), before);
   } finally {
+    p.cleanup();
+  }
+});
+
+test('review-budget.test.js » a decision row merged on origin since the last fetch allows one more round', async () => {
+  const { p } = await stoppedAfterTwoIndependent();
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-other-'));
+  try {
+    // Another clone commits the row on main and pushes it; the session root's origin/main is not fetched.
+    const run = (args, cwd = other) =>
+      execFileSync('git', ['-c', 'user.name=Other', '-c', 'user.email=other@example.com', ...args], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' },
+      });
+    run(['clone', '-q', '--branch', 'main', p.remote, other], os.tmpdir());
+    fs.appendFileSync(path.join(other, 'docs', 'decisions.md'), `${THIS_SLICE}\n`);
+    run(['add', 'docs/decisions.md']);
+    run(['commit', '-q', '--no-verify', '-m', 'docs: decision']);
+    run(['push', '-q', 'origin', 'main']);
+    const onOrigin = git(other, ['rev-parse', 'HEAD']);
+    assert.notEqual(git(p.root, ['rev-parse', 'refs/remotes/origin/main']), onOrigin);
+
+    const r = await reviewStart(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.includes('\nround 4\n'), r.stdout);
+  } finally {
+    fs.rmSync(other, { recursive: true, force: true });
     p.cleanup();
   }
 });

@@ -45,7 +45,8 @@ run `{{cli}} build pr <id> --worktree <dir>` with the path it names, then this s
 
 The independent review has one round, and a second only when the first left a blocker (D-101). A
 refusal that `no independent round is left` names the latest round's open blockers and three
-choices: fix them by hand, re-scope the slice, or record a decision row that allows one more round.
+choices: fix them by hand, re-scope the slice, or record a decision row that allows one more round,
+committed on the default branch and pushed to origin.
 A refusal that the review `left no blocker` means the slice has its independent verdict. Print
 either refusal and stop: the human decides.
 
@@ -75,7 +76,7 @@ allows (D-101); keep it for step 5. By what it prints:
 - Exit 1 with `stopped:` and `next: stuck`: the round was the last one allowed and left a blocker
   (D-101). The slice is `changes-requested`. Print the open blockers and the three choices it
   prints and stop: the human fixes them by hand, re-scopes the slice, or records a decision row that
-  allows one more round.
+  allows one more round, committed on the default branch and pushed to origin.
 - Any other refusal goes to the human: print it and stop.
 
 When the verdict lists should-haves, ask the human once, listing each with its ID and its "What is
