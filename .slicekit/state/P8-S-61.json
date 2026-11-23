@@ -93,6 +93,16 @@
       "at": "2026-11-23T16:43:04.672Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T17:03:19.422Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "26ca4bc36ea605fe59089718823dc01b97947ec0",
+        "reason": "build verdict prints the round budget from src/cli/build.js, which reads the lane; the pending marker is removed since this slice writes the page it excused"
+      }
     }
   ]
 }
