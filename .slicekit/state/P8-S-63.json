@@ -1,0 +1,125 @@
+{
+  "slice": "P8/S-63",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
+  "frozenTests": [
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "a cut long option after a short option with its value attached is denied"
+    },
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "git clean with --dry-run as the value of -e is denied"
+    },
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "git clean -n and git clean -f --dry-run are still allowed"
+    },
+    {
+      "file": "test/release-version-phase.test.js",
+      "name": "a phase line wrapped over two lines counts as the phase's minor version"
+    },
+    {
+      "file": "test/build-commit-staged.test.js",
+      "name": "a test command that commits in the staged run leaves the slice branch where it was"
+    },
+    {
+      "file": "test/guide-html-refusals.test.js",
+      "name": "a word between colons that the host shows as an emoji is refused with its file and line"
+    },
+    {
+      "file": "test/guide-html-refusals.test.js",
+      "name": "a paragraph outside the introduction that links the web page is kept"
+    },
+    {
+      "file": "test/runbook.test.js",
+      "name": "the runbook says a link to a file that is no page is refused"
+    },
+    {
+      "file": "test/hooks/pre-edit.test.js",
+      "name": "a file under an example kept in the repository is judged by the repository's config"
+    },
+    {
+      "file": "test/hooks/pre-edit.test.js",
+      "name": "a session rooted in a clone of the example is judged by the example's config"
+    },
+    {
+      "file": "test/brief.test.js",
+      "name": "a brief holding the blank brief's guidance line under a heading is refused"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T21:12:47.969Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
+        "testExit": 1,
+        "tests": [
+          "test/hooks/pre-bash-deny.test.js",
+          "test/release-version-phase.test.js",
+          "test/build-commit-staged.test.js",
+          "test/guide-html-refusals.test.js",
+          "test/runbook.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/brief.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "a cut long option after a short option with its value attached is denied"
+          },
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "git clean with --dry-run as the value of -e is denied"
+          },
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "git clean -n and git clean -f --dry-run are still allowed"
+          },
+          {
+            "file": "test/release-version-phase.test.js",
+            "name": "a phase line wrapped over two lines counts as the phase's minor version"
+          },
+          {
+            "file": "test/build-commit-staged.test.js",
+            "name": "a test command that commits in the staged run leaves the slice branch where it was"
+          },
+          {
+            "file": "test/guide-html-refusals.test.js",
+            "name": "a word between colons that the host shows as an emoji is refused with its file and line"
+          },
+          {
+            "file": "test/guide-html-refusals.test.js",
+            "name": "a paragraph outside the introduction that links the web page is kept"
+          },
+          {
+            "file": "test/runbook.test.js",
+            "name": "the runbook says a link to a file that is no page is refused"
+          },
+          {
+            "file": "test/hooks/pre-edit.test.js",
+            "name": "a file under an example kept in the repository is judged by the repository's config"
+          },
+          {
+            "file": "test/hooks/pre-edit.test.js",
+            "name": "a session rooted in a clone of the example is judged by the example's config"
+          },
+          {
+            "file": "test/brief.test.js",
+            "name": "a brief holding the blank brief's guidance line under a heading is refused"
+          }
+        ]
+      }
+    }
+  ]
+}
