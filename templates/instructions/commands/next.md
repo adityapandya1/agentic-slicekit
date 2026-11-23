@@ -18,8 +18,13 @@ remembered from an earlier turn (D-104).
    lists three choices. Print every line `{{cli}} next` printed, tell the human the command after
    `person:` is theirs to run, and stop. Run nothing of it yourself.
 3. Otherwise run the one command on the second line:
-   - A `{{cli}}` command: run it, then each `then:` line in order. Stop at the first that exits
-     non-zero and print what it printed.
+   - A `{{cli}}` command: run it, then each `then:` line in order, in this same iteration. Stop at
+     the first that exits non-zero and print what it printed. A `then:` line
+     `{{cli}} instructions reviewer <id> --worktree <path>` spawns that reviewer with the output as
+     its whole prompt and waits for its verdict file; the `then:` line after it records that
+     verdict. After `{{cli}} review start <n>` these lines spawn the independent reviewer and run
+     `{{cli}} build verdict <id> <file> --independent` from the review worktree: run them before you
+     stop, or the next iteration starts the same review again.
    - `{{cli}} instructions <role> <id> --worktree <path>`: spawn that agent with the output as its
      whole prompt, and take its report through the step of `/slicekit build` that the first line
      names (`{{cli}} instructions --command build` prints that procedure); the first line names the

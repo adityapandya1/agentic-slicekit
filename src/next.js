@@ -9,17 +9,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readDecisions } from './decisions.js';
 import { exists, readText } from './fs.js';
-import { currentBranch, isRepo } from './git.js';
+import { currentBranch, git, isRepo } from './git.js';
 import { parseSliceAddr, sliceFromBranch, stateFileName } from './ids.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
 import { programStage } from './stage.js';
 import { readSlice } from './state/index.js';
-import { independentProblem, verdictsOnHead } from './state/transitions.js';
+import { STATES, independentProblem, verdictsOnHead } from './state/transitions.js';
 import { parseVerdict } from './verdict.js';
-import { worktreeDir } from './worktrees.js';
+import { REVIEW_DESCR, reviewWorktreeDir, worktreeDir } from './worktrees.js';
 import { sliceSteps } from './build/order.js';
-import { LOOP_ROUNDS, QUICK_LOOP_ROUNDS, STOP_CHOICES, independentBlockers, independentRoundAllowed, nextVerdictPath } from './build/verdict.js';
+import { LOOP_ROUNDS, QUICK_LOOP_ROUNDS, STOP_CHOICES, independentBlockers, independentRoundAllowed, independentVerdictPath, nextVerdictPath } from './build/verdict.js';
 
 const DONE = ['merged', 'released'];
 const posix = (p) => p.split(path.sep).join('/');
@@ -55,25 +55,62 @@ function extraRounds(rows, id) {
 // The command a person merges pull request `n` with: the GitHub CLI's on a GitHub host.
 const mergeCommand = (cfg, n) => (cfg.gitHost?.kind === 'github' ? `gh pr merge ${n}` : `merge pull request #${n} on the git host`);
 
-// The state of slice `id`: the worktree's state file while the slice is being built there, since
-// the build commits its moves on the slice branch; the checkout's once it records a merge.
-function sliceState(root, cfg, id, wt) {
-  const here = readSlice(root, cfg, id);
-  if (DONE.includes(here.state)) return here;
-  const file = path.join(kitPaths(wt, cfg).state, stateFileName(id));
-  if (!exists(file)) return here;
+// The state file of slice `id` at the tip of its branch as git holds it: the local branch, else
+// `origin/<branch>`, read with `git show` only. Null when neither holds the file or this is no repository.
+function stateOnBranch(root, cfg, id, branch) {
+  if (!branch || !isRepo(root)) return null;
+  const rel = posix(path.relative(root, path.join(kitPaths(root, cfg).state, stateFileName(id))));
+  for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
+    try {
+      return JSON.parse(git(root, ['show', `${ref}:${rel}`]));
+    } catch {
+      // No such ref or file there, or not valid JSON: the next place is read.
+    }
+  }
+  return null;
+}
+
+// The state file of slice `id` under `dir`, or null when it is missing or not valid JSON.
+function stateIn(cfg, id, dir) {
+  const file = path.join(kitPaths(dir, cfg).state, stateFileName(id));
+  if (!exists(file)) return null;
   try {
-    return { ...here, ...JSON.parse(readText(file)) };
+    return JSON.parse(readText(file));
   } catch {
-    return here;
+    return null;
   }
 }
 
-// The blocker IDs of the latest verdict, read from its file in the worktree or the checkout; an
+// The state of slice `id`: the most advanced of the checkout's state file, the build worktree's, the
+// review worktree's and the one at the slice branch's tip, since the build commits its moves on the
+// slice branch and the independent round records in the review worktree (D-39). The most advanced
+// has the most verdicts, then the longest history, then the latest state in the state order: the
+// order alone puts a `changes-requested` after an independent round behind the `ci-green` it
+// followed. The checkout's wins once it records a merge or a release.
+function sliceState(root, cfg, id, wt, reviewWt) {
+  const here = readSlice(root, cfg, id);
+  if (DONE.includes(here.state)) return here;
+  const found = [stateIn(cfg, id, wt), stateIn(cfg, id, reviewWt)].filter((s) => s && typeof s === 'object');
+  const branch = [here, ...found].map((s) => s.branch).find((b) => typeof b === 'string' && b !== '' && !b.endsWith(`-${REVIEW_DESCR}`));
+  const onBranch = stateOnBranch(root, cfg, id, branch);
+  if (onBranch && typeof onBranch === 'object') found.push(onBranch);
+  const count = (list) => (Array.isArray(list) ? list.length : 0);
+  const rank = (s) => [count(s.verdicts), count(s.history), STATES.indexOf(s.state)];
+  const ahead = (a, b) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    return true;
+  };
+  let best = here;
+  for (const s of found) if (ahead(rank(s), rank(best))) best = s;
+  return best === here ? here : { ...here, ...best };
+}
+
+// The blocker IDs of the latest verdict, read from its file in the build worktree, the review
+// worktree or the checkout; an
 // empty list when neither holds it.
-function latestBlockers(root, wt, verdict) {
+function latestBlockers(root, wt, verdict, reviewWt) {
   if (!verdict?.path) return [];
-  for (const base of [wt, root]) {
+  for (const base of [wt, reviewWt, root]) {
     const file = path.join(base, ...verdict.path.split('/'));
     if (!exists(file)) continue;
     return parseVerdict(readText(file), verdict.path)
@@ -90,18 +127,26 @@ const choicesFor = (id, n, decisions) =>
 function sliceStep(root, cfg, slice, rows) {
   const { id } = slice;
   const addr = parseSliceAddr(id);
-  // Run inside the slice's own worktree, that worktree is the one the commands name.
-  const own = path.basename(worktreeDir(root, addr));
-  const inside = path.basename(root) === own && path.basename(path.dirname(root)) === '.worktrees';
-  const wtAbs = inside ? root : worktreeDir(root, addr);
+  // Run inside a worktree under `.worktrees`, the slice's worktrees are found beside it, under the
+  // main checkout.
+  const main = path.basename(path.dirname(root)) === '.worktrees' ? path.dirname(path.dirname(root)) : root;
+  const wtAbs = worktreeDir(main, addr);
+  const reviewAbs = reviewWorktreeDir(main, addr);
   const wt = posix(wtAbs);
+  const reviewWt = posix(reviewAbs);
   const cli = cfg.cli ?? 'slicekit';
-  const s = sliceState(root, cfg, id, wtAbs);
+  const s = sliceState(root, cfg, id, wtAbs, reviewAbs);
   const n = s.pr?.number ?? null;
   const verdicts = s.verdicts ?? [];
   const rounds = slice.lane === 'quick' ? QUICK_LOOP_ROUNDS : LOOP_ROUNDS;
   const inLoop = verdicts.filter((v) => !v.independent).length;
   const decisions = rel(root, kitPaths(root, cfg).decisions);
+  // What follows `review start` in the same step (D-104): the independent reviewer, then its verdict
+  // recorded from the review worktree.
+  const reviewThen = [
+    `then: ${cli} instructions reviewer ${id} --worktree ${reviewWt}`,
+    `then: ${cli} build verdict ${id} ${independentVerdictPath(main, id, verdicts)} --independent --worktree ${reviewWt}`,
+  ];
 
   // An Open row the slice cites holds its build back until a person settles it.
   const open = new Set(rows.filter((r) => r.table === 'open').map((r) => r.id));
@@ -144,13 +189,14 @@ function sliceStep(root, cfg, slice, rows) {
       return agent(
         `${id} is draft-pr on #${n}: the independent review, from a reviewer started in the main checkout (/slicekit review)`,
         `${cli} review start ${n}`,
+        reviewThen,
       );
     }
     case 'in-review':
       return agent(`${id} is in-review on #${n}: wait for green CI and mark the pull request ready (/slicekit build, step 9)`, `${cli} build finish ${id} --worktree ${wt}`);
     case 'changes-requested': {
       const latest = verdicts.at(-1);
-      const blockers = latestBlockers(root, wt, latest);
+      const blockers = latestBlockers(root, wt, latest, reviewWt);
       const named = blockers.length > 0 ? ` ${blockers.join(', ')}` : '';
       if (latest?.independent) {
         if (independentRoundAllowed(independentBlockers(verdicts), extraRounds(rows, id))) {
@@ -177,7 +223,7 @@ function sliceStep(root, cfg, slice, rows) {
     case 'ci-green': {
       const problem = independentProblem(verdictsOnHead(s));
       if (problem && cfg.review?.independent !== 'optional') {
-        return agent(`${id} is ci-green on #${n}, ${problem}: the independent review, from a reviewer started in the main checkout (/slicekit review)`, `${cli} review start ${n}`);
+        return agent(`${id} is ci-green on #${n}, ${problem}: the independent review, from a reviewer started in the main checkout (/slicekit review)`, `${cli} review start ${n}`, reviewThen);
       }
       return agent(`${id} is ci-green on #${n}: build finish marks it ready`, `${cli} build finish ${id} --worktree ${wt}`);
     }

@@ -251,3 +251,70 @@ test('on a slice branch that amended its slice file next prints the slice step, 
     },
   );
 });
+
+// B-1 of the P8/S-62 independent round 3 verdict: the independent round records its verdict and
+// build finish records ready in the review worktree; next reads it there and takes the most
+// advanced state.
+const PR7 = (head) => ({ number: 7, url: 'https://example.com/pull/7', headSha: head, title: `[${ID}] The thing` });
+const inLoop1 = (head) => ({ round: 1, path: '.slicekit/reviews/P1-S-01-r1.md', blockers: 0, independent: false, headSha: head });
+
+function withWorktreeStates(p, states) {
+  const head = git(p.root, ['rev-parse', 'HEAD']).trim();
+  for (const [dir, fields] of Object.entries(states)) {
+    write(p.root, `.worktrees/${dir}/${STATE_FILE}`, `${JSON.stringify(sliceState({ branch: 'slice/P1-S-01-the-thing', redCommit: head, pr: PR7(head), ...fields(head) }), null, 2)}\n`);
+  }
+}
+
+test('the review worktree at ready with an independent verdict gives the merge step for a person', () => {
+  withFixture({}, (p) => {
+    withWorktreeStates(p, {
+      'P1-S-01': (head) => ({ state: 'ci-green', verdicts: [inLoop1(head)], ci: { sha: head, conclusion: 'success' } }),
+      'review-P1-S-01': (head) => ({
+        state: 'ready',
+        verdicts: [inLoop1(head), { round: 2, path: '.slicekit/reviews/P1-S-01i-r2.md', blockers: 0, independent: true, headSha: head }],
+        ci: { sha: head, conclusion: 'success' },
+      }),
+    });
+    const r = next(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.lines[0], /merge/i, `the first line does not name the merge: ${r.lines[0]}`);
+    assert.match(r.lines[0], /person|human/i, `the first line does not say the merge is a person's: ${r.lines[0]}`);
+    assert.match(r.lines[0], /#7(?!\d)/, `the first line does not name pull request 7: ${r.lines[0]}`);
+    assert.doesNotMatch(r.stdout, /review start/, `slicekit next starts the independent review again: ${r.stdout}`);
+  });
+});
+
+test('the review worktree at changes-requested with no round left gives the three choices', () => {
+  withFixture({}, (p) => {
+    const independent = (round, head) => ({ round, path: `.slicekit/reviews/P1-S-01i-r${round}.md`, blockers: 1, independent: true, headSha: head });
+    withWorktreeStates(p, {
+      'P1-S-01': (head) => ({ state: 'ci-green', verdicts: [inLoop1(head)], ci: { sha: head, conclusion: 'success' } }),
+      'review-P1-S-01': (head) => ({ state: 'changes-requested', verdicts: [inLoop1(head), independent(2, head), independent(3, head)] }),
+    });
+    const r = next(p);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.lines[0], /no independent round is left/, `the first line is not the budget stop: ${r.lines[0]}`);
+    assert.match(r.lines[1], /^person: choose one:/, `the second line is not the person's choice: ${r.lines[1]}`);
+    assert.deepEqual(r.lines.slice(2).map((l) => l.slice(0, 3)), ['1. ', '2. ', '3. '], `slicekit next does not print the three choices: ${r.stdout}`);
+  });
+});
+
+// H-2 of the same verdict: the step whose command is review start carries the independent reviewer
+// and the recording of its verdict from the review worktree as its then: lines.
+test('the review start step carries the independent reviewer and build verdict --independent', () => {
+  withFixture(
+    { state: (head) => sliceState({ state: 'ci-green', branch: 'slice/P1-S-01-the-thing', redCommit: head, pr: PR7(head), verdicts: [inLoop1(head)], ci: { sha: head, conclusion: 'success' } }) },
+    (p) => {
+      const r = next(p);
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.lines[1], 'slicekit review start 7', `the second line is not review start: ${r.lines[1]}`);
+      const review = `${p.root.split(path.sep).join('/')}/.worktrees/review-P1-S-01`;
+      assert.equal(r.lines[2], `then: slicekit instructions reviewer ${ID} --worktree ${review}`, `the first then: line is not the reviewer: ${r.stdout}`);
+      assert.equal(
+        r.lines[3],
+        `then: slicekit build verdict ${ID} ${p.root.split(path.sep).join('/')}/.slicekit/reviews/P1-S-01i-r2.md --independent --worktree ${review}`,
+        `the second then: line is not build verdict --independent: ${r.stdout}`,
+      );
+    },
+  );
+});
