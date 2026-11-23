@@ -259,3 +259,26 @@ test("a phase line wrapped over two lines counts as the phase's minor version", 
     });
   }
 });
+
+// The phase line written by hand without a name and followed directly by the section's first slice
+// line, with no blank line between them: the list line ends the phase line's paragraph (verdict
+// P8/S-63 r1 H-1).
+test('a phase line followed directly by a list line counts as the phase\'s minor version', () => {
+  withSliceAddedToACompletedPhase(({ root, fixture }) => {
+    const before = read(root, 'CHANGELOG.md');
+    const line = before.split('\n').find((l) => /^Phase 1\b/.test(l));
+    assert.ok(line && before.includes(`${line}\n\n- `), before);
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), before.replace(`${line}\n\n`, 'Phase 1.\n'));
+    gitIn(root, ['add', '-A']);
+    gitIn(root, ['commit', '-q', '--amend', '--no-edit'], { allowProtected: true });
+    const pkgBefore = read(root, 'package.json');
+    const logBefore = read(root, 'CHANGELOG.md');
+    assert.ok(logBefore.includes('Phase 1.\n- P1/S-01'), logBefore);
+
+    syncWrite(root, fixture);
+    assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.2.1'));
+    const log = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(log), ['0.2.1', '0.2.0', '0.1.0']);
+    assert.deepEqual(body(newest(log)), ['- P1/S-03 Fixture 3 (#18)'], newest(log));
+  });
+});

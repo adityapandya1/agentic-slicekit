@@ -216,16 +216,18 @@ function namesSlice(sections, id) {
 // Whether a changelog section holds the line of the phase `id` (P1), with or without a name: the
 // phase has had its minor version (D-96). Phase 1's line is not Phase 11's. The line is read as the
 // paragraph it starts, so a line wrapped over two or more lines, or written by hand without its final
-// full stop, still counts (issue #183).
+// full stop, still counts (issue #183). A list line ends the paragraph before it and starts its own,
+// so a phase line followed directly by a slice line still counts.
 function namesPhase(sections, id) {
   const number = id.replace(/^P/, '');
   const shape = new RegExp(`^Phase ${number}(?:: \\S.*?)?\\.?$`);
+  const listLine = /^(?:[-*+]|\d+[.)])\s/;
   const paragraphs = [];
   let open = null;
   for (const l of sections) {
     const line = l.trim();
     if (line === '' || isHeading(l)) open = null;
-    else if (open === null) {
+    else if (open === null || listLine.test(line)) {
       open = paragraphs.push(line) - 1;
     } else paragraphs[open] += ` ${line}`;
   }
