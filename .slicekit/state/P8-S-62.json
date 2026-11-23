@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-62",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 222,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
-    "headSha": "274281e3057f063c37633396843beecd72253a4b"
+    "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2"
   },
   "redCommit": "384e14628746d2def8e654a44258a3db97f4fe14",
   "frozenTests": [
@@ -144,6 +144,22 @@
       "evidence": {
         "amendCommit": "7e14981a2406e02c6bc93723700b156f1443bdff",
         "reason": "review H-1: on a slice branch the stage checks read the branch's own docs changes as the default branch has them, in src/stage.js"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:19:45.311Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2",
+          "title": "[P8/S-62] One step at a time"
+        }
       }
     }
   ]
