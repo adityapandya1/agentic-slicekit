@@ -181,7 +181,7 @@ function judge(filePath, input, hookRoot, hookCfg) {
   if (under(rel, docs) && !same(rel, docs) && !fs.existsSync(abs)
     && !same(rel, toPosix(path.relative(root, k.runbook)))
     && !inOwnPhase(rel, toPosix(path.relative(root, k.phases)), id)
-    && !namedInExpected(rel, slice)) {
+    && !namedInExpected(rel, sliceAtHead(root, slice))) {
     return deny("no slice starts a document; a document changes only when this slice's code made it wrong");
   }
   return allow();
@@ -198,6 +198,34 @@ function sliceOf(root, cfg, id) {
     }
   }
   return null;
+}
+
+// The slice file as committed at HEAD (D-102). The guard allows an Edit of the slice file, so the
+// new-document exception reads Expected changes from git: only `build amend` commits the slice file.
+// Null when the file is not at HEAD or does not parse (names nothing). A repository with no commit
+// yet has no HEAD to read; its slice file is the working tree's.
+function sliceAtHead(root, slice) {
+  if (!slice?.path) return null;
+  const rel = relInside(root, real(slice.path));
+  if (rel === null) return null;
+  let text;
+  try {
+    text = git(root, ['show', `HEAD:./${rel}`]);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    try {
+      git(root, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+      return null;
+    } catch (e2) {
+      if (e2 instanceof GitError) return slice;
+      throw e2;
+    }
+  }
+  try {
+    return parseSliceFile(text, slice.path);
+  } catch {
+    return null;
+  }
 }
 
 // The slice file's Expected changes name `rel` (D-102): a new document the slice was planned to write.

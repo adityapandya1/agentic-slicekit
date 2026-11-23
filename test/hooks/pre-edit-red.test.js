@@ -91,3 +91,33 @@ test('a path entry is read with the evaluation set at the red commit, not the wo
     cleanup();
   }
 });
+
+// Finding H-3 of round 3: the new-document exception reads Expected changes from the slice file as
+// committed at HEAD, so an uncommitted edit of the slice file cannot widen it; a committed one, as
+// `build amend` makes, does.
+const NEW_DOC = "no slice starts a document; a document changes only when this slice's code made it wrong";
+const writeOf = (root, file) =>
+  handle({ session_id: 's', tool_name: 'Write', tool_input: { file_path: file, content: '# new' }, cwd: root }, { root, cfg, env: {} });
+
+// REQ-3.3
+test('a new document named only by an uncommitted edit of Expected changes is denied', () => {
+  const { root, cleanup } = oldFormRepo();
+  try {
+    const doc = 'docs/guide/new-page.md';
+    const sliceAbs = path.join(root, ...SLICE_FILE.split('/'));
+    const widened = sliceText('billing.test.js » rejects an unknown currency')
+      .replace('`src/billing.js`, tests.', `\`src/billing.js\`, \`${doc}\`, tests.`);
+    assert.notEqual(widened, sliceText('billing.test.js » rejects an unknown currency'));
+    fs.writeFileSync(sliceAbs, widened);
+    const denied = writeOf(root, doc);
+    assert.equal(denied.hookSpecificOutput?.permissionDecision, 'deny', JSON.stringify(denied));
+    assert.equal(denied.hookSpecificOutput?.permissionDecisionReason, NEW_DOC);
+    // Committed, as `build amend` commits the slice file: the document is now allowed.
+    execFileSync('git', ['add', SLICE_FILE], { cwd: root, stdio: 'pipe' });
+    commit(root, 'chore(slicekit): amend', { allowEmpty: false });
+    assert.deepEqual(writeOf(root, doc), {});
+    assert.equal(writeOf(root, 'docs/guide/other-page.md').hookSpecificOutput?.permissionDecisionReason, NEW_DOC);
+  } finally {
+    cleanup();
+  }
+});
