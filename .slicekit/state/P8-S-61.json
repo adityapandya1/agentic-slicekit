@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-61",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 220,
@@ -46,6 +46,13 @@
       "blockers": 0,
       "independent": false,
       "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-61-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd"
     }
   ],
   "ci": null,
@@ -169,6 +176,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
           "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd",
           "title": "[P8/S-61] Quick lane"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T17:39:20.137Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-61-r2.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
