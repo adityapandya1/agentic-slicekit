@@ -1,0 +1,81 @@
+{
+  "slice": "P8/S-62",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "384e14628746d2def8e654a44258a3db97f4fe14",
+  "frozenTests": [
+    {
+      "file": "test/next.test.js",
+      "name": "at tests-red next names the build step and its command"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "at ready next names the merge for a person and changes no file"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "two runs with no change print the same step and never a recorded round"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "an Open decision row the step depends on stops next for a person"
+    },
+    {
+      "file": "test/user-guide.test.js",
+      "name": "the next command and procedure have pages"
+    },
+    {
+      "file": "test/readme.test.js",
+      "name": "Built with itself names the test changes made in spec pull requests"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T18:40:28.905Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "384e14628746d2def8e654a44258a3db97f4fe14",
+        "testExit": 1,
+        "tests": [
+          "test/next.test.js",
+          "test/user-guide.test.js",
+          "test/readme.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/next.test.js",
+            "name": "at tests-red next names the build step and its command"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "at ready next names the merge for a person and changes no file"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "two runs with no change print the same step and never a recorded round"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "an Open decision row the step depends on stops next for a person"
+          },
+          {
+            "file": "test/user-guide.test.js",
+            "name": "the next command and procedure have pages"
+          },
+          {
+            "file": "test/readme.test.js",
+            "name": "Built with itself names the test changes made in spec pull requests"
+          }
+        ]
+      }
+    }
+  ]
+}
