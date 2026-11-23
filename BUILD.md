@@ -22,7 +22,7 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 | S-59 | Review budget | B | [S-59-review-budget.md](docs/phases/P8-lighter-loop/S-59-review-budget.md) | Done |
 | S-60 | Freezing by test name and slice-file amendments | C | [S-60-freezing-by-test-name.md](docs/phases/P8-lighter-loop/S-60-freezing-by-test-name.md) | Done |
 | S-61 | Quick lane | D | [S-61-quick-lane.md](docs/phases/P8-lighter-loop/S-61-quick-lane.md) | Done |
-| S-62 | One step at a time | E | [S-62-one-step-at-a-time.md](docs/phases/P8-lighter-loop/S-62-one-step-at-a-time.md) | Todo |
+| S-62 | One step at a time | E | [S-62-one-step-at-a-time.md](docs/phases/P8-lighter-loop/S-62-one-step-at-a-time.md) | PR #222 |
 | S-63 | Open issues | F | [S-63-open-issues.md](docs/phases/P8-lighter-loop/S-63-open-issues.md) | Todo |
 
 **Order:** A; B; C; D; E; F
