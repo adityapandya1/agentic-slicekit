@@ -1,7 +1,7 @@
 ---
 name: slicekit-loop
 description: The slice states in order and the nine steps of the build loop.
-slicekit-managed: v0.7.4
+slicekit-managed: v0.7.5
 ---
 # The loop
 
