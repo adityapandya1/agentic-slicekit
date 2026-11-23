@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.7.4
+
+- P8/S-61 Quick lane (#220)
+
 ## 0.7.3
 
 - P8/S-60 Freezing by test name and slice-file amendments (#217)
