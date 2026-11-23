@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-59",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 214,
@@ -37,6 +37,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "9dd2f517dbfb34574a67a47a1d7b8b298912eced"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-59i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2fa0f7f2a3521ff75b962cb3883a534e06ad34f2"
     }
   ],
   "ci": null,
@@ -176,6 +183,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
           "headSha": "2fa0f7f2a3521ff75b962cb3883a534e06ad34f2",
           "title": "[P8/S-59] Review budget"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T00:57:06.235Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-59i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
