@@ -228,3 +228,34 @@ test('a sync pull request that sets a second minor version for a phase is a find
     assert.deepEqual(clean.log, [], JSON.stringify(clean.log));
   });
 });
+
+// ---- P8/S-63 (REQ-5.6, D-96, issue #183) ----
+
+// The phase line of the 0.2.0 section, rewritten by hand: wrapped over two lines, with and without
+// its final full stop. Each still records that phase 1 had its minor version.
+test("a phase line wrapped over two lines counts as the phase's minor version", () => {
+  for (const wrapped of ['Phase 1: Spine, the first phase of\nthe demo.', 'Phase 1: Spine, the first phase of\nthe demo']) {
+    withSliceAddedToACompletedPhase(({ root, fixture }) => {
+      const before = read(root, 'CHANGELOG.md');
+      const line = before.split('\n').find((l) => /^Phase 1\b/.test(l));
+      assert.ok(line, before);
+      // The hand edit lands in the merge of P1/S-03, before its sync runs.
+      fs.writeFileSync(path.join(root, 'CHANGELOG.md'), before.replace(line, wrapped));
+      gitIn(root, ['add', '-A']);
+      gitIn(root, ['commit', '-q', '--amend', '--no-edit'], { allowProtected: true });
+      const pkgBefore = read(root, 'package.json');
+      const logBefore = read(root, 'CHANGELOG.md');
+      assert.ok(logBefore.includes(wrapped), logBefore);
+
+      syncWrite(root, fixture);
+      // A patch version, never a second minor version.
+      assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.2.1'), JSON.stringify(wrapped));
+      const log = read(root, 'CHANGELOG.md');
+      assert.deepEqual(versions(log), ['0.2.1', '0.2.0', '0.1.0']);
+      const section = newest(log);
+      assert.deepEqual(body(section), ['- P1/S-03 Fixture 3 (#18)'], section);
+      // The wrapped line is left as it was written.
+      assert.ok(log.endsWith(logBefore.slice(logBefore.indexOf('## 0.2.0'))), log);
+    });
+  }
+});

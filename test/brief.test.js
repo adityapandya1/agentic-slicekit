@@ -246,3 +246,75 @@ test('brief done commits the brief and prints the intake command as its last lin
     assert.equal(git(root, ['status', '--porcelain']), '');
   });
 });
+
+// ---- P8/S-63 (REQ-1.7, D-99, issue #206): the blank brief's guidance is no answer ----
+
+// The kit's blank brief, and the one line it holds under each heading.
+const BLANK = fs.readFileSync(new URL('../templates/brief/blank.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const GUIDANCE = sections(BLANK);
+
+// REQ-1.7
+test("a brief holding the blank brief's guidance line under a heading is refused", async () => {
+  // The template holds one guidance line under each of the seven headings, and a title with <name>.
+  assert.deepEqual(Object.keys(GUIDANCE), HEADINGS);
+  for (const h of HEADINGS) assert.equal(GUIDANCE[h].length, 1, h);
+  assert.match(BLANK.split('\n')[0], /<name>/);
+
+  await withRepo(async (root) => {
+    const rel = 'docs/brief/orders.md';
+    const write = (text) => {
+      fs.mkdirSync(path.join(root, 'docs', 'brief'), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), text);
+    };
+    // A brief with each section answered, and `fill` over some of them.
+    const filled = (fill = {}, title = '# Brief: Orders') => `${[title, ...HEADINGS.map((h) => [h, fill[h] ?? `Said on ${h.slice(3)}.`].join('\n\n'))].join('\n\n')}\n`;
+    const stage = () => cli(root, ['stage', 'require', 'brief']);
+
+    // Every section answered and a real title: ready.
+    write(filled());
+    const ok = await stage();
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.match(ok.stdout, /^ready: brief$/m);
+
+    // The blank brief copied with no line replaced.
+    write(BLANK);
+    const blank = await stage();
+    assert.equal(blank.code, 1, blank.stdout);
+    assert.ok(blank.stderr.includes(rel), blank.stderr);
+
+    // One section's only line is the guidance line the blank brief holds under that heading.
+    for (const h of ['## What they do today', '## Success measures', '## Open questions']) {
+      write(filled({ [h]: GUIDANCE[h][0] }));
+      const r = await stage();
+      assert.equal(r.code, 1, `${h}: ${r.stdout}`);
+      assert.ok(r.stderr.includes(rel), `${h}: ${r.stderr}`);
+      assert.ok(r.stderr.includes(h), `${h}: ${r.stderr}`);
+      assert.doesNotMatch(r.stdout, /^ready: brief$/m);
+    }
+
+    // The title still holds <name>.
+    write(filled({}, BLANK.split('\n')[0]));
+    const titled = await stage();
+    assert.equal(titled.code, 1, titled.stdout);
+    assert.ok(titled.stderr.includes(rel), titled.stderr);
+    assert.ok(titled.stderr.includes('<name>'), titled.stderr);
+  });
+
+  // brief done refuses the same: an answer that is the guidance line of its heading.
+  await withRepo(async (root) => {
+    assert.equal((await cli(root, ['brief', 'start', 'payments-retry'])).code, 0);
+    for (const [topic, heading] of TOPICS) {
+      const q = await cli(root, ['brief', 'ask', '--topic', topic, '--question', `What about ${topic}?`]);
+      assert.equal(q.code, 0, `${topic}: ${q.stderr}`);
+      await cli(root, ['brief', 'answer', '--answer', topic === 'today' ? GUIDANCE[heading][0] : ANSWERS[topic]]);
+    }
+    const head = git(root, ['rev-parse', 'HEAD']);
+    const d = await cli(root, ['brief', 'done']);
+    assert.equal(d.code, 1, d.stdout);
+    assert.ok(d.stderr.includes(briefRel('payments-retry')), d.stderr);
+    assert.ok(d.stderr.includes('## What they do today'), d.stderr);
+    assert.ok(!d.stdout.includes('/slicekit intake'), d.stdout);
+    assert.equal(git(root, ['rev-parse', 'HEAD']), head);
+    assert.equal(git(root, ['ls-files', 'docs/brief']), '');
+  });
+});

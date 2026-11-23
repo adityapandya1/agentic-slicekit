@@ -698,3 +698,106 @@ decisions: []
     }
   }
 });
+
+// ---- P8/S-63 (REQ-3.3, issue #203): a config in a plain folder of a repository makes no root ----
+
+// The slice file of P1/S-06, whose Expected changes names `expected`.
+const sliceNaming = (expected) => `---
+slice: ${SLICE}
+name: Hooks
+repo: .
+group: A
+runbook: no
+requirements: [REQ-3.3]
+decisions: []
+---
+
+## Done when
+
+1. It works.
+
+## Evaluation set
+
+| Test | Kind | Covers |
+|---|---|---|
+| \`a.test.js » works\` | happy | REQ-3.3 |
+
+## Expected changes
+
+${expected.map((p) => `\`${p}\``).join(', ')}, tests.
+`;
+
+// An example's config as the kit keeps it under examples/: no `cli` key, so it does not validate.
+function exampleConfig(over = {}) {
+  const c = { ...cfgFor(over) };
+  delete c.cli;
+  return `${JSON.stringify(c, null, 2)}\n`;
+}
+
+// REQ-3.3
+test("a file under an example kept in the repository is judged by the repository's config", () => {
+  const INTAKE = 'examples/backend/docs/intake/2026-10-26-greeting.md';
+  const BRIEF = 'examples/backend/docs/brief/greeting.md';
+  const cfg = cfgFor({ agents: { denyPaths: ['examples/*/docs/intake/**'] } });
+  for (const state of ['building', 'tests-red']) {
+    const { root, cleanup } = sliceRepo({ state, frozenTests: [] }, {
+      files: {
+        '.slicekit/config.json': `${JSON.stringify(cfg, null, 2)}\n`,
+        'docs/phases/P1-x/S-06-hooks.md': sliceNaming([BRIEF, 'src/a.js']),
+        'examples/backend/.slicekit/config.json': exampleConfig(),
+        'examples/backend/docs/runbook.md': '# r',
+        [INTAKE]: '# Greeting\n',
+      },
+    });
+    try {
+      // The folder's config has no cli key, and the hook does not read it.
+      assert.equal('cli' in JSON.parse(fs.readFileSync(path.join(root, 'examples', 'backend', '.slicekit', 'config.json'), 'utf8')), false);
+      // The file Expected changes names, created by each tool, from the root and from inside the example.
+      for (const tool of ['Write', 'Edit', 'MultiEdit']) assertAllow(decide(root, BRIEF, { tool, cfg }));
+      assertAllow(decide(root, path.join(root, ...BRIEF.split('/')), { cfg }));
+      assertAllow(decide(root, 'docs/brief/greeting.md', { cfg, cwd: path.join(root, 'examples', 'backend') }));
+      // An existing file of the example's own.
+      assertAllow(decide(root, 'examples/backend/docs/runbook.md', { tool: 'Edit', cfg }));
+      // The example's intake is still denied, by the repository's config.
+      const why = `${INTAKE} matches agents.denyPaths pattern examples/*/docs/intake/**; agents may not read or change it (REQ-3.13)`;
+      assertDeny(decide(root, INTAKE, { tool: 'Edit', cfg }), why);
+      assertDeny(decide(root, 'examples/backend/docs/intake/2026-11-01-new.md', { cfg }),
+        why.replace(INTAKE, 'examples/backend/docs/intake/2026-11-01-new.md'));
+      // The repository's own rules still hold for its own docs root.
+      assertDeny(decide(root, 'docs/new-page.md', { cfg }), NEW_DOC);
+    } finally {
+      cleanup();
+    }
+  }
+});
+
+// REQ-3.3
+test("a session rooted in a clone of the example is judged by the example's config", () => {
+  const exampleCfg = cfgFor({ docsRoot: 'handbook' });
+  const source = makeRepo({ files: { '.slicekit/config.json': `${JSON.stringify(exampleCfg, null, 2)}\n`, 'handbook/runbook.md': '# r', 'test/g.test.js': 'x' } });
+  const kit = sliceRepo();
+  try {
+    git(source.root, ['add', '-A']);
+    commit(source.root, 'example', { allowEmpty: false });
+    const clone = path.join(kit.root, 'work', 'backend');
+    fs.mkdirSync(path.dirname(clone), { recursive: true });
+    git(kit.root, ['clone', '-q', source.root, clone]);
+    git(clone, ['switch', '-q', '-c', BRANCH]);
+    writeState(clone, { state: 'building', frozenTests: ['test/g.test.js'] });
+
+    // The session's root is the clone, with the example's config.
+    assertDeny(decide(clone, 'handbook/new.md', { cfg: exampleCfg }), NEW_DOC);
+    assertDeny(decide(clone, path.join(clone, 'handbook', 'new.md'), { cfg: exampleCfg }), NEW_DOC);
+    assertDeny(decide(clone, 'test/g.test.js', { tool: 'Edit', cfg: exampleCfg }), FROZEN);
+    assertAllow(decide(clone, 'handbook/runbook.md', { tool: 'Edit', cfg: exampleCfg }));
+    assertAllow(decide(clone, 'docs/new.md', { cfg: exampleCfg }));
+    // From the session of the repository that holds it, the clone is a git top level and its own
+    // config judges its files.
+    assertDeny(decide(kit.root, 'work/backend/handbook/new.md'), NEW_DOC);
+    assertDeny(decide(kit.root, 'work/backend/test/g.test.js', { tool: 'Edit' }), FROZEN);
+    assertAllow(decide(kit.root, 'work/backend/docs/new.md'));
+  } finally {
+    kit.cleanup();
+    source.cleanup();
+  }
+});
