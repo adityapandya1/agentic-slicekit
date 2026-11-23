@@ -2,6 +2,10 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.7.5
+
+- P8/S-62 One step at a time (#222)
+
 ## 0.7.4
 
 - P8/S-61 Quick lane (#220)
