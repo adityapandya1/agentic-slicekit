@@ -234,3 +234,18 @@ test('a change to another test of the same file is no finding', () => {
     assert.deepEqual(messages(root), []);
   });
 });
+
+// P8/S-60 (REQ-3.15, D-102), finding H-2 of round 1: a path entry, the form of a state file written
+// before P8/S-60, is read with the evaluation set of the slice file at the red commit; a later change
+// to the slice file that names another test of the file does not lift the freeze on the test named at red.
+test('a path entry is judged by the evaluation set at the red commit', () => {
+  withSlice((root) => {
+    const text = fs.readFileSync(path.join(root, ...SLICE_FILE.split('/')), 'utf8');
+    commitFiles(root, { [SLICE_FILE]: text.replace('`a.test.js » works`', '`billing.test.js » bills`') }, 'docs: name the test');
+    const sha = commitFiles(root, { [TEST]: TWO_TESTS }, 'test: red');
+    commitFiles(root, { [STATE]: stateJson('building', sha) }, `chore(slicekit): ${SLICE} tests-red`);
+    commitFiles(root, { [SLICE_FILE]: text.replace('`a.test.js » works`', '`billing.test.js » formats`') }, `docs(${SLICE}): amend evaluation set`);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("throw new Error('red'); });", '});') }, 'feat: green by editing the test');
+    assert.deepEqual(messages(root), [`frozen test changed after red: ${TEST} » bills`]);
+  });
+});

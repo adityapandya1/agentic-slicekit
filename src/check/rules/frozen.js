@@ -3,10 +3,10 @@
 // `build amend` unfroze that test after the red commit: the tip's state file lists it in `unfrozen`
 // and the slice file was changed in a commit after red. Other tests of the same file are not
 // compared. A path entry of a state file written before P8/S-60 is every evaluation test of that file
-// by name, or the whole file when the evaluation set names none in it. The state file, the red
-// commit, the slice file and the tests are all read from git objects of the tip judged, never the
-// working tree: a file hidden with `assume-unchanged` or `skip-worktree` is judged by its committed
-// content (issue #71).
+// by name in the slice file at the red commit, or the whole file when that evaluation set names none
+// in it. The state file, the red commit, the slice file and the tests are all read from git objects
+// (of the tip judged, or of the red commit), never the working tree: a file hidden with
+// `assume-unchanged` or `skip-worktree` is judged by its committed content (issue #71).
 //
 // The tip is HEAD, or under --ci on a pull request the pull request's head (branchTip). No branch, a
 // branch that is not a slice branch, no red commit recorded in any version of the state file (a slice
@@ -124,13 +124,17 @@ export function run(ctx) {
   if (bad.length > 0) return [...removed, { file: stateRel, line: 0, message: `frozen tests of ${slice} name a path that is not a repository path: ${bad.map((t) => (isEntry(t) ? entryLabel(t) : JSON.stringify(t))).join(', ')}` }];
   if (listed.length === 0) return removed;
 
-  // The slice file at the tip: its evaluation set reads a path entry, the form of a state file written
-  // before P8/S-60, as every evaluation test of that file by name (D-102).
-  const sliceFiles = sliceFilesAt(root, tip, posixRel(root, paths.phases), addr);
+  // The slice file at the red commit: its evaluation set reads a path entry, the form of a state file
+  // written before P8/S-60, as every evaluation test of that file by name (D-102). A later change to
+  // the slice file does not change what is frozen; with no slice file at red that parses, a path
+  // entry is the whole file.
+  const phasesRel = posixRel(root, paths.phases);
+  const sliceFiles = sliceFilesAt(root, tip, phasesRel, addr);
+  const redSliceFiles = sliceFilesAt(root, red, phasesRel, addr);
   let rows = [];
-  if (sliceFiles.length === 1) {
+  if (redSliceFiles.length === 1) {
     try {
-      rows = evaluationRows(parseSliceFile(showAt(root, tip, sliceFiles[0]) ?? '', sliceFiles[0]));
+      rows = evaluationRows(parseSliceFile(showAt(root, red, redSliceFiles[0]) ?? '', redSliceFiles[0]));
     } catch (e) {
       if (!(e instanceof SliceFileError)) throw e;
     }

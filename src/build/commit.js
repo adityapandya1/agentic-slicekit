@@ -10,6 +10,7 @@ import { configSubject, namesConfigAt } from './config.js';
 import { freshAt, renderPathsOnly, renderSubject } from './render.js';
 import { stateFileName, verdictFilePattern } from '../ids.js';
 import { kitPaths } from '../paths.js';
+import { SliceFileError, parseSliceFile } from '../slicefile.js';
 import { TransitionError, frozenOf, isFrozen, readSlice, unfreeze } from '../state/index.js';
 import { SEP, TestNameError, entryLabel, findTest, isUnfrozen } from '../testnames.js';
 import { isKitFile, posixRel, runCommand, sliceIn, toWorktreePath, unusableRun } from './red.js';
@@ -76,6 +77,23 @@ const textAt = (wt, rev, file) => {
   }
 };
 
+// The slice file as it was at the red commit, read from git: a path entry of a state file written
+// before P8/S-60 is read with this evaluation set, never the working tree's, which an agent can edit
+// (D-102). Null when the red commit has no such file or it does not parse: every path entry is then
+// the whole file, frozen for any change.
+function sliceAtRed(wt, current, slice) {
+  if (typeof current.redCommit !== 'string' || current.redCommit === '') return null;
+  const rel = posixRel(wt, slice.path);
+  const text = textAt(wt, current.redCommit, rel);
+  if (text === null) return null;
+  try {
+    return parseSliceFile(text, rel);
+  } catch (e) {
+    if (e instanceof SliceFileError) return null;
+    throw e;
+  }
+}
+
 // The text of the test named `name` in `text`: null when the file or the test is missing; undefined
 // when the file cannot be read by name (unparseable, or the name given twice), which never matches.
 function bodyOf(text, name) {
@@ -94,7 +112,7 @@ function bodyOf(text, name) {
 // frozen by name (D-102) is compared by its text on disk, in the index and at HEAD; a file frozen
 // whole (a state file written before P8/S-60 whose evaluation set names no test in it), by its bytes.
 function frozenProblem(wt, current, slice) {
-  const entries = frozenOf(current, slice).filter((e) => !isUnfrozen(e, current.unfrozen));
+  const entries = frozenOf(current, sliceAtRed(wt, current, slice)).filter((e) => !isUnfrozen(e, current.unfrozen));
   const changed = (t, what = t) => `frozen test ${what} changed since ${short(current.redCommit)}; amend the slice file to change the evaluation set`;
   for (const t of [...new Set(entries.map((e) => e.file))]) {
     const flag = git(wt, ['--literal-pathspecs', 'ls-files', '-v', '--', t]).slice(0, 1);
@@ -522,8 +540,18 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
   if (test === undefined || (typeof test === 'string' && test.trim() === '')) return amendSliceFile(wt, cfg, id, current, reason.trim(), stateRel, sliceRel);
   const target = namedTest(wt, test);
   const label = entryLabel(target);
+  // A path entry is read with the evaluation set at the red commit, not the slice file being amended.
+  const atRed = sliceAtRed(wt, current, slice);
+  // A bare file whose tests are frozen by name unfreezes nothing: each test is named (REQ-1.5, D-102).
+  // Only a path entry, the form of a state file written before P8/S-60, unfreezes the whole file.
+  if (typeof target === 'string') {
+    const byName = current.frozenTests.filter((e) => typeof e !== 'string' && e.file === target);
+    if (byName.length > 0) {
+      throw new BuildError(`${target} holds tests frozen by name: ${byName.map(entryLabel).join(', ')}; name the one to unfreeze as --test "<file>${SEP}<name>"`);
+    }
+  }
   // Checked before the slice file is committed; the words are unfreeze's own TransitionError reason.
-  if (!isFrozen(current, target, slice)) throw new BuildError(`${label} is not a frozen test of ${id}`);
+  if (!isFrozen(current, target, atRed)) throw new BuildError(`${label} is not a frozen test of ${id}`);
   const lastAmendment = () => git(wt, ['log', '-1', '--format=%H', `--grep=^docs(${id}): amend evaluation set$`, '--', sliceRel]);
   if (alreadyUnfrozen(current, target)) {
     if (pendingUnfreeze(wt, id, stateRel, sliceRel, target)) {
@@ -545,7 +573,7 @@ export function amend(root, cfg, id, { test, reason, worktree } = {}) {
     throw new BuildError('amend the slice file first; it has no change');
   }
   try {
-    unfreeze(wt, cfg, id, target, { amendCommit: sha, reason: reason.trim() }, { to: 'building', slice });
+    unfreeze(wt, cfg, id, target, { amendCommit: sha, reason: reason.trim() }, { to: 'building', slice: atRed });
   } catch (e) {
     if (e instanceof TransitionError) throw new BuildError(e.reason);
     throw e;

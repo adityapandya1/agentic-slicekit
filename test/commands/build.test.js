@@ -643,19 +643,19 @@ test('a change to a frozen test is refused at commit', async () => {
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
 
     // amend needs the human's edit to the slice file first.
-    const early = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'r']);
+    const early = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', 'r']);
     assert.equal(early.code, 1);
     assert.match(early.stderr, /amend the slice file first; it has no change/);
     const notFrozen = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'src/t1.js', '--reason', 'r']);
     assert.equal(notFrozen.code, 1);
 
     fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nThe extra test checks nothing yet.\n');
-    const amended = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'r']);
+    const amended = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', 'r']);
     assert.equal(amended.code, 0, amended.stderr);
-    assert.equal(amended.stdout, 'unfroze test/a.test.js\n');
-    assert.deepEqual(stateIn(p.wt).unfrozen, ['test/a.test.js']);
+    assert.equal(amended.stdout, 'unfroze test/a.test.js » works\n');
+    assert.deepEqual(stateIn(p.wt).unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     assert.deepEqual(git(p.wt, ['log', '-2', '--format=%s']).split('\n'), [
-      'chore(slicekit): P1/S-01 unfreeze test/a.test.js',
+      'chore(slicekit): P1/S-01 unfreeze test/a.test.js » works',
       'docs(P1/S-01): amend evaluation set',
     ]);
     assert.match(git(p.wt, ['log', '-1', '--format=%B', 'HEAD^']), /\n\nr\n\nSlice: P1\/S-01$/);
@@ -730,7 +730,7 @@ test('every commit on the slice branch carries the Slice trailer', async () => {
     assert.equal((await commitWorkCli(p, '--message', 'feat(P1/S-01): first try')).code, 0);
     fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), "test('extra', () => {});\n");
     fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nAmended.\n');
-    assert.equal((await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'why'])).code, 0);
+    assert.equal((await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', 'why'])).code, 0);
     write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
     assert.equal((await commitWorkCli(p, '--message', 'feat(P1/S-01): x', '--require-green')).code, 0);
 
@@ -818,12 +818,12 @@ test('amend takes any spelling of the test and records the amendment', async () 
   const p = await building();
   try {
     editSlice(p);
-    const r = await amendCli(p, path.join(p.wt, 'test', 'a.test.js').replace(/\//g, '\\'), 'the row was wrong');
+    const r = await amendCli(p, `${path.join(p.wt, 'test', 'a.test.js').replace(/\//g, '\\')} » works`, 'the row was wrong');
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'unfroze test/a.test.js\n');
+    assert.equal(r.stdout, 'unfroze test/a.test.js » works\n');
     const last = stateIn(p.wt).history.at(-1);
     assert.deepEqual(last.evidence, {
-      unfreeze: 'test/a.test.js',
+      unfreeze: 'test/a.test.js » works',
       amendCommit: git(p.wt, ['rev-parse', 'HEAD^']),
       reason: 'the row was wrong',
     });
@@ -839,16 +839,16 @@ test('an amend that stopped part way finishes on a re-run', async () => {
     editSlice(p);
     const lock = path.join(p.wt, '.slicekit', 'state', 'P1-S-01.json.lock');
     fs.writeFileSync(lock, String(process.pid));
-    const busy = await amendCli(p, 'test/a.test.js');
+    const busy = await amendCli(p, 'test/a.test.js » works');
     assert.equal(busy.code, 1);
     assert.equal(git(p.wt, ['log', '-1', '--format=%s']), 'docs(P1/S-01): amend evaluation set');
     assert.deepEqual(stateIn(p.wt).unfrozen, []);
     fs.rmSync(lock);
-    const again = await amendCli(p, 'test/a.test.js');
+    const again = await amendCli(p, 'test/a.test.js » works');
     assert.equal(again.code, 0, again.stderr);
-    assert.deepEqual(stateIn(p.wt).unfrozen, ['test/a.test.js']);
+    assert.deepEqual(stateIn(p.wt).unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     assert.deepEqual(git(p.wt, ['log', '-2', '--format=%s']).split('\n'), [
-      'chore(slicekit): P1/S-01 unfreeze test/a.test.js',
+      'chore(slicekit): P1/S-01 unfreeze test/a.test.js » works',
       'docs(P1/S-01): amend evaluation set',
     ]);
   } finally {
@@ -861,18 +861,18 @@ test('an amend that stopped part way finishes on a re-run', async () => {
     editSlice(q);
     fs.mkdirSync(path.dirname(hook), { recursive: true });
     fs.writeFileSync(hook, '#!/bin/sh\nif grep -q "^chore(slicekit)" "$1"; then exit 1; fi\nexit 0\n', { mode: 0o755 });
-    const refused = await amendCli(q, 'test/a.test.js');
+    const refused = await amendCli(q, 'test/a.test.js » works');
     assert.equal(refused.code, 1);
-    assert.deepEqual(stateIn(q.wt).unfrozen, ['test/a.test.js']);
+    assert.deepEqual(stateIn(q.wt).unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     fs.rmSync(hook);
-    const again = await amendCli(q, 'test/a.test.js');
+    const again = await amendCli(q, 'test/a.test.js » works');
     assert.equal(again.code, 0, again.stderr);
     assert.equal(git(q.wt, ['status', '--porcelain']), '');
-    assert.equal(git(q.wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 unfreeze test/a.test.js');
+    assert.equal(git(q.wt, ['log', '-1', '--format=%s']), 'chore(slicekit): P1/S-01 unfreeze test/a.test.js » works');
     // Now it is done: a third run is refused.
-    const third = await amendCli(q, 'test/a.test.js');
+    const third = await amendCli(q, 'test/a.test.js » works');
     assert.equal(third.code, 1);
-    assert.match(third.stderr, /test\/a\.test\.js is already unfrozen/);
+    assert.match(third.stderr, /test\/a\.test\.js » works is already unfrozen/);
   } finally {
     q.cleanup();
   }
@@ -1197,7 +1197,7 @@ test('examples/backend goes from todo to draft-pr', async () => {
     const before = fs.readFileSync(sliceFile, 'utf8');
     assert.match(before, row);
     fs.writeFileSync(sliceFile, before.replace(row, '$1$2$2Amended: `test/greet-empty.test.js` expects the message REQ-1.1 states, "a name is required".$2'));
-    const amended = await cli(root, ['build', 'amend', 'P1/S-01', '--test', 'test/greet-empty.test.js', '--reason', 'the test expected the wrong message', ...at]);
+    const amended = await cli(root, ['build', 'amend', 'P1/S-01', '--test', 'test/greet-empty.test.js » refuses an empty name', '--reason', 'the test expected the wrong message', ...at]);
     assert.equal(amended.code, 0, amended.stderr);
     write(wt, 'test/greet-empty.test.js', testFile('a name is required'));
     const work = await cli(root, ['build', 'commit', 'P1/S-01', '--message', 'feat(P1/S-01): greet a name', ...at]);

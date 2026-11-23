@@ -6,7 +6,7 @@ import { parseSliceAddr, stateFileName } from '../ids.js';
 import { withFileLock } from '../lock.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
-import { entryFile, entryLabel, evaluationRows, frozenEntries } from '../testnames.js';
+import { entryLabel, evaluationRows, frozenEntries } from '../testnames.js';
 import { TRANSITIONS, TransitionError, allowedMove, nextStates, validateEvidence } from './transitions.js';
 
 export { TransitionError };
@@ -195,10 +195,12 @@ export function frozenOf(state, slice) {
   return frozenEntries(state.frozenTests, evaluationRows(slice));
 }
 
-// Whether `test` (a path, or { file, name }) is frozen in `current`: a path is listed as a path, or is
-// the file of a test frozen by name; { file, name } is one of the tests frozenOf reads.
+// Whether `test` (a path, or { file, name }) is frozen in `current`: a path only when it is listed as a
+// path, the form of a state file written before P8/S-60; the file of a test frozen by name is not, so a
+// bare path never unfreezes tests frozen by name (REQ-1.5, D-102); { file, name } is one of the tests
+// frozenOf reads. `slice` is the slice file at the red commit.
 export function isFrozen(current, test, slice) {
-  if (typeof test === 'string') return current.frozenTests.some((t) => entryFile(t) === test);
+  if (typeof test === 'string') return current.frozenTests.some((t) => typeof t === 'string' && t === test);
   return frozenOf(current, slice).some((e) => e.file === test.file && e.name === test.name);
 }
 

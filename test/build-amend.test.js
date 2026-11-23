@@ -49,7 +49,7 @@ async function reviewed(verdict, findings) {
 }
 
 const editSlice = (p) => fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nAmended in review.\n');
-const amendCli = (p) => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'B-1 sits in the frozen test']);
+const amendCli = (p) => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', 'B-1 sits in the frozen test']);
 
 test('amend runs from in-review and returns the slice to building', async () => {
   const p = await reviewed('BLOCK', [['B-1', 'the test asserts the wrong value']]);
@@ -57,12 +57,12 @@ test('amend runs from in-review and returns the slice to building', async () => 
     editSlice(p);
     const r = await amendCli(p);
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, 'unfroze test/a.test.js\n');
+    assert.equal(r.stdout, 'unfroze test/a.test.js » works\n');
     const st = stateIn(p.wt);
     assert.equal(st.state, 'building');
-    assert.deepEqual(st.unfrozen, ['test/a.test.js']);
+    assert.deepEqual(st.unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     // The amendment is recorded as before: the slice file's own commit, then the unfreeze.
-    const unfreeze = st.history.find((h) => h.evidence?.unfreeze === 'test/a.test.js');
+    const unfreeze = st.history.find((h) => h.evidence?.unfreeze === 'test/a.test.js » works');
     assert.ok(unfreeze, JSON.stringify(st.history));
     assert.equal(unfreeze.evidence.reason, 'B-1 sits in the frozen test');
     const amendSubject = git(p.wt, ['log', '-1', '--format=%s', unfreeze.evidence.amendCommit]);
@@ -107,14 +107,14 @@ test('build amend changes only the slice file when its tests are already unfroze
     editSlice(p);
     const first = await amendCli(p);
     assert.equal(first.code, 0, first.stderr);
-    assert.deepEqual(stateIn(p.wt).unfrozen, ['test/a.test.js']);
+    assert.deepEqual(stateIn(p.wt).unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     // Every test the slice file names is unfrozen now; a second amendment names none.
     fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nA second amendment.\n');
     const before = stateIn(p.wt);
     const r = await cli(p.root, ['build', 'amend', 'P1/S-01', '--reason', 'the Done when list was wrong']);
     assert.equal(r.code, 0, r.stderr);
     const st = stateIn(p.wt);
-    assert.deepEqual(st.unfrozen, ['test/a.test.js']);
+    assert.deepEqual(st.unfrozen, [{ file: 'test/a.test.js', name: 'works' }]);
     assert.equal(st.state, before.state);
     const added = st.history.slice(before.history.length);
     const entry = added.find((h) => h.evidence?.reason === 'the Done when list was wrong');
@@ -154,6 +154,8 @@ test('build amend still refuses a frozen test it does not name', async () => {
 // ---- P8/S-60 (REQ-1.5, D-102, issue #187): build amend records any change to the slice file ----
 
 const FROZEN_WORKS = { file: 'test/a.test.js', name: 'works' };
+// The file alone, with no test name.
+const amendCliFile = (p) => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'B-1 sits in the frozen test']);
 const amendTest = (p, reason) => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', reason]);
 // The history entries added since `before`, and the one among them that carries `reason`.
 const recorded = (before, after, reason) => after.history.slice(before.history.length).find((h) => h.evidence?.reason === reason);
@@ -210,5 +212,43 @@ test('amend of a test already unfrozen records the second amendment', async () =
     assert.equal(git(p.wt, ['status', '--porcelain']), '');
   } finally {
     p.cleanup();
+  }
+});
+
+// P8/S-60 (REQ-1.5, D-102), finding H-1 of round 1: a bare file whose tests are frozen by name
+// unfreezes nothing; the refusal names the frozen tests and the `<file> » <name>` form. A path entry,
+// the form of a state file written before P8/S-60, still unfreezes the whole file.
+test('amend naming only the file of a test frozen by name is refused', async () => {
+  const p = await reviewed('BLOCK', [['B-1', 'the test asserts the wrong value']]);
+  try {
+    editSlice(p);
+    const before = stateIn(p.wt);
+    assert.deepEqual(before.frozenTests, [FROZEN_WORKS]);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const r = await amendCliFile(p);
+    assert.equal(r.code, 1, r.stdout);
+    assert.ok(r.stderr.includes('test/a.test.js holds tests frozen by name: test/a.test.js » works'), r.stderr);
+    assert.ok(r.stderr.includes('--test "<file> » <name>"'), r.stderr);
+    // Nothing is committed and nothing is unfrozen.
+    assert.deepEqual(stateIn(p.wt), before);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
+  } finally {
+    p.cleanup();
+  }
+  // A state file in the path form: the bare file unfreezes the whole file, as before P8/S-60.
+  const q = await reviewed('BLOCK', [['B-1', 'the test asserts the wrong value']]);
+  try {
+    const stateRel = '.slicekit/state/P1-S-01.json';
+    const old = { ...stateIn(q.wt), frozenTests: ['test/a.test.js'] };
+    fs.writeFileSync(path.join(q.wt, ...stateRel.split('/')), `${JSON.stringify(old, null, 2)}\n`);
+    git(q.wt, ['add', '--', stateRel]);
+    git(q.wt, ['commit', '-q', '-m', 'chore(slicekit): P1/S-01 in-review\n\nSlice: P1/S-01']);
+    editSlice(q);
+    const r = await amendCliFile(q);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, 'unfroze test/a.test.js\n');
+    assert.deepEqual(stateIn(q.wt).unfrozen, ['test/a.test.js']);
+  } finally {
+    q.cleanup();
   }
 });

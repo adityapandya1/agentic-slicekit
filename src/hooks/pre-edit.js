@@ -239,6 +239,28 @@ function bodyOf(text, name) {
   }
 }
 
+// The slice file as it was at the red commit, read from git (D-102): a path entry of a state file
+// written before P8/S-60 is read with that evaluation set, never the working tree's, which this guard
+// does not protect. Null when there is no red commit, no such file at it, or it does not parse: each
+// path entry is then the whole file, frozen for any change (fails closed).
+function sliceAtRed(root, state, slice) {
+  if (!slice?.path || typeof state.redCommit !== 'string' || state.redCommit === '') return null;
+  const rel = relInside(root, real(slice.path));
+  if (rel === null) return null;
+  let text;
+  try {
+    text = git(root, ['show', `${state.redCommit}:./${rel}`]);
+  } catch (e) {
+    if (e instanceof GitError) return null;
+    throw e;
+  }
+  try {
+    return parseSliceFile(text, slice.path);
+  } catch {
+    return null;
+  }
+}
+
 // Whether the call changes, removes or renames a test frozen in `rel` (REQ-3.3, D-102). A file frozen
 // whole (a path entry the evaluation set names no test in) is denied for any change; a test frozen by
 // name, only when its text after the call differs from its text at the red commit. Another test of
@@ -249,7 +271,8 @@ function changesFrozen(root, rel, abs, state, slice, input) {
   if (mine.length === 0) return false;
   const local = (e) => (typeof e === 'string' ? rel : { file: rel, name: e.name });
   const unfrozen = state.unfrozen.filter((e) => same(rel, at(entryFile(e)))).map(local);
-  const entries = frozenEntries(mine.map(local), evaluationRows(slice), same).filter((e) => !isUnfrozen(e, unfrozen, same));
+  const rows = mine.some((e) => typeof e === 'string') ? evaluationRows(sliceAtRed(root, state, slice)) : [];
+  const entries = frozenEntries(mine.map(local), rows, same).filter((e) => !isUnfrozen(e, unfrozen, same));
   if (entries.length === 0) return false;
   if (entries.some((e) => e.name === null)) return true;
   const after = textAfter(abs, input);
