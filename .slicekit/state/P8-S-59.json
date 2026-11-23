@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-59",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 214,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
-    "headSha": "0ca66095a91f9901e16a23c6f959ae5b91e4507f"
+    "headSha": "9dd2f517dbfb34574a67a47a1d7b8b298912eced"
   },
   "redCommit": "056c8462b62091f44e440fd1bad030f2b0f52223",
   "frozenTests": [
@@ -32,11 +32,7 @@
       "headSha": "0ca66095a91f9901e16a23c6f959ae5b91e4507f"
     }
   ],
-  "ci": {
-    "sha": "76e22bcd2792d2c4cf92305108306337d26ac479",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45083468925"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -127,6 +123,22 @@
           "path": ".slicekit/reviews/P8-S-59i-r2.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T00:19:14.171Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 214,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
+          "headSha": "9dd2f517dbfb34574a67a47a1d7b8b298912eced",
+          "title": "[P8/S-59] Review budget"
         }
       }
     }
