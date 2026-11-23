@@ -178,3 +178,53 @@ test('with freezeTests false a changed frozen test is no finding', () => {
     assert.deepEqual(messages(root), []);
   });
 });
+
+// ---- P8/S-60 (REQ-3.15, REQ-3.7, D-102): a test is frozen by its name ----
+
+const TWO_TESTS = [
+  "import { test } from 'node:test';",
+  '',
+  "test('bills', () => { throw new Error('red'); });",
+  '',
+  "test('formats', () => { throw new Error('red too'); });",
+  '',
+].join('\n');
+
+// The red commit of TWO_TESTS, then the bookkeeping commit whose state file freezes `bills` by name.
+function redByName(root) {
+  const sha = commitFiles(root, { [TEST]: TWO_TESTS }, 'test: red');
+  const state = { slice: SLICE, state: 'building', branch: BRANCH, redCommit: sha, frozenTests: [{ file: TEST, name: 'bills' }], unfrozen: [], history: [] };
+  commitFiles(root, { [STATE]: `${JSON.stringify(state, null, 2)}\n` }, `chore(slicekit): ${SLICE} tests-red`);
+  return sha;
+}
+
+// REQ-3.15
+test('a changed frozen test is a finding naming the file and the test', () => {
+  const FINDING = `frozen test changed after red: ${TEST} » bills`;
+  withSlice((root) => {
+    redByName(root);
+    assert.deepEqual(messages(root), []);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("throw new Error('red'); });", '});') }, 'feat: green by editing the test');
+    assert.deepEqual(messages(root), [FINDING]);
+  });
+  // A frozen test that is gone is the same finding.
+  withSlice((root) => {
+    redByName(root);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("test('bills', () => { throw new Error('red'); });\n", '') }, 'feat: drop the test');
+    assert.deepEqual(messages(root), [FINDING]);
+  });
+});
+
+// REQ-3.15
+test('a change to another test of the same file is no finding', () => {
+  withSlice((root) => {
+    redByName(root);
+    // Another test's body, a new import and a new test change; `bills` stays as it was at red.
+    const changed = TWO_TESTS
+      .replace("test('formats', () => { throw new Error('red too'); });", "test('formats', () => {});")
+      .replace("import { test } from 'node:test';", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';")
+      .concat("test('rounds', () => assert.ok(true));\n");
+    commitFiles(root, { [TEST]: changed }, 'feat: another test changes');
+    assert.deepEqual(messages(root), []);
+  });
+});

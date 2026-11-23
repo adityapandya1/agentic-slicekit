@@ -9,7 +9,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { git } from '../src/git.js';
 import { recordState } from '../src/build/record.js';
-import { cli, green, stateIn, write } from './helpers/build-flow.js';
+import { building, cli, green, stateIn, write } from './helpers/build-flow.js';
 
 const SLICE_FILE = 'docs/phases/P1-x/S-01-thing-1.md';
 const REVIEWS = '.slicekit/reviews';
@@ -143,6 +143,68 @@ test('build amend still refuses a frozen test it does not name', async () => {
     assert.deepEqual(stateIn(p.wt), before);
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.notEqual(git(p.wt, ['status', '--porcelain', '--', SLICE_FILE]), '');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// ---- P8/S-60 (REQ-1.5, D-102, issue #187): build amend records any change to the slice file ----
+
+const FROZEN_WORKS = { file: 'test/a.test.js', name: 'works' };
+const amendTest = (p, reason) => cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', reason]);
+// The history entries added since `before`, and the one among them that carries `reason`.
+const recorded = (before, after, reason) => after.history.slice(before.history.length).find((h) => h.evidence?.reason === reason);
+
+// REQ-1.5
+test('amend with no test records a slice-file change while tests stay frozen', async () => {
+  const p = await building({ remote: true, init: true });
+  try {
+    const before = stateIn(p.wt);
+    assert.equal(before.state, 'building');
+    assert.deepEqual(before.frozenTests, [FROZEN_WORKS]);
+    fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nThe Done when list names the wrong command.\n');
+    const r = await cli(p.root, ['build', 'amend', 'P1/S-01', '--reason', 'the Done when list was wrong']);
+    assert.equal(r.code, 0, r.stderr);
+    const st = stateIn(p.wt);
+    // Every frozen test stays frozen, and the slice stays where it was.
+    assert.equal(st.state, 'building');
+    assert.deepEqual(st.frozenTests, [FROZEN_WORKS]);
+    assert.deepEqual(st.unfrozen, []);
+    // The state file records the change and the reason; the commit holds the slice file alone.
+    const entry = recorded(before, st, 'the Done when list was wrong');
+    assert.ok(entry, JSON.stringify(st.history));
+    const sha = entry.evidence.amendCommit;
+    assert.equal(git(p.wt, ['log', '-1', '--format=%s', sha]), AMEND_SUBJECT);
+    assert.deepEqual(commitFiles(p.wt, sha), [SLICE_FILE]);
+    assert.ok(git(p.wt, ['show', `${sha}:${SLICE_FILE}`]).includes('The Done when list names the wrong command.'));
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
+  } finally {
+    p.cleanup();
+  }
+});
+
+// REQ-1.5
+test('amend of a test already unfrozen records the second amendment', async () => {
+  const p = await reviewed('BLOCK', [['B-1', 'the test asserts the wrong value']]);
+  try {
+    editSlice(p);
+    const first = await amendTest(p, 'B-1 sits in the frozen test');
+    assert.equal(first.code, 0, first.stderr);
+    assert.deepEqual(stateIn(p.wt).unfrozen, [FROZEN_WORKS]);
+    // A second change to the slice file, naming the same test again.
+    fs.appendFileSync(path.join(p.wt, ...SLICE_FILE.split('/')), '\nA second amendment of the same test.\n');
+    const before = stateIn(p.wt);
+    const r = await amendTest(p, 'B-2 sits in the same test');
+    assert.equal(r.code, 0, r.stderr);
+    const st = stateIn(p.wt);
+    assert.deepEqual(st.unfrozen, [FROZEN_WORKS]);
+    const entry = recorded(before, st, 'B-2 sits in the same test');
+    assert.ok(entry, JSON.stringify(st.history));
+    const sha = entry.evidence.amendCommit;
+    assert.equal(git(p.wt, ['log', '-1', '--format=%s', sha]), AMEND_SUBJECT);
+    assert.deepEqual(commitFiles(p.wt, sha), [SLICE_FILE]);
+    assert.ok(git(p.wt, ['show', `${sha}:${SLICE_FILE}`]).includes('A second amendment of the same test.'));
+    assert.equal(git(p.wt, ['status', '--porcelain']), '');
   } finally {
     p.cleanup();
   }

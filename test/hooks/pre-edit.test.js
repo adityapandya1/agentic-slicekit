@@ -587,3 +587,114 @@ test('a listed path named through a link to the repository root, or from inside 
     fs.rmSync(outside, { recursive: true, force: true });
   }
 });
+
+// ---- P8/S-60 (REQ-3.3, D-102): a test is frozen by its name, not the file that holds it ----
+
+const BILLING = 'test/billing.test.js';
+const FROZEN_NAME = 'rejects an unknown currency';
+const BILLING_TEXT = [
+  "import { test } from 'node:test';",
+  "import assert from 'node:assert/strict';",
+  '',
+  `test('${FROZEN_NAME}', () => {`,
+  "  assert.throws(() => bill('XYZ'));",
+  '});',
+  '',
+  "test('formats a total', () => {",
+  "  assert.equal(format(1), '1.00');",
+  '});',
+  '',
+].join('\n');
+
+// A slice repo whose red commit holds BILLING, with FROZEN_NAME frozen by name in the state file.
+function namedRepo(state = {}) {
+  const repo = makeRepo({ branch: BRANCH, files: { [BILLING]: BILLING_TEXT, 'docs/runbook.md': '# r' } });
+  execFileSync('git', ['add', '-A'], { cwd: repo.root, stdio: 'pipe' });
+  commit(repo.root, 'test: red', { allowEmpty: false });
+  const redCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.root }).toString().trim();
+  writeState(repo.root, { redCommit, frozenTests: [{ file: BILLING, name: FROZEN_NAME }], unfrozen: [], ...state });
+  return repo;
+}
+
+// The hook's decision on a tool call with the full tool input.
+const call = (root, tool, input) => handle({ session_id: 's', tool_name: tool, tool_input: { file_path: BILLING, ...input }, cwd: root }, { root, cfg: cfgFor(), env: {} });
+const editOf = (root, oldString, newString) => call(root, 'Edit', { old_string: oldString, new_string: newString });
+
+// REQ-3.3
+test('an edit to a test the evaluation set does not name is allowed in a frozen file', () => {
+  const { root, cleanup } = namedRepo();
+  try {
+    // Another test's body, another line of the file, a new test: allowed, by each tool.
+    assertAllow(editOf(root, "assert.equal(format(1), '1.00');", "assert.equal(format(2), '2.00');"));
+    assertAllow(editOf(root, "import assert from 'node:assert/strict';", "import assert from 'node:assert/strict';\nimport { bill, format } from '../src/billing.js';"));
+    assertAllow(call(root, 'MultiEdit', { edits: [{ old_string: "test('formats a total'", new_string: "test('formats a total in cents'" }] }));
+    assertAllow(call(root, 'Write', { content: `${BILLING_TEXT}test('rounds half up', () => {});\n` }));
+    // The frozen test's own body is still denied (the first scenario of REQ-3.3).
+    assertDeny(editOf(root, "assert.throws(() => bill('XYZ'));", "assert.ok(true);"), FROZEN);
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.3
+test('an edit that removes or renames a frozen test is denied', () => {
+  const { root, cleanup } = namedRepo();
+  try {
+    const frozenCall = `test('${FROZEN_NAME}', () => {\n  assert.throws(() => bill('XYZ'));\n});\n`;
+    // Renamed, by Edit and by MultiEdit.
+    assertDeny(editOf(root, `test('${FROZEN_NAME}'`, "test('rejects a currency'"), FROZEN);
+    assertDeny(call(root, 'MultiEdit', { edits: [{ old_string: FROZEN_NAME, new_string: 'rejects an odd currency' }] }), FROZEN);
+    // Removed, by Edit and by a Write of the file without it.
+    assertDeny(editOf(root, frozenCall, ''), FROZEN);
+    assertDeny(call(root, 'Write', { content: BILLING_TEXT.replace(frozenCall, '') }), FROZEN);
+    // Once `build amend` unfroze the test, the same rename is allowed.
+    const unfrozen = namedRepo({ unfrozen: [{ file: BILLING, name: FROZEN_NAME }] });
+    try {
+      assertAllow(editOf(unfrozen.root, `test('${FROZEN_NAME}'`, "test('rejects a currency'"));
+    } finally {
+      unfrozen.cleanup();
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+// REQ-3.3
+test('a new document that Expected changes names is allowed while building', () => {
+  const sliceFile = `---
+slice: ${SLICE}
+name: Hooks
+repo: .
+group: A
+runbook: no
+requirements: [REQ-3.3]
+decisions: []
+---
+
+## Done when
+
+1. It works.
+
+## Evaluation set
+
+| Test | Kind | Covers |
+|---|---|---|
+| \`a.test.js » works\` | happy | REQ-3.3 |
+
+## Expected changes
+
+\`src/a.js\`, \`docs/guide/new-page.md\`, tests.
+`;
+  for (const state of ['building', 'tests-red']) {
+    const { root, cleanup } = sliceRepo({ state, frozenTests: [] }, { files: { 'docs/phases/P1-x/S-06-hooks.md': sliceFile } });
+    try {
+      assertAllow(decide(root, 'docs/guide/new-page.md'));
+      assertAllow(decide(root, path.join(root, 'docs', 'guide', 'new-page.md')));
+      // A new document the slice file does not name is still denied.
+      assertDeny(decide(root, 'docs/guide/other-page.md'), NEW_DOC);
+      assertDeny(decide(root, 'docs/new-page.md'), NEW_DOC);
+    } finally {
+      cleanup();
+    }
+  }
+});

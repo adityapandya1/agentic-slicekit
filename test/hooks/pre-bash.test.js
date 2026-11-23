@@ -1035,3 +1035,44 @@ test('a gh api write to a ruleset through a full URL is denied', () => {
     cleanup();
   }
 });
+
+// ---- P8/S-60 (REQ-3.2, REQ-3.3, D-102): a file holding a test frozen by name ----
+
+// REQ-3.2
+test('a redirection into a file holding a frozen test is still denied', () => {
+  const slice = 'P1/S-06';
+  const held = 'test/a.test.js';
+  const released = 'test/b.test.js';
+  const files = {
+    [held]: "import { test } from 'node:test';\ntest('frozen one', () => {});\ntest('free one', () => {});\n",
+    [released]: "import { test } from 'node:test';\ntest('b one', () => {});\n",
+    'test/other.js': 'y\n',
+  };
+  const { root, cleanup } = repoOn('slice/P1-S-06-hooks', files);
+  try {
+    const redCommit = run(root, ['rev-parse', 'HEAD']).toString().trim();
+    const file = path.join(root, '.slicekit', 'state', 'P1-S-06.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({
+      slice,
+      state: 'building',
+      redCommit,
+      frozenTests: [{ file: held, name: 'frozen one' }, { file: released, name: 'b one' }],
+      unfrozen: [{ file: released, name: 'b one' }],
+    }));
+    // The file holds a frozen test, beside a test the evaluation set does not name: every Bash write
+    // to it is denied, naming the file and the slice.
+    for (const cmd of [`echo x > ${held}`, `echo x >> ${held}`, `echo x | tee ${held}`, `sed -i s/one/two/ ${held}`, `cp test/other.js ${held}`, `mv test/other.js ${held}`, `rm ${held}`]) {
+      for (const agent of [undefined, 'a1']) {
+        const text = denied(decide(root, cmd, { agent }));
+        assert.ok(text.includes(held), `${cmd}: the reason names the file: ${text}`);
+        assert.ok(text.includes(slice), `${cmd}: the reason names the slice: ${text}`);
+      }
+    }
+    // A file whose every frozen test `build amend` unfroze, and a file holding none, are free.
+    assertAllow(decide(root, `echo x > ${released}`));
+    assertAllow(decide(root, 'echo x > test/other.js'));
+  } finally {
+    cleanup();
+  }
+});
