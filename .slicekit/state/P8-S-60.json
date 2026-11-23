@@ -1,8 +1,12 @@
 {
   "slice": "P8/S-60",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 217,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+    "headSha": "800a71f7f9c6450b2e4cd35af8cfebe9f3f5ec4d"
+  },
   "redCommit": "afb6190af4668192461f8992863f442be374cdae",
   "frozenTests": [
     "test/testnames.test.js",
@@ -66,6 +70,22 @@
         "unfreeze": "test/check/frozen.test.js",
         "amendCommit": "c88de708ba1b9a8bc2e1783efa2b59bef663f3ea",
         "reason": "under D-102 a slice-file amendment alone no longer lifts the freeze"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T02:22:18.677Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 217,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+          "headSha": "800a71f7f9c6450b2e4cd35af8cfebe9f3f5ec4d",
+          "title": "[P8/S-60] Freezing by test name and slice-file amendments"
+        }
       }
     }
   ]
