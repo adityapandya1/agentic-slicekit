@@ -13,7 +13,8 @@
     "test/build-amend.test.js"
   ],
   "unfrozen": [
-    "test/build-amend.test.js"
+    "test/build-amend.test.js",
+    "test/check/frozen.test.js"
   ],
   "verdicts": [],
   "ci": null,
@@ -54,6 +55,17 @@
         "unfreeze": "test/build-amend.test.js",
         "amendCommit": "e0c0bbac1f854bf783f96ab79a4a3849f97d262b",
         "reason": "the existing test about refusing an unnamed frozen test changes with the name form of Task 4"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T01:38:19.630Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/frozen.test.js",
+        "amendCommit": "c88de708ba1b9a8bc2e1783efa2b59bef663f3ea",
+        "reason": "under D-102 a slice-file amendment alone no longer lifts the freeze"
       }
     }
   ]
