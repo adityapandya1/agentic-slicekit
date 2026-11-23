@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-62",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 222,
@@ -35,7 +35,15 @@
     }
   ],
   "unfrozen": [],
-  "verdicts": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-62-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "274281e3057f063c37633396843beecd72253a4b"
+    }
+  ],
   "ci": null,
   "mergedAt": null,
   "handoff": null,
@@ -111,6 +119,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
           "headSha": "274281e3057f063c37633396843beecd72253a4b",
           "title": "[P8/S-62] One step at a time"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T19:15:26.247Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-62-r1.md",
+          "blockers": 0,
+          "independent": false
         }
       }
     }
