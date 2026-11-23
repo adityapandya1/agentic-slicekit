@@ -1,0 +1,228 @@
+{
+  "slice": "P8/S-59",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 214,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
+    "headSha": "2fa0f7f2a3521ff75b962cb3883a534e06ad34f2"
+  },
+  "redCommit": "056c8462b62091f44e440fd1bad030f2b0f52223",
+  "frozenTests": [
+    "test/review-budget.test.js",
+    "test/verdict.test.js",
+    "test/instructions.test.js"
+  ],
+  "unfrozen": [
+    "test/review-budget.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-59-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "0ca66095a91f9901e16a23c6f959ae5b91e4507f"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-59i-r2.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "0ca66095a91f9901e16a23c6f959ae5b91e4507f"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-59i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "9dd2f517dbfb34574a67a47a1d7b8b298912eced"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-59i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "2fa0f7f2a3521ff75b962cb3883a534e06ad34f2"
+    }
+  ],
+  "ci": {
+    "sha": "26976d84aa730de558d4e037ed716e1116bb4631",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45091760181"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-22T22:10:17.223Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "056c8462b62091f44e440fd1bad030f2b0f52223",
+        "testExit": 1,
+        "tests": [
+          "test/review-budget.test.js",
+          "test/verdict.test.js",
+          "test/instructions.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-22T22:10:17.592Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-22T22:54:34.942Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/review-budget.test.js",
+        "amendCommit": "060a16355b8854ff0133acce38cb89027c6fa33e",
+        "reason": "build verdict prints the review start an allowing decision row gives and the three choices at the stop from src/cli/build.js; plan PR 213 put S-60 in a later step"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-22T23:22:21.956Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 214,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
+          "headSha": "0ca66095a91f9901e16a23c6f959ae5b91e4507f",
+          "title": "[P8/S-59] Review budget"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-22T23:28:44.930Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-59-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-22T23:41:53.702Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "76e22bcd2792d2c4cf92305108306337d26ac479",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45083468925"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-22T23:48:47.690Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-59i-r2.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T00:19:14.171Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 214,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
+          "headSha": "9dd2f517dbfb34574a67a47a1d7b8b298912eced",
+          "title": "[P8/S-59] Review budget"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T00:26:23.891Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-59i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T00:49:54.836Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 214,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/214",
+          "headSha": "2fa0f7f2a3521ff75b962cb3883a534e06ad34f2",
+          "title": "[P8/S-59] Review budget"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T00:57:06.235Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-59i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T01:09:48.023Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "26976d84aa730de558d4e037ed716e1116bb4631",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45091760181"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-23T01:09:50.662Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -1,9 +1,12 @@
 // REQ-2.11 The verdict file: the reviewer's verdict is parsed and its shape problems named.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseVerdict, verdictProblems } from '../src/verdict.js';
+import { shapeProblems } from '../src/hooks/shapes.js';
 
 const fixture = (name) => readFileSync(fileURLToPath(new URL(`./fixtures/verdicts/${name}`, import.meta.url)), 'utf8');
 
@@ -231,4 +234,25 @@ test('verdict » a missing, malformed or repeated Head line is a problem (REQ-2.
   assert.deepEqual(problems(doc('Verdict: APPROVE') + '\nHead: def5678\n'), ['more than one "Head:" line']);
   // A Head line inside a fence is an example, not the verdict's head.
   assert.deepEqual(problems(headless + '\n```\nHead: abc1234abc1234abc1234abc1234abc1234abc12\n```\n'), ['no "Head:" line naming the head reviewed']);
+});
+
+// D-101: a reviewer with nothing to report writes APPROVE with a findings table that has a header and
+// no row; the parser and the SubagentStop shape check take it as well formed.
+test('verdict.test.js » an APPROVE verdict with an empty findings table is well formed', () => {
+  const text = `Verdict: APPROVE\n${HEAD}\n\n${TABLE}${TAIL}`;
+  const v = parseVerdict(text, '.slicekit/reviews/P1-S-01i-r3.md');
+  assert.equal(v.verdict, 'APPROVE');
+  assert.deepEqual(v.findings, []);
+  assert.deepEqual(v.columns, []);
+  assert.deepEqual(verdictProblems(v), []);
+
+  const root = mkdtempSync(path.join(os.tmpdir(), 'slicekit-verdict-'));
+  try {
+    mkdirSync(path.join(root, '.slicekit', 'reviews'), { recursive: true });
+    writeFileSync(path.join(root, '.slicekit', 'reviews', 'P1-S-01i-r3.md'), text);
+    const reply = 'Wrote .slicekit/reviews/P1-S-01i-r3.md: Verdict: APPROVE.\n\nSkipped: nothing\nNot checked: the CI run\n';
+    assert.deepEqual(shapeProblems('reviewer', reply, { root }), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -73,6 +73,15 @@ After a pull request merges to the default branch, the workflow's `sync` job run
 - Between a slice's merge and its sync pull request's merge, `BUILD.md` on the default branch differs from the state files: the push run on the default branch fails its gate and the kit's self-tests, and so does a spec, gaps, plan or release pull request branched from that commit; a slice pull request does not, since the queue rule is silent on a slice branch. Merge the sync pull request first, then open or update those pull requests; the next push run is green.
 - First thing to check: `git config --get merge.slicekit-build.driver` prints the command, and `git check-attr merge -- BUILD.md` prints `BUILD.md: merge: slicekit-build`.
 
+## The independent review's round budget
+
+A slice has two review rounds in the build session, then one independent round, and a second independent round only when the first left a blocker (02 REQ-2.6, REQ-2.8, D-101). `slicekit review start <PR>` refuses any later round, before it touches a worktree, and exits 1. `slicekit build verdict --independent` on the last allowed round with a blocker sets the slice to `changes-requested`, keeps the pull request draft and exits 1. Both print the open blockers of the latest independent verdict and the three choices.
+
+- Fix by hand: fix the blockers in the slice worktree, commit with `slicekit build commit <id>` and push with `slicekit build pr <id>`. With `review.independent: required` the ready label still needs an independent verdict on the new head, so record a decision row as in the third choice for that round.
+- Re-scope the slice: amend the slice file so the blockers fall outside its Done when, or move them to a new slice in the phase file, then record why in `docs/decisions.md`.
+- Allow one more round: add a row to the Settled table of `docs/decisions.md` whose answer names the slice ID and says "one more round" (for example `P8/S-59 may have one more round.`), commit it on the default branch and push it to origin, then run `slicekit review start <PR>` again. `review start` fetches the default branch from origin and reads the row there; a row only in the working tree allows nothing. Each such row allows one round.
+- First thing to check when `review start` refuses with `left no blocker`: the latest independent verdict approved the slice; `slicekit build finish <id>` brings it to ready once CI is green on that head.
+
 ## Signed journal commits
 
 The journal's hash chain carries no key, and its `actor` field is what the session reports; neither proves who wrote a line. What binds a journal to a person is the commit that carries it (03 REQ-3.8, D-71). The kit manages no keys.

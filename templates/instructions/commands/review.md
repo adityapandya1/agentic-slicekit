@@ -18,6 +18,10 @@ it is left to the person who started this session. When this session built the s
 the building session's context, stop and tell the human to run `/slicekit review <PR>` in a new
 session.
 
+A reviewer subagent started by `{{cli}} review start <PR>` from the main checkout, given only the
+pull request and the reviewer's brief and no build context, counts as independent, and
+`/slicekit review` in a new session is the stronger form (D-104).
+
 When the arguments are `(none)`, ask the human for the pull request's number and use it in place of
 `{{args}}` below. Call that number `<n>`.
 
@@ -39,6 +43,13 @@ refusal and stop, since the human decides each of these. A refusal that names
 `build pr <id> --worktree <dir>` means an earlier review session committed a fix it did not push:
 run `{{cli}} build pr <id> --worktree <dir>` with the path it names, then this step again.
 
+The independent review has one round, and a second only when the first left a blocker (D-101). A
+refusal that `no independent round is left` names the latest round's open blockers and three
+choices: fix them by hand, re-scope the slice, or record a decision row that allows one more round,
+committed on the default branch and pushed to origin.
+A refusal that the review `left no blocker` means the slice has its independent verdict. Print
+either refusal and stop: the human decides.
+
 ## 3. The reviewer gives the independent verdict
 
 Run `{{cli}} instructions reviewer <id> --worktree <wt>`. Spawn the reviewer with that output as its
@@ -51,7 +62,9 @@ section lets it write that one file outside the worktree.
 When the reviewer stops, run `{{cli}} build verdict <id> <path> --independent --worktree <wt>` with
 step 2's verdict path. It commits the verdict into the review worktree, pushes it to the slice
 branch, and prints `next: <step>`, `blockers: <IDs or none>`, `should-haves: <IDs or none>` and
-`rounds: <used> of 2`; the rounds stay as they were. By what it prints:
+`rounds: <used> of 2`; the rounds stay as they were. On `next: fix` it also prints
+`review: <command>`, the `review start` command of the next independent round that the budget
+allows (D-101); keep it for step 5. By what it prints:
 
 - A refusal that names the verdict's content (a finding with no "How verified", a reused finding
   number, a banned phrase, a `<!--`): send the reviewer back with the printed message, then run this
@@ -60,6 +73,10 @@ branch, and prints `next: <step>`, `blockers: <IDs or none>`, `should-haves: <ID
   session pushed since step 2. Run `{{cli}} build sync <id> --worktree <wt>`, then this command again.
 - `a new verdict needs a fresh fetch`: origin could not be reached. Print it and stop; tell the
   human to run this command again once origin answers.
+- Exit 1 with `stopped:` and `next: stuck`: the round was the last one allowed and left a blocker
+  (D-101). The slice is `changes-requested`. Print the open blockers and the three choices it
+  prints and stop: the human fixes them by hand, re-scopes the slice, or records a decision row that
+  allows one more round, committed on the default branch and pushed to origin.
 - Any other refusal goes to the human: print it and stop.
 
 When the verdict lists should-haves, ask the human once, listing each with its ID and its "What is
@@ -91,7 +108,8 @@ When the fixer reports, run these two in this order:
    `pass --notes <file>`, the body lost a section: print the refusal and stop, since the notes are the
    building session's.
 
-Then start again at step 2 with `{{cli}} review start <n>`: the new head needs its own independent
+Then start again at step 2 with the command step 4's `review:` line printed,
+`{{cli}} review start <n>`: the new head needs its own independent
 verdict, at the next round. Tell the human that the slice branch moved under the building session:
 that session syncs its worktree with `build sync <id>` before its next push.
 
