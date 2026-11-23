@@ -103,6 +103,16 @@
         "amendCommit": "26ca4bc36ea605fe59089718823dc01b97947ec0",
         "reason": "build verdict prints the round budget from src/cli/build.js, which reads the lane; the pending marker is removed since this slice writes the page it excused"
       }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T17:04:25.309Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "b1a95359f29285cb9e0b921d5505376f6c83d0a4",
+        "reason": "Done when 5 names the guide pages by their paths from the repository root"
+      }
     }
   ]
 }
