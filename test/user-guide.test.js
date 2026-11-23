@@ -303,3 +303,30 @@ test('the lane rule has a page and the review page names the independent round b
     assert.match(text, /one more round/i, `${rel} does not say how a person allows one more round`);
   }
 });
+
+// P8/S-62 (REQ-5.8, REQ-5.7, REQ-2.16, D-97): `slicekit next` and `/slicekit next` have their pages,
+// the guide index's Pages and Stages sections link both, and the README's "What it covers" table has
+// a Next row.
+test('the next command and procedure have pages', () => {
+  const lists = kitLists();
+  assert.ok(lists.commands.includes('next'), `COMMANDS has no next: ${lists.commands.join(' ')}`);
+  assert.ok(lists.slash.includes('next'), `PROCEDURES has no next: ${lists.slash.join(' ')}`);
+  for (const page of ['commands/next', 'slash/next']) {
+    assert.ok(fs.existsSync(pagePath(page)), `docs/guide/${page}.md is missing`);
+    assert.notEqual(readPage(page).trim(), '', `docs/guide/${page}.md is empty`);
+  }
+  const index = fs.readFileSync(path.join(GUIDE, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+  for (const name of ['Pages', 'Stages']) {
+    const text = (section(index, name) ?? []).join('\n');
+    assert.notEqual(text, '', `docs/guide/README.md has no ## ${name}`);
+    for (const page of ['commands/next', 'slash/next']) {
+      assert.ok(text.includes(`](${page}.md)`) || text.includes(`](./${page}.md)`), `the ${name} section does not link ${page}.md`);
+    }
+  }
+  // The README's "What it covers" table has a row for /slicekit next.
+  const readme = fs.readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+  const covers = section(readme, 'What it covers') ?? [];
+  const row = covers.find((l) => l.startsWith('|') && /`\/slicekit[ -]next`/.test(l));
+  assert.ok(row, 'the README\'s What it covers table has no /slicekit next row');
+  assert.match(row.split('|')[1].trim(), /^Next$/);
+});
