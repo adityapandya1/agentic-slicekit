@@ -288,8 +288,9 @@ test('instructions » --command ops and --command audit print their procedures',
   }
 });
 
-test('instructions » PROCEDURES names the ten commands', () => {
-  assert.deepEqual(PROCEDURES, ['brief', 'intake','specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit']);
+// P8/S-62 (REQ-2.16): `next` is the eleventh procedure.
+test('instructions » PROCEDURES names the eleven commands', () => {
+  assert.deepEqual(PROCEDURES, ['brief', 'intake','specify', 'gaps', 'plan', 'build', 'review', 'release', 'ops', 'audit', 'next']);
 });
 
 test('instructions » a procedure has {{cli}} and {{args}} replaced', () => {

@@ -34,7 +34,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 
 | Page | What it does |
 |---|---|
-| [`/slicekit`](slash/slicekit.md) | Runs any of the ten procedures by name. It is the one slash command a person needs to remember. |
+| [`/slicekit`](slash/slicekit.md) | Runs any of the eleven procedures by name. It is the one slash command a person needs to remember. |
 | [`/slicekit brief`](slash/brief.md) | Interviews a person who has only an idea, one topic per question, and writes the brief that `/slicekit intake` takes as its source. |
 | [`/slicekit intake`](slash/intake.md) | Brings a requirement document into the project and interviews the person about it. |
 | [`/slicekit specify`](slash/specify.md) | Writes the spec from the intake snapshots and the decisions, then opens the spec pull request. |
@@ -45,6 +45,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 | [`/slicekit release`](slash/release.md) | Writes the release record of a phase whose slices are all merged, and opens the release pull request. It deploys nothing. |
 | [`/slicekit ops`](slash/ops.md) | Triages one symptom: the slices and pull requests that touched the files it names, the runbook's first checks, and the actions someone could take. It takes no action. |
 | [`/slicekit audit`](slash/audit.md) | Compares what the spec and the runbook claim with what the code, the tests and the CI history show. |
+| [`/slicekit next`](slash/next.md) | Runs the one next step that `slicekit next` prints, then stops. Under `/loop`, one step per iteration. |
 
 ### Commands
 
@@ -67,6 +68,7 @@ Every `slicekit` command, every `/slicekit` slash command and every rule of `sli
 | [`slicekit instructions`](commands/instructions.md) | Prints an agent's brief or a slash command's procedure. The rules of every agent and command live here, not in a prompt. |
 | [`slicekit intake`](commands/intake.md) | The steps of `/slicekit intake` that the CLI takes: freeze the source document, then record each interview question and its answer. |
 | [`slicekit journal`](commands/journal.md) | Verifies or prints the session journal, and records the journal heads after a merge. |
+| [`slicekit next`](commands/next.md) | Prints the one next step of the program and the command that runs it. It reads files only and writes none. |
 | [`slicekit ops`](commands/ops.md) | The two steps of `/slicekit ops` that the CLI takes: what the ops agent is handed for a symptom, and the check of the report it replies with. |
 | [`slicekit plan`](commands/plan.md) | Says whether planning may start. |
 | [`slicekit pr`](commands/pr.md) | Commits, pushes and opens or updates a document pull request. |
@@ -118,6 +120,8 @@ In your project the kit runs as `npx slicekit`, or through the `cli` value in `.
 ## Stages
 
 A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. `slicekit stage require <stage>` is that check at the start of specify, gaps and build; plan uses `slicekit plan check`, and release uses `slicekit release P<n> --dry-run`. The stage names in the code are `intake`, `clarify`, `specify`, `spec-review`, `gap-scan`, `stack`, `plan`, `build` and `release`. Merging a pull request is always a person's act. The optional stage `brief` comes before `intake` and is judged alone: `slicekit stage require brief` checks it, no later stage requires it, and `intake` takes it as its source when it exists.
+
+At any stage, [`slicekit next`](commands/next.md) reads the files and prints the one next step and the command that runs it, and [`/slicekit next`](slash/next.md) runs that step and stops; `/loop /slicekit next` runs one step per iteration. At a merge, a publish, an Open decision row the step depends on and the review budget stop, both print the command for the person and run nothing.
 
 | Stage | Slash command | What happens | CLI steps |
 |---|---|---|---|

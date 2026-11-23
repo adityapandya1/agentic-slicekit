@@ -70,6 +70,7 @@ walkthrough on `examples/backend`, except the review's `verdict` line: it is the
 | Stage | Command | What you get |
 |---|---|---|
 | Any | `/slicekit` | any procedure below by name, for example `/slicekit build` |
+| Next | `/slicekit next` | the one next step, read from the files, run and then stopped; `/loop /slicekit next` runs one step per iteration, and a person merges |
 | Brief | `/slicekit brief` | a brief written from the person's own answers, when there is only an idea and no requirement document |
 | Intake | `/slicekit intake` | a frozen snapshot of the requirement document and one decision row per answer |
 | Specify | `/slicekit specify` | spec files in which every requirement cites its source, and the spec pull request |
@@ -181,8 +182,10 @@ absolute path in `cli` or a global install.
 <details>
 <summary>Built with itself</summary>
 
-The kit is built with itself: each change to its code goes through a slice, with tests written first,
-a review and green CI; its plans and version changes go through pull requests of their own. `docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every
+The kit is built with itself: every change to `src/`, `bin/` and `templates/` went through a slice,
+with tests written first, a review and green CI; its plans and version changes go through pull requests
+of their own. Test files have also changed in spec pull requests, and #94 is the one case so far.
+`docs/spec/00-overview.md` says what the kit is and why, `docs/decisions.md` holds every
 choice made so far, and `BUILD.md` shows the order the kit is built in.
 
 </details>
