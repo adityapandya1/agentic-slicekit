@@ -180,6 +180,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <li><a href="#slash-release"><code>/slicekit release</code></a></li>
         <li><a href="#slash-ops"><code>/slicekit ops</code></a></li>
         <li><a href="#slash-audit"><code>/slicekit audit</code></a></li>
+        <li><a href="#slash-next"><code>/slicekit next</code></a></li>
       </ol></li>
     <li><a href="#commands">Commands</a>
       <ol>
@@ -200,6 +201,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <li><a href="#commands-instructions"><code>slicekit instructions</code></a></li>
         <li><a href="#commands-intake"><code>slicekit intake</code></a></li>
         <li><a href="#commands-journal"><code>slicekit journal</code></a></li>
+        <li><a href="#commands-next"><code>slicekit next</code></a></li>
         <li><a href="#commands-ops"><code>slicekit ops</code></a></li>
         <li><a href="#commands-plan"><code>slicekit plan</code></a></li>
         <li><a href="#commands-pr"><code>slicekit pr</code></a></li>
@@ -263,6 +265,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 <section class="part" id="stages">
   <h2>Stages</h2>
   <p>A program moves through these stages in this order. A stage command refuses to start until the files show the stage before it is complete. <code>slicekit stage require &lt;stage&gt;</code> is that check at the start of specify, gaps and build; plan uses <code>slicekit plan check</code>, and release uses <code>slicekit release P&lt;n&gt; --dry-run</code>. The stage names in the code are <code>intake</code>, <code>clarify</code>, <code>specify</code>, <code>spec-review</code>, <code>gap-scan</code>, <code>stack</code>, <code>plan</code>, <code>build</code> and <code>release</code>. Merging a pull request is always a person's act. The optional stage <code>brief</code> comes before <code>intake</code> and is judged alone: <code>slicekit stage require brief</code> checks it, no later stage requires it, and <code>intake</code> takes it as its source when it exists.</p>
+  <p>At any stage, <a href="#commands-next"><code>slicekit next</code></a> reads the files and prints the one next step and the command that runs it, and <a href="#slash-next"><code>/slicekit next</code></a> runs that step and stops; <code>/loop /slicekit next</code> runs one step per iteration. At a merge, a publish, an Open decision row the step depends on and the review budget stop, both print the command for the person and run nothing.</p>
   <div class="tw"><table class="cols-4">
     <thead><tr><th>Stage</th><th>Slash command</th><th>What happens</th><th>CLI steps</th></tr></thead>
     <tbody>
@@ -392,9 +395,9 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 
   <section id="slash-slicekit" class="cmd" data-page="slash/slicekit.md">
     <header><h4><code>/slicekit</code></h4></header>
-    <p class="sum">Runs any of the ten procedures by name. It is the one slash command a person needs to remember.</p>
+    <p class="sum">Runs any of the eleven procedures by name. It is the one slash command a person needs to remember.</p>
     <h5 id="slash-slicekit--what-you-type">What you type</h5>
-    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>brief</code>, <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code> and <code>audit</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
+    <p><code>/slicekit &lt;command&gt; [args]</code>, where the command is one of <code>brief</code>, <code>intake</code>, <code>specify</code>, <code>gaps</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>release</code>, <code>ops</code>, <code>audit</code> and <code>next</code>. For example <code>/slicekit build</code> or <code>/slicekit review 14</code>. Each procedure also has a file of its own, so <code>/slicekit-build</code> is the same command as <code>/slicekit build</code>.</p>
     <h5 id="slash-slicekit--agents-it-spawns">Agents it spawns</h5>
     <p>None of its own. The procedure it prints says which agents to spawn; see that procedure's page.</p>
     <h5 id="slash-slicekit--commands-its-procedure-runs">Commands its procedure runs</h5>
@@ -610,6 +613,26 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
     <h5 id="slash-audit--what-it-leaves-behind">What it leaves behind</h5>
     <p>One report, <code>.slicekit/reports/audit-&lt;k&gt;.md</code>, with a Claims table: one row per claim, its evidence, where it was found, and a status of <code>holds</code>, <code>drifted</code> or <code>unverifiable</code>. The report folder is ignored by git, so no tracked file changes. The audit changes nothing: each <code>drifted</code> row becomes a slice or a decision by a person's hand, and each <code>unverifiable</code> row is a claim with no test or check behind it.</p>
+    <p class="back"><a href="#toc">Back to the guide</a></p>
+  </section>
+
+  <section id="slash-next" class="cmd" data-page="slash/next.md">
+    <header><h4><code>/slicekit next</code></h4></header>
+    <p class="sum">Runs the one next step that <code>slicekit next</code> prints, then stops. Under <code>/loop</code>, it runs one step per iteration.</p>
+    <h5 id="slash-next--what-you-type">What you type</h5>
+    <p><code>/slicekit next</code>, or <code>/slicekit-next</code>, in the main checkout. <code>/loop /slicekit next</code> runs it once per iteration in one session. Each run reads where the program is from the files, so a step resumes after a restart of the session or a compaction of its context.</p>
+    <h5 id="slash-next--agents-it-spawns">Agents it spawns</h5>
+    <p>The agent the step names, when its command is <code>instructions &lt;role&gt; &lt;id&gt; --worktree &lt;wt&gt;</code>: the developer, the reviewer or the fixer, each with its brief as its whole prompt. A reviewer started from the main checkout by <code>review start</code>, given only the pull request and the brief, gives an independent verdict.</p>
+    <h5 id="slash-next--commands-its-procedure-runs">Commands its procedure runs</h5>
+    <ul>
+      <li><a href="#commands-next"><code>next</code></a>, once per run</li>
+      <li>the one command <code>next</code> printed on its second line, and each <code>then:</code> line after it: a <a href="#commands-build"><code>build</code></a> step, <a href="#commands-review"><code>review</code></a> as <code>review start &lt;PR&gt;</code>, <a href="#commands-instructions"><code>instructions</code></a> for an agent's brief, or a slash command such as <code>/slicekit release P&lt;n&gt;</code></li>
+    </ul>
+    <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
+    <h5 id="slash-next--a-persons-step">A person's step</h5>
+    <p>When the second line starts with <code>person:</code>, the procedure prints the step and stops, running nothing: a merge, the approval of a publish, an Open decision row the step depends on, or the review budget stop with its three choices. It never pushes with force; a command that refuses because a branch has diverged from origin goes to the person.</p>
+    <h5 id="slash-next--what-it-leaves-behind">What it leaves behind</h5>
+    <p>What the one step leaves: a worktree, a commit, a verdict, a pull request. Nothing of its own.</p>
     <p class="back"><a href="#toc">Back to the guide</a></p>
   </section>
 
@@ -1211,6 +1234,53 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <pre class="ex"><span class="p">$ </span>slicekit journal verify
 <span class="o">journal: 42 lines in 6 files verified</span>
 <span class="p">$ </span>slicekit journal show -n 1 --branch slice/P1-S-02-place-order</pre>
+    <p class="back"><a href="#toc">Back to the guide</a></p>
+  </section>
+
+  <section id="commands-next" class="cmd" data-page="commands/next.md">
+    <header><h4><code>slicekit next</code></h4></header>
+    <p class="sum">Prints the one next step of the program and the command that runs it. <code>/slicekit next</code> runs it; a person types it to see where the program is.</p>
+    <h5 id="commands-next--usage">Usage</h5>
+    <pre class="syn"><span class="l">slicekit next</span></pre>
+    <p>It takes no option. The first line is the step, the second the command that runs it. A <code>then:</code> line after them is the command to run once the second line's command is done; numbered lines are the choices of a person's step.</p>
+    <p>It finds the step from the program stage first: while a stage before the build is not complete, the step is that stage's slash command. Once the plan is complete, it takes the first slice in phase and Order step that is not <code>merged</code> or <code>released</code>, and names the step its state calls for:</p>
+    <div class="tw"><table class="cols-3">
+      <thead><tr><th>State</th><th>Step</th><th>Command</th></tr></thead>
+      <tbody>
+        <tr><td><code>todo</code>, no worktree</td><td>start the build</td><td><code>build start &lt;id&gt;</code></td></tr>
+        <tr><td><code>todo</code>, with its worktree</td><td>the developer writes the tests</td><td><code>instructions developer &lt;id&gt; --worktree &lt;wt&gt;</code></td></tr>
+        <tr><td><code>tests-red</code></td><td>record the failing tests</td><td><code>build red &lt;id&gt; --tests &lt;files&gt; --worktree &lt;wt&gt;</code></td></tr>
+        <tr><td><code>building</code></td><td>the developer makes the tests pass</td><td><code>instructions developer &lt;id&gt; --worktree &lt;wt&gt;</code></td></tr>
+        <tr><td><code>draft-pr</code></td><td>the next in-loop review, or the independent review once those rounds are used</td><td><code>instructions reviewer &lt;id&gt; --worktree &lt;wt&gt;</code>, or <code>review start &lt;PR&gt;</code></td></tr>
+        <tr><td><code>in-review</code></td><td>green CI</td><td><code>build finish &lt;id&gt; --worktree &lt;wt&gt;</code></td></tr>
+        <tr><td><code>changes-requested</code></td><td>the fixer answers the blockers while a round is left</td><td><code>instructions fixer &lt;id&gt; --worktree &lt;wt&gt;</code></td></tr>
+        <tr><td><code>ci-green</code></td><td>the independent review, when it is required and missing</td><td><code>review start &lt;PR&gt;</code>, else <code>build finish</code></td></tr>
+        <tr><td><code>ready</code></td><td>a person merges</td><td><code>gh pr merge &lt;PR&gt;</code> on GitHub, then <code>status --sync</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>When every slice is merged, the step is <code>/slicekit release P&lt;n&gt;</code> for a phase with no release record.</p>
+    <p>A step whose result the files already record is never printed: a recorded verdict is not asked for again, and a run with no change since the last prints the same lines. While a slice is being built, its state is read from the state file in its worktree, <code>.worktrees/P&lt;n&gt;-S-&lt;nn&gt;</code>, since the build commits each move there first.</p>
+    <h5 id="commands-next--a-persons-step">A person's step</h5>
+    <p><code>slicekit next</code> never merges a pull request, approves a publish or pushes with force. At those points its second line starts with <code>person:</code> and names the command for the person; nothing runs it. It stops the same way at:</p>
+    <ul>
+      <li>a slice at <code>ready</code>: the person merges the pull request, named by its number;</li>
+      <li>an Open row of <code>decisions.md</code> that the slice's file cites, or that the spec cites before the build: the person settles it with <code>decide settle D-&lt;n&gt; --answer &quot;&lt;answer&gt;&quot;</code>;</li>
+      <li>the spec or plan pull request to merge;</li>
+      <li>the review budget stop of D-101, when the last allowed round still holds a blocker: it prints the three choices, fix by hand, re-scope the slice, or allow one more round with a decision row;</li>
+      <li>every phase released: a publish, when the team makes one, is approved by a person.</li>
+    </ul>
+    <h5 id="commands-next--what-it-reads-and-writes">What it reads and writes</h5>
+    <p>Reads the config, the files the program stage reads, <code>.slicekit/state/</code> and the state files in the slices' worktrees, the slice files, the verdict files under <code>.slicekit/reviews/</code> and <code>decisions.md</code>. It writes no file, asks no git host and commits nothing. An older config is read migrated and left as it is.</p>
+    <h5 id="commands-next--exit-codes">Exit codes</h5>
+    <ul class="exits">
+      <li><b>0</b><span>the step is printed, a person's step included</span></li>
+      <li><b>2</b><span>an argument was given, or a bad config or slice file</span></li>
+    </ul>
+    <h5 id="commands-next--example">Example</h5>
+    <pre class="ex"><span class="p">$ </span>slicekit next
+<span class="o">P1/S-02 is ready: a person merges pull request #14</span>
+<span class="o">person: gh pr merge 14</span>
+<span class="o">then: slicekit status --sync records the merge</span></pre>
     <p class="back"><a href="#toc">Back to the guide</a></p>
   </section>
 

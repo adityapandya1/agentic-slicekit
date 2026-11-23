@@ -99,6 +99,15 @@
     ]
   },
   {
+    "src": "commands/slicekit-next.md",
+    "dest": ".claude/commands/slicekit-next.md",
+    "shapes": [
+      "backend",
+      "fullstack",
+      "data"
+    ]
+  },
+  {
     "src": "agents/developer.md",
     "dest": ".claude/agents/developer.md",
     "shapes": [

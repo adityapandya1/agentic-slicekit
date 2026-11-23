@@ -21,6 +21,7 @@ import { intakeCommand } from './intake.js';
 import { prCommand } from './pr.js';
 import { instructionsCommand } from './instructions.js';
 import { journalCommand } from './journal.js';
+import { nextCommand } from './next.js';
 import { opsCommand } from './ops.js';
 import { planCommand } from './plan.js';
 import { hookCommand } from './hook.js';
@@ -58,6 +59,7 @@ export const COMMANDS = {
   instructions: instructionsCommand,
   hook: hookCommand,
   journal: journalCommand,
+  next: nextCommand,
   ops: opsCommand,
   plan: planCommand,
   pr: prCommand,
@@ -131,17 +133,21 @@ export async function main(argv, io) {
   // branch or a slice's review branch (writesMigration), and `slicekit branch` of every kind, which
   // refuses a changed tracked file; the branch is cut first and the next command writes on it. A
   // migration an earlier command already wrote is carried by `slicekit branch` itself (D-94).
+  // `slicekit next` writes no file anywhere (REQ-2.16, P8/S-62): it reads the config migrated too.
   if (command !== COMMANDS.hook && typeof io.cwd === 'string') {
     try {
       // The branch is asked about only when the config is older, so a current one costs no git call.
       const older = migrateConfigFile(io.cwd, { write: false });
       const here = older !== null && writesMigration(io.cwd);
-      const write = here && command !== COMMANDS.branch;
+      const write = here && command !== COMMANDS.branch && command !== COMMANDS.next;
       const migrated = write ? migrateConfigFile(io.cwd) : older;
       if (migrated && !write) {
-        const where = here
-          ? 'slicekit branch writes nothing, and the next command writes it on the branch it runs on'
-          : 'it is migrated on the default branch or on a plan branch';
+        const where =
+          command === COMMANDS.next
+            ? 'slicekit next writes nothing, and the next command that writes migrates it'
+            : here
+              ? 'slicekit branch writes nothing, and the next command writes it on the branch it runs on'
+              : 'it is migrated on the default branch or on a plan branch';
         io.stderr(`config: ${CONFIG_FILE} is at configVersion ${migrated.from} and is read as ${migrated.to} here, unwritten; ${where}
 `);
       } else if (migrated) {

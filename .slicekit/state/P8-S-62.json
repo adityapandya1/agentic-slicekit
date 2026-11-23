@@ -1,0 +1,282 @@
+{
+  "slice": "P8/S-62",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 222,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+    "headSha": "ce6dde91a72c7ef3e39e582e3fce5d838bfe70a6"
+  },
+  "redCommit": "384e14628746d2def8e654a44258a3db97f4fe14",
+  "frozenTests": [
+    {
+      "file": "test/next.test.js",
+      "name": "at tests-red next names the build step and its command"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "at ready next names the merge for a person and changes no file"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "two runs with no change print the same step and never a recorded round"
+    },
+    {
+      "file": "test/next.test.js",
+      "name": "an Open decision row the step depends on stops next for a person"
+    },
+    {
+      "file": "test/user-guide.test.js",
+      "name": "the next command and procedure have pages"
+    },
+    {
+      "file": "test/readme.test.js",
+      "name": "Built with itself names the test changes made in spec pull requests"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-62-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "274281e3057f063c37633396843beecd72253a4b"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-62-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-62i-r3.md",
+      "blockers": 1,
+      "independent": true,
+      "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-62i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "ce6dde91a72c7ef3e39e582e3fce5d838bfe70a6"
+    }
+  ],
+  "ci": {
+    "sha": "034d62e1b995678ba9dca3d5eb3a8a3b41badac7",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45253337482"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T18:40:28.905Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "384e14628746d2def8e654a44258a3db97f4fe14",
+        "testExit": 1,
+        "tests": [
+          "test/next.test.js",
+          "test/user-guide.test.js",
+          "test/readme.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/next.test.js",
+            "name": "at tests-red next names the build step and its command"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "at ready next names the merge for a person and changes no file"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "two runs with no change print the same step and never a recorded round"
+          },
+          {
+            "file": "test/next.test.js",
+            "name": "an Open decision row the step depends on stops next for a person"
+          },
+          {
+            "file": "test/user-guide.test.js",
+            "name": "the next command and procedure have pages"
+          },
+          {
+            "file": "test/readme.test.js",
+            "name": "Built with itself names the test changes made in spec pull requests"
+          }
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-23T18:40:29.358Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T19:10:08.014Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "c8fb88f51a92afea386d53499222482d210e9ee2",
+        "reason": "the adapters page and the /slicekit page list every procedure, and the examples need the rendered next command to check green; Expected changes names them"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:12:27.687Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "274281e3057f063c37633396843beecd72253a4b",
+          "title": "[P8/S-62] One step at a time"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T19:15:26.247Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-62-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-23T19:18:04.232Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "7e14981a2406e02c6bc93723700b156f1443bdff",
+        "reason": "review H-1: on a slice branch the stage checks read the branch's own docs changes as the default branch has them, in src/stage.js"
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:19:45.311Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2",
+          "title": "[P8/S-62] One step at a time"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T19:22:16.782Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-62-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T19:38:17.485Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "3290d7934f94bca34c739ee0250e4311f7544741",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45248256369"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-23T19:42:36.480Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-62i-r3.md",
+          "blockers": 1,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:48:23.058Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "ce6dde91a72c7ef3e39e582e3fce5d838bfe70a6",
+          "title": "[P8/S-62] One step at a time"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T19:51:45.129Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-62i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T20:08:32.923Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "034d62e1b995678ba9dca3d5eb3a8a3b41badac7",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45253337482"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-23T20:08:35.645Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

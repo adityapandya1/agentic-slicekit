@@ -7,22 +7,23 @@ import { loadManifest, entriesForShape } from '../../src/render/manifest.js';
 
 const root = fileURLToPath(new URL('../../templates/claude-code/', import.meta.url));
 
+// P8/S-62 (REQ-2.16): slicekit-next.md is the twelfth command file.
 test('every manifest src exists', () => {
   const entries = loadManifest();
-  assert.equal(entries.length, 20); // eleven commands (ten per-command files and /slicekit), six agents, three skills
+  assert.equal(entries.length, 21); // twelve commands (eleven per-command files and /slicekit), six agents, three skills
   for (const e of entries) assert.ok(fs.existsSync(root + e.src), e.src);
 });
 
 test('entriesForShape backend excludes designer', () => {
   const srcs = entriesForShape('backend').map((e) => e.src);
   assert.ok(!srcs.includes('agents/designer.md'));
-  assert.equal(srcs.length, 19);
+  assert.equal(srcs.length, 20); // P8/S-62: slicekit-next.md
 });
 
 test('entriesForShape fullstack includes designer', () => {
   const srcs = entriesForShape('fullstack').map((e) => e.src);
   assert.ok(srcs.includes('agents/designer.md'));
-  assert.equal(srcs.length, 20);
+  assert.equal(srcs.length, 21); // P8/S-62: slicekit-next.md
 });
 
 test('every dest is relative and under .claude', () => {

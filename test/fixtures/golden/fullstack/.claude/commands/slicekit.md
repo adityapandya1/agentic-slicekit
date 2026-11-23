@@ -1,5 +1,5 @@
 ---
-description: "Run a slicekit command: brief, intake, specify, gaps, plan, build, review, release, ops or audit. /slicekit <command> [args]"
+description: "Run a slicekit command: brief, intake, specify, gaps, plan, build, review, release, ops, audit or next. /slicekit <command> [args]"
 argument-hint: "<command> [args]"
 slicekit-managed: v0.0.0-test
 ---

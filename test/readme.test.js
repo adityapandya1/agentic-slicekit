@@ -435,3 +435,21 @@ test('Quick start names /slicekit brief for a person with only an idea', () => {
   assert.match(s, /intake/i, `the sentence does not name the intake command: ${s}`);
   assert.match(s, /prints/i, `the sentence does not say the intake command is the one brief prints: ${s}`);
 });
+
+// P8/S-62 (REQ-5.7, D-98, issue #195): "Built with itself" says every change to src/, bin/ and
+// templates/ went through a slice, and that test files have also changed in spec pull requests,
+// naming #94 as the one case so far; the claim that every change to the code went through a slice
+// is gone.
+test('Built with itself names the test changes made in spec pull requests', () => {
+  const text = details('Built with itself').replace(/\s+/g, ' ');
+  assert.doesNotMatch(text, /each change to its code goes through a slice/i, 'Built with itself still says each change to the code goes through a slice');
+  const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z`[(])/);
+  const slices = sentences.find((s) => s.includes('`src/`') && s.includes('`bin/`') && s.includes('`templates/`'));
+  assert.ok(slices, `Built with itself names no sentence with \`src/\`, \`bin/\` and \`templates/\`: ${text}`);
+  assert.match(slices, /slice/i, `the sentence naming src/, bin/ and templates/ does not say they went through a slice: ${slices}`);
+  assert.match(slices, /every|each/i, `the sentence naming src/, bin/ and templates/ does not say every change: ${slices}`);
+  const tests = sentences.find((s) => /test files?/i.test(s) && /spec pull requests?/i.test(s));
+  assert.ok(tests, `Built with itself does not say test files changed in spec pull requests: ${text}`);
+  assert.match(tests, /#94(?!\d)/, `the sentence on spec pull requests does not name #94: ${tests}`);
+  assert.match(tests, /one case|only case/i, `the sentence on spec pull requests does not say #94 is the one case so far: ${tests}`);
+});

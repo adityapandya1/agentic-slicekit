@@ -180,8 +180,11 @@ function specify(root, cfg) {
 }
 
 // A directory counts as merged when nothing in it is untracked or changed and its content equals the default branch's.
-// `exclude` lists files under `dir` left out of the comparison.
-function unmerged(root, cfg, dir, what, exclude = []) {
+// `exclude` lists files under `dir` left out of the comparison. With `asDefaultBranch` (the checkout
+// is on a slice branch, whose own changes are not a pull request waiting to merge) the directory is
+// judged as the default branch has it, which equals itself: nothing is unmerged.
+function unmerged(root, cfg, dir, what, exclude = [], { asDefaultBranch = false } = {}) {
+  if (asDefaultBranch) return [];
   if (!isRepo(root)) return [`${what} needs a git repository`];
   if (!hasCommits(root)) return [`${what} needs a commit on ${cfg.defaultBranch}`];
   const base = cfg.defaultBranch;
@@ -206,9 +209,9 @@ function unmerged(root, cfg, dir, what, exclude = []) {
 
 // The gaps file is written on the gaps branch and stack.md on the plan branch, both after the spec
 // merges, so this stage leaves them out.
-function specReview(root, cfg) {
+function specReview(root, cfg, opts) {
   const p = kitPaths(root, cfg);
-  return unmerged(root, cfg, p.spec, 'spec review', [p.gaps, p.stack]);
+  return unmerged(root, cfg, p.spec, 'spec review', [p.gaps, p.stack], opts);
 }
 
 // The line `gaps scan` writes into the gaps file. Without it the gap scan has not run, whatever the
@@ -265,7 +268,7 @@ function readSlices(root, cfg) {
   return { slices, errors };
 }
 
-function plan(root, cfg) {
+function plan(root, cfg, opts) {
   const { slices, errors } = readSlices(root, cfg);
   const named = new Set(slices.flatMap((s) => s.requirements));
   const ids = [...new Set(reqBlocks(root, cfg).map((r) => r.id))];
@@ -273,7 +276,7 @@ function plan(root, cfg) {
     ...errors,
     ...ids.filter((id) => !named.has(id)).map((id) => `${id} is named by no slice file`),
   ];
-  return [...blockers, ...unmerged(root, cfg, kitPaths(root, cfg).phases, 'plan review')];
+  return [...blockers, ...unmerged(root, cfg, kitPaths(root, cfg).phases, 'plan review', [], opts)];
 }
 
 function build(root, cfg) {
@@ -328,7 +331,8 @@ export function briefStage(root, cfg) {
 const CHECKS = { intake, clarify, specify, 'spec-review': specReview, 'gap-scan': gapScan, stack, plan, build, release };
 
 // Evaluates the stages in order and stops after `upTo` (default: all), so later stages cost nothing.
-export function programStage(root, cfg, { upTo = 'release' } = {}) {
+// `asDefaultBranch` judges the spec and plan reviews as the default branch has them (see unmerged).
+export function programStage(root, cfg, { upTo = 'release', asDefaultBranch = false } = {}) {
   const last = STAGES.indexOf(upTo);
   if (last === -1) throw new Error(`unknown stage ${upTo}`);
   // A check returns its blockers, or `{blockers, pending}` when it also lists rows that do not
@@ -336,7 +340,7 @@ export function programStage(root, cfg, { upTo = 'release' } = {}) {
   const pending = [];
   const result = (r) => (pending.length > 0 ? { ...r, pending } : r);
   for (const stage of STAGES.slice(0, last + 1)) {
-    const out = CHECKS[stage](root, cfg);
+    const out = CHECKS[stage](root, cfg, { asDefaultBranch });
     const blockers = Array.isArray(out) ? out : out.blockers;
     if (!Array.isArray(out)) pending.push(...out.pending);
     if (blockers.length > 0) return result({ stage, complete: false, blockers });

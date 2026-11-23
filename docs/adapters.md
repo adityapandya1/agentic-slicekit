@@ -132,7 +132,7 @@ under C-3. This section lists what that renderer must produce and what it can re
 
 | Claude Code file | Source | What it holds |
 |---|---|---|
-| `.claude/commands/slicekit*.md` | `templates/claude-code/commands/` | one command per kit procedure (brief, intake, specify, gaps, plan, build, review, release, ops, audit), and the bare `/slicekit`, which runs any of the ten by name |
+| `.claude/commands/slicekit*.md` | `templates/claude-code/commands/` | one command per kit procedure (brief, intake, specify, gaps, plan, build, review, release, ops, audit, next), and the bare `/slicekit`, which runs any of the eleven by name |
 | `.claude/agents/<role>.md` | `templates/claude-code/agents/` | the role briefs: auditor, designer, developer, fixer, ops, reviewer |
 | `.claude/skills/<name>/` | `templates/claude-code/skills/` | slicekit-ids, slicekit-loop, slicekit-writing |
 | `.claude/settings.json` | `templates/claude-code/hooks.json` | the hook registrations below, merged in |
