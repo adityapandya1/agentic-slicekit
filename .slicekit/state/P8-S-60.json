@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-60",
-  "state": "ci-green",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 217,
@@ -33,6 +33,13 @@
       "path": ".slicekit/reviews/P8-S-60-r2.md",
       "blockers": 0,
       "independent": false,
+      "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-60i-r3.md",
+      "blockers": 0,
+      "independent": true,
       "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
     }
   ],
@@ -161,6 +168,20 @@
           "status": "success",
           "sha": "5ecd2df1308cc798abc0aa5b65ffb4a3c67a061c",
           "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45103414251"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-23T03:21:10.655Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-60i-r3.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
