@@ -9,7 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readDecisions } from './decisions.js';
 import { exists, readText } from './fs.js';
-import { parseSliceAddr, stateFileName } from './ids.js';
+import { currentBranch, isRepo } from './git.js';
+import { parseSliceAddr, sliceFromBranch, stateFileName } from './ids.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
 import { programStage } from './stage.js';
@@ -202,7 +203,11 @@ function orderedSlices(root, cfg) {
 export function nextStep(root, cfg) {
   const cli = cfg.cli ?? 'slicekit';
   const rows = decisionRows(root, cfg);
-  const before = programStage(root, cfg, { upTo: 'plan' });
+  // On a slice branch the branch's own changes under docs/ (an amended slice file) are not a spec or
+  // plan pull request waiting to merge: the stages are judged as the default branch has them.
+  const branch = isRepo(root) ? currentBranch(root) : null;
+  const asDefaultBranch = branch !== null && sliceFromBranch(branch) !== null;
+  const before = programStage(root, cfg, { upTo: 'plan', asDefaultBranch });
   if (!before.complete) {
     const blocker = before.blockers[0];
     const openRow = /^(D-\d+) is Open/.exec(blocker);
@@ -217,7 +222,7 @@ export function nextStep(root, cfg) {
     if (DONE.includes(s.state)) continue;
     return sliceStep(root, cfg, slice, rows);
   }
-  const all = programStage(root, cfg);
+  const all = programStage(root, cfg, { asDefaultBranch });
   if (!all.complete) {
     const phase = /^(P\d+) has no releases/.exec(all.blockers[0]);
     if (phase) return agent(`${phase[1]}: every slice is merged; write its release record and open the release pull request`, `/slicekit release ${phase[1]}`);

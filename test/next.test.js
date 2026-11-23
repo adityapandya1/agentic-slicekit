@@ -223,3 +223,31 @@ test('an Open decision row the step depends on stops next for a person', () => {
     },
   );
 });
+
+// H-1 of the P8/S-62 round 1 verdict: on a slice branch, the branch's own change to its slice file
+// is not a plan pull request waiting to merge; next judges the stage as the default branch has it.
+test('on a slice branch that amended its slice file next prints the slice step, not a plan merge', () => {
+  withFixture(
+    {
+      state: (head) =>
+        sliceState({
+          state: 'tests-red',
+          branch: 'slice/P1-S-01-the-thing',
+          redCommit: head,
+          frozenTests: [{ file: 'test/a.test.js', name: 'works' }],
+          history: [{ from: 'todo', to: 'tests-red', at: '2026-11-23T10:00:00.000Z', by: 'cli', evidence: { commit: head, testExit: 1, tests: ['test/a.test.js'] } }],
+        }),
+    },
+    (p) => {
+      git(p.root, ['switch', '-q', '-c', 'slice/P1-S-01-the-thing']);
+      const file = path.join(p.root, ...SLICE_FILE.split('/'));
+      fs.writeFileSync(file, `${fs.readFileSync(file, 'utf8').trimEnd()}\n\nAmended on the slice branch.\n`);
+      git(p.root, ['commit', '-q', '-am', 'amend the slice file']);
+      const r = next(p);
+      assert.equal(r.code, 0, r.stderr);
+      assert.doesNotMatch(r.stdout, /plan|differs from/i, `slicekit next read the slice branch's change as a plan pull request: ${r.stdout}`);
+      assert.match(r.lines[0], /P1\/S-01 is tests-red/, `the first line is not the slice's step: ${r.lines[0]}`);
+      assert.match(r.lines[1], /slicekit build red P1\/S-01/, `the second line is not the slice's command: ${r.lines[1]}`);
+    },
+  );
+});
