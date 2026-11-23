@@ -2,7 +2,8 @@
 
 Build one slice from `todo` to a pull request ready for a human to merge: the tests first and
 failing, then the code that makes them pass, then at most two review rounds and green CI (REQ-2.6,
-steps 1 to 9). Arguments: {{args}}.
+steps 1 to 9). A slice marked `lane: quick` in its slice file has one in-loop review round in place of
+two (REQ-2.5, D-103); its independent review is the same as for any slice. Arguments: {{args}}.
 
 `<docsRoot>` below is the `docsRoot` in `.slicekit/config.json`. Every step that touches the
 repository's history goes through `{{cli}}`; run no git or gh command yourself. The developer writes
@@ -41,7 +42,8 @@ already started prints `resumed <path> at <state>`; keep the path and go on at t
   again and prints that round's `next:`. After an independent round the second line is
   `next review: /slicekit review <n> in a new session` instead: stop and tell the human to run that
   in a new session, since this session built the slice.
-- `changes-requested`: the loop stopped with a blocker after round 2. Stop and tell the human.
+- `changes-requested`: the loop stopped with a blocker after the last in-loop round (round 2, or
+  round 1 for a quick slice). Stop and tell the human.
 - any later state: stop and tell the human the slice is in review, at that state.
 
 When it refuses with `already started in origin/<branch>; another clone holds it`, stop and tell the
@@ -166,7 +168,8 @@ after `-r` in the verdict file's name) and the verdict path: the `verdict <file>
 
 When the reviewer stops, run `{{cli}} build verdict <id> <file> --worktree <path>` with that verdict
 path. It commits the verdict into the worktree, pushes, and prints `next: <step>`,
-`blockers: <IDs or none>`, `should-haves: <IDs or none>` and `rounds: <used> of 2`, and last a new
+`blockers: <IDs or none>`, `should-haves: <IDs or none>` and `rounds: <used> of <budget>` (2, or 1
+for a quick slice), and last a new
 `verdict <file>` line when another round is allowed. A refusal that names the verdict's content (a
 finding with no "How verified", a reused finding number, a banned phrase, a `<!--`, an unknown ID or
 path) goes back to the reviewer with the printed message; run this command again with the file it writes. A refusal that
@@ -184,7 +187,8 @@ print it and stop. Then act on `next:`:
 - `next: fix`: step 7.
 - `next: ask`: step 8.
 - `next: ci`: step 9.
-- `next: stuck`: it exits 1. A blocker survived round 2: the state is `changes-requested` and the
+- `next: stuck`: it exits 1. A blocker survived the last in-loop round (round 2, or round 1 for a
+  quick slice): the state is `changes-requested` and the
   pull request stays a draft. Print the output and stop; the human decides what happens to the
   slice.
 
@@ -223,8 +227,9 @@ which is success too. Then:
 - with no blockers and should-haves to fix: step 7 for those should-haves alone.
 - with every should-have declined and no blockers: step 9.
 
-After round 2 no fix is offered: `build verdict` prints
-`fix: not available after round 2; decline or leave for the independent review`. Ask only whether
+After the last in-loop round no fix is offered: `build verdict` prints
+`fix: not available after round 2; decline or leave for the independent review` (`after round 1`
+for a quick slice). Ask only whether
 to decline each should-have or leave it for the independent review, then go to step 9.
 
 ## 9. Green CI, then the independent review

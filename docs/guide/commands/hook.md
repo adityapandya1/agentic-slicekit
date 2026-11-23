@@ -21,6 +21,15 @@ It reads a JSON object on stdin and prints one JSON decision.
 | `stop` | Stop | blocks the stop |
 | `session-end` | SessionEnd | answers `{}` |
 
+## The pre-edit rules
+
+`pre-edit` judges every path the tool call names, and the first deny wins:
+
+1. A kit-owned file, such as a journal file, a state file or a baseline under `.slicekit/`, is always denied.
+2. A path that matches a pattern of `agents.denyPaths` in the config is always denied.
+3. While the file's own root has a slice at `tests-red` or `building`, a change to a frozen test of that slice is denied unless `build amend` unfroze it. A test is frozen by its name: the call is denied when it changes the test's text against the red commit, removes it or renames it, and another test or line of the same file may change. A file frozen whole, by a state file written before P8/S-60, is denied for any change.
+4. While that slice is at `tests-red` or `building`, a new file under the docs root is denied, except the runbook, a file in the slice's own phase directory, and a path the slice file's `## Expected changes` names. The Expected changes are read from the slice file as committed at `HEAD`, not the working copy, so an edit of the slice file that is not committed by `build amend` adds no exception.
+
 Outside a slicekit project every hook answers `{}`. `init` writes these commands into `.claude/settings.json`.
 
 A hook never rewrites the config: one with an older `configVersion` is read as migrated, and the file is left as it is.

@@ -171,8 +171,10 @@ function verdictStep(root, io, positionals, values) {
     independent: Boolean(values.independent),
   });
   const list = (ids) => (ids.length > 0 ? ids.join(', ') : 'none');
-  const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${LOOP_ROUNDS}`];
-  if (r.next === 'ask' && r.roundsUsed >= LOOP_ROUNDS) out.push('fix: not available after round 2; decline or leave for the independent review');
+  // The slice's in-loop budget: two, one for a quick slice (D-103).
+  const rounds = r.loopRounds ?? LOOP_ROUNDS;
+  const out = [`next: ${r.next}`, `blockers: ${list(r.blockers)}`, `should-haves: ${list(r.shouldHaves)}`, `rounds: ${r.roundsUsed} of ${rounds}`];
+  if (r.next === 'ask' && r.roundsUsed >= rounds) out.push(`fix: not available after round ${rounds}; decline or leave for the independent review`);
   if (r.verdictPath) out.push(`verdict ${r.verdictPath}`);
   // D-101: the command of the next independent round, when one is left after a blocker.
   if (r.reviewStart) out.push(`review: ${r.reviewStart}`);

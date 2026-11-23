@@ -229,6 +229,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <li><a href="#rules-hooks"><code>hooks</code></a></li>
         <li><a href="#rules-host-rules"><code>host-rules</code></a></li>
         <li><a href="#rules-journal"><code>journal</code></a></li>
+        <li><a href="#rules-lane"><code>lane</code></a></li>
         <li><a href="#rules-layout"><code>layout</code></a></li>
         <li><a href="#rules-managed"><code>managed</code></a></li>
         <li><a href="#rules-queue"><code>queue</code></a></li>
@@ -511,7 +512,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 
   <section id="slash-build" class="cmd" data-page="slash/build.md">
     <header><h4><code>/slicekit build</code></h4></header>
-    <p class="sum">Builds one slice from <code>todo</code> to a pull request ready for a person to merge: failing tests first, then code, at most two review rounds, then green CI.</p>
+    <p class="sum">Builds one slice from <code>todo</code> to a pull request ready for a person to merge: failing tests first, then code, at most two review rounds (one for a slice marked <code>lane: quick</code>), then green CI.</p>
     <h5 id="slash-build--what-you-type">What you type</h5>
     <p><code>/slicekit build</code>, which takes the next slice; <code>/slicekit build P&lt;n&gt;/S-&lt;nn&gt;</code> for a named one; or <code>/slicekit build --parallel P&lt;n&gt;</code>, which starts every runnable slice of the phase's next Order step, each in its own worktree. Run it after the plan pull request merges, once per slice.</p>
     <h5 id="slash-build--agents-it-spawns">Agents it spawns</h5>
@@ -520,12 +521,14 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <ul>
       <li><a href="#commands-stage"><code>stage</code></a> as <code>stage require plan</code></li>
       <li><a href="#commands-build"><code>build</code></a> as <code>build next</code> and <code>build start</code>, or <code>build parallel</code>; <code>build red</code>; <code>build commit</code>; <code>build pr</code>; <code>build verdict</code>; <code>build decline</code> for each should-have the person declines; <code>build finish</code></li>
-      <li><a href="#commands-build"><code>build</code></a> as <code>build amend</code> when a person agrees a frozen test may change, <code>build render</code> and <code>build config</code> for a slice that changes the kit's version or the config, and <code>build sync</code> when another worktree pushed to the slice branch</li>
+      <li><a href="#commands-build"><code>build</code></a> as <code>build amend --test &quot;&lt;file&gt; » &lt;name&gt;&quot;</code> when a person agrees one frozen test may change, <code>build amend</code> with no <code>--test</code> for a change to the slice file alone, <code>build render</code> and <code>build config</code> for a slice that changes the kit's version or the config, and <code>build sync</code> when another worktree pushed to the slice branch</li>
       <li><a href="#commands-instructions"><code>instructions</code></a> as <code>instructions developer</code>, <code>instructions reviewer</code> and <code>instructions fixer</code></li>
     </ul>
     <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
     <h5 id="slash-build--what-it-leaves-behind">What it leaves behind</h5>
-    <p>The worktree <code>.worktrees/P&lt;n&gt;-S-&lt;nn&gt;</code> on the branch <code>slice/P&lt;n&gt;-S-&lt;nn&gt;-&lt;descr&gt;</code>, pushed. The red commit of the frozen tests, then code commits, each with the <code>Slice:</code> trailer and the test run's result. The pull request <code>[P&lt;n&gt;/S-&lt;nn&gt;] &lt;name&gt;</code> with the body the kit requires. One verdict file per round under <code>.slicekit/reviews/</code>. One tracker issue per declined should-have. The slice at <code>ci-green</code>, waiting for the independent review, or at <code>ready</code>. A blocker that survives round two leaves the slice at <code>changes-requested</code> and the pull request a draft.</p>
+    <p>The worktree <code>.worktrees/P&lt;n&gt;-S-&lt;nn&gt;</code> on the branch <code>slice/P&lt;n&gt;-S-&lt;nn&gt;-&lt;descr&gt;</code>, pushed. The red commit of the frozen tests, then code commits, each with the <code>Slice:</code> trailer and the test run's result. The pull request <code>[P&lt;n&gt;/S-&lt;nn&gt;] &lt;name&gt;</code> with the body the kit requires. One verdict file per round under <code>.slicekit/reviews/</code>. One tracker issue per declined should-have. The slice at <code>ci-green</code>, waiting for the independent review, or at <code>ready</code>. A blocker that survives the last in-loop round, round two or round one for a quick slice, leaves the slice at <code>changes-requested</code> and the pull request a draft.</p>
+    <h5 id="slash-build--freezing-and-amendments">Freezing and amendments</h5>
+    <p>After <code>build red</code> the tests of the evaluation set are frozen by name: an Edit or Write that changes, removes or renames one is refused, and other tests in the same files may change. When a test of the evaluation set is wrong, the developer reports it and stops; a person agrees, the slice file is changed, and <code>build amend &lt;id&gt; --test &quot;&lt;file&gt; » &lt;name&gt;&quot; --reason &lt;r&gt;</code> commits the slice file, records the reason in the state file and unfreezes that one test. <code>build amend &lt;id&gt; --reason &lt;r&gt;</code> with no <code>--test</code> records any other change to the slice file, such as removing the slice's own pending markers or a second amendment, and every frozen test stays frozen.</p>
     <p class="back"><a href="#toc">Back to the guide</a></p>
   </section>
 
@@ -543,6 +546,8 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
       <li><a href="#commands-build"><code>build</code></a> with <code>--worktree &lt;wt&gt;</code>: <code>build verdict --independent</code>; <code>build decline</code>; for a fix <code>build commit --require-green</code> and <code>build pr</code>; <code>build sync</code>; <code>build finish</code></li>
     </ul>
     <p>Every step that touches git or the git host goes through the CLI. The procedure stops at the first command that exits with a code other than 0 and shows the person its message.</p>
+    <h5 id="slash-review--the-round-budget">The round budget</h5>
+    <p>One independent round. A second independent round only when the first one's verdict holds a blocker: after a fix, <code>build verdict --independent</code> prints a <code>review:</code> line, <code>review: slicekit review start &lt;PR&gt;</code>, and the person runs <code>/slicekit review &lt;PR&gt;</code> again in a new session. When the last allowed round still holds a blocker the slice stops at <code>changes-requested</code>: the procedure prints the open blockers and three choices and stops. The person fixes the blockers by hand and pushes them with <code>build pr</code>, re-scopes the slice, or allows one more round with a decision row whose answer names the slice ID and says &quot;one more round&quot;, committed and pushed on the default branch. The reviewer reports no style findings and writes no finding when it has none.</p>
     <h5 id="slash-review--what-it-leaves-behind">What it leaves behind</h5>
     <p>The review worktree <code>.worktrees/review-P&lt;n&gt;-S-&lt;nn&gt;</code>. A verdict file marked independent, committed and pushed to the slice branch; it does not count against the build's two rounds. After a fix, new commits on the slice branch and a new independent verdict on the new head. The slice at <code>ready</code> when CI is green and the verdict has no open blocker. A person merges.</p>
     <p class="back"><a href="#toc">Back to the guide</a></p>
@@ -764,7 +769,7 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <header><h4><code>slicekit build</code></h4></header>
     <p class="sum">The steps of <code>/slicekit build</code> and <code>/slicekit review</code> that the CLI takes for one slice. The agent runs each; a person types one only to resume or inspect.</p>
     <h5 id="commands-build--usage">Usage</h5>
-    <pre class="syn"><span class="l">slicekit build next</span><span class="l">  | build start &lt;id&gt; [--descr &lt;d&gt;]</span><span class="l">  | build parallel P&lt;n&gt;</span><span class="l">  | build red &lt;id&gt; --tests &lt;a,b&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build commit &lt;id&gt; --message &lt;m&gt; [--require-green] [--worktree &lt;p&gt;] (commits the staged paths; with nothing staged, every changed path)</span><span class="l">  | build render &lt;id&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build config &lt;id&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build amend &lt;id&gt; [--test &lt;path&gt;] --reason &lt;r&gt; [--worktree &lt;p&gt;] (no --test: the slice file alone, once every test it names is unfrozen)</span><span class="l">  | build pr &lt;id&gt; [--notes &lt;file&gt;] [--worktree &lt;p&gt;]</span><span class="l">  | build verdict &lt;id&gt; &lt;file&gt; [--independent] [--worktree &lt;p&gt;]</span><span class="l">  | build decline &lt;id&gt; &lt;H-n&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build finish &lt;id&gt; [--wait &lt;s&gt;, default 90] [--worktree &lt;p&gt;]</span><span class="l">  | build sync &lt;id&gt; [--worktree &lt;p&gt;]</span></pre>
+    <pre class="syn"><span class="l">slicekit build next</span><span class="l">  | build start &lt;id&gt; [--descr &lt;d&gt;]</span><span class="l">  | build parallel P&lt;n&gt;</span><span class="l">  | build red &lt;id&gt; --tests &lt;a,b&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build commit &lt;id&gt; --message &lt;m&gt; [--require-green] [--worktree &lt;p&gt;] (commits the staged paths; with nothing staged, every changed path)</span><span class="l">  | build render &lt;id&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build config &lt;id&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build amend &lt;id&gt; [--test &quot;&lt;file&gt; » &lt;name&gt;&quot; | --test &lt;file&gt;] --reason &lt;r&gt; [--worktree &lt;p&gt;] (no --test: the slice file alone, every frozen test stays frozen)</span><span class="l">  | build pr &lt;id&gt; [--notes &lt;file&gt;] [--worktree &lt;p&gt;]</span><span class="l">  | build verdict &lt;id&gt; &lt;file&gt; [--independent] [--worktree &lt;p&gt;]</span><span class="l">  | build decline &lt;id&gt; &lt;H-n&gt; [--worktree &lt;p&gt;]</span><span class="l">  | build finish &lt;id&gt; [--wait &lt;s&gt;, default 90] [--worktree &lt;p&gt;]</span><span class="l">  | build sync &lt;id&gt; [--worktree &lt;p&gt;]</span></pre>
     <p>Each subcommand takes the slice ID, <code>P&lt;n&gt;/S-&lt;nn&gt;</code>. A slice's worktree is <code>.worktrees/P&lt;n&gt;-S-&lt;nn&gt;</code> on the branch <code>slice/P&lt;n&gt;-S-&lt;nn&gt;-&lt;descr&gt;</code>. <code>--worktree &lt;p&gt;</code> names the worktree to act in; without it the build worktree is used, never the review one.</p>
     <div class="tw"><table class="cols-2">
       <thead><tr><th>Subcommand</th><th>What it does</th></tr></thead>
@@ -772,13 +777,13 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <tr><td><code>build next</code></td><td>Prints the first <code>todo</code> slice whose earlier phases and earlier Order steps are merged or released, and that no worktree or branch already holds.</td></tr>
         <tr><td><code>build start &lt;id&gt;</code></td><td>Makes the worktree and branch from the default branch, commits an empty claim and pushes it. Prints the worktree path, then the branch. For a slice this clone already started it prints <code>resumed &lt;path&gt; at &lt;state&gt;</code>.</td></tr>
         <tr><td><code>build parallel P&lt;n&gt;</code></td><td>Starts every runnable slice of the phase's next Order step, each in its own worktree. Prints <code>&lt;id&gt; &lt;worktree&gt; &lt;branch&gt;</code> per slice started.</td></tr>
-        <tr><td><code>build red &lt;id&gt; --tests &lt;a,b&gt;</code></td><td>Runs the test command and requires it to fail, commits the tests alone, records them as frozen and moves the slice to <code>building</code>.</td></tr>
-        <tr><td><code>build commit &lt;id&gt; --message &lt;m&gt;</code></td><td>Runs the tests, then commits with the test run's result and the <code>Slice:</code> trailer. With paths staged it commits those alone; with nothing staged, every changed path. It refuses a change to a frozen test or to a kit file. <code>--require-green</code> refuses unless every test passes.</td></tr>
+        <tr><td><code>build red &lt;id&gt; --tests &lt;a,b&gt;</code></td><td>Runs the test command and requires it to fail, commits the tests alone, records the evaluation tests in them as frozen by name (other tests of the same files may change) and moves the slice to <code>building</code>.</td></tr>
+        <tr><td><code>build commit &lt;id&gt; --message &lt;m&gt;</code></td><td>Runs the tests, then commits with the test run's result and the <code>Slice:</code> trailer. With paths staged it commits those alone; with nothing staged, every changed path. It refuses a change to a frozen test, judged by the test's name, or to a kit file. <code>--require-green</code> refuses unless every test passes.</td></tr>
         <tr><td><code>build render &lt;id&gt;</code></td><td>For a slice that changes the kit's own version: runs <code>update --yes</code> in the worktree and commits only the files it writes.</td></tr>
         <tr><td><code>build config &lt;id&gt;</code></td><td>For a slice whose Expected changes name <code>.slicekit/config.json</code>: commits the changed config alone.</td></tr>
-        <tr><td><code>build amend &lt;id&gt; [--test &lt;path&gt;] --reason &lt;r&gt;</code></td><td>Unfreezes one frozen test after a person agreed and the slice file records it. With no <code>--test</code> it commits the slice file alone, once every test it names is unfrozen.</td></tr>
+        <tr><td><code>build amend &lt;id&gt; [--test &quot;&lt;file&gt; » &lt;name&gt;&quot;] --reason &lt;r&gt;</code></td><td>Commits the slice file's change with the reason and records both in the state file. <code>--test &quot;&lt;file&gt; » &lt;name&gt;&quot;</code> also unfreezes that one test of the evaluation set, after a person agreed; other tests of the file were never frozen. <code>--test &lt;file&gt;</code> unfreezes a file frozen whole by a state file written before P8/S-60. With no <code>--test</code> it records the slice-file change alone, such as removing the slice's own pending markers or a second amendment, and every frozen test stays frozen. Naming a test already unfrozen records the amendment and unfreezes nothing more. It runs from <code>building</code>, <code>draft-pr</code>, <code>in-review</code> or <code>changes-requested</code>.</td></tr>
         <tr><td><code>build pr &lt;id&gt; [--notes &lt;file&gt;]</code></td><td>Runs the test, lint and build commands and <code>check</code>, pushes, opens the draft pull request or updates its body, and records <code>draft-pr</code>. Prints <code>#&lt;n&gt; &lt;url&gt;</code>, then <code>verdict &lt;file&gt;</code>.</td></tr>
-        <tr><td><code>build verdict &lt;id&gt; &lt;file&gt;</code></td><td>Checks the reviewer's verdict file, commits it under <code>.slicekit/reviews/</code>, records <code>in-review</code> and pushes. Prints <code>next: fix</code>, <code>ask</code>, <code>ci</code> or <code>stuck</code>. <code>--independent</code> records an independent review's verdict, which does not count against the two rounds.</td></tr>
+        <tr><td><code>build verdict &lt;id&gt; &lt;file&gt;</code></td><td>Checks the reviewer's verdict file, commits it under <code>.slicekit/reviews/</code>, records <code>in-review</code> and pushes. Prints <code>next: fix</code>, <code>ask</code>, <code>ci</code> or <code>stuck</code>. <code>--independent</code> records an independent review's verdict, which does not count against the in-loop rounds; while another independent round is left after a blocker it prints <code>review: slicekit review start &lt;PR&gt;</code> last, and on <code>next: stuck</code> the open blockers and the three choices of <a href="#commands-review--the-independent-round-budget"><code>review</code></a>. A slice marked <code>lane: quick</code> has one in-loop round, so a blocker in its round 1 is <code>next: stuck</code>; any other slice has two.</td></tr>
         <tr><td><code>build decline &lt;id&gt; &lt;H-n&gt;</code></td><td>Files one tracker issue for a declined should-have and adds its URL to the pull request body.</td></tr>
         <tr><td><code>build finish &lt;id&gt; [--wait &lt;s&gt;]</code></td><td>Waits for CI on the pull request's head. On green it marks the pull request ready for review and records <code>ci-green</code>, then <code>ready</code> when the ready-label decision passes.</td></tr>
         <tr><td><code>build sync &lt;id&gt;</code></td><td>Fast-forwards the worktree to its branch on origin and prints the new head.</td></tr>
@@ -1029,6 +1034,14 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
         <tr><td><code>session-end</code></td><td>SessionEnd</td><td>answers <code>{}</code></td></tr>
       </tbody>
     </table></div>
+    <h5 id="commands-hook--the-pre-edit-rules">The pre-edit rules</h5>
+    <p><code>pre-edit</code> judges every path the tool call names, and the first deny wins:</p>
+    <ol>
+      <li>A kit-owned file, such as a journal file, a state file or a baseline under <code>.slicekit/</code>, is always denied.</li>
+      <li>A path that matches a pattern of <code>agents.denyPaths</code> in the config is always denied.</li>
+      <li>While the file's own root has a slice at <code>tests-red</code> or <code>building</code>, a change to a frozen test of that slice is denied unless <code>build amend</code> unfroze it. A test is frozen by its name: the call is denied when it changes the test's text against the red commit, removes it or renames it, and another test or line of the same file may change. A file frozen whole, by a state file written before P8/S-60, is denied for any change.</li>
+      <li>While that slice is at <code>tests-red</code> or <code>building</code>, a new file under the docs root is denied, except the runbook, a file in the slice's own phase directory, and a path the slice file's <code>## Expected changes</code> names. The Expected changes are read from the slice file as committed at <code>HEAD</code>, not the working copy, so an edit of the slice file that is not committed by <code>build amend</code> adds no exception.</li>
+    </ol>
     <p>Outside a slicekit project every hook answers <code>{}</code>. <code>init</code> writes these commands into <code>.claude/settings.json</code>.</p>
     <p>A hook never rewrites the config: one with an older <code>configVersion</code> is read as migrated, and the file is left as it is.</p>
     <h5 id="commands-hook--what-it-reads-and-writes">What it reads and writes</h5>
@@ -1357,12 +1370,20 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <p><code>review start &lt;PR&gt;</code> checks out the pull request's head in a fresh worktree, <code>.worktrees/review-P&lt;n&gt;-S-&lt;nn&gt;</code>, on <code>slice/P&lt;n&gt;-S-&lt;nn&gt;-review</code>, which pushes to the slice branch. It prints four lines: <code>slice</code>, <code>worktree</code>, <code>round</code> and <code>verdict</code>.</p>
     <p>It refuses a pull request that is not open, not a slice pull request or from a fork, and a review worktree with uncommitted changes. A refusal that the head <code>is not origin/&lt;branch&gt;</code> can be a push the git host has not seen yet: try once more after a minute.</p>
     <p>It is step 2 of <code>/slicekit review</code>. The later steps use <a href="#commands-build"><code>build</code></a> subcommands with <code>--worktree &lt;wt&gt;</code>.</p>
+    <h5 id="commands-review--the-independent-round-budget">The independent round budget</h5>
+    <p>An independent review has one round. A second independent round starts only when the first round's verdict holds a blocker. <code>build verdict --independent</code> on a verdict with blockers prints <code>next: fix</code> and, last, <code>review: slicekit review start &lt;PR&gt;</code>, the command of the next independent round, while one is left; that round runs in a new session.</p>
+    <p>When the last allowed round still holds a blocker, the slice stops: <code>build verdict --independent</code> prints <code>next: stuck</code>, exits 1, records <code>changes-requested</code>, and prints the open blockers, each with its &quot;what is wrong&quot;, and three choices. <code>review start</code> refuses with the same text, and refuses a further round after a round with no blocker. The person chooses one:</p>
+    <ol>
+      <li>Fix the open blockers by hand in the slice worktree and push them with <code>slicekit build pr &lt;id&gt;</code>.</li>
+      <li>Re-scope the slice: amend the slice file so the blockers fall outside it, or move them to a new slice.</li>
+      <li>Allow one more round: record a decision row in <code>decisions.md</code> whose answer names the slice ID and says &quot;one more round&quot;, commit it on the default branch and push it to origin, then run <code>slicekit review start &lt;PR&gt;</code> again. Each such row allows one more round, and the row is the record of it.</li>
+    </ol>
     <h5 id="commands-review--what-it-reads-and-writes">What it reads and writes</h5>
-    <p>Reads the pull request from the git host, the state file and git. Fetches, and creates the review worktree and its branch.</p>
+    <p>Reads the pull request from the git host, the state file, the decision rows of <code>decisions.md</code> as committed on the default branch, and git. Fetches, and creates the review worktree and its branch.</p>
     <h5 id="commands-review--exit-codes">Exit codes</h5>
     <ul class="exits">
       <li><b>0</b><span>ready to review</span></li>
-      <li><b>1</b><span>refused</span></li>
+      <li><b>1</b><span>refused, including no independent round left (D-101)</span></li>
       <li><b>2</b><span>the pull request number is not a positive whole number, or a config problem</span></li>
     </ul>
     <h5 id="commands-review--example">Example</h5>
@@ -1791,19 +1812,20 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
 
   <section id="rules-frozen" class="cmd" data-page="rules/frozen.md">
     <header><h4><code>frozen</code></h4><span class="tag t-rare">Check rule</span></header>
-    <p class="sum">On a slice branch, a test of the evaluation set stays as it was at the red commit.</p>
+    <p class="sum">On a slice branch, a test of the evaluation set, known by its name, stays as it was at the red commit.</p>
     <p>A blocking rule: any finding fails <code>check</code>. It is one of the rules of <a href="#commands-check"><code>slicekit check</code></a>, and a finding is printed as <code>frozen &lt;file&gt;:&lt;line&gt; &lt;message&gt;</code>.</p>
     <h5 id="rules-frozen--what-fails">What fails</h5>
     <ul>
-      <li><code>frozen test changed after red: &lt;path&gt;</code>.</li>
+      <li><code>frozen test changed after red: &lt;file&gt; » &lt;name&gt;</code>, one finding per test of the evaluation set whose text differs from its text at the red commit, or that was removed or renamed. Another test of the same file, or any other line of it, is not compared. A file that cannot be read by name (it does not parse, or two tests share the name) counts as a change.</li>
+      <li><code>frozen test changed after red: &lt;path&gt;</code>, for a file frozen whole: a state file written before P8/S-60 lists the path, and the slice file at the red commit names no evaluation test in it.</li>
       <li><code>red commit &lt;sha&gt; of &lt;slice&gt; is not in this repository</code>.</li>
       <li><code>state file &lt;path&gt; was removed after it recorded the red commit &lt;sha7&gt;</code>, one finding naming the state file, when the tip holds no state file and an earlier version of it in the tip's history recorded a red commit.</li>
       <li>A state file that is not valid JSON at the tip, or frozen tests that name a path outside the repository.</li>
     </ul>
     <h5 id="rules-frozen--when-it-judges">When it judges</h5>
-    <p>On a slice branch whose state file records a red commit. The tip judged is <code>HEAD</code>, or under <code>--ci</code> the pull request's head. The state file, the red commit, the slice file and the tests are read from git objects, never the working tree, so a file hidden with <code>assume-unchanged</code> or <code>skip-worktree</code> is judged by its committed content. A tip that has no state file is judged by the versions of the file in the tip's history: the red commit and the frozen tests are read from them, so each frozen test that changed after red is still a finding, beside the one for the removal. A slice whose state file never recorded a red commit gets no finding. A slice file changed in a commit of the slice branch after the red commit lifts the freeze, as <code>build amend</code> does. <code>freezeTests</code> set to <code>false</code> in the config turns the rule off.</p>
+    <p>On a slice branch whose state file records a red commit. The tip judged is <code>HEAD</code>, or under <code>--ci</code> the pull request's head. The state file, the red commit, the slice file and the tests are read from git objects, never the working tree, so a file hidden with <code>assume-unchanged</code> or <code>skip-worktree</code> is judged by its committed content. A tip that has no state file is judged by the versions of the file in the tip's history: the red commit and the frozen tests are read from them, so each frozen test that changed after red is still a finding, beside the one for the removal. A slice whose state file never recorded a red commit gets no finding. A test is unfrozen only when <code>build amend --test &quot;&lt;file&gt; » &lt;name&gt;&quot;</code> named it: the tip's state file lists it in <code>unfrozen</code> and the slice file changed in a commit of the slice branch after the red commit. A change to the slice file alone, from <code>build amend</code> with no <code>--test</code>, unfreezes nothing. <code>freezeTests</code> set to <code>false</code> in the config turns the rule off.</p>
     <h5 id="rules-frozen--how-to-clear-a-finding">How to clear a finding</h5>
-    <p>Restore the test. Restore a removed state file from the last commit that holds it (<code>git revert</code> of the commit that removed it). When the test itself is wrong, a person agrees, the slice file records the amendment, and <code>build amend &lt;id&gt; --test &lt;path&gt; --reason &lt;r&gt;</code> unfreezes it.</p>
+    <p>Restore the test. Restore a removed state file from the last commit that holds it (<code>git revert</code> of the commit that removed it). When the test itself is wrong, a person agrees, the slice file records the amendment, and <code>build amend &lt;id&gt; --test &quot;&lt;file&gt; » &lt;name&gt;&quot; --reason &lt;r&gt;</code> unfreezes that one test.</p>
     <h5 id="rules-frozen--the-failure-it-prevents">The failure it prevents</h5>
     <p>An agent that cannot make a failing test pass edits the test until it does, and the slice merges green while the behaviour the evaluation set asked for was never built.</p>
   </section>
@@ -1867,6 +1889,25 @@ section.part > ul, section.part > ol, .group > ul, .group > ol{margin:12px 0 0;p
     <p>Restore the journal file from git; never edit one by hand. Sign the commits that change a journal file. The heads file is written only by <code>journal heads</code> in the sync job.</p>
     <h5 id="rules-journal--the-failure-it-prevents">The failure it prevents</h5>
     <p>Someone edits or deletes the record of what a session did, such as a declined finding or an amended test, and nothing shows the record was changed after the fact.</p>
+  </section>
+
+  <section id="rules-lane" class="cmd" data-page="rules/lane.md">
+    <header><h4><code>lane</code></h4><span class="tag t-rare">Check rule</span></header>
+    <p class="sum">A slice marked <code>lane: quick</code> changes no file under <code>src/</code>, <code>bin/</code> or <code>templates/</code>.</p>
+    <p>A blocking rule: any finding fails <code>check</code>. It is one of the rules of <a href="#commands-check"><code>slicekit check</code></a>, and a finding is printed as <code>lane &lt;file&gt;:&lt;line&gt; &lt;message&gt;</code>.</p>
+    <h5 id="rules-lane--what-fails">What fails</h5>
+    <ul>
+      <li><code>&lt;slice&gt; is marked lane: quick but its expected changes name &lt;path&gt;, under src/, bin/, templates/ (D-103)</code>, reported at the path's line of the slice file.</li>
+      <li><code>&lt;slice&gt; is marked lane: quick but its branch changes &lt;path&gt;, under src/, bin/, templates/ (D-103)</code>, one finding per path, reported at the slice file's <code>lane:</code> line.</li>
+      <li><code>&lt;slice&gt; is marked lane: quick and the branch's changes against &lt;default branch&gt; cannot be read</code>, when the default branch is not present to compare with.</li>
+    </ul>
+    <h5 id="rules-lane--when-it-judges">When it judges</h5>
+    <p>Every slice file whose front matter says <code>lane: quick</code> is judged by its <code>## Expected changes</code>, on any branch. On that slice's own branch the rule also reads the files the branch changes against the default branch: the merge base with the default branch (as origin has it, else the local one) against the tip, from git objects, never the working tree, so a change merged in from the default branch is not counted. The tip is <code>HEAD</code>, or under <code>--ci</code> the pull request's head. A slice with no <code>lane</code> field is never a finding. <code>lane</code> takes one value, <code>quick</code>; any other value is a slice-file error naming the field.</p>
+    <p>A quick slice gets one combined plan step, in which its slice file is written and merged in one <code>[plan]</code> pull request, and one in-loop review round in place of two. Its independent review is the same as for any slice.</p>
+    <h5 id="rules-lane--how-to-clear-a-finding">How to clear a finding</h5>
+    <p>Remove <code>lane: quick</code> from the slice file, so the slice runs the full plan and two in-loop review rounds, or move the change under <code>src/</code>, <code>bin/</code> or <code>templates/</code> to a slice of its own.</p>
+    <h5 id="rules-lane--the-failure-it-prevents">The failure it prevents</h5>
+    <p>A slice planned as a document change also changes code, and that code merges after one in-loop review round instead of two, with the plan pull request never having said that the slice reaches the kit's code.</p>
   </section>
 
   <section id="rules-layout" class="cmd" data-page="rules/layout.md">
