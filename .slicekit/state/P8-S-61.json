@@ -1,0 +1,91 @@
+{
+  "slice": "P8/S-61",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "d8e08918f0147024483eda92d5df621e18562cf1",
+  "frozenTests": [
+    {
+      "file": "test/slicefile.test.js",
+      "name": "lane quick is read and another lane value is refused"
+    },
+    {
+      "file": "test/check/lane.test.js",
+      "name": "a quick slice whose branch changes a file under src is a finding naming the path"
+    },
+    {
+      "file": "test/check/lane.test.js",
+      "name": "a quick slice that expects only docs is no finding"
+    },
+    {
+      "file": "test/lane-rounds.test.js",
+      "name": "a quick slice's round-one blocker stops the loop with no second reviewer"
+    },
+    {
+      "file": "test/lane-rounds.test.js",
+      "name": "a slice with no lane keeps two in-loop rounds"
+    },
+    {
+      "file": "test/instructions.test.js",
+      "name": "the plan procedure describes the quick lane's combined plan step"
+    },
+    {
+      "file": "test/user-guide.test.js",
+      "name": "the lane rule has a page and the review page names the independent round budget"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T16:43:03.762Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "d8e08918f0147024483eda92d5df621e18562cf1",
+        "testExit": 1,
+        "tests": [
+          "test/slicefile.test.js",
+          "test/check/lane.test.js",
+          "test/lane-rounds.test.js",
+          "test/instructions.test.js",
+          "test/user-guide.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/slicefile.test.js",
+            "name": "lane quick is read and another lane value is refused"
+          },
+          {
+            "file": "test/check/lane.test.js",
+            "name": "a quick slice whose branch changes a file under src is a finding naming the path"
+          },
+          {
+            "file": "test/check/lane.test.js",
+            "name": "a quick slice that expects only docs is no finding"
+          },
+          {
+            "file": "test/lane-rounds.test.js",
+            "name": "a quick slice's round-one blocker stops the loop with no second reviewer"
+          },
+          {
+            "file": "test/lane-rounds.test.js",
+            "name": "a slice with no lane keeps two in-loop rounds"
+          },
+          {
+            "file": "test/instructions.test.js",
+            "name": "the plan procedure describes the quick lane's combined plan step"
+          },
+          {
+            "file": "test/user-guide.test.js",
+            "name": "the lane rule has a page and the review page names the independent round budget"
+          }
+        ]
+      }
+    }
+  ]
+}
