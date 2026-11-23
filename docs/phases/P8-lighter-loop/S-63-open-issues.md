@@ -36,7 +36,7 @@ decisions: [D-83, D-96, D-43, D-97, D-99]
 
 ## Expected changes
 
-`src/hooks/pre-bash.js`, `src/release-version.js`, `src/build/commit.js`, `scripts/guide-html.js`, `docs/runbook.md`, `src/hooks/pre-edit.js`, `src/brief.js`, `docs/guide/commands/brief.md`, `docs/guide/slicekit-guide.html`, tests.
+`src/hooks/pre-bash.js`, `src/release-version.js`, `src/build/commit.js`, `scripts/guide-html.js`, `docs/runbook.md`, `src/hooks/pre-edit.js`, `src/brief.js`, `src/stage.js`, `docs/guide/commands/brief.md`, `docs/guide/slicekit-guide.html`, tests.
 
 ## Tasks
 
@@ -72,7 +72,7 @@ decisions: [D-83, D-96, D-43, D-97, D-99]
 
 ### Task 4: The example's files and the blank brief
 
-**Files:** Modify `src/hooks/pre-edit.js`, `src/brief.js`, `docs/guide/commands/brief.md`, `docs/guide/slicekit-guide.html`, `test/hooks/pre-edit.test.js`, `test/brief.test.js`.
+**Files:** Modify `src/hooks/pre-edit.js`, `src/brief.js`, `src/stage.js`, `docs/guide/commands/brief.md`, `docs/guide/slicekit-guide.html`, `test/hooks/pre-edit.test.js`, `test/brief.test.js`.
 
 - [ ] **Step 1: Failing tests** — the two `test/hooks/pre-edit.test.js` tests and the `brief.test.js` test above, the first on a fixture repository holding a folder with a `.slicekit/config.json` that has no `cli` key.
 - [ ] **Step 2: Run** `node --test test/hooks/pre-edit.test.js test/brief.test.js` → FAIL.
