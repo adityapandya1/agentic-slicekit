@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-61",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 220,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
-    "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121"
+    "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd"
   },
   "redCommit": "d8e08918f0147024483eda92d5df621e18562cf1",
   "frozenTests": [
@@ -153,6 +153,22 @@
           "path": ".slicekit/reviews/P8-S-61-r1.md",
           "blockers": 0,
           "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T17:34:16.850Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 220,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+          "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd",
+          "title": "[P8/S-61] Quick lane"
         }
       }
     }
