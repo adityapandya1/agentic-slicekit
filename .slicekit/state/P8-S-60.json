@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-60",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 217,
@@ -41,6 +41,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-60i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "499975218cf552126501163cc9c9e73db6f9deb4"
     }
   ],
   "ci": null,
@@ -194,6 +201,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
           "headSha": "499975218cf552126501163cc9c9e73db6f9deb4",
           "title": "[P8/S-60] Freezing by test name and slice-file amendments"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T07:08:42.509Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-60i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
