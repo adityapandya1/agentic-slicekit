@@ -83,6 +83,16 @@
       "at": "2026-11-23T18:40:29.358Z",
       "by": "cli",
       "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T19:10:08.014Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "c8fb88f51a92afea386d53499222482d210e9ee2",
+        "reason": "the adapters page and the /slicekit page list every procedure, and the examples need the rendered next command to check green; Expected changes names them"
+      }
     }
   ]
 }
