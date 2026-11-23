@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-62",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 222,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
-    "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2"
+    "headSha": "ce6dde91a72c7ef3e39e582e3fce5d838bfe70a6"
   },
   "redCommit": "384e14628746d2def8e654a44258a3db97f4fe14",
   "frozenTests": [
@@ -58,11 +58,7 @@
       "headSha": "77aa8e15ef28cfda5800ca6cbf2a6ac81820c9e2"
     }
   ],
-  "ci": {
-    "sha": "3290d7934f94bca34c739ee0250e4311f7544741",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45248256369"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -218,6 +214,22 @@
           "path": ".slicekit/reviews/P8-S-62i-r3.md",
           "blockers": 1,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T19:48:23.058Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 222,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/222",
+          "headSha": "ce6dde91a72c7ef3e39e582e3fce5d838bfe70a6",
+          "title": "[P8/S-62] One step at a time"
         }
       }
     }
