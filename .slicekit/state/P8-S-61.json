@@ -1,0 +1,255 @@
+{
+  "slice": "P8/S-61",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 220,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+    "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd"
+  },
+  "redCommit": "d8e08918f0147024483eda92d5df621e18562cf1",
+  "frozenTests": [
+    {
+      "file": "test/slicefile.test.js",
+      "name": "lane quick is read and another lane value is refused"
+    },
+    {
+      "file": "test/check/lane.test.js",
+      "name": "a quick slice whose branch changes a file under src is a finding naming the path"
+    },
+    {
+      "file": "test/check/lane.test.js",
+      "name": "a quick slice that expects only docs is no finding"
+    },
+    {
+      "file": "test/lane-rounds.test.js",
+      "name": "a quick slice's round-one blocker stops the loop with no second reviewer"
+    },
+    {
+      "file": "test/lane-rounds.test.js",
+      "name": "a slice with no lane keeps two in-loop rounds"
+    },
+    {
+      "file": "test/instructions.test.js",
+      "name": "the plan procedure describes the quick lane's combined plan step"
+    },
+    {
+      "file": "test/user-guide.test.js",
+      "name": "the lane rule has a page and the review page names the independent round budget"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-61-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-61-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-61i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd"
+    }
+  ],
+  "ci": {
+    "sha": "ac0b6c9c7e835af9f54ff4a13b7382052ed01ba3",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45235607710"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T16:43:03.762Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "d8e08918f0147024483eda92d5df621e18562cf1",
+        "testExit": 1,
+        "tests": [
+          "test/slicefile.test.js",
+          "test/check/lane.test.js",
+          "test/lane-rounds.test.js",
+          "test/instructions.test.js",
+          "test/user-guide.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/slicefile.test.js",
+            "name": "lane quick is read and another lane value is refused"
+          },
+          {
+            "file": "test/check/lane.test.js",
+            "name": "a quick slice whose branch changes a file under src is a finding naming the path"
+          },
+          {
+            "file": "test/check/lane.test.js",
+            "name": "a quick slice that expects only docs is no finding"
+          },
+          {
+            "file": "test/lane-rounds.test.js",
+            "name": "a quick slice's round-one blocker stops the loop with no second reviewer"
+          },
+          {
+            "file": "test/lane-rounds.test.js",
+            "name": "a slice with no lane keeps two in-loop rounds"
+          },
+          {
+            "file": "test/instructions.test.js",
+            "name": "the plan procedure describes the quick lane's combined plan step"
+          },
+          {
+            "file": "test/user-guide.test.js",
+            "name": "the lane rule has a page and the review page names the independent round budget"
+          }
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-23T16:43:04.672Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T17:03:19.422Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "26ca4bc36ea605fe59089718823dc01b97947ec0",
+        "reason": "build verdict prints the round budget from src/cli/build.js, which reads the lane; the pending marker is removed since this slice writes the page it excused"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T17:04:25.309Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "b1a95359f29285cb9e0b921d5505376f6c83d0a4",
+        "reason": "Done when 5 names the guide pages by their paths from the repository root"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T17:15:55.182Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 220,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+          "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121",
+          "title": "[P8/S-61] Quick lane"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T17:22:18.602Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-61-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T17:34:16.850Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 220,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+          "headSha": "b9cb04b76ddedc2f038228b2386128699c41d5fd",
+          "title": "[P8/S-61] Quick lane"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T17:39:20.137Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-61-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T18:04:42.048Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "698ecb4909e6a2eb913c009592ebcfb51ca3c431",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45230029060"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-23T18:10:45.411Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-61i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T18:11:47.245Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "ac0b6c9c7e835af9f54ff4a13b7382052ed01ba3",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45235607710"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-23T18:11:49.436Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

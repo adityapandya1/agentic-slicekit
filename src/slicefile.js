@@ -16,6 +16,7 @@ export class SliceFileError extends Error {
 const KINDS = ['happy', 'negative', 'e2e'];
 const SCALARS = ['slice', 'name', 'repo', 'group', 'runbook'];
 const LISTS = ['requirements', 'decisions'];
+const LANES = ['quick'];
 
 // The text under the first `## <title>` heading, up to the next level-2 heading.
 function section(body, title) {
@@ -67,6 +68,12 @@ export function parseSliceFile(text, file) {
   if (!['yes', 'true', 'no', 'false'].includes(rb)) {
     fail(`front-matter field "runbook" must be yes or no, got "${data.runbook}"`, 'runbook');
   }
+  // The optional lane (REQ-1.5, D-103): absent, or `quick`.
+  let lane = null;
+  if ('lane' in data && data.lane !== '' && data.lane != null) {
+    lane = String(data.lane).trim().toLowerCase();
+    if (!LANES.includes(lane)) fail(`front-matter field "lane" must be quick, got "${data.lane}"`, 'lane');
+  }
 
   const done = section(body, 'Done when');
   if (done === null) fail('missing section "## Done when"', 'Done when');
@@ -117,6 +124,7 @@ export function parseSliceFile(text, file) {
     repo: String(data.repo),
     group: String(data.group),
     runbook: rb === 'yes' || rb === 'true',
+    lane,
     requirements: asList(data.requirements),
     decisions: asList(data.decisions),
     doneWhen,

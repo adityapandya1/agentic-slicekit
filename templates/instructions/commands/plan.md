@@ -35,7 +35,10 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
      one `negative` row, each row naming the REQ it covers;
    - a `## Expected changes` list of the files or packages the slice changes, each in backticks;
    - the runbook flag set to `yes` when the slice touches configuration, infrastructure,
-     migrations, alerts, queues or integrations (D-21), else `no`.
+     migrations, alerts, queues or integrations (D-21), else `no`;
+   - optionally `lane: quick` in the front matter (D-103). Mark a slice `lane: quick` only when its
+     expected changes name no file under `src/`, `bin/` or `templates/`; `{{cli}} check` refuses a
+     quick slice whose expected changes or branch reach one of those folders.
 
    Every REQ in the spec is named by at least one slice. No two slices of one Order step expect the
    same path, apart from the shared roots: `.`, anything under `test/`, `src/cli/index.js` and
@@ -56,5 +59,10 @@ repository's history goes through `{{cli}}`; run no git or gh command yourself.
 
    Then run `{{cli}} pr open --title "[plan] <program name>" --body-file <file> --commit "docs(plan): <program name>" --paths <docsRoot>/spec/stack.md,<docsRoot>/phases,<docsRoot>/decisions.md,BUILD.md`,
    with the program name from `.slicekit/config.json`.
+
+   A quick slice gets one combined plan step: when it is added to a plan that is already merged,
+   its slice file, its phase file and `BUILD.md` are written and merged in one `[plan]` pull request,
+   steps 1 to 8 run once, and no second plan pull request follows. Its build then has one in-loop
+   review round in place of two, and the independent review as for any slice.
 8. Print the pull request line `pr open` printed, and tell the human that merging the pull request
    approves the plan; `/slicekit build` then takes the first slice.

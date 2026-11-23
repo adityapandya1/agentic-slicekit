@@ -5,8 +5,8 @@
 // not committed, committed but not recorded, recorded but not pushed) finishes on a re-run with the
 // same file name.
 //
-// Two in-loop rounds (D-18): a third is refused before anything moves, and a blocker left at round 2
-// records `changes-requested` and stops the loop with the pull request still a draft. After every
+// Two in-loop rounds (D-18), one for a slice marked `lane: quick` (D-103): a round past them is refused
+// before anything moves, and a blocker left at the last in-loop round records `changes-requested` and stops the loop with the pull request still a draft. After every
 // verdict the body's "Reviewer blocked" names each blocker and whether it was fixed. The independent
 // rounds have their own budget (D-101): one, a second only after a blocker, any later one only with a
 // decision row; a blocker left at the last allowed round records `changes-requested` the same way.
@@ -31,6 +31,7 @@ import { kitPaths } from '../paths.js';
 import { lines as splitLines } from '../markdown.js';
 import { PrBodyError, getSection, prBodyProblems, setSection } from '../prbody.js';
 import { parseVerdict, verdictProblems } from '../verdict.js';
+import { findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { posixRel } from './red.js';
 import { commitBookkeeping, recordState } from './record.js';
 import { assertNotBehind } from './sync.js';
@@ -44,6 +45,8 @@ const FROM = ['draft-pr', 'changes-requested'];
 const fromStates = (independent) => (independent ? [...FROM, ...INDEPENDENT_ONLY] : FROM);
 const orList = (xs) => (xs.length < 3 ? xs.join(' or ') : `${xs.slice(0, -1).join(', ')} or ${xs.at(-1)}`);
 export const LOOP_ROUNDS = 2;
+// A slice marked `lane: quick` has one in-loop round (REQ-2.5, D-103).
+export const QUICK_LOOP_ROUNDS = 1;
 const REVIEWS = '.slicekit/reviews';
 const BLOCKED = 'Reviewer blocked';
 const ID = /^([BH])-([1-9]\d*)$/;
@@ -138,6 +141,31 @@ function verdictSource(wt, id, k, src, dest, rel, shown) {
 
 const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 
+// The in-loop rounds of slice `id` as its slice file under `root` gives them: one for a slice marked
+// `lane: quick` (REQ-2.5, D-103), else two (D-18). A slice file that cannot be found or read keeps two.
+export function loopRounds(root, cfg, id) {
+  let files;
+  try {
+    files = findSliceFiles(root, cfg ?? loadConfig(root));
+  } catch {
+    return LOOP_ROUNDS;
+  }
+  for (const f of files) {
+    let parsed;
+    try {
+      parsed = parseSliceFile(fs.readFileSync(f.path, 'utf8'), f.path);
+    } catch {
+      continue;
+    }
+    if (parsed.id === id) return parsed.lane === 'quick' ? QUICK_LOOP_ROUNDS : LOOP_ROUNDS;
+  }
+  return LOOP_ROUNDS;
+}
+
+// The refusal of a round past the in-loop budget.
+const loopSpent = (rounds) =>
+  rounds === LOOP_ROUNDS ? 'two review rounds used; the loop stopped (D-18)' : 'one review round used; the loop of a quick slice stopped (D-103)';
+
 // ---- The independent round budget (REQ-2.8, D-101) ----
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -199,11 +227,12 @@ export function stopText(root, cfg, id, number, round, blockers) {
 const inSessionRoot = (root, name) => path.resolve(root, ...REVIEWS.split('/'), name).split(path.sep).join('/');
 
 // The absolute session-root path the next in-loop reviewer writes, `<root>/.slicekit/reviews/<P-S>-r<k>.md`
-// with k the slice's verdict count plus one; null once the in-loop rounds are used (D-18). `build pr`
+// with k the slice's verdict count plus one; null once the in-loop rounds are used (D-18; one round
+// for a quick slice, D-103, read from the slice file under `root` unless `rounds` is given). `build pr`
 // and `build verdict` print it so the procedure never computes k.
-export function nextVerdictPath(root, id, verdicts = []) {
+export function nextVerdictPath(root, id, verdicts = [], rounds = loopRounds(root, undefined, id)) {
   // Once an independent review has given a verdict, the next review is a new session's `review start`.
-  if (inLoop(verdicts) >= LOOP_ROUNDS || verdicts.some((v) => v.independent)) return null;
+  if (inLoop(verdicts) >= rounds || verdicts.some((v) => v.independent)) return null;
   return inSessionRoot(root, verdictFileName(id, verdicts.length + 1));
 }
 
@@ -223,34 +252,35 @@ export function latestVerdictPath(root, verdicts = []) {
 // there is no in-loop path: the next independent round's path comes from `review start`.
 const withNextPath = (root, id, result, verdicts, independent) => ({
   ...result,
-  verdictPath: !independent && (result.next === 'fix' || result.next === 'ask') ? nextVerdictPath(root, id, verdicts) : null,
+  verdictPath: !independent && (result.next === 'fix' || result.next === 'ask') ? nextVerdictPath(root, id, verdicts, result.loopRounds) : null,
 });
 
 // An independent verdict sits outside the in-loop cap (D-18): its blockers ask for a fix while
 // another independent round is left (`left`, D-101), else `stuck`; without blockers it goes to CI;
 // its should-haves are the review procedure's to list.
-function outcome(k, v, verdicts, independent, left = true) {
+// `rounds` is the slice's in-loop budget (loopRounds), returned as `loopRounds`.
+function outcome(k, v, verdicts, independent, left = true, rounds = LOOP_ROUNDS) {
   const blockers = v.findings.filter((f) => f.kind === 'blocker').map((f) => f.id);
   const shouldHaves = v.findings.filter((f) => f.kind === 'should-have').map((f) => f.id);
   const roundsUsed = inLoop(verdicts);
   let next = 'ci';
-  if (blockers.length > 0) next = (independent ? left : roundsUsed < LOOP_ROUNDS) ? 'fix' : 'stuck';
+  if (blockers.length > 0) next = (independent ? left : roundsUsed < rounds) ? 'fix' : 'stuck';
   else if (shouldHaves.length > 0 && !independent) next = 'ask';
-  return { round: k, blockers, shouldHaves, roundsUsed, next };
+  return { round: k, blockers, shouldHaves, roundsUsed, loopRounds: rounds, next };
 }
 
 // The independent outcome with what a person needs (D-101): on `fix`, `reviewStart`, the command of
 // the next independent round; on `stuck`, `stop`, the open blockers and the three choices.
-function independentOutcome(root, cfg, id, number, k, v, verdicts) {
+function independentOutcome(root, cfg, id, number, k, v, verdicts, rounds) {
   const left = independentRoundAllowed(independentBlockers(verdicts), extraRounds(root, cfg, id));
-  const result = outcome(k, v, verdicts, true, left);
+  const result = outcome(k, v, verdicts, true, left, rounds);
   if (result.next === 'fix') return { ...result, reviewStart: `slicekit review start ${number}` };
   if (result.next === 'stuck') return { ...result, stop: stopText(root, cfg, id, number, k, v.findings.filter((f) => f.kind === 'blocker')) };
   return result;
 }
 
-const outcomeOf = (root, cfg, id, number, k, v, verdicts, independent) =>
-  independent ? independentOutcome(root, cfg, id, number, k, v, verdicts) : outcome(k, v, verdicts, false);
+const outcomeOf = (root, cfg, id, number, k, v, verdicts, independent, rounds = LOOP_ROUNDS) =>
+  independent ? independentOutcome(root, cfg, id, number, k, v, verdicts, rounds) : outcome(k, v, verdicts, false, true, rounds);
 
 const push = (wt, cfg) => pushBranch(wt, { protectedBranches: cfg.protectedBranches, defaultBranch: cfg.defaultBranch });
 
@@ -444,6 +474,8 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
 
   const current = readSlice(wt, cfg, id);
   const verdicts = current.verdicts ?? [];
+  // The in-loop budget, from the slice file in the worktree (REQ-2.5, D-103).
+  const rounds = loopRounds(wt, cfg, id);
 
   // The building session never approves itself through its own worktree: an independent verdict is
   // recorded only in the review worktree `review start` makes, decided by its path and its branch
@@ -475,12 +507,12 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
       fs.rmSync(src);
     }
     const v = checked(text, rel, name, independent);
-    const result = outcomeOf(root, cfg, id, current.pr.number, k, v, verdicts, independent);
+    const result = outcomeOf(root, cfg, id, current.pr.number, k, v, verdicts, independent, rounds);
     return withNextPath(root, id, finish(wt, cfg, host, id, current, result, verdicts, independent), verdicts, independent);
   }
 
-  // D-18: two in-loop rounds; independent verdicts (D-39) do not count against them.
-  if (!independent && inLoop(verdicts) >= LOOP_ROUNDS) throw new BuildError('two review rounds used; the loop stopped (D-18)');
+  // D-18: two in-loop rounds, one for a quick slice (D-103); independent verdicts (D-39) do not count against them.
+  if (!independent && inLoop(verdicts) >= rounds) throw new BuildError(loopSpent(rounds));
 
   const from = fromStates(independent);
   if (!from.includes(current.state)) {
@@ -500,7 +532,7 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   if (unknown.length > 0) throw new BuildError(unknown.join('\n'));
   // The line this round would write, judged against the live body before anything moves.
   const blockerCount = v.findings.filter((f) => f.kind === 'blocker').length;
-  const stuck = outcomeOf(root, cfg, id, current.pr.number, k, v, [...verdicts, { round: k, independent, blockers: blockerCount }], independent).next === 'stuck';
+  const stuck = outcomeOf(root, cfg, id, current.pr.number, k, v, [...verdicts, { round: k, independent, blockers: blockerCount }], independent, rounds).next === 'stuck';
   const line = reviewerBlocked([...parsedVerdicts(wt, verdicts), { round: k, findings: v.findings, headSha: current.pr.headSha, independent }], {
     stuck,
     covers: coversIn(wt),
@@ -514,6 +546,6 @@ export function recordVerdict(root, cfg, host, id, file, { worktree, independent
   else if (here) move(src, dest);
   commitBookkeeping(wt, id, `verdict r${k}`, [rel]);
   const state = recordState(wt, cfg, id, 'in-review', { verdict: { round: k, path: rel, blockers: blockerCount, independent } });
-  const result = outcomeOf(root, cfg, id, state.pr.number, k, v, state.verdicts, independent);
+  const result = outcomeOf(root, cfg, id, state.pr.number, k, v, state.verdicts, independent, rounds);
   return withNextPath(root, id, finish(wt, cfg, host, id, state, result, state.verdicts, independent), state.verdicts, independent);
 }

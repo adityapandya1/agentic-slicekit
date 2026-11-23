@@ -14,7 +14,7 @@ decisions: [D-103, D-101, D-102, D-97]
 2. The `lane` rule reports a slice marked `lane: quick` whose Expected changes name a path under `src/`, `bin/` or `templates/`, and, on that slice's branch, one whose changes against the default branch reach one of those folders, each finding naming the slice and the path. The scenario of REQ-1.5 (`lane: quick`, a branch that changes `src/init.js`) passes as written; a slice with no lane is never a finding (REQ-3.7, D-103).
 3. A quick slice has one in-loop review round: `build verdict` on its round one with a blocker sets `changes-requested`, prints what is stuck and names no second in-loop round, and the scenario of REQ-2.5 passes as written; the independent review of REQ-2.8 is still required before `ready`. A slice with no lane keeps two rounds (REQ-2.6, REQ-2.5).
 4. The plan procedure says a quick slice gets one combined plan step, its slice file written and merged in one `[plan]` pull request, and when the plan may mark a slice quick; the build procedure says a quick slice has one in-loop round. Both are printed by `slicekit instructions --command plan` and `--command build` (REQ-2.5, D-103).
-5. `docs/guide/rules/lane.md` exists and the index's Check rules table links it; the pages of P8/S-59 and P8/S-60 say what those slices changed: `commands/review.md` and `slash/review.md` the independent round budget, `commands/build.md` and `slash/build.md` amendments and freezing by name, `commands/hook.md` the pre-edit rules, `rules/frozen.md` the per-test finding. `node scripts/guide-html.js --check` exits 0 and `slicekit check` gives `0 findings` (REQ-5.8, D-97, D-101, D-102). <!-- slicekit:pending P8/S-61 -->
+5. `docs/guide/rules/lane.md` exists and the index's Check rules table links it; the pages of P8/S-59 and P8/S-60 say what those slices changed: `docs/guide/commands/review.md` and `docs/guide/slash/review.md` the independent round budget, `docs/guide/commands/build.md` and `docs/guide/slash/build.md` amendments and freezing by name, `docs/guide/commands/hook.md` the pre-edit rules, `docs/guide/rules/frozen.md` the per-test finding. `node scripts/guide-html.js --check` exits 0 and `slicekit check` gives `0 findings` (REQ-5.8, D-97, D-101, D-102).
 
 ## Evaluation set
 
@@ -30,7 +30,7 @@ decisions: [D-103, D-101, D-102, D-97]
 
 ## Expected changes
 
-`src/slicefile.js`, `src/check/rules/lane.js`, `src/build/verdict.js`, `templates/instructions/commands/plan.md`, `templates/instructions/commands/build.md`, `docs/guide/rules/lane.md`, `docs/guide/README.md`, `docs/guide/commands/review.md`, `docs/guide/slash/review.md`, `docs/guide/commands/build.md`, `docs/guide/slash/build.md`, `docs/guide/commands/hook.md`, `docs/guide/rules/frozen.md`, `docs/guide/slicekit-guide.html`, tests.
+`src/slicefile.js`, `src/check/rules/lane.js`, `src/build/verdict.js`, `src/cli/build.js`, `templates/instructions/commands/plan.md`, `templates/instructions/commands/build.md`, `docs/guide/rules/lane.md`, `docs/guide/README.md`, `docs/guide/commands/review.md`, `docs/guide/slash/review.md`, `docs/guide/commands/build.md`, `docs/guide/slash/build.md`, `docs/guide/commands/hook.md`, `docs/guide/rules/frozen.md`, `docs/guide/slicekit-guide.html`, tests.
 
 ## Tasks
 
@@ -38,7 +38,7 @@ decisions: [D-103, D-101, D-102, D-97]
 
 **Files:** Create `src/check/rules/lane.js`, `test/check/lane.test.js`. Modify `src/slicefile.js`, `test/slicefile.test.js`.
 
-- [ ] **Step 1: Failing tests** — the `slicefile.test.js` and two `test/check/lane.test.js` tests above. <!-- slicekit:pending P8/S-61 -->
+- [ ] **Step 1: Failing tests** — the `slicefile.test.js` and two `test/check/lane.test.js` tests above.
 - [ ] **Step 2: Run** `node --test test/slicefile.test.js test/check/lane.test.js` → FAIL.
 - [ ] **Step 3: Implement** the field and the rule, which is blocking and not a ratchet; the branch's changes are read from git objects, as the `frozen` rule reads them.
 - [ ] **Step 4: Run** the same and `node --test test/check/` → PASS.
@@ -66,4 +66,4 @@ decisions: [D-103, D-101, D-102, D-97]
 
 ## Notes
 
-S-61 itself changes `src/` and `templates/`, so it is not a quick slice. `docs/guide/rules/lane.md` is a new document under the docs root; after P8/S-60 the pre-edit guard allows it because Expected changes names it. <!-- slicekit:pending P8/S-61 -->
+S-61 itself changes `src/` and `templates/`, so it is not a quick slice. `docs/guide/rules/lane.md` is a new document under the docs root; after P8/S-60 the pre-edit guard allows it because Expected changes names it.
