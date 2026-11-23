@@ -135,6 +135,16 @@
           "independent": false
         }
       }
+    },
+    {
+      "from": "in-review",
+      "to": "in-review",
+      "at": "2026-11-23T19:18:04.232Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "7e14981a2406e02c6bc93723700b156f1443bdff",
+        "reason": "review H-1: on a slice branch the stage checks read the branch's own docs changes as the default branch has them, in src/stage.js"
+      }
     }
   ]
 }
