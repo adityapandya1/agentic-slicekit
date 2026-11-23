@@ -62,7 +62,8 @@ section lets it write that one file outside the worktree.
 When the reviewer stops, run `{{cli}} build verdict <id> <path> --independent --worktree <wt>` with
 step 2's verdict path. It commits the verdict into the review worktree, pushes it to the slice
 branch, and prints `next: <step>`, `blockers: <IDs or none>`, `should-haves: <IDs or none>` and
-`rounds: <used> of 2`; the rounds stay as they were. On `next: fix` it also prints
+`rounds: <used> of <budget>` (the in-loop budget: 2, or 1 for a quick slice); the rounds stay as
+they were. On `next: fix` it also prints
 `review: <command>`, the `review start` command of the next independent round that the budget
 allows (D-101); keep it for step 5. By what it prints:
 
