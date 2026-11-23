@@ -312,16 +312,20 @@ function bringUntracked(wt, dir) {
 }
 
 // Makes git usable in the run directory (issue #107): a `.git` directory of its own that holds a
-// copy of the worktree's index and HEAD and names the repository's common directory for everything
-// else. A git command there sees every tracked file as staged and no unstaged change, and writes at
-// most that copy of the index. Nothing is registered in the repository, so removing the directory
-// leaves no trace of it.
+// copy of the worktree's index and HEAD, a copy of the repository's config, `shallow` and
+// `info/exclude`, a copy of every ref the worktree sees, and the repository's objects as alternates.
+// A git command there sees every tracked file as staged and no unstaged change. What it writes stays
+// in that directory: the index, the objects of a commit, the refs, HEAD and their logs, so a test
+// command that commits or moves a branch there (`git commit`, `git branch -f`, `git reset`) moves no
+// ref of the repository and leaves it no object (issue #184). Nothing is registered in the
+// repository, so removing the directory leaves no trace of it.
 function gitIn(wt, dir) {
   const own = path.join(dir, '.git');
   if (fs.existsSync(own)) return;
   const abs = (p) => path.resolve(wt, p);
+  const gitPath = (name) => abs(git(wt, ['rev-parse', '--git-path', name]));
   const common = abs(git(wt, ['rev-parse', '--git-common-dir']));
-  const index = abs(git(wt, ['rev-parse', '--git-path', 'index']));
+  const forward = (p) => p.split(path.sep).join('/');
   let head;
   try {
     head = `ref: ${git(wt, ['symbolic-ref', '-q', 'HEAD'])}`;
@@ -329,10 +333,26 @@ function gitIn(wt, dir) {
     if (!(e instanceof GitError)) throw e;
     head = git(wt, ['rev-parse', 'HEAD']);
   }
-  fs.mkdirSync(own);
+  fs.mkdirSync(path.join(own, 'objects', 'info'), { recursive: true });
+  fs.mkdirSync(path.join(own, 'refs', 'heads'), { recursive: true });
+  fs.mkdirSync(path.join(own, 'refs', 'tags'), { recursive: true });
+  fs.mkdirSync(path.join(own, 'info'), { recursive: true });
   fs.writeFileSync(path.join(own, 'HEAD'), `${head}\n`);
-  fs.writeFileSync(path.join(own, 'commondir'), `${common.split(path.sep).join('/')}\n`);
-  if (fs.existsSync(index)) fs.copyFileSync(index, path.join(own, 'index'));
+  fs.writeFileSync(path.join(own, 'objects', 'info', 'alternates'), `${forward(path.join(common, 'objects'))}\n`);
+  for (const [from, to] of [[gitPath('config'), 'config'], [gitPath('shallow'), 'shallow'], [gitPath('info/exclude'), path.join('info', 'exclude')], [gitPath('index'), 'index']]) {
+    if (fs.existsSync(from)) fs.copyFileSync(from, path.join(own, to));
+  }
+  // The copied refs are files, so the copy's config must not ask for another ref store; and its
+  // work tree is the run directory, wherever the repository's config put its own.
+  for (const key of ['extensions.refstorage', 'core.worktree', 'core.bare']) {
+    try {
+      git(wt, ['config', '--file', path.join(own, 'config'), '--unset-all', key]);
+    } catch (e) {
+      if (!(e instanceof GitError)) throw e;
+    }
+  }
+  const refs = git(wt, ['for-each-ref', '--format=%(objectname) %(refname)']);
+  fs.writeFileSync(path.join(own, 'packed-refs'), refs === '' ? '' : `${refs}\n`);
 }
 
 // The test command run in a temporary directory holding the index as staged (git checkout-index),

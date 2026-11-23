@@ -214,13 +214,22 @@ function namesSlice(sections, id) {
 }
 
 // Whether a changelog section holds the line of the phase `id` (P1), with or without a name: the
-// phase has had its minor version (D-96). Phase 1's line is not Phase 11's.
+// phase has had its minor version (D-96). Phase 1's line is not Phase 11's. The line is read as the
+// paragraph it starts, so a line wrapped over two or more lines, or written by hand without its final
+// full stop, still counts (issue #183).
 function namesPhase(sections, id) {
   const number = id.replace(/^P/, '');
-  return sections.some((l) => {
-    const line = l.trimEnd();
-    return isPhaseLine(line) && (line === phaseText(number, '') || line.startsWith(`Phase ${number}:`));
-  });
+  const shape = new RegExp(`^Phase ${number}(?:: \\S.*?)?\\.?$`);
+  const paragraphs = [];
+  let open = null;
+  for (const l of sections) {
+    const line = l.trim();
+    if (line === '' || isHeading(l)) open = null;
+    else if (open === null) {
+      open = paragraphs.push(line) - 1;
+    } else paragraphs[open] += ` ${line}`;
+  }
+  return paragraphs.some((p) => shape.test(p));
 }
 
 // Whether the commit `rev` set the version: package.json at it holds a version and CHANGELOG.md at

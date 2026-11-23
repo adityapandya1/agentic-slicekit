@@ -564,7 +564,9 @@ GIT_LONG.stage = GIT_LONG.add;
 // does not guess, and the caller refuses the command as one it cannot judge (verdict P6-S-52-r2 H-8).
 // A prefix of several options (`--f`) is refused the same way, naming the first: git itself refuses
 // an ambiguous one, so nothing git would run is lost. A word after `--`, and the value of an option
-// that takes one, is not an option.
+// that takes one, is not an option. Git reads a short option that takes a value as taking the rest of
+// its word when anything follows it there (`-oo`, `-bb`), and the next word only when nothing does
+// (issue #180).
 function cutOption(sub, args) {
   const spec = Object.hasOwn(GIT_LONG, sub ?? '') ? GIT_LONG[sub] : null;
   if (spec === null) return null;
@@ -580,8 +582,9 @@ function cutOption(sub, args) {
       }
       const full = all.find((o) => o.startsWith(name));
       if (full !== undefined) return { cut: name, full };
-    } else if (/^-[A-Za-z]+$/.test(a) && spec.short.includes(a.at(-1))) {
-      k += 1;
+    } else if (/^-[A-Za-z]+$/.test(a)) {
+      const at = [...a.slice(1)].findIndex((c) => spec.short.includes(c));
+      if (at === a.length - 2) k += 1;
     }
   }
   return null;
@@ -946,6 +949,32 @@ function inPlaceFiles(args) {
   return args.slice(k).filter((a) => !a.startsWith('-') || a === '-');
 }
 
+// Whether the arguments of `git clean` ask for a dry run (`-n`, `--dry-run`), read as git reads them:
+// `-e` takes the rest of its word when anything follows it there and the next word when nothing does,
+// `--exclude` takes the next word unless written with `=`, and a value is no option. A word after
+// `--` is a path.
+function cleanDryRun(args) {
+  let dry = false;
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a === '--') break;
+    if (a.startsWith('--')) {
+      const name = a.split('=')[0];
+      if (name === '--exclude' && !a.includes('=')) k += 1;
+      else if (name === '--dry-run') dry = true;
+    } else if (a.startsWith('-') && a.length > 1) {
+      for (let j = 1; j < a.length; j++) {
+        if (a[j] === 'e') {
+          if (j === a.length - 1) k += 1;
+          break;
+        }
+        if (a[j] === 'n') dry = true;
+      }
+    }
+  }
+  return dry;
+}
+
 // `git checkout`, `git restore`, `git rm` and `git mv` (issue #105) -> the paths the command writes in
 // the work tree, each resolved in the directory `-C` names. A path covers what lies under it, and git
 // matches `*` across directories. A pathspec the text does not settle (`:(glob)...`, `:/`,
@@ -979,8 +1008,9 @@ function gitWrites(w, cwd) {
     return (verb === 'push' || verb === undefined) && sep !== -1 && args.length > sep + 1 ? specs(args.slice(sep + 1)) : every;
   }
   if (sub === 'clean') {
-    // A dry run removes nothing, with `-f` or without.
-    if ((has('--dry-run') || short('n')) && !negates) return [];
+    // A dry run removes nothing, with `-f` or without. The value of `-e` or `--exclude` is a pattern,
+    // never a dry run: `-e --dry-run`, `-fe --dry-run`, `--exclude --dry-run` and `-fen` (issue #181).
+    if (cleanDryRun(args) && !negates) return [];
     const named = positionals(args, new Set(['-e', '--exclude']));
     return named.length ? specs(named) : every;
   }

@@ -6,7 +6,7 @@ import { GitError, assertRef, git, hasCommits, isRepo } from './git.js';
 import { readDecisions } from './decisions.js';
 import { blankCodeSpans, headings, lines, prose, refs, tables } from './markdown.js';
 import { re } from './ids.js';
-import { missingHeadings, unlistedEmptySections } from './brief.js';
+import { blankLeftover, missingHeadings, unlistedEmptySections } from './brief.js';
 import { kitPaths } from './paths.js';
 import { findSliceFiles, parseSliceFile } from './slicefile.js';
 import { listSlices } from './state/index.js';
@@ -306,8 +306,10 @@ function release(root, cfg) {
 
 // The optional brief stage (REQ-1.7, D-99), outside STAGES: no stage after it reads the brief folder.
 // Complete when there is a brief and every file under `<docsRoot>/brief/` other than `.keep` has
-// every section of REQ-2.15, each topic section filled or listed under Open questions; the blockers
-// name each file and its first missing section, or else its first empty section not listed there.
+// every section of REQ-2.15, each topic section filled or listed under Open questions, and nothing of
+// the blank brief left unfilled (`blankLeftover`: a title holding `<name>`, a section whose only line
+// is the blank brief's guidance line); the blockers name each file and its first missing section,
+// else what of the blank brief it still holds, else its first empty section not listed there.
 export function briefStage(root, cfg) {
   const dir = kitPaths(root, cfg).brief;
   const files = exists(dir) ? listFiles(dir).filter((f) => path.posix.basename(f) !== '.keep') : [];
@@ -318,6 +320,11 @@ export function briefStage(root, cfg) {
     const missing = missingHeadings(text);
     if (missing.length > 0) {
       blockers.push(`${rel(root, path.join(dir, f))} has no section ## ${missing[0]}`);
+      continue;
+    }
+    const leftover = blankLeftover(text);
+    if (leftover !== null) {
+      blockers.push(`${rel(root, path.join(dir, f))} ${leftover}`);
       continue;
     }
     const empty = unlistedEmptySections(text);

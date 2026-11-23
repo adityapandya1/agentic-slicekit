@@ -415,8 +415,10 @@ for (const [name, target] of [['a source file two folders up', '../../src/cli.js
   });
 }
 
+// P8/S-63 (issue #189): only a paragraph of the introduction that links the web page is left out, so
+// the three paragraphs stand in the introduction; one under `## Conventions` is kept.
 test('converted: the paragraph of the index that links the web page itself is left out, and only it', (t) => {
-  const html = written(t, { index: indexOf({ before: ['## Conventions', '', 'The first paragraph.', '', 'Open [`slicekit-guide.html`](slicekit-guide.html) in a browser.', '', 'The third paragraph.', ''] }) });
+  const html = written(t, { index: indexOf({ before: ['The first paragraph.', '', 'Open [`slicekit-guide.html`](slicekit-guide.html) in a browser.', '', 'The third paragraph.', '', '## Conventions', '', 'Text.', ''] }) });
   assert.ok(html.includes('<p>The first paragraph.</p>') && html.includes('<p>The third paragraph.</p>'));
   assert.ok(!html.includes('in a browser'), 'the paragraph that links the web page is in the page');
 });

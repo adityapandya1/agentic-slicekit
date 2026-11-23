@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { listFiles } from './fs.js';
 import { commitPaths, currentBranch, git } from './git.js';
 import { kitPaths } from './paths.js';
@@ -61,6 +62,50 @@ export function unlistedEmptySections(text) {
   }
   const open = new Set((under[OPEN] ?? []).map((l) => l.toLowerCase()));
   return BRIEF_HEADINGS.filter((h) => h !== OPEN && Object.hasOwn(under, h) && under[h].length === 0 && !open.has(h.toLowerCase()));
+}
+
+// The kit's blank brief, `templates/brief/blank.md`: the guidance line it holds under each heading.
+// Read once, when first asked.
+const BLANK = fileURLToPath(new URL('../templates/brief/blank.md', import.meta.url));
+let blank = null;
+function blankBrief() {
+  if (blank !== null) return blank;
+  const lines = fs.readFileSync(BLANK, 'utf8').split(/\r?\n/).map((l) => l.trim());
+  const guidance = {};
+  let at = null;
+  for (const line of lines) {
+    if (line.startsWith('## ')) at = line.slice(3).trim();
+    else if (at !== null && line !== '') (guidance[at] ??= new Set()).add(line);
+  }
+  blank = { guidance };
+  return blank;
+}
+
+// What of the blank brief a brief still holds unfilled (issue #206): a title that still holds
+// `<name>`, or a section whose only line is the guidance line the blank brief holds
+// under that heading. -> the first such, as a phrase that follows the file's name, or null.
+export function blankLeftover(text) {
+  const { guidance } = blankBrief();
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const first = lines.find((l) => l.startsWith('# '));
+  if (first !== undefined && first.includes('<name>')) {
+    return `still has the blank brief's title "${first}"; put the brief's name in place of <name>`;
+  }
+  const under = {};
+  let at = null;
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      at = line.slice(3).trim();
+      under[at] ??= [];
+    } else if (at !== null && line !== '') under[at].push(line);
+  }
+  for (const h of BRIEF_HEADINGS) {
+    const body = under[h] ?? [];
+    if (body.length === 1 && guidance[h]?.has(body[0])) {
+      return `has under ## ${h} only the blank brief's guidance line; replace it with the answer${h === OPEN ? ', or remove it when nothing is open' : `, or list ${h} under ## ${OPEN}`}`;
+    }
+  }
+  return null;
 }
 
 function onWorkBranch(root, cfg, what) {
@@ -190,8 +235,10 @@ export function answer(root, cfg, { answer: text, unknown = false } = {}) {
 }
 
 // Ends the brief: refuses while a question waits, on the default or a protected branch, while a
-// topic was never asked and answered (an unknown answer counts), while a heading is missing from the brief, or when a file under the spec directory appeared, changed or
-// went since `brief start`; otherwise commits the brief alone.
+// topic was never asked and answered (an unknown answer counts), while a heading is missing from the brief,
+// while a section's only line is the blank brief's guidance line under that heading (`blankLeftover`),
+// or when a file under the spec directory appeared, changed or went since `brief start`; otherwise
+// commits the brief alone.
 export function done(root, cfg) {
   const session = needSession(root);
   if (session.pending) throw new BriefError(1, `answer the last question first: "${session.pending.question}" has no answer`);
@@ -204,8 +251,11 @@ export function done(root, cfg) {
   const file = briefFile(root, cfg, session.slug);
   const rel = briefRel(root, cfg, session.slug);
   if (!fs.existsSync(file)) throw new BriefError(1, `${rel} is missing; run slicekit brief start ${session.slug} again`);
-  const missing = missingHeadings(fs.readFileSync(file, 'utf8'));
+  const text = fs.readFileSync(file, 'utf8');
+  const missing = missingHeadings(text);
   if (missing.length > 0) throw new BriefError(1, `${rel} has no section ## ${missing[0]}`);
+  const leftover = blankLeftover(text);
+  if (leftover !== null) throw new BriefError(1, `${rel} ${leftover}`);
   const known = session.specFiles ?? {};
   const now = specFilesNow(root, cfg);
   for (const [f, digest] of Object.entries(now)) {

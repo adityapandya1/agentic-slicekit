@@ -18,9 +18,10 @@
 // file), except the runbook, anything in the slice's own phase directory, and a path the slice file's
 // Expected changes names (D-102).
 //
-// The file's own root is the nearest directory above it holding `.slicekit/config.json`, else its git
-// top level, else the session's root: a session in the main checkout editing a nested worktree is
-// judged by the worktree's branch, state and config. Paths are canonicalised through the real path of
+// The file's own root is its git top level, judged by the config there (a config in a plain folder of
+// a repository, such as `examples/backend`, makes no root), else the nearest directory above it
+// holding `.slicekit/config.json`, else the session's root: a session in the main checkout editing a
+// nested worktree or clone is judged by its branch, state and config. Paths are canonicalised through the real path of
 // their deepest existing ancestor, so 8.3 short names and links resolve; for rule (4) the path is also
 // judged as named, with a leading link or junction that reaches the root or a directory in it read as
 // that directory, and a relative name against the working directory as given; on win32 a `:` after the drive
@@ -97,29 +98,27 @@ function kitOwned(abs) {
       && segs.slice(0, i).some((p) => p === '.git' || p.endsWith('.git')));
 }
 
-// The file's own root: the deeper of the nearest `.slicekit/config.json` above it and its git top
-// level (a config in the main checkout never stands in for a nested worktree); null for neither.
+// The file's own root: its git top level (a repository's, a worktree's or a clone's), judged by the
+// config there when it holds `.slicekit/config.json`. A config in a plain folder of a repository,
+// such as an example kept under `examples/`, makes no root, so the repository's config judges the
+// folder's files (issue #203); a config in the main checkout never stands in for a nested worktree
+// or clone. With no git top level, the nearest directory above the file holding a config; null for
+// neither.
 function ownRoot(abs) {
   let start = existingAncestor(abs);
   if (!fs.statSync(start).isDirectory()) start = path.dirname(start);
-  let configured = null;
-  for (let dir = start; ; dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, CONFIG_PATH))) {
-      configured = real(dir);
-      break;
-    }
-    if (path.dirname(dir) === dir) break;
-  }
   let top = null;
   try {
     top = real(path.resolve(git(start, ['rev-parse', '--show-toplevel'])));
   } catch (e) {
     if (!(e instanceof GitError)) throw e;
   }
-  if (configured && (!top || under(toPosix(configured), toPosix(top)))) return { root: configured, config: true };
-  return top ? { root: top, config: false } : null;
+  if (top) return { root: top, config: fs.existsSync(path.join(top, CONFIG_PATH)) };
+  for (let dir = start; ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, CONFIG_PATH))) return { root: real(dir), config: true };
+    if (path.dirname(dir) === dir) return null;
+  }
 }
-
 
 // Whether rel lies inside the slice's own phase directory, `<docs>/phases/P<n>[-name]/`.
 function inOwnPhase(rel, phasesRel, sliceId) {
