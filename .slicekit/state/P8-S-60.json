@@ -1,0 +1,246 @@
+{
+  "slice": "P8/S-60",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 217,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+    "headSha": "499975218cf552126501163cc9c9e73db6f9deb4"
+  },
+  "redCommit": "afb6190af4668192461f8992863f442be374cdae",
+  "frozenTests": [
+    "test/testnames.test.js",
+    "test/build-red-names.test.js",
+    "test/hooks/pre-edit.test.js",
+    "test/hooks/pre-bash.test.js",
+    "test/check/frozen.test.js",
+    "test/build-amend.test.js"
+  ],
+  "unfrozen": [
+    "test/build-amend.test.js",
+    "test/check/frozen.test.js"
+  ],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-60-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "800a71f7f9c6450b2e4cd35af8cfebe9f3f5ec4d"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-60-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-60i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-60i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "499975218cf552126501163cc9c9e73db6f9deb4"
+    }
+  ],
+  "ci": {
+    "sha": "a324576aac600a9848d0200ee3be57013cfb18f5",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45128986930"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T01:38:06.245Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "afb6190af4668192461f8992863f442be374cdae",
+        "testExit": 1,
+        "tests": [
+          "test/testnames.test.js",
+          "test/build-red-names.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/hooks/pre-bash.test.js",
+          "test/check/frozen.test.js",
+          "test/build-amend.test.js"
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-23T01:38:06.717Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T01:38:18.381Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/build-amend.test.js",
+        "amendCommit": "e0c0bbac1f854bf783f96ab79a4a3849f97d262b",
+        "reason": "the existing test about refusing an unnamed frozen test changes with the name form of Task 4"
+      }
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T01:38:19.630Z",
+      "by": "cli",
+      "evidence": {
+        "unfreeze": "test/check/frozen.test.js",
+        "amendCommit": "c88de708ba1b9a8bc2e1783efa2b59bef663f3ea",
+        "reason": "under D-102 a slice-file amendment alone no longer lifts the freeze"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T02:22:18.677Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 217,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+          "headSha": "800a71f7f9c6450b2e4cd35af8cfebe9f3f5ec4d",
+          "title": "[P8/S-60] Freezing by test name and slice-file amendments"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T02:28:01.553Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-60-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T02:56:20.752Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 217,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+          "headSha": "9f95262fc42fdf857380033ee60ea3d00d47fddb",
+          "title": "[P8/S-60] Freezing by test name and slice-file amendments"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T03:00:34.858Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-60-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T03:14:34.806Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "5ecd2df1308cc798abc0aa5b65ffb4a3c67a061c",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45103414251"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-23T03:21:10.655Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-60i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T06:59:17.106Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 217,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/217",
+          "headSha": "499975218cf552126501163cc9c9e73db6f9deb4",
+          "title": "[P8/S-60] Freezing by test name and slice-file amendments"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T07:08:42.509Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-60i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T07:23:09.340Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "a324576aac600a9848d0200ee3be57013cfb18f5",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45128986930"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-23T07:23:14.984Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

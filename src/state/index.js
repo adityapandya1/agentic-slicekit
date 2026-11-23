@@ -6,6 +6,7 @@ import { parseSliceAddr, stateFileName } from '../ids.js';
 import { withFileLock } from '../lock.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
+import { entryLabel, evaluationRows, frozenEntries } from '../testnames.js';
 import { TRANSITIONS, TransitionError, allowedMove, nextStates, validateEvidence } from './transitions.js';
 
 export { TransitionError };
@@ -187,22 +188,41 @@ export function recordHead(root, cfg, id, pr) {
   });
 }
 
-// Only a test frozen at tests-red can be unfrozen; any other path has nothing to release. `extra`
-// joins the history entry's evidence (build amend gives the amendment commit and the reason). `to`
-// moves the slice in the same write: build amend during review takes it back to building (D-43).
-export function unfreeze(root, cfg, id, file, extra = {}, { to } = {}) {
+// The tests a state file freezes, as [{ file, name }] (`name` null for a whole file), read with the
+// slice file's evaluation set: a path string, the form written before P8/S-60, is every evaluation
+// test of that file by name, or the whole file when the evaluation set names none in it (D-102).
+export function frozenOf(state, slice) {
+  return frozenEntries(state.frozenTests, evaluationRows(slice));
+}
+
+// Whether `test` (a path, or { file, name }) is frozen in `current`: a path only when it is listed as a
+// path, the form of a state file written before P8/S-60; the file of a test frozen by name is not, so a
+// bare path never unfreezes tests frozen by name (REQ-1.5, D-102); { file, name } is one of the tests
+// frozenOf reads. `slice` is the slice file at the red commit.
+export function isFrozen(current, test, slice) {
+  if (typeof test === 'string') return current.frozenTests.some((t) => typeof t === 'string' && t === test);
+  return frozenOf(current, slice).some((e) => e.file === test.file && e.name === test.name);
+}
+
+// Only a test frozen at tests-red can be unfrozen; any other path has nothing to release. `test` is a
+// path (the whole file, as before P8/S-60) or { file, name } (D-102); `slice` is the parsed slice file,
+// whose evaluation set reads an old path entry by name. `extra` joins the history entry's evidence
+// (build amend gives the amendment commit and the reason). `to` moves the slice in the same write:
+// build amend during review takes it back to building (D-43).
+export function unfreeze(root, cfg, id, test, extra = {}, { to, slice } = {}) {
   return withLock(root, cfg, id, () => {
     const current = readSlice(root, cfg, id);
-    if (!current.frozenTests.includes(file)) {
-      throw new TransitionError(`${file} is not a frozen test of ${id}`);
+    const label = entryLabel(test);
+    if (!isFrozen(current, test, slice)) {
+      throw new TransitionError(`${label} is not a frozen test of ${id}`);
     }
     const state = to ?? current.state;
     const next = {
       ...current,
       state,
       ...(state === current.state ? {} : { handoff: null }),
-      unfrozen: [...current.unfrozen, file],
-      history: [...current.history, entry(current.state, state, 'cli', { unfreeze: file, ...extra })],
+      unfrozen: [...current.unfrozen, typeof test === 'string' ? test : { file: test.file, name: test.name }],
+      history: [...current.history, entry(current.state, state, 'cli', { unfreeze: label, ...extra })],
     };
     writeSlice(root, cfg, next);
     return next;

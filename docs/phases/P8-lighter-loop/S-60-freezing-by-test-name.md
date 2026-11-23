@@ -31,6 +31,10 @@ decisions: [D-102, D-10, D-43]
 | `build-amend.test.js » amend with no test records a slice-file change while tests stay frozen` | happy | REQ-1.5 |
 | `build-amend.test.js » amend of a test already unfrozen records the second amendment` | happy | REQ-1.5 |
 
+Amended (author's standing instruction, 2026-11-23): `test/build-amend.test.js`, whose existing test "build amend still refuses a frozen test it does not name" changes with Task 4: a test frozen by name is named as `<file> » <name>`.
+
+Amended (author's standing instruction, 2026-11-23): `test/check/frozen.test.js`, whose existing test "a change after an amend of the slice file passes" contradicts D-102: an amendment of the slice file alone no longer unfreezes a test; it now expects a finding unless `build amend --test` named the test.
+
 ## Expected changes
 
 `src/testnames.js`, `src/state/index.js`, `src/state/transitions.js`, `src/build/red.js`, `src/build/commit.js`, `src/cli/build.js`, `src/hooks/pre-edit.js`, `src/hooks/paths.js`, `src/check/rules/frozen.js`, `templates/instructions/commands/build.md`, `docs/runbook.md`, tests.

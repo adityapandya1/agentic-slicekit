@@ -19,7 +19,8 @@ const stateText = (wt) => fs.readFileSync(path.join(wt, ...STATE.split('/')), 'u
 // The state file on disk with the frozen test unfrozen by hand, as no build command wrote it.
 function unfreezeOnDisk(wt) {
   const state = JSON.parse(stateText(wt));
-  assert.deepEqual(state.frozenTests, [TEST]);
+  // P8/S-60 (D-102): build red records the evaluation test by its file and its name.
+  assert.deepEqual(state.frozenTests, [{ file: TEST, name: 'works' }]);
   state.unfrozen = [TEST];
   write(wt, STATE, `${JSON.stringify(state, null, 2)}\n`);
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { GitError, currentBranch } from '../git.js';
 import { sliceFromBranch } from '../ids.js';
 import { readSlice } from '../state/index.js';
+import { entryFile, isEntry } from '../testnames.js';
 
 export const toPosix = (p) => p.split(path.sep).join('/');
 
@@ -115,26 +116,40 @@ export function activeSlice(root, cfg) {
 // The slice states in which its frozen tests are guarded (REQ-3.3).
 export const GUARDED_STATES = new Set(['tests-red', 'building']);
 
-const stringList = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
+// A state file's `frozenTests` and `unfrozen`: each entry a path (a whole file, the form written before
+// P8/S-60) or { file, name } (a test frozen by its name, D-102). Throws on any other shape, so a guard
+// reading them fails closed.
+export function checkFrozenLists(active) {
+  for (const field of ['frozenTests', 'unfrozen']) {
+    const v = active.state[field];
+    if (!Array.isArray(v) || !v.every(isEntry)) throw new Error(`${active.id} state: ${field} must be an array of strings (paths) or { file, name } entries`);
+  }
+}
 
-// The tests frozen for root's active slice: {id, files: [POSIX path relative to root's real path]},
-// with `unfrozen` ones left out; null when tests are not frozen, no slice is active, or the slice is
-// not in a guarded state. Throws when the state file cannot be read or its lists are malformed, so a
-// guard calling it fails closed.
+// The files that hold a test frozen for root's active slice: {id, files: [POSIX path relative to root's
+// real path]}. A file is left out once `unfrozen` lists it whole, or lists every test frozen in it by
+// name; a path entry is the whole file. Null when tests are not frozen, no slice is active, or the slice
+// is not in a guarded state. Throws when the state file cannot be read or its lists are malformed, so
+// a guard calling it fails closed.
 export function frozenTests(root, cfg) {
   if (!cfg.freezeTests) return null;
   const active = activeSlice(root, cfg);
   if (!active) return null;
   if (active.error) throw new Error(active.error);
-  for (const field of ['frozenTests', 'unfrozen']) {
-    if (!stringList(active.state[field])) throw new Error(`${active.id} state: ${field} must be an array of strings`);
-  }
+  checkFrozenLists(active);
   if (!GUARDED_STATES.has(active.state.state)) return null;
   const canon = real(path.resolve(root));
   const rel = (f) => toPosix(path.relative(canon, real(path.resolve(canon, fromGitBash(f.replace(/\\/g, '/'))))));
   const key = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-  const unfrozen = new Set(active.state.unfrozen.map((f) => key(rel(f))));
-  const files = active.state.frozenTests.map(rel).filter((f) => !unfrozen.has(key(f)));
+  const norm = (e) => (typeof e === 'string' ? { file: key(rel(e)), name: null } : { file: key(rel(e.file)), name: e.name });
+  const unfrozen = active.state.unfrozen.map(norm);
+  const lifted = (e) => unfrozen.some((u) => u.file === e.file && (u.name === null || (e.name !== null && u.name === e.name)));
+  const files = [];
+  for (const e of active.state.frozenTests) {
+    if (lifted(norm(e))) continue;
+    const f = rel(entryFile(e));
+    if (!files.some((g) => key(g) === key(f))) files.push(f);
+  }
   return { id: active.id, files };
 }
 

@@ -124,7 +124,7 @@ test('build amend with no test named finishes a run that wrote its record but di
     assert.equal(v.code, 0, v.stderr);
     const sliceAbs = path.join(p.wt, ...SLICE_FILE.split('/'));
     fs.appendFileSync(sliceAbs, '\nAmended in review.\n');
-    const unfroze = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js', '--reason', 'B-1 sits in the frozen test']);
+    const unfroze = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » works', '--reason', 'B-1 sits in the frozen test']);
     assert.equal(unfroze.code, 0, unfroze.stderr);
 
     // The first run: the slice file committed and the record written, then it stopped.

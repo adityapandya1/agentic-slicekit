@@ -97,6 +97,24 @@ The journal's hash chain carries no key, and its `actor` field is what the sessi
 - A commit already pushed unsigned: re-sign the branch's commits (`git rebase --exec 'git commit --amend --no-edit -S' <merge base>`) and push the branch again with `--force-with-lease`.
 - On the sync pull request, `slicekit check --ci` recomputes every line `.slicekit/journal-heads.log` gains from git and the host's record of the run the line names (C-1 `getRun`), and fails naming the line when one differs, when the file at the merge base is not a byte prefix of the file at the head, or when a pull request whose branch is not `sync/<short sha>` changes it (D-89). It recomputes against the heads file at the merge base, as the sync job computed against the file at its merge. On a `sync/<short sha>` pull request it also fails, naming the file and hash, for each journal file that merge owes a line and the heads file does not gain one for, including when the heads file is unchanged (03 REQ-3.8). Never edit the heads file by hand; a heads line is written only by `slicekit journal heads` in the sync job. <!-- slicekit:example -->
 
+## Building a slice: frozen tests and amendments
+
+With `freezeTests` set, `slicekit build red` records each test of the evaluation set by its file and its name, read from the `<file> » <test name>` cell, and refuses with exit 1 when a named test is not a `test(...)` or `it(...)` call in its file (D-102). A state file written before P8/S-60 lists files only; it is read as every evaluation test of those files by name, or as the whole file when the evaluation set names no test in it.
+
+What is frozen, and what an amendment records:
+
+| Step | What it does | What the state file records |
+|---|---|---|
+| `build red` | freezes each evaluation test by name | `frozenTests`: `{ file, name }` per test |
+| `build amend <id> --test "<file> » <name>" --reason <r>` | commits the slice file and unfreezes that one test | `unfrozen` gains the test; a history entry with the amendment commit and the reason |
+| the same, for a test already unfrozen | commits the slice file | a history entry with the test, the amendment commit and the reason |
+| `build amend <id> --reason <r>` | commits the slice file alone; every frozen test stays frozen | a history entry with the amendment commit and the reason |
+
+The first thing to check:
+
+- `frozen for <id>; amend the slice file to change the evaluation set` from the edit guard: the edit changes, removes or renames a frozen test. Another test, or another line, of the same file is allowed.
+- `frozen test changed after red: <file> » <name>` from `slicekit check --ci`: that test differs from the red commit and `build amend` did not name it. Restore the test from the red commit, or have a person agree to the change and run `build amend --test`.
+
 ## Actions and who may take them
 
 The author merges pull requests and publishes versions. Anyone may run `slicekit check` and the read-only queries (D-82).

@@ -89,12 +89,18 @@ test('a state file hidden with assume-unchanged is judged by its committed conte
   });
 });
 
+// P8/S-60 (D-102, amended 2026-11-23): an amendment of the slice file alone no longer lifts the freeze;
+// the change passes only once `build amend --test` unfroze the test, recorded in the state file.
 test('a change after an amend of the slice file passes', () => {
   withSlice((root) => {
-    red(root);
+    const sha = red(root);
     const text = fs.readFileSync(path.join(root, ...SLICE_FILE.split('/')), 'utf8');
     commitFiles(root, { [SLICE_FILE]: `${text}\nThe evaluation set now expects billing to pass.\n` }, `docs(${SLICE}): amend evaluation set`);
     changeTest(root);
+    assert.deepEqual(messages(root), [`frozen test changed after red: ${TEST}`]);
+    // `build amend --test` named the test: the state file lists it in `unfrozen`.
+    const unfrozen = { slice: SLICE, state: 'building', branch: BRANCH, redCommit: sha, frozenTests: [TEST], unfrozen: [TEST], history: [] };
+    commitFiles(root, { [STATE]: `${JSON.stringify(unfrozen, null, 2)}\n` }, `chore(slicekit): ${SLICE} unfreeze ${TEST}`);
     assert.deepEqual(messages(root), []);
   });
 });
@@ -176,5 +182,70 @@ test('with freezeTests false a changed frozen test is no finding', () => {
     fs.writeFileSync(file, `${JSON.stringify({ ...conf, freezeTests: false }, null, 2)}\n`);
     assert.equal(loadConfig(root).freezeTests, false);
     assert.deepEqual(messages(root), []);
+  });
+});
+
+// ---- P8/S-60 (REQ-3.15, REQ-3.7, D-102): a test is frozen by its name ----
+
+const TWO_TESTS = [
+  "import { test } from 'node:test';",
+  '',
+  "test('bills', () => { throw new Error('red'); });",
+  '',
+  "test('formats', () => { throw new Error('red too'); });",
+  '',
+].join('\n');
+
+// The red commit of TWO_TESTS, then the bookkeeping commit whose state file freezes `bills` by name.
+function redByName(root) {
+  const sha = commitFiles(root, { [TEST]: TWO_TESTS }, 'test: red');
+  const state = { slice: SLICE, state: 'building', branch: BRANCH, redCommit: sha, frozenTests: [{ file: TEST, name: 'bills' }], unfrozen: [], history: [] };
+  commitFiles(root, { [STATE]: `${JSON.stringify(state, null, 2)}\n` }, `chore(slicekit): ${SLICE} tests-red`);
+  return sha;
+}
+
+// REQ-3.15
+test('a changed frozen test is a finding naming the file and the test', () => {
+  const FINDING = `frozen test changed after red: ${TEST} » bills`;
+  withSlice((root) => {
+    redByName(root);
+    assert.deepEqual(messages(root), []);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("throw new Error('red'); });", '});') }, 'feat: green by editing the test');
+    assert.deepEqual(messages(root), [FINDING]);
+  });
+  // A frozen test that is gone is the same finding.
+  withSlice((root) => {
+    redByName(root);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("test('bills', () => { throw new Error('red'); });\n", '') }, 'feat: drop the test');
+    assert.deepEqual(messages(root), [FINDING]);
+  });
+});
+
+// REQ-3.15
+test('a change to another test of the same file is no finding', () => {
+  withSlice((root) => {
+    redByName(root);
+    // Another test's body, a new import and a new test change; `bills` stays as it was at red.
+    const changed = TWO_TESTS
+      .replace("test('formats', () => { throw new Error('red too'); });", "test('formats', () => {});")
+      .replace("import { test } from 'node:test';", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';")
+      .concat("test('rounds', () => assert.ok(true));\n");
+    commitFiles(root, { [TEST]: changed }, 'feat: another test changes');
+    assert.deepEqual(messages(root), []);
+  });
+});
+
+// P8/S-60 (REQ-3.15, D-102), finding H-2 of round 1: a path entry, the form of a state file written
+// before P8/S-60, is read with the evaluation set of the slice file at the red commit; a later change
+// to the slice file that names another test of the file does not lift the freeze on the test named at red.
+test('a path entry is judged by the evaluation set at the red commit', () => {
+  withSlice((root) => {
+    const text = fs.readFileSync(path.join(root, ...SLICE_FILE.split('/')), 'utf8');
+    commitFiles(root, { [SLICE_FILE]: text.replace('`a.test.js » works`', '`billing.test.js » bills`') }, 'docs: name the test');
+    const sha = commitFiles(root, { [TEST]: TWO_TESTS }, 'test: red');
+    commitFiles(root, { [STATE]: stateJson('building', sha) }, `chore(slicekit): ${SLICE} tests-red`);
+    commitFiles(root, { [SLICE_FILE]: text.replace('`a.test.js » works`', '`billing.test.js » formats`') }, `docs(${SLICE}): amend evaluation set`);
+    commitFiles(root, { [TEST]: TWO_TESTS.replace("throw new Error('red'); });", '});') }, 'feat: green by editing the test');
+    assert.deepEqual(messages(root), [`frozen test changed after red: ${TEST} » bills`]);
   });
 });

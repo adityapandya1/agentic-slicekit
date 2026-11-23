@@ -1,8 +1,12 @@
-// frozen (03 REQ-3.15, D-10): on a slice branch, a test of the slice's evaluation set stays as it was at
-// the red commit recorded in the slice's state file, unless the slice file was changed in a commit
-// after the red commit (as `build amend` does). The state file, the red commit, the slice file and
-// the tests are all read from git objects of the tip judged, never the working tree: a file hidden
-// with `assume-unchanged` or `skip-worktree` is judged by its committed content (issue #71).
+// frozen (03 REQ-3.15, D-10, D-102): on a slice branch, a test of the slice's evaluation set, found by
+// its name in its file, stays as it was at the red commit recorded in the slice's state file, unless
+// `build amend` unfroze that test after the red commit: the tip's state file lists it in `unfrozen`
+// and the slice file was changed in a commit after red. Other tests of the same file are not
+// compared. A path entry of a state file written before P8/S-60 is every evaluation test of that file
+// by name in the slice file at the red commit, or the whole file when that evaluation set names none
+// in it. The state file, the red commit, the slice file and the tests are all read from git objects
+// (of the tip judged, or of the red commit), never the working tree: a file hidden with
+// `assume-unchanged` or `skip-worktree` is judged by its committed content (issue #71).
 //
 // The tip is HEAD, or under --ci on a pull request the pull request's head (branchTip). No branch, a
 // branch that is not a slice branch, no red commit recorded in any version of the state file (a slice
@@ -22,7 +26,8 @@ import { GitError, git, resolveCommit } from '../../git.js';
 import { branchTip } from '../ci-event.js';
 import { parseSliceAddr, sliceFromBranch, stateFileName } from '../../ids.js';
 import { kitPaths } from '../../paths.js';
-import { phaseOfDir } from '../../slicefile.js';
+import { SliceFileError, parseSliceFile, phaseOfDir } from '../../slicefile.js';
+import { TestNameError, entryFile, entryLabel, evaluationRows, findTest, frozenEntries, isEntry, isUnfrozen } from '../../testnames.js';
 
 export const id = 'frozen';
 export const blocking = true;
@@ -115,22 +120,68 @@ export function run(ctx) {
     return [...removed, { file: stateRel, line: 0, message: `red commit ${red} of ${slice} is not in this repository` }];
   }
 
-  const tests = [...new Set(listed)];
-  const bad = tests.filter((t) => !validTest(t));
-  if (bad.length > 0) return [...removed, { file: stateRel, line: 0, message: `frozen tests of ${slice} name a path that is not a repository path: ${bad.map(String).join(', ')}` }];
-  if (tests.length === 0) return removed;
+  const bad = listed.filter((t) => !isEntry(t) || !validTest(entryFile(t)));
+  if (bad.length > 0) return [...removed, { file: stateRel, line: 0, message: `frozen tests of ${slice} name a path that is not a repository path: ${bad.map((t) => (isEntry(t) ? entryLabel(t) : JSON.stringify(t))).join(', ')}` }];
+  if (listed.length === 0) return removed;
 
-  // An amendment of the slice file after the red commit lifts the freeze (REQ-3.3). Only the slice
-  // branch's own commits count: --first-parent --no-merges leaves out a change to the slice file made on
-  // the default branch and merged into the slice branch.
-  const sliceFiles = sliceFilesAt(root, tip, posixRel(root, paths.phases), addr);
-  if (sliceFiles.length > 0) {
-    const amended = git(root, ['--literal-pathspecs', 'log', '--first-parent', '--no-merges', '--format=%H', `${red}..${tip}`, '--', ...sliceFiles]);
-    if (amended !== '') return removed;
+  // The slice file at the red commit: its evaluation set reads a path entry, the form of a state file
+  // written before P8/S-60, as every evaluation test of that file by name (D-102). A later change to
+  // the slice file does not change what is frozen; with no slice file at red that parses, a path
+  // entry is the whole file.
+  const phasesRel = posixRel(root, paths.phases);
+  const sliceFiles = sliceFilesAt(root, tip, phasesRel, addr);
+  const redSliceFiles = sliceFilesAt(root, red, phasesRel, addr);
+  let rows = [];
+  if (redSliceFiles.length === 1) {
+    try {
+      rows = evaluationRows(parseSliceFile(showAt(root, red, redSliceFiles[0]) ?? '', redSliceFiles[0]));
+    } catch (e) {
+      if (!(e instanceof SliceFileError)) throw e;
+    }
   }
+  const entries = frozenEntries(listed, rows);
 
-  const changed = new Set(lines(git(root, ['--literal-pathspecs', 'diff', '--name-only', '--no-renames', red, tip, '--', ...tests])));
-  return [...removed, ...tests.filter((t) => changed.has(t)).map((t) => ({ file: t, line: 0, message: `frozen test changed after red: ${t}` }))];
+  // A test `build amend` unfroze after the red commit is not judged (REQ-3.15): the tip's state file
+  // lists it in `unfrozen`, and the slice file was amended after red. An amendment of the slice file
+  // alone unfreezes nothing (D-102). Only the slice branch's own commits count: --first-parent
+  // --no-merges leaves out a change to the slice file made on the default branch and merged in.
+  const amended = sliceFiles.length > 0
+    && git(root, ['--literal-pathspecs', 'log', '--first-parent', '--no-merges', '--format=%H', `${red}..${tip}`, '--', ...sliceFiles]) !== '';
+  const tipState = text === null ? null : parse(text);
+  const unfrozen = amended && Array.isArray(tipState?.unfrozen) ? tipState.unfrozen.filter(isEntry) : [];
+  const judged = entries.filter((e) => !isUnfrozen(e, unfrozen));
+  if (judged.length === 0) return removed;
+
+  const files = [...new Set(judged.map((e) => e.file))];
+  const changed = new Set(lines(git(root, ['--literal-pathspecs', 'diff', '--name-only', '--no-renames', red, tip, '--', ...files])));
+  const findings = [];
+  for (const e of judged) {
+    if (!changed.has(e.file)) continue;
+    if (e.name === null) {
+      findings.push({ file: e.file, line: 0, message: `frozen test changed after red: ${e.file}` });
+      continue;
+    }
+    // A test frozen by name: its text at the tip against its text at red; another test of the file,
+    // or any other line of it, is not compared. A file that cannot be read by name is a change.
+    const before = bodyOf(showAt(root, red, e.file), e.name);
+    const after = bodyOf(showAt(root, tip, e.file), e.name);
+    if (after === null || after === undefined || before === undefined || after !== before) {
+      findings.push({ file: e.file, line: 0, message: `frozen test changed after red: ${entryLabel(e)}` });
+    }
+  }
+  return [...removed, ...findings];
+}
+
+// The text of the test named `name` in `text`: null when the file or the test is missing; undefined
+// when the file cannot be read by name (unparseable, or the name given twice).
+function bodyOf(text, name) {
+  if (text === null) return null;
+  try {
+    return findTest(text, name)?.text ?? null;
+  } catch (e) {
+    if (e instanceof TestNameError) return undefined;
+    throw e;
+  }
 }
 
 export default { id, blocking, ratchet, run };
