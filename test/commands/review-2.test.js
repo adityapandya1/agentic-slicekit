@@ -254,6 +254,8 @@ function allowOneMoreRound(p) {
   fs.appendFileSync(path.join(p.root, 'docs', 'decisions.md'), '| D-02 | Decision | Another independent round for P1/S-01? | P1/S-01 may have one more round. | team, 2026-11-22 |\n');
   git(p.root, ['add', 'docs/decisions.md']);
   execFileSync('git', ['commit', '-q', '-m', 'docs: decision'], { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } });
+  // The row counts once it is on origin's main (H-1 of P8/S-59).
+  execFileSync('git', ['push', '-q', 'origin', 'main'], { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } });
 }
 
 // Task 1's review, M-4: a clean independent verdict at ready sends the pull request back to draft;

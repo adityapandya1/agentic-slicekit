@@ -41,16 +41,18 @@ async function greenAfterOneRound() {
   return p;
 }
 
-// A row appended to the session root's decisions.md and committed on main.
+// A row appended to the session root's decisions.md, not committed.
+function appendRow(p, row) {
+  fs.appendFileSync(path.join(p.root, 'docs', 'decisions.md'), `${row}\n`);
+}
+
+// A row appended to the session root's decisions.md, committed on main and pushed to origin's main.
 function decide(p, row) {
-  const file = path.join(p.root, 'docs', 'decisions.md');
-  fs.appendFileSync(file, `${row}\n`);
+  appendRow(p, row);
   git(p.root, ['add', 'docs/decisions.md']);
-  execFileSync('git', ['commit', '-q', '-m', 'docs: decision'], {
-    cwd: p.root,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' },
-  });
+  const run = (args) => execFileSync('git', args, { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ALLOW_PROTECTED_COMMIT: '1' } });
+  run(['commit', '-q', '-m', 'docs: decision']);
+  run(['push', '-q', 'origin', 'main']);
 }
 
 const ANOTHER_SLICE = '| D-02 | Decision | Another independent round for P1/S-02? | P1/S-02 may have one more round. | team, 2026-11-22 |';
@@ -143,6 +145,23 @@ test('review-budget.test.js » a decision row naming the slice allows one more r
     const third = await reviewStart(p);
     assert.equal(third.code, 0, third.stderr);
     assert.ok(third.stdout.includes('\nround 4\n'), third.stdout);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test('review-budget.test.js » an uncommitted decision row allows no round', async () => {
+  const { p } = await stoppedAfterTwoIndependent();
+  try {
+    // The row names this slice and says "one more round", but only the working tree holds it.
+    appendRow(p, THIS_SLICE);
+    const before = worktreeAt(p);
+    const r = await reviewStart(p);
+    assert.equal(r.code, 1, r.stdout);
+    assert.equal(r.stdout, '');
+    assert.ok(r.stderr.includes('B-1'), r.stderr);
+    assertChoices(r.stderr);
+    assert.deepEqual(worktreeAt(p), before);
   } finally {
     p.cleanup();
   }

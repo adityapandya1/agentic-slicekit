@@ -16,7 +16,8 @@
 // previous verdict is new, so a finding that vanished and came back must take a new number.
 import fs from 'node:fs';
 import path from 'node:path';
-import { git, headSha, pushBranch } from '../git.js';
+import { GitError, git, headSha, pushBranch } from '../git.js';
+import { defaultRef } from '../runbook.js';
 import { sliceFromBranch, verdictFileName, verdictFilePattern } from '../ids.js';
 import { readSlice } from '../state/index.js';
 import { headCovers } from '../state/covers.js';
@@ -142,12 +143,20 @@ const inLoop = (verdicts) => verdicts.filter((x) => !x.independent).length;
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The settled decision rows of `<docsRoot>/decisions.md` that allow `id` one more independent round:
-// the answer names the slice ID and the words "one more round". 0 when the file is missing.
+// the answer names the slice ID and the words "one more round". The file is read as committed on the
+// default branch (origin's tip, else the local one), so an uncommitted row or one on another branch
+// allows nothing. 0 when that commit holds no file.
 export function extraRounds(root, cfg, id) {
-  const file = kitPaths(root, cfg).decisions;
-  if (!fs.existsSync(file)) return 0;
+  const rel = posixRel(root, kitPaths(root, cfg).decisions);
+  let text;
+  try {
+    text = git(root, ['show', `${defaultRef(root, cfg)}:${rel}`]);
+  } catch (e) {
+    if (!(e instanceof GitError)) throw e;
+    return 0;
+  }
   const names = new RegExp(`(?<![\\w/])${escapeRe(id)}(?!\\d)`);
-  return readDecisions(fs.readFileSync(file, 'utf8')).rows.filter((r) => r.table === 'settled' && names.test(r.answer) && /\bone more round\b/i.test(r.answer)).length;
+  return readDecisions(text).rows.filter((r) => r.table === 'settled' && names.test(r.answer) && /\bone more round\b/i.test(r.answer)).length;
 }
 
 // Whether one more independent round may start after the independent verdicts recorded, given as
