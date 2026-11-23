@@ -1,5 +1,5 @@
 // REQ-1.8, REQ-2.6: build amend runs from draft-pr, in-review and changes-requested, returns the slice to building, and is refused from ci-green or ready.
-// REQ-1.8: build amend with no test named commits the slice file alone once every test it names is unfrozen, and still refuses while a frozen test is not named (P4/S-45, issue #72).
+// REQ-1.8: build amend with no test named commits the slice file alone, and every frozen test stays frozen (P4/S-45, issue #72; P8/S-60, D-102).
 // P2/S-29 Done when 2: `build amend` runs from draft-pr, in-review and changes-requested as well as
 // building, so a finding inside a frozen test can be fixed during review; the slice returns to building.
 import { test } from 'node:test';
@@ -130,16 +130,19 @@ test('build amend changes only the slice file when its tests are already unfroze
   }
 });
 
+// P8/S-60 (D-102, amended 2026-11-23): a test frozen by name is named as `<file> » <name>`. A name the
+// state file does not freeze is refused, nothing is committed, and the frozen test stays frozen.
 test('build amend still refuses a frozen test it does not name', async () => {
   const p = await reviewed('BLOCK', [['B-1', 'the test asserts the wrong value']]);
   try {
     editSlice(p);
     const before = stateIn(p.wt);
+    assert.deepEqual(before.frozenTests, [{ file: 'test/a.test.js', name: 'works' }]);
     const head = git(p.wt, ['rev-parse', 'HEAD']);
-    const r = await cli(p.root, ['build', 'amend', 'P1/S-01', '--reason', 'B-1 sits in the frozen test']);
+    const r = await cli(p.root, ['build', 'amend', 'P1/S-01', '--test', 'test/a.test.js » fails', '--reason', 'B-1 sits in the frozen test']);
     assert.notEqual(r.code, 0, r.stdout);
-    // The refusal names the frozen test the command left out.
-    assert.ok(r.stderr.includes('test/a.test.js'), r.stderr);
+    // The refusal names the test the command named, by its file and its name.
+    assert.ok(r.stderr.includes('test/a.test.js » fails is not a frozen test of P1/S-01'), r.stderr);
     assert.deepEqual(stateIn(p.wt), before);
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
     assert.notEqual(git(p.wt, ['status', '--porcelain', '--', SLICE_FILE]), '');

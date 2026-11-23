@@ -7,11 +7,11 @@ import path from 'node:path';
 import { buildTestCommand } from '../config.js';
 import { readText } from '../fs.js';
 import { commitPaths, git, headSha } from '../git.js';
-import { stateFileName } from '../ids.js';
 import { kitPaths } from '../paths.js';
 import { findSliceFiles, parseSliceFile } from '../slicefile.js';
 import { readSlice } from '../state/index.js';
-import { commitBookkeeping, recordState } from './record.js';
+import { TestNameError, endsWithFile, entryFile, evaluationRows, findTest } from '../testnames.js';
+import { commitState, recordState } from './record.js';
 import { BuildError, findWorktree } from './worktree.js';
 
 const nonEmpty = (text) => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
@@ -89,7 +89,6 @@ export function sliceIn(wt, cfg, id) {
 }
 
 export const posixRel = (wt, abs) => path.relative(wt, abs).split(path.sep).join('/');
-const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A path (POSIX, relative to the worktree) the kit owns: anything under `.slicekit/` or `.githooks/`,
 // BUILD.md, the config, the slice file and `.claude/settings.json`. The kit's commands change these;
@@ -114,35 +113,43 @@ export function unusableRun(command, run) {
   return null;
 }
 
-// The rows as { row, file, name }: `<file> » <name>`, or a bare `<file>` with no name.
-function rows(slice) {
-  return slice.evaluation.map(({ test }) => {
-    const row = test.replace(/^`|`$/g, '').trim();
-    const at = row.indexOf(' » ');
-    return {
-      row,
-      file: (at === -1 ? row : row.slice(0, at)).trim(),
-      name: at === -1 ? null : row.slice(at + ' » '.length).trim(),
-    };
-  });
-}
-
-const endsWithFile = (t, file) => t === file || t.endsWith(`/${file}`);
-// The name inside one string literal on one line: between matching quotes or backticks.
-const holdsName = (text, name) =>
-  ["'", '"', '`'].some((q) => new RegExp(`${q}[^${q}\\n]*${escape(name)}[^${q}\\n]*${q}`).test(text));
-
-// Every row names a listed file ending in <file> that holds <name> as a string; every listed file
-// holds at least one row.
+// Every row names a listed file ending in <file> that holds a `test(...)` or `it(...)` call named
+// <name> (D-102); every listed file holds at least one row. -> the frozen entries, in row order:
+// { file, name } for a named row, the file's path for a bare `<file>` row. A file the reader cannot
+// parse, or one giving the name to two calls, is refused: its tests cannot be frozen by name.
 function checkEvaluation(wt, slice, tests) {
-  const all = rows(slice);
+  const all = evaluationRows(slice);
+  const texts = new Map();
+  const textOf = (t) => {
+    if (!texts.has(t)) texts.set(t, readText(path.join(wt, t)));
+    return texts.get(t);
+  };
+  const frozen = [];
+  const add = (e) => {
+    if (!frozen.some((f) => JSON.stringify(f) === JSON.stringify(e))) frozen.push(e);
+  };
   for (const { row, file, name } of all) {
-    const found = tests.some((t) => endsWithFile(t, file) && (name === null || holdsName(readText(path.join(wt, t)), name)));
-    if (!found) throw new BuildError(`evaluation test "${row}" is not in the test files`);
+    const holders = tests.filter((t) => endsWithFile(t, file));
+    if (name === null) {
+      if (holders.length === 0) throw new BuildError(`evaluation test "${row}" is not in the test files`);
+      for (const t of holders) add(t);
+      continue;
+    }
+    const found = holders.find((t) => {
+      try {
+        return findTest(textOf(t), name) !== null;
+      } catch (e) {
+        if (e instanceof TestNameError) throw new BuildError(`${t}: ${e.message}; evaluation test "${row}" cannot be found by its name`);
+        throw e;
+      }
+    });
+    if (!found) throw new BuildError(`evaluation test "${row}" is not in the test files: no test(...) or it(...) call in ${holders.length > 0 ? holders.join(', ') : 'them'} is named "${name}"`);
+    add({ file: found, name });
   }
   for (const t of tests) {
     if (!all.some(({ file }) => endsWithFile(t, file))) throw new BuildError(`${t} holds no evaluation test`);
   }
+  return frozen;
 }
 
 // HEAD is this slice's red commit when it touches exactly the listed tests under the evaluation-set
@@ -165,19 +172,17 @@ function unchanged(wt, tests) {
 const noChange = (files) => new BuildError(`${files.join(', ')} have no change to commit; red needs the evaluation set as new or changed files`);
 
 // A run from tests-red: setState wrote tests-red but its bookkeeping commit, or the move to building,
-// did not land. The tests must be the frozen ones; nothing is run again.
+// did not land. The tests must be the files of the frozen ones; nothing is run again. The bookkeeping
+// commit holds the state file alone: a slice branch commits no BUILD.md (D-100, issue #210).
 function finishRed(wt, cfg, id, current, tests) {
   const files = resolveTests(wt, tests).sort();
-  const frozen = [...current.frozenTests].sort();
+  const frozen = [...new Set(current.frozenTests.map(entryFile))].sort();
   if (files.length !== frozen.length || files.some((f, i) => f !== frozen[i])) {
-    throw new BuildError(`${id} is tests-red with frozen tests ${current.frozenTests.join(', ')}; pass the same --tests`);
+    throw new BuildError(`${id} is tests-red with frozen tests ${frozen.join(', ')}; pass the same --tests`);
   }
-  const paths = kitPaths(wt, cfg);
-  const bookkeeping = [posixRel(wt, path.join(paths.state, stateFileName(id)))];
-  if (fs.existsSync(paths.build)) bookkeeping.push(posixRel(wt, paths.build));
-  commitBookkeeping(wt, id, 'tests-red', bookkeeping);
+  commitState(wt, cfg, id, 'tests-red');
   recordState(wt, cfg, id, 'building', {});
-  return { commit: current.redCommit, tests: current.frozenTests };
+  return { commit: current.redCommit, tests: frozen };
 }
 
 export function red(root, cfg, id, { tests, worktree, env = process.env } = {}) {
@@ -190,7 +195,7 @@ export function red(root, cfg, id, { tests, worktree, env = process.env } = {}) 
   const files = resolveTests(wt, tests);
   const slice = sliceIn(wt, cfg, id);
   refuseKitFiles(wt, cfg, slice, files);
-  checkEvaluation(wt, slice, files);
+  const frozen = checkEvaluation(wt, slice, files);
   const same = unchanged(wt, files);
   if (same.length > 0 && !headIsRedCommit(wt, id, files)) throw noChange(same);
 
@@ -202,7 +207,7 @@ export function red(root, cfg, id, { tests, worktree, env = process.env } = {}) 
   const made = commitPaths(wt, files, `test(${id}): evaluation set\n\nran: ${command} → exit ${run.exit}\n\nSlice: ${id}`);
   if (made === null && !headIsRedCommit(wt, id, files)) throw noChange(files);
   const commit = made ?? headSha(wt);
-  recordState(wt, cfg, id, 'tests-red', { commit, testExit: run.exit, tests: files });
+  recordState(wt, cfg, id, 'tests-red', { commit, testExit: run.exit, tests: files, frozen });
   recordState(wt, cfg, id, 'building', {});
   return { commit, tests: files, local: local ? command : null };
 }

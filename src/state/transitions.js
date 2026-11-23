@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDate, isSha, sameSha } from '../evidence.js';
+import { TestNameError, entryFile, entryLabel, findTest, isEntry } from '../testnames.js';
 import { isReviewWorktreeAt } from '../worktrees.js';
 import { headCovers } from './covers.js';
 
@@ -29,6 +30,19 @@ const last = (list) => list[list.length - 1];
 const isInt = (n) => Number.isInteger(n) && n >= 0;
 const isStr = (s) => typeof s === 'string' && s !== '';
 const present = (root, rel) => fs.existsSync(path.resolve(root, rel));
+// A frozen entry's file is present, and a test frozen by name is found in it; a file the reader
+// cannot parse is not judged present.
+function presentTest(root, entry) {
+  const file = entryFile(entry);
+  if (!present(root, file)) return false;
+  if (typeof entry === 'string') return true;
+  try {
+    return findTest(fs.readFileSync(path.resolve(root, file), 'utf8'), entry.name) !== null;
+  } catch (e) {
+    if (e instanceof TestNameError) return false;
+    throw e;
+  }
+}
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The verdicts that hold on the pull request head as it stands now: those given on it, and, with a
@@ -72,6 +86,10 @@ export function validateEvidence(ev) {
   }
   if (ev.tests !== undefined && !(Array.isArray(ev.tests) && ev.tests.every(isStr))) {
     return bad('tests', 'an array of non-empty strings');
+  }
+  // P8/S-60 (D-102): the evaluation tests frozen by name, { file, name } or a whole file's path.
+  if (ev.frozen !== undefined && !(Array.isArray(ev.frozen) && ev.frozen.every(isEntry))) {
+    return bad('frozen', 'an array of { file, name } entries or paths');
   }
   const pr = ev.pr;
   if (pr !== undefined) {
@@ -121,15 +139,18 @@ export const TRANSITIONS = {
       }
       return null;
     },
-    apply: (_current, ev) => ({ redCommit: ev.commit, frozenTests: [...ev.tests] }),
+    // `frozen`, given by build red, holds each evaluation test by its file and name (D-102); without
+    // it (`state set` with --tests) the files are recorded whole, as before P8/S-60.
+    apply: (_current, ev) => ({ redCommit: ev.commit, frozenTests: ev.frozen ? ev.frozen.map((e) => (typeof e === 'string' ? e : { file: e.file, name: e.name })) : [...ev.tests] }),
   },
   building: {
     from: ['tests-red'],
     required: [],
+    // Each frozen file is present and each test frozen by name is found in its file (D-102).
     check(current, _ev, ctx) {
       if (!current.redCommit) return 'building needs a recorded red commit';
-      const missing = current.frozenTests.filter((t) => !present(ctx.root, t));
-      return missing.length > 0 ? `frozen tests are missing: ${missing.join(', ')}` : null;
+      const missing = current.frozenTests.filter((t) => !isEntry(t) || !presentTest(ctx.root, t));
+      return missing.length > 0 ? `frozen tests are missing: ${missing.map((t) => (isEntry(t) ? entryLabel(t) : String(t))).join(', ')}` : null;
     },
     apply: () => ({}),
   },

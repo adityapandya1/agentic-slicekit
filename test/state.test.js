@@ -8,7 +8,7 @@ import { init } from '../src/init.js';
 import { loadConfig } from '../src/config.js';
 import { kitPaths } from '../src/paths.js';
 import { STATES, nextStates } from '../src/state/transitions.js';
-import { readSlice, listSlices, setState, unfreeze, TransitionError, LockError } from '../src/state/index.js';
+import { frozenOf, readSlice, listSlices, setState, unfreeze, TransitionError, LockError } from '../src/state/index.js';
 import { makeRepo } from './helpers/tmp-repo.js';
 import { runCli, binPath } from './helpers/run-cli.js';
 import { writeSliceFixture, writeSliceFixtures } from './helpers/slice-fixture.js';
@@ -768,4 +768,20 @@ test('an independent verdict outside the review worktree is refused', () => {
     },
     { review: false },
   );
+});
+
+// ---- P8/S-60 (REQ-1.8, REQ-1.5, D-102): frozen tests are recorded by name ----
+
+// P8/S-60: a state file written before this slice lists files only; it reads as every evaluation
+// test of those files by name, and a file the evaluation set names no test in stays frozen whole.
+test('a file-only state file reads as every evaluation test of its files', () => {
+  const slice = { evaluation: [{ test: '`a.test.js » works`' }, { test: '`a.test.js » fails`' }, { test: '`b.test.js » other`' }] };
+  const old = { frozenTests: ['test/a.test.js', 'test/c.test.js'], unfrozen: [] };
+  assert.deepEqual(frozenOf(old, slice), [
+    { file: 'test/a.test.js', name: 'works' },
+    { file: 'test/a.test.js', name: 'fails' },
+    { file: 'test/c.test.js', name: null },
+  ]);
+  // The form build red writes now is read as it is.
+  assert.deepEqual(frozenOf({ frozenTests: [{ file: 'test/a.test.js', name: 'works' }] }, slice), [{ file: 'test/a.test.js', name: 'works' }]);
 });

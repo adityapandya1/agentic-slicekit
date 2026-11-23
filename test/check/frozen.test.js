@@ -89,12 +89,18 @@ test('a state file hidden with assume-unchanged is judged by its committed conte
   });
 });
 
+// P8/S-60 (D-102, amended 2026-11-23): an amendment of the slice file alone no longer lifts the freeze;
+// the change passes only once `build amend --test` unfroze the test, recorded in the state file.
 test('a change after an amend of the slice file passes', () => {
   withSlice((root) => {
-    red(root);
+    const sha = red(root);
     const text = fs.readFileSync(path.join(root, ...SLICE_FILE.split('/')), 'utf8');
     commitFiles(root, { [SLICE_FILE]: `${text}\nThe evaluation set now expects billing to pass.\n` }, `docs(${SLICE}): amend evaluation set`);
     changeTest(root);
+    assert.deepEqual(messages(root), [`frozen test changed after red: ${TEST}`]);
+    // `build amend --test` named the test: the state file lists it in `unfrozen`.
+    const unfrozen = { slice: SLICE, state: 'building', branch: BRANCH, redCommit: sha, frozenTests: [TEST], unfrozen: [TEST], history: [] };
+    commitFiles(root, { [STATE]: `${JSON.stringify(unfrozen, null, 2)}\n` }, `chore(slicekit): ${SLICE} unfreeze ${TEST}`);
     assert.deepEqual(messages(root), []);
   });
 });

@@ -467,7 +467,8 @@ test('absolute and backslash test paths are stored relative', async () => {
 
     const state = stateIn(p.wt);
     assert.equal(state.state, 'building');
-    assert.deepEqual(state.frozenTests, ['test/a.test.js']);
+    // P8/S-60 (D-102): the evaluation test is recorded by its file and its name.
+    assert.deepEqual(state.frozenTests, [{ file: 'test/a.test.js', name: 'works' }]);
     assert.equal(state.redCommit, sha);
     assert.deepEqual(state.history.map((h) => h.to), ['tests-red', 'building']);
 
@@ -629,12 +630,14 @@ test('a change to a frozen test is refused at commit', async () => {
   const p = await building();
   try {
     write(p.wt, 'src/t1.js', 'export const x = () => 2;\n');
-    fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), "test('extra', () => {});\n");
+    // P8/S-60 (D-102): the frozen test is `works`, by its name; its own body changes here.
+    const testFile = path.join(p.wt, 'test', 'a.test.js');
+    fs.writeFileSync(testFile, fs.readFileSync(testFile, 'utf8').replace('assert.equal(x(), 2)', "assert.equal(x(), 2, 'two')"));
     const head = git(p.wt, ['rev-parse', 'HEAD']);
     const refused = await commitWorkCli(p, '--message', 'feat(P1/S-01): x');
     assert.equal(refused.code, 1);
     assert.ok(
-      refused.stderr.includes(`frozen test test/a.test.js changed since ${p.redSha.slice(0, 7)}; amend the slice file to change the evaluation set`),
+      refused.stderr.includes(`frozen test test/a.test.js » works changed since ${p.redSha.slice(0, 7)}; amend the slice file to change the evaluation set`),
       refused.stderr,
     );
     assert.equal(git(p.wt, ['rev-parse', 'HEAD']), head);
@@ -685,13 +688,15 @@ test('build commit refuses a red run under --require-green, a run that could not
     assert.equal(wip.code, 0, wip.stderr);
     assert.match(wip.stdout, /^[0-9a-f]{7} exit 1\n$/);
 
-    // A frozen test committed by hand is still a change since the red commit.
-    fs.appendFileSync(path.join(p.wt, 'test', 'a.test.js'), '// later\n');
+    // A frozen test committed by hand is still a change since the red commit. P8/S-60 (D-102): the
+    // change is to the frozen test `works` itself; another line of the file may change.
+    const testFile = path.join(p.wt, 'test', 'a.test.js');
+    fs.writeFileSync(testFile, fs.readFileSync(testFile, 'utf8').replace('assert.equal(x(), 2)', "assert.equal(x(), 2, 'later')"));
     git(p.wt, ['add', 'test/a.test.js']);
     git(p.wt, ['commit', '-q', '-m', 'by hand']);
     const byHand = await commitWorkCli(p, '--message', 'x');
     assert.equal(byHand.code, 1);
-    assert.match(byHand.stderr, /frozen test test\/a\.test\.js changed since/);
+    assert.match(byHand.stderr, /frozen test test\/a\.test\.js » works changed since/);
     git(p.wt, ['reset', '-q', '--hard', 'HEAD^']);
 
     for (const kit of ['BUILD.md', '.slicekit/state/P1-S-01.json', SLICE_FILE]) {
