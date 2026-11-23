@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-61",
-  "state": "tests-red",
+  "state": "building",
   "branch": null,
   "pr": null,
   "redCommit": "d8e08918f0147024483eda92d5df621e18562cf1",
@@ -86,6 +86,13 @@
           }
         ]
       }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-23T16:43:04.672Z",
+      "by": "cli",
+      "evidence": {}
     }
   ]
 }
