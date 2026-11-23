@@ -1,8 +1,12 @@
 {
   "slice": "P8/S-61",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 220,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+    "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121"
+  },
   "redCommit": "d8e08918f0147024483eda92d5df621e18562cf1",
   "frozenTests": [
     {
@@ -112,6 +116,22 @@
       "evidence": {
         "amendCommit": "b1a95359f29285cb9e0b921d5505376f6c83d0a4",
         "reason": "Done when 5 names the guide pages by their paths from the repository root"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T17:15:55.182Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 220,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/220",
+          "headSha": "0635d92d9e4d8eacebd688116e3dd6d046740121",
+          "title": "[P8/S-61] Quick lane"
+        }
       }
     }
   ]
