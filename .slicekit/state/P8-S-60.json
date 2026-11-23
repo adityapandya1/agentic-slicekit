@@ -1,0 +1,40 @@
+{
+  "slice": "P8/S-60",
+  "state": "tests-red",
+  "branch": null,
+  "pr": null,
+  "redCommit": "afb6190af4668192461f8992863f442be374cdae",
+  "frozenTests": [
+    "test/testnames.test.js",
+    "test/build-red-names.test.js",
+    "test/hooks/pre-edit.test.js",
+    "test/hooks/pre-bash.test.js",
+    "test/check/frozen.test.js",
+    "test/build-amend.test.js"
+  ],
+  "unfrozen": [],
+  "verdicts": [],
+  "ci": null,
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T01:38:06.245Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "afb6190af4668192461f8992863f442be374cdae",
+        "testExit": 1,
+        "tests": [
+          "test/testnames.test.js",
+          "test/build-red-names.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/hooks/pre-bash.test.js",
+          "test/check/frozen.test.js",
+          "test/build-amend.test.js"
+        ]
+      }
+    }
+  ]
+}
