@@ -1,8 +1,12 @@
 {
   "slice": "P8/S-63",
-  "state": "building",
+  "state": "draft-pr",
   "branch": null,
-  "pr": null,
+  "pr": {
+    "number": 227,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+    "headSha": "6a2ffe8c881b739f052965d5a9e9369caf18aca6"
+  },
   "redCommit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
   "frozenTests": [
     {
@@ -136,6 +140,22 @@
       "evidence": {
         "amendCommit": "68b2ce8d8ad52d779dd8f99c025c56275f31c89c",
         "reason": "stage require brief builds its result in briefStage in src/stage.js, which must call the blank-brief check of issue 206"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T21:34:57.599Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 227,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+          "headSha": "6a2ffe8c881b739f052965d5a9e9369caf18aca6",
+          "title": "[P8/S-63] Open issues"
+        }
       }
     }
   ]
