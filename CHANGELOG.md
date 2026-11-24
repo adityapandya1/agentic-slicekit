@@ -2,6 +2,17 @@
 
 Each version of slicekit on npm, newest first. A 0.x version may change how a command works.
 
+## 0.8.0
+
+Phase 8: Lighter loop.
+
+- P8/S-58 BUILD.md out of the merge path (#209)
+- P8/S-59 Review budget (#214)
+- P8/S-60 Freezing by test name and slice-file amendments (#217)
+- P8/S-61 Quick lane (#220)
+- P8/S-62 One step at a time (#222)
+- P8/S-63 Open issues (#227)
+
 ## 0.7.5
 
 - P8/S-62 One step at a time (#222)

@@ -13,26 +13,6 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 - Phase 5 — Ops: 7 slices, all merged; slice files in `docs/phases/P5-ops/`.
 - Phase 6 — Polish: 5 slices, all merged; slice files in `docs/phases/P6-polish/`.
 - Phase 7 — Start from an idea: 2 slices, all merged; slice files in `docs/phases/P7-brief/`.
-
-## Phase 8 — Lighter loop
-
-| Slice | Name | Group | Slice file | Status |
-|---|---|---|---|---|
-| S-58 | BUILD.md out of the merge path | A | [S-58-build-md-out-of-the-merge-path.md](docs/phases/P8-lighter-loop/S-58-build-md-out-of-the-merge-path.md) | Done |
-| S-59 | Review budget | B | [S-59-review-budget.md](docs/phases/P8-lighter-loop/S-59-review-budget.md) | Done |
-| S-60 | Freezing by test name and slice-file amendments | C | [S-60-freezing-by-test-name.md](docs/phases/P8-lighter-loop/S-60-freezing-by-test-name.md) | Done |
-| S-61 | Quick lane | D | [S-61-quick-lane.md](docs/phases/P8-lighter-loop/S-61-quick-lane.md) | Done |
-| S-62 | One step at a time | E | [S-62-one-step-at-a-time.md](docs/phases/P8-lighter-loop/S-62-one-step-at-a-time.md) | Done |
-| S-63 | Open issues | F | [S-63-open-issues.md](docs/phases/P8-lighter-loop/S-63-open-issues.md) | Todo |
-
-**Order:** A; B; C; D; E; F
-
-S-58 (A), S-59 (B) and S-60 (C) run one after another, in that order. S-59 prints its new `build verdict` lines from `src/cli/build.js`, which S-60 also changes, so the two cannot share a step; S-58 ran first and merged. The ownership below was written when they shared one step: their expected changes share only the shared roots (`docs/runbook.md` and test files): S-58 owns `BUILD.md`'s writers, `headCovers`, the queue and layout rules, init and `status`; S-59 owns `review start`, `src/build/verdict.js` and the review and reviewer templates; S-60 owns the state module, `src/state/transitions.js`, `build red`, `build commit`, the hooks' frozen-test code, the `frozen` rule and the build template. S-58's change to the `ready` precondition lands in `headCovers`, which `src/state/transitions.js` already calls, so S-58 does not change that file. Moved work: S-59 and S-60 change no guide page in this step, because every guide page change rewrites `docs/guide/slicekit-guide.html` and S-58 writes it in this step; their pages (`docs/guide/commands/review.md`, `docs/guide/slash/review.md`, `docs/guide/commands/build.md`, `docs/guide/slash/build.md`, `docs/guide/commands/hook.md`, `docs/guide/rules/frozen.md`) move to S-61.
-
-Step two runs S-61 (D) alone. It changes `src/build/verdict.js` and `templates/instructions/commands/build.md` after S-59 and S-60 changed them, and writes the guide pages of step one.
-
-Step three runs S-62 (E) alone: `slicekit next`, its templates, its pages, the guide index, the web page and `README.md`. Moved work: issue #195, a README change, moves from S-63 to S-62, because S-62 adds the README's `/slicekit next` row.
-
-Step four runs S-63 (F) alone: the guard, the pre-edit hook's root search, `src/release-version.js`, `src/build/commit.js`, `scripts/guide-html.js` and `src/brief.js`. It follows S-62 because its `slicekit brief` page line rewrites `docs/guide/slicekit-guide.html`, which S-62 writes (D-105 added issues #203 and #206 to it).
+- Phase 8 — Lighter loop: 6 slices, all merged; slice files in `docs/phases/P8-lighter-loop/`.
 
 <!-- slicekit:generated:end -->
