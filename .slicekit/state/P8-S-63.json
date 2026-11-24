@@ -1,0 +1,316 @@
+{
+  "slice": "P8/S-63",
+  "state": "ready",
+  "branch": null,
+  "pr": {
+    "number": 227,
+    "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+    "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db"
+  },
+  "redCommit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
+  "frozenTests": [
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "a cut long option after a short option with its value attached is denied"
+    },
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "git clean with --dry-run as the value of -e is denied"
+    },
+    {
+      "file": "test/hooks/pre-bash-deny.test.js",
+      "name": "git clean -n and git clean -f --dry-run are still allowed"
+    },
+    {
+      "file": "test/release-version-phase.test.js",
+      "name": "a phase line wrapped over two lines counts as the phase's minor version"
+    },
+    {
+      "file": "test/build-commit-staged.test.js",
+      "name": "a test command that commits in the staged run leaves the slice branch where it was"
+    },
+    {
+      "file": "test/guide-html-refusals.test.js",
+      "name": "a word between colons that the host shows as an emoji is refused with its file and line"
+    },
+    {
+      "file": "test/guide-html-refusals.test.js",
+      "name": "a paragraph outside the introduction that links the web page is kept"
+    },
+    {
+      "file": "test/runbook.test.js",
+      "name": "the runbook says a link to a file that is no page is refused"
+    },
+    {
+      "file": "test/hooks/pre-edit.test.js",
+      "name": "a file under an example kept in the repository is judged by the repository's config"
+    },
+    {
+      "file": "test/hooks/pre-edit.test.js",
+      "name": "a session rooted in a clone of the example is judged by the example's config"
+    },
+    {
+      "file": "test/brief.test.js",
+      "name": "a brief holding the blank brief's guidance line under a heading is refused"
+    }
+  ],
+  "unfrozen": [],
+  "verdicts": [
+    {
+      "round": 1,
+      "path": ".slicekit/reviews/P8-S-63-r1.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "6a2ffe8c881b739f052965d5a9e9369caf18aca6"
+    },
+    {
+      "round": 2,
+      "path": ".slicekit/reviews/P8-S-63-r2.md",
+      "blockers": 0,
+      "independent": false,
+      "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b"
+    },
+    {
+      "round": 3,
+      "path": ".slicekit/reviews/P8-S-63i-r3.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-63i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db"
+    }
+  ],
+  "ci": {
+    "sha": "3b62de3db9f96fdd329d81274b6bf072e0a76831",
+    "status": "success",
+    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45437877969"
+  },
+  "mergedAt": null,
+  "handoff": null,
+  "history": [
+    {
+      "from": "todo",
+      "to": "tests-red",
+      "at": "2026-11-23T21:12:47.969Z",
+      "by": "cli",
+      "evidence": {
+        "commit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
+        "testExit": 1,
+        "tests": [
+          "test/hooks/pre-bash-deny.test.js",
+          "test/release-version-phase.test.js",
+          "test/build-commit-staged.test.js",
+          "test/guide-html-refusals.test.js",
+          "test/runbook.test.js",
+          "test/hooks/pre-edit.test.js",
+          "test/brief.test.js"
+        ],
+        "frozen": [
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "a cut long option after a short option with its value attached is denied"
+          },
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "git clean with --dry-run as the value of -e is denied"
+          },
+          {
+            "file": "test/hooks/pre-bash-deny.test.js",
+            "name": "git clean -n and git clean -f --dry-run are still allowed"
+          },
+          {
+            "file": "test/release-version-phase.test.js",
+            "name": "a phase line wrapped over two lines counts as the phase's minor version"
+          },
+          {
+            "file": "test/build-commit-staged.test.js",
+            "name": "a test command that commits in the staged run leaves the slice branch where it was"
+          },
+          {
+            "file": "test/guide-html-refusals.test.js",
+            "name": "a word between colons that the host shows as an emoji is refused with its file and line"
+          },
+          {
+            "file": "test/guide-html-refusals.test.js",
+            "name": "a paragraph outside the introduction that links the web page is kept"
+          },
+          {
+            "file": "test/runbook.test.js",
+            "name": "the runbook says a link to a file that is no page is refused"
+          },
+          {
+            "file": "test/hooks/pre-edit.test.js",
+            "name": "a file under an example kept in the repository is judged by the repository's config"
+          },
+          {
+            "file": "test/hooks/pre-edit.test.js",
+            "name": "a session rooted in a clone of the example is judged by the example's config"
+          },
+          {
+            "file": "test/brief.test.js",
+            "name": "a brief holding the blank brief's guidance line under a heading is refused"
+          }
+        ]
+      }
+    },
+    {
+      "from": "tests-red",
+      "to": "building",
+      "at": "2026-11-23T21:12:48.472Z",
+      "by": "cli",
+      "evidence": {}
+    },
+    {
+      "from": "building",
+      "to": "building",
+      "at": "2026-11-23T21:32:26.256Z",
+      "by": "cli",
+      "evidence": {
+        "amendCommit": "68b2ce8d8ad52d779dd8f99c025c56275f31c89c",
+        "reason": "stage require brief builds its result in briefStage in src/stage.js, which must call the blank-brief check of issue 206"
+      }
+    },
+    {
+      "from": "building",
+      "to": "draft-pr",
+      "at": "2026-11-23T21:34:57.599Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 227,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+          "headSha": "6a2ffe8c881b739f052965d5a9e9369caf18aca6",
+          "title": "[P8/S-63] Open issues"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T21:38:35.275Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 1,
+          "path": ".slicekit/reviews/P8-S-63-r1.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-23T21:45:49.286Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 227,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+          "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b",
+          "title": "[P8/S-63] Open issues"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-23T21:48:34.896Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 2,
+          "path": ".slicekit/reviews/P8-S-63-r2.md",
+          "blockers": 0,
+          "independent": false
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-23T22:13:48.501Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "2934c494c6561ed34ca9d9e5b96791782bb25581",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45273439553"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "in-review",
+      "at": "2026-11-24T16:06:33.619Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 3,
+          "path": ".slicekit/reviews/P8-S-63i-r3.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-24T16:17:53.891Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 227,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+          "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db",
+          "title": "[P8/S-63] Open issues"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-24T16:30:03.326Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-63i-r4.md",
+          "blockers": 0,
+          "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "ci-green",
+      "at": "2026-11-24T16:45:46.886Z",
+      "by": "cli",
+      "evidence": {
+        "ci": {
+          "status": "success",
+          "sha": "3b62de3db9f96fdd329d81274b6bf072e0a76831",
+          "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45437877969"
+        }
+      }
+    },
+    {
+      "from": "ci-green",
+      "to": "ready",
+      "at": "2026-11-24T16:45:52.554Z",
+      "by": "cli",
+      "evidence": {}
+    }
+  ]
+}

@@ -116,3 +116,21 @@ test('the runbook says the waiting pull request run on a sync pull request is ex
   // Nobody approves, cancels or re-runs the waiting run.
   assert.match(sync, /waiting run is left as it is/);
 });
+
+// P8/S-63, REQ-5.8, D-97, issue #190: the line of scripts/guide-html.js about a link that leads to
+// nothing in the guide is given for a link to a file that is no page as well, which no correction of
+// the target makes a page.
+test('the runbook says a link to a file that is no page is refused', () => {
+  const entries = runbook.split('\n').filter((l) => l.startsWith('- ') && l.includes('leads to nothing in the guide'));
+  assert.equal(entries.length, 1, entries.join('\n'));
+  const entry = entries[0].replace(/\s+/g, ' ');
+  // A page or a heading that does not exist: correct the target.
+  assert.match(entry, /a page or a heading that does not exist/);
+  // A file that is no page of the guide, a folder included, is refused.
+  assert.match(entry, /a file that is no page of the guide/);
+  assert.match(entry, /folder/);
+  assert.match(entry, /refused/);
+  // Such a link is removed or written as an absolute address.
+  assert.match(entry, /remov/);
+  assert.match(entry, /absolute address/);
+});

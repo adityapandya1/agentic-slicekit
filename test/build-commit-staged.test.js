@@ -219,3 +219,69 @@ test('with paths staged the test command reads an ignored file and runs git', as
     fs.rmSync(scratch, { recursive: true, force: true });
   }
 });
+
+// ---- P8/S-63 (REQ-2.6, D-43, issue #184): the staged run moves no ref of the repository ----
+
+// A test command that, once `armed` exists, runs `git commit --allow-empty -m x` in its working
+// directory before its tests, and writes the commit's exit code to `probe`. The tests run either way.
+const committingRunner = (armed, probe) => `import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+if (fs.existsSync(${JSON.stringify(armed)})) {
+  const c = spawnSync('git', ['commit', '--allow-empty', '-m', 'x'], { encoding: 'utf8' });
+  fs.writeFileSync(${JSON.stringify(probe)}, JSON.stringify({ status: c.status, out: (c.stdout ?? '') + (c.stderr ?? '') }));
+}
+const run = spawnSync(process.execPath, ['--test', 'test/a.test.js'], { stdio: 'inherit' });
+process.exit(run.status ?? 1);
+`;
+
+test('a test command that commits in the staged run leaves the slice branch where it was', async () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'slicekit-staged-commit-'));
+  const armed = path.join(scratch, 'armed');
+  const probe = path.join(scratch, 'commit.json');
+  const p = await startedWithTest(IMPORTING, {
+    test: 'node tools/commit-then-test.mjs',
+    files: { 'tools/commit-then-test.mjs': committingRunner(armed, probe) },
+  });
+  try {
+    const red = await red1(p, 'test/a.test.js');
+    assert.equal(red.code, 0, red.stderr);
+    write(p.wt, 'src/t1.js', T1_RED);
+    write(p.wt, 'src/t2.js', T2);
+    const first = await commitWorkCli(p, '--message', 'feat(P1/S-01): start');
+    assert.equal(first.code, 0, first.stderr);
+    write(p.wt, 'src/t2.js', T2_TASK2);
+    write(p.wt, 'src/t1.js', T1_GREEN);
+    git(p.wt, ['add', '--', 'src/t1.js']);
+    const branch = git(p.wt, ['symbolic-ref', '--short', 'HEAD']);
+    const head = git(p.wt, ['rev-parse', 'HEAD']);
+    const refsBefore = git(p.wt, ['for-each-ref', '--format=%(refname) %(objectname)']);
+    fs.writeFileSync(armed, '');
+    const before = indexDirs();
+
+    const r = await commitWorkCli(p, '--message', 'feat(P1/S-01): task 1', '--require-green');
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /exit 0/);
+    // The test command ran its commit in the staged run.
+    assert.ok(fs.existsSync(probe), 'the test command did not run in the staged run');
+    // The slice branch moved by the one commit build commit made, on the head it stood at.
+    assert.equal(git(p.wt, ['symbolic-ref', '--short', 'HEAD']), branch);
+    assert.equal(git(p.wt, ['rev-parse', 'HEAD^']), head);
+    assert.equal(git(p.wt, ['rev-parse', `refs/heads/${branch}`]), git(p.wt, ['rev-parse', 'HEAD']));
+    assert.deepEqual(git(p.wt, ['log', '--format=%s', `${head}..HEAD`]).split('\n'), ['feat(P1/S-01): task 1']);
+    // No other ref of the repository moved, and no ref reaches the test command's commit.
+    const refsAfter = git(p.wt, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n')
+      .filter((l) => !l.startsWith(`refs/heads/${branch} `));
+    assert.deepEqual(refsAfter, refsBefore.split('\n').filter((l) => !l.startsWith(`refs/heads/${branch} `)));
+    assert.ok(!git(p.wt, ['log', '--all', '--format=%s']).split('\n').includes('x'), 'a ref reaches the commit x');
+    // build commit committed the staged path with the trailer and the test result, as before.
+    assert.deepEqual(committedFiles(p.wt, 'HEAD'), ['M src/t1.js']);
+    const message = git(p.wt, ['log', '-1', '--format=%B', 'HEAD']);
+    assert.match(message, /→ exit 0/);
+    assert.match(message, /Slice: P1\/S-01/);
+    assert.equal(git(p.wt, ['status', '--porcelain']), 'M src/t2.js');
+    assert.deepEqual(newIndexDirs(before), []);
+  } finally {
+    p.cleanup();
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});

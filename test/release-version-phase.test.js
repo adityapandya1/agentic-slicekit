@@ -228,3 +228,84 @@ test('a sync pull request that sets a second minor version for a phase is a find
     assert.deepEqual(clean.log, [], JSON.stringify(clean.log));
   });
 });
+
+// ---- P8/S-63 (REQ-5.6, D-96, issue #183) ----
+
+// The phase line of the 0.2.0 section, rewritten by hand: wrapped over two lines, with and without
+// its final full stop. Each still records that phase 1 had its minor version.
+test("a phase line wrapped over two lines counts as the phase's minor version", () => {
+  for (const wrapped of ['Phase 1: Spine, the first phase of\nthe demo.', 'Phase 1: Spine, the first phase of\nthe demo']) {
+    withSliceAddedToACompletedPhase(({ root, fixture }) => {
+      const before = read(root, 'CHANGELOG.md');
+      const line = before.split('\n').find((l) => /^Phase 1\b/.test(l));
+      assert.ok(line, before);
+      // The hand edit lands in the merge of P1/S-03, before its sync runs.
+      fs.writeFileSync(path.join(root, 'CHANGELOG.md'), before.replace(line, wrapped));
+      gitIn(root, ['add', '-A']);
+      gitIn(root, ['commit', '-q', '--amend', '--no-edit'], { allowProtected: true });
+      const pkgBefore = read(root, 'package.json');
+      const logBefore = read(root, 'CHANGELOG.md');
+      assert.ok(logBefore.includes(wrapped), logBefore);
+
+      syncWrite(root, fixture);
+      // A patch version, never a second minor version.
+      assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.2.1'), JSON.stringify(wrapped));
+      const log = read(root, 'CHANGELOG.md');
+      assert.deepEqual(versions(log), ['0.2.1', '0.2.0', '0.1.0']);
+      const section = newest(log);
+      assert.deepEqual(body(section), ['- P1/S-03 Fixture 3 (#18)'], section);
+      // The wrapped line is left as it was written.
+      assert.ok(log.endsWith(logBefore.slice(logBefore.indexOf('## 0.2.0'))), log);
+    });
+  }
+});
+
+// The phase line written by hand without a name and followed directly by the section's first slice
+// line, with no blank line between them: the list line ends the phase line's paragraph (verdict
+// P8/S-63 r1 H-1).
+test('a phase line followed directly by a list line counts as the phase\'s minor version', () => {
+  withSliceAddedToACompletedPhase(({ root, fixture }) => {
+    const before = read(root, 'CHANGELOG.md');
+    const line = before.split('\n').find((l) => /^Phase 1\b/.test(l));
+    assert.ok(line && before.includes(`${line}\n\n- `), before);
+    fs.writeFileSync(path.join(root, 'CHANGELOG.md'), before.replace(`${line}\n\n`, 'Phase 1.\n'));
+    gitIn(root, ['add', '-A']);
+    gitIn(root, ['commit', '-q', '--amend', '--no-edit'], { allowProtected: true });
+    const pkgBefore = read(root, 'package.json');
+    const logBefore = read(root, 'CHANGELOG.md');
+    assert.ok(logBefore.includes('Phase 1.\n- P1/S-01'), logBefore);
+
+    syncWrite(root, fixture);
+    assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.2.1'));
+    const log = read(root, 'CHANGELOG.md');
+    assert.deepEqual(versions(log), ['0.2.1', '0.2.0', '0.1.0']);
+    assert.deepEqual(body(newest(log)), ['- P1/S-03 Fixture 3 (#18)'], newest(log));
+  });
+});
+
+// The phase line written by hand directly under a `### New` line, directly under a line of prose,
+// and as `Phase 1.` directly above a line of prose, with no blank line between them: each line is
+// the phase line on its own (verdict P8/S-63 r3 H-2).
+test('a phase line next to a heading or prose line counts as the phase\'s minor version', () => {
+  const layouts = [(line) => `### New\n${line}`, (line) => `Written by hand.\n${line}`, () => 'Phase 1.\nWritten by hand.'];
+  for (const layout of layouts) {
+    withSliceAddedToACompletedPhase(({ root, fixture }) => {
+      const before = read(root, 'CHANGELOG.md');
+      const line = before.split('\n').find((l) => /^Phase 1\b/.test(l));
+      assert.ok(line, before);
+      const written = layout(line);
+      fs.writeFileSync(path.join(root, 'CHANGELOG.md'), before.replace(line, written));
+      gitIn(root, ['add', '-A']);
+      gitIn(root, ['commit', '-q', '--amend', '--no-edit'], { allowProtected: true });
+      const pkgBefore = read(root, 'package.json');
+      const logBefore = read(root, 'CHANGELOG.md');
+      assert.ok(logBefore.includes(written), logBefore);
+
+      syncWrite(root, fixture);
+      assert.equal(read(root, 'package.json'), withVersion(pkgBefore, '0.2.1'), JSON.stringify(written));
+      const log = read(root, 'CHANGELOG.md');
+      assert.deepEqual(versions(log), ['0.2.1', '0.2.0', '0.1.0']);
+      assert.deepEqual(body(newest(log)), ['- P1/S-03 Fixture 3 (#18)'], newest(log));
+    });
+  }
+});

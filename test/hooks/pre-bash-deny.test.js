@@ -469,3 +469,77 @@ test('a name beginning with two dots is judged inside the repository', () => {
     r.cleanup();
   }
 });
+
+// ---- P8/S-63 (REQ-3.2, D-83) ----
+
+// A slice repository with test/a.test.js frozen for P1/S-06.
+function frozenRepo() {
+  const r = makeRepo({ branch: 'slice/P1-S-06-hooks', files: { 'test/a.test.js': 'x\n', 'src/a.js': 'a\n' } });
+  const file = path.join(r.root, '.slicekit', 'state', 'P1-S-06.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ slice: 'P1/S-06', state: 'building', frozenTests: ['test/a.test.js'], unfrozen: [] }));
+  const plain = defaultConfig({ name: 'demo', shape: 'backend' });
+  const run = (command, agent) => {
+    const input = { session_id: 's', tool_name: 'Bash', tool_input: { command }, cwd: r.root };
+    if (agent !== undefined) input.agent_id = agent;
+    return handle(input, { root: r.root, cfg: plain, env: {} });
+  };
+  return { ...r, run };
+}
+
+// Issue #180: a short option that takes a value, written with the value attached, is one word; the
+// word after it is read as an option again.
+test('a cut long option after a short option with its value attached is denied', () => {
+  const { run, cleanup } = frozenRepo();
+  try {
+    // [the value attached, the same command with the value written apart]
+    const pairs = [
+      ['git push -oo --forc origin slice/P1-S-06-hooks', 'git push -o o --forc origin slice/P1-S-06-hooks'],
+      ['git checkout -bb --forc', 'git checkout -b b --forc'],
+      ['git switch -CC --discard', 'git switch -C C --discard'],
+      ['git restore --staged -ss --worktre test/a.test.js', 'git restore --staged -s s --worktre test/a.test.js'],
+    ];
+    for (const [attached, apart] of pairs) {
+      const want = run(apart);
+      assert.equal(decision(want), 'deny', `${apart} is the denial the attached form must give`);
+      for (const agent of [undefined, 'a1']) {
+        const out = run(attached, agent);
+        assert.equal(decision(out), 'deny', attached);
+        assert.equal(reasonOf(out), reasonOf(run(apart, agent)), attached);
+      }
+    }
+    // The push is a force push.
+    assert.match(reasonOf(run(pairs[0][0])), /--force/);
+  } finally {
+    cleanup();
+  }
+});
+
+// Issue #181: `--dry-run` that is the value of `-e` or `--exclude` is a pattern, not a dry run.
+test('git clean with --dry-run as the value of -e is denied', () => {
+  const { run, cleanup } = frozenRepo();
+  try {
+    const plain = run('git clean -f');
+    assert.equal(decision(plain), 'deny');
+    for (const command of ['git clean -f -e --dry-run', 'git clean -fe --dry-run', 'git clean -f --exclude --dry-run']) {
+      for (const agent of [undefined, 'a1']) {
+        const out = run(command, agent);
+        assert.equal(decision(out), 'deny', command);
+        assert.equal(reasonOf(out), reasonOf(plain), command);
+      }
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test('git clean -n and git clean -f --dry-run are still allowed', () => {
+  const { run, cleanup } = frozenRepo();
+  try {
+    for (const command of ['git clean -n', 'git clean -f --dry-run', 'git clean -f -e x --dry-run', 'git clean -f --exclude=x --dry-run', 'git clean -fex -n']) {
+      assert.equal(decision(run(command)), 'allow', `${command}: ${reasonOf(run(command))}`);
+    }
+  } finally {
+    cleanup();
+  }
+});

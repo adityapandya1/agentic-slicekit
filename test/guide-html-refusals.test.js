@@ -415,8 +415,10 @@ for (const [name, target] of [['a source file two folders up', '../../src/cli.js
   });
 }
 
+// P8/S-63 (issue #189): only a paragraph of the introduction that links the web page is left out, so
+// the three paragraphs stand in the introduction; one under `## Conventions` is kept.
 test('converted: the paragraph of the index that links the web page itself is left out, and only it', (t) => {
-  const html = written(t, { index: indexOf({ before: ['## Conventions', '', 'The first paragraph.', '', 'Open [`slicekit-guide.html`](slicekit-guide.html) in a browser.', '', 'The third paragraph.', ''] }) });
+  const html = written(t, { index: indexOf({ before: ['The first paragraph.', '', 'Open [`slicekit-guide.html`](slicekit-guide.html) in a browser.', '', 'The third paragraph.', '', '## Conventions', '', 'Text.', ''] }) });
   assert.ok(html.includes('<p>The first paragraph.</p>') && html.includes('<p>The third paragraph.</p>'));
   assert.ok(!html.includes('in a browser'), 'the paragraph that links the web page is in the page');
 });
@@ -491,4 +493,47 @@ test('the last guard refuses a page that holds undefined as an element or an id 
     ['<a href="#undefined">x</a>', /undefined/], ['<h2 id="a">x</h2>\n<h3 id="a">y</h3>', /the id "a" twice/], ['<h2 id="">x</h2>', /the id ""/], ['<h2 id="a b">x</h2>', /the id "a b"/]]) {
     assert.throws(() => sound(html), says, html);
   }
+});
+
+// ---------------------------------------------------------------- P8/S-63 (REQ-5.8, D-97)
+
+// Issue #188: the git host turns a short code into an emoji in the text it renders, after the
+// backslash escapes are gone, so an escaped colon or underscore still leaves an emoji.
+test('a word between colons that the host shows as an emoji is refused with its file and line', (t) => {
+  const words = [
+    'A :tada: moment.',
+    'A \\:tada: moment.',
+    'A :tada\\: moment.',
+    'A :smile\\_cat: moment.',
+    'A \\:+1: vote.',
+    'The name @scope:package:name is installed.',
+  ];
+  for (const md of words) {
+    const guide = guideWith(t, md);
+    const named = new RegExp(`commands/init\\.md:${FIRST}\\b`);
+    for (const args of [['--guide', guide], ['--check', '--guide', guide]]) {
+      const r = run(args);
+      assert.equal(r.code, 1, `${JSON.stringify(md)} ${args[0]}: exit ${r.code}: ${r.out}`);
+      assert.match(r.out, named, `${JSON.stringify(md)} ${args[0]} does not name commands/init.md:${FIRST}: ${r.out}`);
+      assert.ok(!fs.existsSync(path.join(guide, PAGE)), `${JSON.stringify(md)} ${args[0]} wrote the page`);
+    }
+  }
+  // Inside a code span the same words are text.
+  const html = written(t, { init: [...INIT.split('\n'), 'Write `:tada:` and `\\:tada:` for it.', ''] });
+  assert.ok(html.includes('<code>:tada:</code>'), 'the code span is not in the page');
+});
+
+// Issue #189: only the introduction's paragraph that links the web page is left out.
+test('a paragraph outside the introduction that links the web page is kept', (t) => {
+  const index = [
+    '# Guide', '', 'What the guide holds.', '', 'Open [the web page](slicekit-guide.html) in a browser.', '',
+    '## Conventions', '', 'The first paragraph.', '',
+    'Every page is also in [the web page](slicekit-guide.html), which holds them in one file.', '',
+    'The third paragraph.', '',
+    '## Pages', '', '### Commands', '', '| Page | What it does |', '|---|---|', ...ROWS, ''];
+  const html = written(t, { index });
+  assert.ok(!html.includes('in a browser'), "the introduction's paragraph that links the web page is in the page");
+  assert.ok(html.includes('<p>The first paragraph.</p>') && html.includes('<p>The third paragraph.</p>'), 'a paragraph of Conventions is missing');
+  assert.ok(html.includes('which holds them in one file.'), 'the paragraph of Conventions that links the web page is left out');
+  assert.match(html, /<p>Every page is also in <a [^>]*>the web page<\/a>, which holds them in one file\.<\/p>/);
 });

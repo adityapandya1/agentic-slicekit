@@ -15,9 +15,11 @@
 // there is refused); the paragraphs of its Pages section and the cells of a Pages row after the
 // first (a list or a code block there is refused; the group headings and the link in the first cell
 // of each row are kept, and the contents list of the web page replaces the rest); a paragraph that
-// links the web page itself, `slicekit-guide.html` beside the index, whose other links are judged as
-// every link is. Any other link to a file that is no page of the guide, a folder included, is
-// refused with the file and line, in a paragraph, a list item, a table cell or a heading.
+// links the web page itself, `slicekit-guide.html` beside the index, in the introduction (before the
+// first `##` heading), whose other links are judged as every link is. Elsewhere a link to the web
+// page, with no `#`, is kept and leads to the top of the page. Any other link to a file that is no
+// page of the guide, a folder included, is refused with the file and line, in a paragraph, a list
+// item, a table cell or a heading.
 //
 // The bytes depend only on the files read and on this script: no version, date, user name or path of
 // this machine, and every line ends in LF. `node:fs` and `node:path` only.
@@ -92,9 +94,10 @@
 // HTML entity, a web address written bare (http, https, ftp, www., mailto: or xmpp:), an e-mail
 // address written bare, judged broadly: an @ with a letter, a digit, a dot, a plus or a dash before
 // it and a letter, a digit, a dash or an underscore after it; an emoji short code (a colon, one or
-// more letters, digits, _ + or -, a colon), judged by that shape alone, so a time such as 10:30:00
-// is refused too; a code span that is not closed on the
-// line it opens on (one that runs over two lines included), a link that leads nowhere in the guide.
+// more letters, digits, _ + or -, a colon), judged by that shape alone once the backslash escapes
+// are read, as the git host reads it, so a time such as 10:30:00 and `\:tada:` are refused too
+// (write it as a code span); a code span that is not closed on the line it opens on (one that runs
+// over two lines included), a link that leads nowhere in the guide.
 //
 // Refused in the files as a whole: a page file the index does not list, or a listed page that is
 // missing; a page file whose name holds a character that is no letter, digit, dot, dash or
@@ -139,6 +142,18 @@ const ODD_SPACE = /[^\S \t\n]/;
 const BARE_ADDRESS = /^(?:https?:\/\/|ftp:\/\/|www\.|mailto:|xmpp:)\S/i;
 // The shape of an emoji short code on the git host: a colon, letters, digits, _ + or -, a colon.
 const EMOJI = /^:[A-Za-z0-9_+-]+:/;
+// Whether the text from text[i] on is an emoji short code once its backslash escapes are gone: the
+// git host turns a short code into an emoji in the text it renders, after the escapes are read, so
+// `\:tada:`, `:tada\:` and `:smile\_cat:` are emoji as `:tada:` is (issue #188). The text is read
+// up to the first space or backtick, so a code span after it is no part of it.
+function emojiAt(text, i) {
+  let s = '';
+  for (let k = i; k < text.length && !isSpace(text[k]) && text[k] !== '`';) {
+    if (text[k] === '\\' && ASCII_PUNCT.test(text[k + 1] ?? '')) { s += text[k + 1]; k += 2; } else { s += text[k]; k++; }
+  }
+  return EMOJI.test(s);
+}
+const EMOJI_REFUSAL = 'an emoji short code, a word between two colons, with or without a backslash before a colon or an underscore in it (write it as a code span)';
 const isPunct = (c) => c !== undefined && /[\p{P}\p{S}]/u.test(c);
 const isWord = (c) => c !== undefined && /[\p{L}\p{N}]/u.test(c);
 
@@ -198,6 +213,7 @@ function tokens(text, base = 0, inLink = false) {
     if (c === '\\') {
       const next = text[i + 1];
       if (next === undefined) refuse('a backslash at the end of the text (a line break)', at);
+      if (next === ':' && emojiAt(text, i)) refuse(EMOJI_REFUSAL, at);
       if (ASCII_PUNCT.test(next)) { buf += next; i += 2; } else { buf += c; i++; }
     } else if (c === '`') {
       const span = codeSpan(text, i);
@@ -265,8 +281,8 @@ function tokens(text, base = 0, inLink = false) {
       // Judged broadly: an @ with a letter, a digit, a dot, a plus or a dash before it and a letter,
       // a digit, a dash or an underscore after it, whatever follows.
       refuse('an e-mail address written bare, or an @ between two words (write it as a code span)', at);
-    } else if (c === ':' && EMOJI.test(text.slice(i))) {
-      refuse('an emoji short code, a word between two colons (write it as a code span, or \\: for the colon)', at);
+    } else if (c === ':' && emojiAt(text, i)) {
+      refuse(EMOJI_REFUSAL, at);
     } else if (ODD_SPACE.test(c)) {
       refuse('white space that is no space or tab, such as a no-break space,', at);
     } else {
@@ -974,9 +990,11 @@ export function guidePage(guideDir) {
         }
         continue;
       }
-      // A paragraph that links the web page itself, the file beside the index, says where this page
-      // comes from; the page does not repeat it. Its other links are judged as every link is.
-      if (b.t === 'p' && linkTokens(b.toks).some((k) => k.url === PAGE)) { dropped.push(b); continue; }
+      // A paragraph of the introduction that links the web page itself, the file beside the index,
+      // says where this page comes from; the page does not repeat it. Its other links are judged as
+      // every link is. A paragraph elsewhere that links it is kept, the link leading to the top of
+      // the page (issue #189).
+      if (!part && b.t === 'p' && linkTokens(b.toks).some((k) => k.url === PAGE)) { dropped.push(b); continue; }
       (part ? part.blocks : intro).push(b);
     }
   }
@@ -998,7 +1016,7 @@ export function guidePage(guideDir) {
       const [file, hash = ''] = url.split('#');
       const rel = file ? path.posix.normalize(path.posix.join(path.posix.dirname(fromRel), file)) : fromRel;
       let to;
-      if (rel === INDEX) to = hash ? readmeAnchor.get(hash) : 'top';
+      if (rel === INDEX || (rel === PAGE && !hash)) to = hash ? readmeAnchor.get(hash) : 'top';
       else if (pages.has(rel)) to = hash ? pages.get(rel).anchors.get(hash) : pages.get(rel).id;
       if (!to) fail(`${fromRel}:${line}: the link "${url}" leads to nothing in the guide`);
       return to === own ? null : `#${to}`;
