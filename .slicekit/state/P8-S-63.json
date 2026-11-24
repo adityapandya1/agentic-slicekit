@@ -1,11 +1,11 @@
 {
   "slice": "P8/S-63",
-  "state": "in-review",
+  "state": "draft-pr",
   "branch": null,
   "pr": {
     "number": 227,
     "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
-    "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b"
+    "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db"
   },
   "redCommit": "fc34e5eb7693375b83e0909a49cdcfe3056a41c8",
   "frozenTests": [
@@ -78,11 +78,7 @@
       "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b"
     }
   ],
-  "ci": {
-    "sha": "2934c494c6561ed34ca9d9e5b96791782bb25581",
-    "status": "success",
-    "url": "https://github.com/adityapandya1/agentic-slicekit/actions/runs/45273439553"
-  },
+  "ci": null,
   "mergedAt": null,
   "handoff": null,
   "history": [
@@ -252,6 +248,22 @@
           "path": ".slicekit/reviews/P8-S-63i-r3.md",
           "blockers": 0,
           "independent": true
+        }
+      }
+    },
+    {
+      "from": "in-review",
+      "to": "draft-pr",
+      "at": "2026-11-24T16:17:53.891Z",
+      "by": "cli",
+      "evidence": {
+        "testExit": 0,
+        "checkExit": 0,
+        "pr": {
+          "number": 227,
+          "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
+          "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db",
+          "title": "[P8/S-63] Open issues"
         }
       }
     }
