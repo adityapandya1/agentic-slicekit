@@ -1,6 +1,6 @@
 {
   "slice": "P8/S-63",
-  "state": "draft-pr",
+  "state": "in-review",
   "branch": null,
   "pr": {
     "number": 227,
@@ -76,6 +76,13 @@
       "blockers": 0,
       "independent": true,
       "headSha": "3ee68643be1300376c94e9cafd5407067da1cd8b"
+    },
+    {
+      "round": 4,
+      "path": ".slicekit/reviews/P8-S-63i-r4.md",
+      "blockers": 0,
+      "independent": true,
+      "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db"
     }
   ],
   "ci": null,
@@ -264,6 +271,20 @@
           "url": "https://github.com/adityapandya1/agentic-slicekit/pull/227",
           "headSha": "ec6b40f6e02cc3c3df74bb4fea396dfaf9e439db",
           "title": "[P8/S-63] Open issues"
+        }
+      }
+    },
+    {
+      "from": "draft-pr",
+      "to": "in-review",
+      "at": "2026-11-24T16:30:03.326Z",
+      "by": "cli",
+      "evidence": {
+        "verdict": {
+          "round": 4,
+          "path": ".slicekit/reviews/P8-S-63i-r4.md",
+          "blockers": 0,
+          "independent": true
         }
       }
     }
