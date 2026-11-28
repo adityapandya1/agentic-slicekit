@@ -58,6 +58,7 @@ and these five are what an enterprise team is missing:
 - `03-hooks-gates-ci.md` — what runs on every tool call, every stop, and in CI
 - `04-traceability-graph.md` — the graph, its queries, multi-repo, visualize
 - `05-kit-quality-and-release.md` — how the kit tests itself and ships
+- `06-model-benchmark.md` — measuring models per agent on the team's own work, and setting them
 - `stack.md` — what the kit is written in and why
 - `contracts/` — interfaces between the kit and the outside: adapters for git host, tracker, agent tool
 

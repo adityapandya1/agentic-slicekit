@@ -15,4 +15,19 @@ Spec: `docs/spec/`. Decisions: `docs/decisions.md`. Slice files: `docs/phases/`.
 - Phase 7 — Start from an idea: 2 slices, all merged; slice files in `docs/phases/P7-brief/`.
 - Phase 8 — Lighter loop: 6 slices, all merged; slice files in `docs/phases/P8-lighter-loop/`.
 
+## Phase 9 — Model benchmark
+
+| Slice | Name | Group | Slice file | Status |
+|---|---|---|---|---|
+| S-64 | Models per role | A | [S-64-models-per-role.md](docs/phases/P9-model-benchmark/S-64-models-per-role.md) | Todo |
+| S-65 | Task picker | B | [S-65-task-picker.md](docs/phases/P9-model-benchmark/S-65-task-picker.md) | Todo |
+| S-66 | Runner | C | [S-66-runner.md](docs/phases/P9-model-benchmark/S-66-runner.md) | Todo |
+| S-67 | Scorer | D | [S-67-scorer.md](docs/phases/P9-model-benchmark/S-67-scorer.md) | Todo |
+| S-68 | Report | E | [S-68-report.md](docs/phases/P9-model-benchmark/S-68-report.md) | Todo |
+| S-69 | New-model check | F | [S-69-new-model-check.md](docs/phases/P9-model-benchmark/S-69-new-model-check.md) | Todo |
+
+**Order:** A; B; C; D; E; F
+
+The six slices run one after another. Each adds or changes a command and its guide page, so each rewrites `docs/guide/slicekit-guide.html`, and S-65 to S-69 all change `src/cli/bench.js`. Each also needs the one before it: the runner runs the picker's tasks, the scorer scores the runner's trials, the report reads the scored run files, and the check runs the runner and regenerates the report. S-64 (A) comes first because it adds the config keys' validation that S-66 and S-69 extend. <!-- slicekit:pending P9/S-65 -->
+
 <!-- slicekit:generated:end -->
