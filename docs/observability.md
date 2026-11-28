@@ -18,7 +18,7 @@ Slice IDs (`P<n>/S-<nn>`) in branch names, pull request titles and `Slice:` comm
 
 ## CI steps the monitoring setup requires
 
-None (D-79).
+None (D-79, D-122).
 
 ## On-call contact
 
